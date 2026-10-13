@@ -66,7 +66,7 @@ export const loadBuiltinThemes = (): ResolvedTheme[] => {
   return builtinCache;
 };
 
-/** id of the <style> element carrying Excalidraw variable overrides. */
+/** id of the fallback <style> element carrying Excalidraw variable overrides. */
 export const EXCALIDRAW_OVERRIDE_STYLE_ID = "vault-theme-excalidraw-vars";
 
 export type AppliedTheme = {
@@ -76,13 +76,81 @@ export type AppliedTheme = {
   restore: () => void;
 };
 
+/** Constructed stylesheets per document (CSP-safe path, see below). */
+const constructedSheets = new WeakMap<Document, CSSStyleSheet>();
+
+const canAdoptStyleSheets = (doc: Document) => {
+  const win = doc.defaultView as (Window & typeof globalThis) | null;
+  return (
+    !!win &&
+    Array.isArray(doc.adoptedStyleSheets) &&
+    typeof win.CSSStyleSheet === "function" &&
+    typeof win.CSSStyleSheet.prototype.replaceSync === "function"
+  );
+};
+
+/**
+ * Writes the Excalidraw override CSS and returns a function restoring the
+ * previous state.
+ *
+ * The packaged app's CSP carries a style nonce, which disables
+ * 'unsafe-inline', so an injected <style> element is silently ignored there.
+ * Constructed stylesheets (adoptedStyleSheets) are not subject to style-src,
+ * so they are used whenever available; the <style> element remains as a
+ * fallback for environments without them (jsdom in unit tests).
+ */
+const writeOverrideCss = (doc: Document, css: string): (() => void) => {
+  if (canAdoptStyleSheets(doc)) {
+    const win = doc.defaultView as Window & typeof globalThis;
+    let sheet = constructedSheets.get(doc);
+    const added = !sheet;
+    const previousCss = sheet
+      ? Array.from(sheet.cssRules, (rule) => rule.cssText).join("\n")
+      : "";
+    if (!sheet) {
+      sheet = new win.CSSStyleSheet();
+      constructedSheets.set(doc, sheet);
+      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+    }
+    sheet.replaceSync(css);
+    const current = sheet;
+    return () => {
+      if (added) {
+        doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(
+          (s) => s !== current,
+        );
+        constructedSheets.delete(doc);
+      } else {
+        current.replaceSync(previousCss);
+      }
+    };
+  }
+
+  let style = doc.getElementById(EXCALIDRAW_OVERRIDE_STYLE_ID);
+  const previousCss = style ? style.textContent : null;
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = EXCALIDRAW_OVERRIDE_STYLE_ID;
+    (doc.head ?? doc.documentElement).appendChild(style);
+  }
+  style.textContent = css;
+  const styleEl = style;
+  return () => {
+    if (previousCss === null) {
+      styleEl.remove();
+    } else {
+      styleEl.textContent = previousCss;
+    }
+  };
+};
+
 /**
  * Sets every token and Excalidraw variable as an inline custom property on
  * `doc.documentElement`.
  *
  * Excalidraw re-declares its variables on `.excalidraw` /
  * `.excalidraw.theme--dark`, which beats inheritance from <html>, so the
- * Excalidraw variables are additionally written to a <style> element whose
+ * Excalidraw variables are additionally written to a stylesheet whose
  * selectors (`:root .excalidraw`, `:root .excalidraw.theme--dark`) out-rank
  * theme.scss. Calling it again replaces that stylesheet's contents.
  */
@@ -99,19 +167,14 @@ export const applyThemeTokens = (
     root.style.setProperty(name, value);
   }
 
-  let style = doc.getElementById(EXCALIDRAW_OVERRIDE_STYLE_ID);
-  const previousCss = style ? style.textContent : null;
-  if (!style) {
-    style = doc.createElement("style");
-    style.id = EXCALIDRAW_OVERRIDE_STYLE_ID;
-    (doc.head ?? root).appendChild(style);
-  }
   const body = Object.entries(excalidrawVars)
     .map(([name, value]) => `  ${name}: ${value};`)
     .join("\n");
-  style.textContent = `:root .excalidraw,\n:root .excalidraw.theme--dark {\n${body}\n}\n`;
+  const restoreCss = writeOverrideCss(
+    doc,
+    `:root .excalidraw,\n:root .excalidraw.theme--dark {\n${body}\n}\n`,
+  );
 
-  const styleEl = style;
   return {
     previous,
     restore: () => {
@@ -122,11 +185,7 @@ export const applyThemeTokens = (
           root.style.removeProperty(name);
         }
       }
-      if (previousCss === null) {
-        styleEl.remove();
-      } else {
-        styleEl.textContent = previousCss;
-      }
+      restoreCss();
     },
   };
 };
