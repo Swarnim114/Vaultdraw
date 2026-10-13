@@ -205,11 +205,25 @@ export async function runDesktopSmoke(): Promise<void> {
       type: "unhandledrejection",
       message: String(event.reason),
     });
+  // Upstream Excalidraw's SVG export sets style="white-space: pre;" on text
+  // nodes (renderer), which the packaged CSP reports as style-src-attr. The
+  // attribute still serializes into the file, so it is tracked separately
+  // and only while the smoke run's SVG export is in flight.
+  const knownCspReports: unknown[] = [];
+  let svgExportInFlight = false;
   const onCsp = (event: SecurityPolicyViolationEvent) =>
-    pageErrors.push({
+    (svgExportInFlight && event.violatedDirective === "style-src-attr"
+      ? knownCspReports
+      : pageErrors
+    ).push({
       type: "csp",
       message: `${event.violatedDirective}: ${event.blockedURI}`,
-    });
+      // Where/when: helps tell product CSP problems from harness ones.
+      afterStep: records[records.length - 1]?.step ?? "(none)",
+      source: `${event.sourceFile}:${event.lineNumber}`,
+      sample: event.sample,
+      disposition: event.disposition,
+    } as { type: string; message: string });
   win.addEventListener("error", onError);
   win.addEventListener("unhandledrejection", onRejection);
   doc.addEventListener("securitypolicyviolation", onCsp);
@@ -1110,6 +1124,766 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     });
 
+    // ---- Colour themes (personal/planning/themes.md "Final decisions") ----
+    type Rgba = [number, number, number, number];
+    const hexToRgb = (hex: string): Rgba => {
+      const h = hex.trim().replace(/^#/, "");
+      const full =
+        h.length === 3
+          ? h
+              .split("")
+              .map((c) => c + c)
+              .join("")
+          : h.slice(0, 6);
+      return [
+        parseInt(full.slice(0, 2), 16),
+        parseInt(full.slice(2, 4), 16),
+        parseInt(full.slice(4, 6), 16),
+        255,
+      ];
+    };
+    const cssRgb = (value: string): Rgba | null => {
+      const m = value.match(/rgba?\(([^)]+)\)/);
+      if (!m) {
+        return value.trim().startsWith("#") ? hexToRgb(value) : null;
+      }
+      const parts = m[1]
+        .split(/[\s,/]+/)
+        .filter(Boolean)
+        .map(Number);
+      return [
+        parts[0],
+        parts[1],
+        parts[2],
+        parts.length > 3 ? parts[3] * 255 : 255,
+      ];
+    };
+    const near = (a: Rgba | null, b: Rgba, tolerance = 2) =>
+      !!a && [0, 1, 2].every((i) => Math.abs(a[i] - b[i]) <= tolerance);
+    const rgbHex = (p: Rgba | null) =>
+      p
+        ? `#${p
+            .slice(0, 3)
+            .map((n) => Math.round(n).toString(16).padStart(2, "0"))
+            .join("")}${p[3] < 255 ? `/a${Math.round(p[3])}` : ""}`
+        : null;
+    const rootVar = (name: string) =>
+      doc.documentElement.style.getPropertyValue(name).trim().toLowerCase();
+    const staticCanvasPixel = (): Rgba | null => {
+      const canvas = root.querySelector<HTMLCanvasElement>(
+        ".vault-editor canvas.static",
+      );
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx || canvas.width < 20 || canvas.height < 20) {
+        return null;
+      }
+      // Top-left corner of the scene: islands are DOM, the rectangle sits
+      // around 35% of the viewport, so this area is empty canvas background.
+      const d = ctx.getImageData(12, 12, 1, 1).data;
+      return [d[0], d[1], d[2], d[3]];
+    };
+    const waitForCanvasPixel = async (label: string, expected: string) => {
+      const target = hexToRgb(expected);
+      let last: Rgba | null = null;
+      try {
+        await waitFor(
+          label,
+          () => {
+            last = staticCanvasPixel();
+            return near(last, target) ? true : null;
+          },
+          5000,
+        );
+      } catch {
+        throw new Error(
+          `${label}: canvas pixel ${rgbHex(last)}, expected ${expected} ±2`,
+        );
+      }
+      return rgbHex(last);
+    };
+    const openAppearanceSettings = async () => {
+      if (!doc.querySelector(".vault-settings-modal")) {
+        button("Settings").click();
+      }
+      const modal = await waitFor("settings modal", () =>
+        doc.querySelector<HTMLElement>(".vault-settings-modal"),
+      );
+      (
+        await waitFor("Appearance tab", () =>
+          Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
+            (item) => item.textContent?.trim() === "Appearance & Theme",
+          ),
+        )
+      ).click();
+      await waitFor("theme picker", () =>
+        modal.querySelector('[data-testid="theme-picker"]'),
+      );
+      return modal;
+    };
+    const themeCard = (modal: HTMLElement, key: string) =>
+      Array.from(
+        modal.querySelectorAll<HTMLButtonElement>(".vault-theme-card"),
+      ).find(
+        (item) => item.dataset.themeKey?.toLowerCase() === key.toLowerCase(),
+      ) ?? null;
+    const closeSettings = async () => {
+      const modal = doc.querySelector<HTMLElement>(".vault-settings-modal");
+      if (!modal) {
+        return;
+      }
+      modal
+        .querySelector<HTMLButtonElement>('[aria-label="Close Settings"]')
+        ?.click();
+      await waitFor("settings modal closed", () =>
+        doc.querySelector(".vault-settings-modal") ? null : true,
+      );
+    };
+    const setSyncCanvas = async (on: boolean) => {
+      const modal = await openAppearanceSettings();
+      const input = await waitFor("sync canvas switch", () =>
+        modal.querySelector<HTMLInputElement>("#vault-sync-canvas"),
+      );
+      if (input.checked !== on) {
+        input.click();
+      }
+      await waitFor(
+        `syncCanvas=${on}`,
+        () =>
+          getPreferences(win).syncCanvas === on &&
+          doc.documentElement.dataset.vaultCanvasSync === (on ? "on" : "off")
+            ? true
+            : null,
+        3000,
+      );
+      await closeSettings();
+    };
+    const waitForConfig = async (
+      label: string,
+      check: (config: typeof DEFAULT_CONFIG_JSON) => boolean,
+    ) => {
+      let loaded = await call("load_settings");
+      const until = win.performance.now() + 3000;
+      while (
+        !(
+          loaded.config && check(loaded.config as typeof DEFAULT_CONFIG_JSON)
+        ) &&
+        win.performance.now() < until
+      ) {
+        await delay(win, 100);
+        loaded = await call("load_settings");
+      }
+      if (
+        !loaded.config ||
+        !check(loaded.config as typeof DEFAULT_CONFIG_JSON)
+      ) {
+        throw new Error(
+          `${label}: config.toml has ${JSON.stringify(loaded.config)}`,
+        );
+      }
+      return loaded.config as typeof DEFAULT_CONFIG_JSON;
+    };
+    // Theme steps are independent enough to keep going after one fails, so
+    // a single regression does not hide the others; the run still fails.
+    const themeStep = <T>(name: string, work: () => Promise<T>) =>
+      step(name, work).catch(async () => {
+        await closeSettings().catch(() => {});
+      });
+    const DRACULA_SURFACE = "#282a36";
+    const DARK_CANVAS = "#121212";
+    const TEST_PALETTE = {
+      key: "Test Palette",
+      mSurface: "#1b2b34",
+      mOnSurface: "#d8dee9",
+      mPrimary: "#ec5f67",
+    };
+
+    await themeStep("theme-user-palette-loaded", async () => {
+      const { getThemeRegistry, findTheme } = await import("../theme/registry");
+      const registry = getThemeRegistry();
+      if (registry.mode !== "tauri") {
+        throw new Error(`Theme registry not in tauri mode: ${registry.mode}`);
+      }
+      if (registry.loadError) {
+        throw new Error(`Theme registry loadError: ${registry.loadError}`);
+      }
+      if (registry.fileProblems.length) {
+        throw new Error(
+          `Theme file problems: ${JSON.stringify(registry.fileProblems)}`,
+        );
+      }
+      const entry = findTheme(registry, TEST_PALETTE.key);
+      if (!entry || entry.source !== "user") {
+        throw new Error(
+          `User theme "${TEST_PALETTE.key}" not in registry: ${JSON.stringify(
+            registry.themes.map((t) => `${t.source}:${t.key}`),
+          )}`,
+        );
+      }
+      const { dark, light, generated } = entry.theme;
+      if (
+        dark.mSurface.toLowerCase() !== TEST_PALETTE.mSurface ||
+        dark.mOnSurface.toLowerCase() !== TEST_PALETTE.mOnSurface ||
+        dark.mPrimary.toLowerCase() !== TEST_PALETTE.mPrimary
+      ) {
+        throw new Error(
+          `Dark variant does not keep the file's colours: ${JSON.stringify(
+            dark,
+          )}`,
+        );
+      }
+      if (!generated.light || generated.dark) {
+        throw new Error(
+          `Expected only light to be generated: ${JSON.stringify(generated)}`,
+        );
+      }
+      if (!light?.mSurface || light.mSurface.toLowerCase() === dark.mSurface) {
+        throw new Error(
+          `Generated light variant looks wrong: ${JSON.stringify(light)}`,
+        );
+      }
+      const modal = await openAppearanceSettings();
+      const card = await waitFor("Test Palette card in Settings", () =>
+        themeCard(modal, TEST_PALETTE.key),
+      );
+      const tag = card.querySelector(".vault-theme-card__tag")?.textContent;
+      const autoBadge = card.querySelector(
+        '.vault-theme-card__half[data-mode="light"] .vault-theme-card__auto',
+      );
+      const cardWarning = card.querySelector(
+        ".vault-theme-card__warning",
+      )?.textContent;
+      const problemList = modal.querySelector(".vault-theme-problems");
+      if (!autoBadge || tag !== "Custom" || cardWarning || problemList) {
+        throw new Error(
+          `Settings card: ${JSON.stringify({
+            tag,
+            autoBadge: !!autoBadge,
+            cardWarning,
+            problems: problemList?.textContent,
+          })}`,
+        );
+      }
+      await closeSettings();
+      return {
+        key: entry.key,
+        path: entry.path,
+        dark: {
+          mSurface: dark.mSurface,
+          mOnSurface: dark.mOnSurface,
+          mPrimary: dark.mPrimary,
+        },
+        generatedLight: {
+          mSurface: light.mSurface,
+          mOnSurface: light.mOnSurface,
+          mPrimary: light.mPrimary,
+        },
+        warnings: entry.warnings,
+        settingsCard: { tag, autoBadge: true },
+        themeCount: registry.themes.length,
+      };
+    });
+
+    await themeStep("theme-switch-applies", async () => {
+      const modal = await openAppearanceSettings();
+      (
+        await waitFor("Dracula card", () => themeCard(modal, "Dracula"))
+      ).click();
+      (
+        await waitFor("Dark mode button", () =>
+          Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
+            (item) => item.textContent?.trim() === "Dark",
+          ),
+        )
+      ).click();
+      await waitFor(
+        "--vault-bg = Dracula surface",
+        () => (rootVar("--vault-bg") === DRACULA_SURFACE ? true : null),
+        3000,
+      ).catch(() => {
+        throw new Error(
+          `--vault-bg is "${rootVar(
+            "--vault-bg",
+          )}", expected ${DRACULA_SURFACE}`,
+        );
+      });
+      const prefs = getPreferences(win);
+      if (prefs.colorTheme !== "Dracula" || prefs.theme !== "dark") {
+        throw new Error(
+          `Preferences not updated: ${prefs.colorTheme}/${prefs.theme}`,
+        );
+      }
+      if (!doc.documentElement.classList.contains("dark")) {
+        throw new Error("html.dark missing in dark mode");
+      }
+      await closeSettings();
+      const menuBg = rootVar("--vault-menu-bg");
+      const excalidrawEl = root.querySelector<HTMLElement>(
+        ".vault-editor .excalidraw",
+      );
+      const islandVar = excalidrawEl
+        ? win
+            .getComputedStyle(excalidrawEl)
+            .getPropertyValue("--island-bg-color")
+            .trim()
+        : null;
+      const overrideStyle = doc.getElementById(
+        "vault-theme-excalidraw-vars",
+      ) as HTMLStyleElement | null;
+      // Themes use a constructed stylesheet (CSP-safe); <style> is a fallback.
+      const overrideSheetApplied =
+        !!overrideStyle?.sheet || doc.adoptedStyleSheets.length > 0;
+      // Some islands are deliberately transparent wrappers; use painted ones.
+      const islands = Array.from(
+        root.querySelectorAll<HTMLElement>(".vault-editor .excalidraw .Island"),
+      ).map((el) => ({
+        el,
+        bg: win.getComputedStyle(el).backgroundColor,
+      }));
+      const painted = islands.filter(({ bg }) => (cssRgb(bg)?.[3] ?? 0) > 0);
+      const island = painted[0];
+      const diagnostics = {
+        menuBg,
+        islandVar,
+        overrideStyleInDom: !!overrideStyle,
+        overrideSheetApplied,
+        islands: islands.map(({ el, bg }) => `${el.className}: ${bg}`),
+      };
+      if (!island) {
+        throw new Error(
+          `No painted Excalidraw .Island: ${JSON.stringify(diagnostics)}`,
+        );
+      }
+      const islandBg = island.bg;
+      if (!menuBg || !near(cssRgb(islandBg), hexToRgb(menuBg), 1)) {
+        throw new Error(
+          `Island background ${islandBg} != --vault-menu-bg ${menuBg}: ${JSON.stringify(
+            diagnostics,
+          )}`,
+        );
+      }
+      const config = await waitForConfig(
+        "appearance.theme=Dracula written",
+        (c) => c.appearance.theme === "Dracula" && c.appearance.mode === "dark",
+      );
+      return {
+        vaultBg: rootVar("--vault-bg"),
+        vaultMenuBg: menuBg,
+        islandBackground: islandBg,
+        islandClass: island.el.className,
+        islandVar,
+        overrideSheetApplied,
+        configAppearance: config.appearance,
+      };
+    });
+
+    await themeStep("theme-sync-canvas-pixels", async () => {
+      // Make sure the drawing is open and its canvas is laid out.
+      await waitFor("static canvas", () => staticCanvasPixel());
+      const before = rgbHex(staticCanvasPixel());
+      await setSyncCanvas(true);
+      const syncedPixel = await waitForCanvasPixel(
+        "sync on: canvas = Dracula surface",
+        DRACULA_SURFACE,
+      );
+      await waitForConfig(
+        "sync_canvas=true written",
+        (c) => c.appearance.sync_canvas === true,
+      );
+      await setSyncCanvas(false);
+      const standardPixel = await waitForCanvasPixel(
+        "sync off: canvas = standard dark",
+        DARK_CANVAS,
+      );
+      return {
+        pixelAt: "static canvas (12,12) device px",
+        beforeSync: before,
+        syncOn: syncedPixel,
+        syncOff: standardPixel,
+        expected: { syncOn: DRACULA_SURFACE, syncOff: DARK_CANVAS },
+      };
+    });
+
+    await themeStep("theme-export-keeps-standard-colours", async () => {
+      const { getThemeRegistry, findTheme } = await import("../theme/registry");
+      const dracula = findTheme(getThemeRegistry(), "Dracula");
+      if (!dracula) {
+        throw new Error("Dracula missing from registry");
+      }
+      const draculaColours = new Set(
+        [
+          dracula.theme.dark.mSurface,
+          dracula.theme.dark.mOnSurface,
+          dracula.theme.light.mSurface,
+          dracula.theme.light.mOnSurface,
+        ].map((c) => c.toLowerCase()),
+      );
+      const drawingPath = `${nested}/ui-edited.excalidraw`;
+
+      // Real menu path: Main menu > Export as … (VaultEditor wraps it in
+      // withStandardCanvasColors). Capture the bytes; still write natively.
+      let exportCount = 0;
+      const exportViaMenu = async (label: string) => {
+        const originalExport = desktopRepository.exportFile;
+        let captured: { name: string; bytes: Uint8Array } | null = null;
+        let nativeResult: boolean | null = null;
+        let nativeError: string | null = null;
+        desktopRepository.exportFile = async (
+          name: string,
+          bytes: Uint8Array,
+        ) => {
+          captured = { name, bytes };
+          // The smoke sandbox refuses to overwrite: give each export its own
+          // name (the menu always proposes "<drawing>.<ext>").
+          exportCount += 1;
+          try {
+            nativeResult = await originalExport.call(
+              desktopRepository,
+              `theme-${exportCount}-${name}`,
+              bytes,
+            );
+          } catch (error) {
+            nativeError = String(error);
+            throw error;
+          }
+          return nativeResult;
+        };
+        try {
+          const trigger = await waitFor("main menu trigger", () =>
+            root.querySelector<HTMLElement>(
+              '.vault-editor [data-testid="main-menu-trigger"]',
+            ),
+          );
+          trigger.click();
+          const item = await waitFor(`${label} menu item`, () =>
+            Array.from(
+              doc.querySelectorAll<HTMLElement>(
+                ".excalidraw .dropdown-menu-item",
+              ),
+            ).find((el) => el.textContent?.includes(label)),
+          );
+          item.click();
+          await waitFor(`${label} captured`, () => captured, 8000);
+          await waitFor(
+            `${label} native write`,
+            () => {
+              if (nativeError) {
+                throw new Error(`${label} native write failed: ${nativeError}`);
+              }
+              return nativeResult;
+            },
+            8000,
+          );
+        } finally {
+          desktopRepository.exportFile = originalExport;
+        }
+        const result = captured as unknown as {
+          name: string;
+          bytes: Uint8Array;
+        };
+        return { ...result, nativeWritten: nativeResult };
+      };
+      const pngCornerPixel = async (bytes: Uint8Array) => {
+        const signature = Array.from(bytes.slice(0, 4));
+        if (signature.join(",") !== "137,80,78,71") {
+          throw new Error(`Export is not a PNG: ${signature}`);
+        }
+        const bitmap = await win.createImageBitmap(
+          new win.Blob([bytes as BlobPart], { type: "image/png" }),
+        );
+        const scratch = doc.createElement("canvas");
+        scratch.width = bitmap.width;
+        scratch.height = bitmap.height;
+        const sctx = scratch.getContext("2d")!;
+        sctx.drawImage(bitmap, 0, 0);
+        const d = sctx.getImageData(2, 2, 1, 1).data;
+        return {
+          pixel: [d[0], d[1], d[2], d[3]] as Rgba,
+          size: `${bitmap.width}x${bitmap.height}`,
+        };
+      };
+      const setMode = async (label: "Light" | "Dark") => {
+        const modal = await openAppearanceSettings();
+        (
+          await waitFor(`${label} mode button`, () =>
+            Array.from(
+              modal.querySelectorAll<HTMLButtonElement>("button"),
+            ).find((item) => item.textContent?.trim() === label),
+          )
+        ).click();
+        await waitFor(
+          `html.dark=${label === "Dark"}`,
+          () =>
+            doc.documentElement.classList.contains("dark") ===
+            (label === "Dark")
+              ? true
+              : null,
+          3000,
+        );
+        await closeSettings();
+      };
+
+      // A. Dark mode. Upstream Excalidraw exports in the editor theme
+      //    (App.tsx keeps exportWithDarkMode = theme === dark), so the
+      //    standard dark export background is #121212. Baseline with sync
+      //    off, then with sync on: must be identical, never Dracula.
+      await setSyncCanvas(false);
+      await waitForCanvasPixel("sync off baseline", DARK_CANVAS);
+      const baseline = await exportViaMenu("Export as PNG");
+      const baselinePng = await pngCornerPixel(baseline.bytes);
+      await setSyncCanvas(true);
+      await waitForCanvasPixel("sync on before export", DRACULA_SURFACE);
+      const darkExport = await exportViaMenu("Export as PNG");
+      const darkPng = await pngCornerPixel(darkExport.bytes);
+      if (
+        !near(darkPng.pixel, baselinePng.pixel, 0) ||
+        !near(darkPng.pixel, hexToRgb(DARK_CANVAS)) ||
+        darkPng.pixel[3] !== 255
+      ) {
+        throw new Error(
+          `Dark PNG with sync on ${rgbHex(
+            darkPng.pixel,
+          )}, sync-off baseline ${rgbHex(
+            baselinePng.pixel,
+          )}, expected standard ${DARK_CANVAS} (not ${DRACULA_SURFACE})`,
+        );
+      }
+      const afterDarkExport = await waitForCanvasPixel(
+        "sync restored after dark export",
+        DRACULA_SURFACE,
+      );
+
+      // B. Light mode: canvas shows Dracula's light surface; PNG/SVG must
+      //    carry the drawing's own #ffffff and #1e1e1e.
+      await setMode("Light");
+      const lightCanvas = await waitForCanvasPixel(
+        "sync on light: canvas = Dracula light surface",
+        dracula.theme.light.mSurface,
+      );
+      const lightExport = await exportViaMenu("Export as PNG");
+      const lightPng = await pngCornerPixel(lightExport.bytes);
+      if (
+        !near(lightPng.pixel, hexToRgb("#ffffff")) ||
+        lightPng.pixel[3] !== 255
+      ) {
+        throw new Error(
+          `Light PNG background ${rgbHex(
+            lightPng.pixel,
+          )}, expected the drawing's #ffffff (not ${
+            dracula.theme.light.mSurface
+          })`,
+        );
+      }
+      svgExportInFlight = true;
+      const svgExport = await exportViaMenu("Export as SVG").finally(() =>
+        delay(win, 200).then(() => {
+          svgExportInFlight = false;
+        }),
+      );
+      const svgText = new win.TextDecoder().decode(svgExport.bytes);
+      const svgColours = Array.from(
+        new Set(
+          (svgText.match(/#[0-9a-fA-F]{6}\b/g) ?? []).map((c) =>
+            c.toLowerCase(),
+          ),
+        ),
+      );
+      const svgThemed = svgColours.filter((c) => draculaColours.has(c));
+      if (
+        svgThemed.length ||
+        !svgColours.includes("#ffffff") ||
+        !svgColours.includes("#1e1e1e")
+      ) {
+        throw new Error(
+          `SVG colours ${JSON.stringify(svgColours)} (themed: ${JSON.stringify(
+            svgThemed,
+          )}); expected #ffffff + #1e1e1e and no Dracula colours`,
+        );
+      }
+      const afterLightExport = await waitForCanvasPixel(
+        "sync restored after light export",
+        dracula.theme.light.mSurface,
+      );
+      await setMode("Dark");
+      await waitForCanvasPixel("back to dark Dracula canvas", DRACULA_SURFACE);
+      const beforeEdit = await call("read_drawing", {
+        handle: activeVault.handle,
+        path: drawingPath,
+      });
+      const exported = {
+        darkBaselineSyncOff: rgbHex(baselinePng.pixel),
+        darkSyncOn: rgbHex(darkPng.pixel),
+        canvasAfterDarkExport: afterDarkExport,
+        lightCanvasSyncOn: lightCanvas,
+        lightPngSyncOn: rgbHex(lightPng.pixel),
+        canvasAfterLightExport: afterLightExport,
+        pngSize: lightPng.size,
+        svgColours,
+        files: [baseline, darkExport, lightExport, svgExport].map(
+          (e) => `${e.name} (${e.bytes.length} B, native=${e.nativeWritten})`,
+        ),
+      };
+
+      // 2. Edit while sync is on (nudge everything 1px), then check the file
+      //    on disk keeps standard colours.
+      const key = (k: string, extra: KeyboardEventInit = {}) =>
+        doc.dispatchEvent(
+          new win.KeyboardEvent("keydown", {
+            key: k,
+            code: k,
+            bubbles: true,
+            cancelable: true,
+            ...extra,
+          }),
+        );
+      key("Escape");
+      key("a", { metaKey: true, ctrlKey: true, code: "KeyA" });
+      await delay(win, 150);
+      key("ArrowRight");
+      await delay(win, 150);
+      key("Escape");
+      let after = await call("read_drawing", {
+        handle: activeVault.handle,
+        path: drawingPath,
+      });
+      const until = win.performance.now() + 6000;
+      while (
+        after.revision === beforeEdit.revision &&
+        win.performance.now() < until
+      ) {
+        await delay(win, 250);
+        after = await call("read_drawing", {
+          handle: activeVault.handle,
+          path: drawingPath,
+        });
+      }
+      const savedWhileSynced = after.revision !== beforeEdit.revision;
+      const scene = JSON.parse(after.json) as {
+        appState?: { viewBackgroundColor?: string };
+        elements?: Array<{
+          type: string;
+          isDeleted?: boolean;
+          strokeColor?: string;
+          backgroundColor?: string;
+        }>;
+      };
+      const live = (scene.elements ?? []).filter((e) => !e.isDeleted);
+      const strokes = Array.from(new Set(live.map((e) => e.strokeColor)));
+      const fills = Array.from(new Set(live.map((e) => e.backgroundColor)));
+      const viewBg = scene.appState?.viewBackgroundColor;
+      if (viewBg !== "#ffffff") {
+        throw new Error(
+          `Saved viewBackgroundColor ${viewBg}, expected #ffffff`,
+        );
+      }
+      if (strokes.some((s) => s !== "#1e1e1e")) {
+        throw new Error(
+          `Saved stroke colours ${JSON.stringify(strokes)}, expected #1e1e1e`,
+        );
+      }
+      if (fills.some((f) => f !== "transparent")) {
+        throw new Error(
+          `Saved fill colours ${JSON.stringify(fills)}, expected transparent`,
+        );
+      }
+      return {
+        exports: exported,
+        savedWhileSynced,
+        savedRevision: after.revision,
+        viewBackgroundColor: viewBg,
+        strokeColors: strokes,
+        fillColors: fills,
+      };
+    });
+
+    await themeStep("theme-user-palette-applies", async () => {
+      const modal = await openAppearanceSettings();
+      (
+        await waitFor("Test Palette card", () =>
+          themeCard(modal, TEST_PALETTE.key),
+        )
+      ).click();
+      await waitFor(
+        "--vault-bg = Test Palette mSurface",
+        () => (rootVar("--vault-bg") === TEST_PALETTE.mSurface ? true : null),
+        3000,
+      ).catch(() => {
+        throw new Error(
+          `--vault-bg is "${rootVar("--vault-bg")}", expected ${
+            TEST_PALETTE.mSurface
+          }`,
+        );
+      });
+      await closeSettings();
+      const canvasPixel = await waitForCanvasPixel(
+        "sync on: canvas = Test Palette surface",
+        TEST_PALETTE.mSurface,
+      );
+      const config = await waitForConfig(
+        "appearance.theme=Test Palette written",
+        (c) => c.appearance.theme === TEST_PALETTE.key,
+      );
+      const banner = doc.querySelector(".vault-global-alert")?.textContent;
+      if (banner && /theme/i.test(banner)) {
+        throw new Error(`Theme problem banner shown: ${banner}`);
+      }
+      return {
+        vaultBg: rootVar("--vault-bg"),
+        vaultText: rootVar("--vault-text"),
+        vaultPrimary: rootVar("--vault-primary"),
+        canvasPixel,
+        dataVaultTheme: doc.documentElement.dataset.vaultTheme,
+        configTheme: config.appearance.theme,
+      };
+    });
+
+    await step("theme-reset-defaults", async () => {
+      await call("update_config", {
+        changes: [
+          { key: "appearance.theme", value: "Default" },
+          { key: "appearance.mode", value: "system" },
+          { key: "appearance.sync_canvas", value: false },
+          { key: "saving.autosave_delay_ms", value: 500 },
+        ],
+      });
+      await waitFor(
+        "preferences back to defaults",
+        () => {
+          const p = getPreferences(win);
+          return p.colorTheme === "Default" &&
+            p.theme === "system" &&
+            !p.syncCanvas &&
+            p.autosaveDelayMs === 500
+            ? true
+            : null;
+        },
+        3000,
+      );
+      const loaded = await call("load_settings");
+      const mismatches = diffJson(DEFAULT_CONFIG_JSON, loaded.config);
+      if (mismatches.length) {
+        throw new Error(`Config not reset: ${mismatches.join("; ")}`);
+      }
+      await waitFor(
+        "Default theme tokens removed",
+        () => (rootVar("--vault-bg") === "" ? true : null),
+        3000,
+      ).catch(() => {
+        throw new Error(
+          `--vault-bg still "${rootVar("--vault-bg")}" after Default`,
+        );
+      });
+      return {
+        config: "defaults",
+        canvasSync: doc.documentElement.dataset.vaultCanvasSync,
+      };
+    });
+
+    const failed = records.filter((record) => !record.ok);
+    if (failed.length) {
+      throw new Error(
+        `Failed steps: ${failed.map((record) => record.step).join(", ")}`,
+      );
+    }
     if (pageErrors.length) {
       throw new Error(`WebView reported errors: ${JSON.stringify(pageErrors)}`);
     }
@@ -1130,6 +1904,7 @@ export async function runDesktopSmoke(): Promise<void> {
       elapsedMs,
       records,
       pageErrors,
+      knownCspReports,
       vaultPath: vaultForReport?.path ?? null,
       limitations: [
         "Uses synthetic pointer input; this does not establish physical mouse, trackpad, accessibility, or automation parity.",
