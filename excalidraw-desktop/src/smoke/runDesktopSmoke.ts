@@ -1,4 +1,17 @@
 import { desktopRepository } from "../vault/DesktopVaultRepository";
+import { DEFAULT_PREFERENCES, getPreferences } from "../vault/preferences";
+import {
+  getSettingsStatus,
+  PREFERENCES_CHANGED_EVENT,
+  SETTINGS_STATUS_EVENT,
+} from "../vault/settingsSync";
+
+import type {
+  ConfigChange,
+  LoadSettingsResult,
+  SettingsStatus,
+} from "../vault/settingsSync";
+import type { VaultPreferences } from "../vault/preferences";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
@@ -29,6 +42,8 @@ type Native = {
     path: string;
   }) => Promise<{ json: string; revision: string }>;
   export_file: (args: { name: string; bytes: number[] }) => Promise<boolean>;
+  load_settings: () => Promise<LoadSettingsResult>;
+  update_config: (args: { changes: ConfigChange[] }) => Promise<void>;
   smoke_environment: () => Promise<SmokeEnvironment>;
   smoke_log: (args: {
     step: string;
@@ -39,6 +54,60 @@ type Native = {
 };
 
 const timeout = 12_000;
+
+/** config.toml defaults from personal/planning/config.md, as load_settings JSON. */
+const DEFAULT_CONFIG_JSON = {
+  appearance: {
+    theme: "Default",
+    mode: "system",
+    sync_canvas: false,
+    canvas_background: "#ffffff",
+  },
+  editor: {
+    font_family: 5,
+    font_size: 20,
+    stroke_color: "#1e1e1e",
+    background_color: "transparent",
+    fill_style: "solid",
+    stroke_width: 2,
+    roughness: 1,
+  },
+  saving: { autosave_delay_ms: 500 },
+};
+
+/** Recursive key-order-insensitive comparison; returns mismatching paths. */
+const diffJson = (expected: unknown, actual: unknown, path = ""): string[] => {
+  if (
+    expected &&
+    typeof expected === "object" &&
+    actual &&
+    typeof actual === "object"
+  ) {
+    const e = expected as Record<string, unknown>;
+    const a = actual as Record<string, unknown>;
+    const keys = new Set([...Object.keys(e), ...Object.keys(a)]);
+    return Array.from(keys).flatMap((key) =>
+      diffJson(e[key], a[key], path ? `${path}.${key}` : key),
+    );
+  }
+  return expected === actual
+    ? []
+    : [
+        `${path}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(
+          actual,
+        )}`,
+      ];
+};
+
+const withConfig = (
+  patch: Record<string, Record<string, unknown>>,
+): typeof DEFAULT_CONFIG_JSON => {
+  const next = JSON.parse(JSON.stringify(DEFAULT_CONFIG_JSON));
+  for (const [table, values] of Object.entries(patch)) {
+    Object.assign(next[table], values);
+  }
+  return next;
+};
 const delay = (win: Window, ms: number) =>
   new Promise<void>((resolve) => win.setTimeout(resolve, ms));
 
@@ -796,6 +865,249 @@ export async function runDesktopSmoke(): Promise<void> {
         actions:
           "native reopen check + UI switch button + tree search + result open",
       };
+    });
+
+    // ---- Config folder (personal/planning/config.md) ----
+    await step("config-loaded", async () => {
+      const loaded = await call("load_settings");
+      const status = getSettingsStatus();
+      if (status.mode !== "tauri") {
+        throw new Error(
+          `Settings are not backed by the config folder: ${JSON.stringify(
+            status,
+          )}`,
+        );
+      }
+      if (/\/\.config\/vaultdraw\/?$/.test(loaded.configDir)) {
+        throw new Error(
+          `Smoke run is using the real config dir: ${loaded.configDir}`,
+        );
+      }
+      if (loaded.configPath !== `${loaded.configDir}/config.toml`) {
+        throw new Error(
+          `configPath ${loaded.configPath} is not inside ${loaded.configDir}`,
+        );
+      }
+      if (!loaded.statePath.endsWith("/state.json")) {
+        throw new Error(`Unexpected statePath ${loaded.statePath}`);
+      }
+      if (loaded.configError !== null || loaded.config === null) {
+        throw new Error(
+          `Default config did not parse: ${JSON.stringify(loaded.configError)}`,
+        );
+      }
+      const mismatches = diffJson(DEFAULT_CONFIG_JSON, loaded.config);
+      if (mismatches.length) {
+        throw new Error(`Config is not the default: ${mismatches.join("; ")}`);
+      }
+      if (status.problems.length) {
+        throw new Error(
+          `Settings problems on a default config: ${JSON.stringify(
+            status.problems,
+          )}`,
+        );
+      }
+      const prefs = getPreferences(win);
+      const prefMismatches = (
+        [
+          "theme",
+          "colorTheme",
+          "syncCanvas",
+          "defaultCanvasBackground",
+          "defaultFontFamily",
+          "defaultFontSize",
+          "defaultStrokeColor",
+          "defaultBackgroundColor",
+          "defaultFillStyle",
+          "defaultStrokeWidth",
+          "defaultRoughness",
+          "autosaveDelayMs",
+        ] as Array<keyof VaultPreferences>
+      ).filter((key) => prefs[key] !== DEFAULT_PREFERENCES[key]);
+      if (prefMismatches.length) {
+        throw new Error(
+          `In-memory preferences differ from defaults: ${prefMismatches.join(
+            ", ",
+          )}`,
+        );
+      }
+      return {
+        configDir: loaded.configDir,
+        configPath: loaded.configPath,
+        statePath: loaded.statePath,
+        state: loaded.state,
+      };
+    });
+
+    await step("config-gui-write-preserves-comments", async () => {
+      button("Settings").click();
+      const modal = await waitFor("settings modal", () =>
+        doc.querySelector<HTMLElement>(".vault-settings-modal"),
+      );
+      const modalButton = (text: string) =>
+        Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
+          (item) => item.textContent?.trim() === text,
+        ) ?? null;
+      (
+        await waitFor("Appearance tab", () => modalButton("Appearance & Theme"))
+      ).click();
+      (await waitFor("Dark theme button", () => modalButton("Dark"))).click();
+      (
+        await waitFor("Vault & Storage tab", () =>
+          modalButton("Vault & Storage"),
+        )
+      ).click();
+      const configRow = await waitFor("config path row", () =>
+        modal.querySelector<HTMLElement>('[data-testid="settings-config-row"]'),
+      );
+      const shownPath =
+        configRow.querySelector(".vault-config-path")?.textContent ?? null;
+      const select = await waitFor("autosave select", () =>
+        Array.from(modal.querySelectorAll<HTMLSelectElement>("select")).find(
+          (item) =>
+            Array.from(item.options).some((option) => option.value === "1000"),
+        ),
+      );
+      const setSelect = Object.getOwnPropertyDescriptor(
+        win.HTMLSelectElement.prototype,
+        "value",
+      )?.set;
+      setSelect?.call(select, "1000");
+      select.dispatchEvent(new win.Event("change", { bubbles: true }));
+      if (getPreferences(win).autosaveDelayMs !== 1000) {
+        throw new Error("Autosave select did not update preferences");
+      }
+      if (!doc.documentElement.classList.contains("dark")) {
+        throw new Error("Dark theme button did not apply the dark class");
+      }
+      const expected = withConfig({
+        appearance: { mode: "dark" },
+        saving: { autosave_delay_ms: 1000 },
+      });
+      let loaded = await call("load_settings");
+      const until = win.performance.now() + 3000;
+      while (
+        diffJson(expected, loaded.config).length &&
+        win.performance.now() < until
+      ) {
+        await delay(win, 100);
+        loaded = await call("load_settings");
+      }
+      const mismatches = diffJson(expected, loaded.config);
+      if (mismatches.length) {
+        throw new Error(
+          `GUI edits not written to config.toml: ${mismatches.join("; ")}`,
+        );
+      }
+      (
+        await waitFor("Close Settings", () =>
+          modal.querySelector<HTMLButtonElement>(
+            '[aria-label="Close Settings"]',
+          ),
+        )
+      ).click();
+      await waitFor("settings modal closed", () =>
+        doc.querySelector(".vault-settings-modal") ? null : true,
+      );
+      // Let our own write's config-change echo settle before the next step.
+      await delay(win, 600);
+      return {
+        shownPath,
+        method:
+          "Settings UI: Appearance > Dark, Vault & Storage > autosave select 1000",
+        commentsCheck:
+          "no native file-read smoke helper; comments verified by the operator reading config.toml after the run",
+      };
+    });
+
+    await step("config-external-edit-live-reload", async () => {
+      let received: VaultPreferences | null = null;
+      const onChanged = (event: Event) => {
+        const detail = (event as CustomEvent<VaultPreferences>).detail;
+        if (detail?.autosaveDelayMs === 1500) {
+          received = detail;
+        }
+      };
+      win.addEventListener(PREFERENCES_CHANGED_EVENT, onChanged);
+      const startedAt = win.performance.now();
+      try {
+        await call("update_config", {
+          changes: [{ key: "saving.autosave_delay_ms", value: 1500 }],
+        });
+        await waitFor(
+          "vault-preferences-changed with 1500",
+          () => received,
+          2000,
+        );
+      } finally {
+        win.removeEventListener(PREFERENCES_CHANGED_EVENT, onChanged);
+      }
+      const latencyMs = Math.round(win.performance.now() - startedAt);
+      if (getPreferences(win).autosaveDelayMs !== 1500) {
+        throw new Error("In-memory autosaveDelayMs not updated to 1500");
+      }
+      if (getPreferences(win).theme !== "dark") {
+        throw new Error("Unrelated preference (theme) changed on reload");
+      }
+      return { latencyMs, autosaveDelayMs: 1500 };
+    });
+
+    await step("config-invalid-value-banner", async () => {
+      let lastStatus: SettingsStatus | null = null;
+      const onStatus = (event: Event) => {
+        lastStatus = (event as CustomEvent<SettingsStatus>).detail;
+      };
+      win.addEventListener(SETTINGS_STATUS_EVENT, onStatus);
+      try {
+        await call("update_config", {
+          changes: [{ key: "appearance.mode", value: "neon" }],
+        });
+        const banner = await waitFor(
+          "settings problem banner",
+          () => {
+            const alert = doc.querySelector<HTMLElement>(".vault-global-alert");
+            return alert?.textContent?.includes("appearance.mode")
+              ? alert.textContent
+              : null;
+          },
+          3000,
+        );
+        const fallbackTheme = getPreferences(win).theme;
+        if (fallbackTheme !== "system") {
+          throw new Error(
+            `Invalid mode should fall back to "system", got ${fallbackTheme}`,
+          );
+        }
+        if (getPreferences(win).autosaveDelayMs !== 1500) {
+          throw new Error("Valid fields must keep their values");
+        }
+        await call("update_config", {
+          changes: [{ key: "appearance.mode", value: "dark" }],
+        });
+        await waitFor(
+          "banner cleared after fix",
+          () => {
+            const alert = doc.querySelector<HTMLElement>(".vault-global-alert");
+            return alert?.textContent?.includes("appearance.mode")
+              ? null
+              : true;
+          },
+          3000,
+        );
+        await waitFor(
+          "theme back to dark",
+          () => (getPreferences(win).theme === "dark" ? true : null),
+          3000,
+        );
+        return {
+          banner: banner.trim(),
+          fallbackTheme,
+          statusProblemsAfterFix: getSettingsStatus().problems,
+          sawStatusEvent: lastStatus !== null,
+        };
+      } finally {
+        win.removeEventListener(SETTINGS_STATUS_EVENT, onStatus);
+      }
     });
 
     if (pageErrors.length) {
