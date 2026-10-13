@@ -21,6 +21,8 @@ sha2 = "0.10"
 hex = "0.4"
 fs2 = "0.4"
 notify = "6"
+toml = "1"
+toml_edit = "0.25"
 rfd = "0.15"
 trash = "5"
 

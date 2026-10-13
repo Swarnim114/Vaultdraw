@@ -13,6 +13,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod config;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 
@@ -1050,6 +1051,13 @@ pub fn run() {
                     builder.with_webview_configuration(webview_configuration(mtm))
                 };
                 builder.build()?;
+                // Live-reload of the config folder; a failure only disables live reload.
+                match config::start_watcher(app.handle()) {
+                    Ok(watcher) => {
+                        app.manage(watcher);
+                    }
+                    Err(e) => eprintln!("vaultdraw: config watcher not started: {} ({})", e.message, e.code),
+                }
                 Ok(())
             });
         #[cfg(feature = "smoke-test")]
@@ -1058,20 +1066,23 @@ pub fn run() {
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, list_recovery, discard_recovery,
+                config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish
             ])
         } else {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-                export_file, list_recovery, discard_recovery
+                export_file, list_recovery, discard_recovery,
+                config::load_settings, config::update_config, config::write_state, config::open_config_dir
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-            export_file, list_recovery, discard_recovery
+            export_file, list_recovery, discard_recovery,
+            config::load_settings, config::update_config, config::write_state, config::open_config_dir
         ]);
         let app = builder
             .build(tauri::generate_context!())
