@@ -1226,6 +1226,29 @@ export async function runDesktopSmoke(): Promise<void> {
       ).find(
         (item) => item.dataset.themeKey?.toLowerCase() === key.toLowerCase(),
       ) ?? null;
+    // The picker lists 120+ themes in a scrolling grid and renders a card's
+    // preview only once it nears view, so reach a theme the way a user
+    // would: type its name into the search field.
+    const searchThemeCard = async (modal: HTMLElement, key: string) => {
+      const input = await waitFor("theme search field", () =>
+        modal.querySelector<HTMLInputElement>(".vault-theme-search__input"),
+      );
+      Object.getOwnPropertyDescriptor(
+        win.HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, key);
+      input.dispatchEvent(new win.Event("input", { bubbles: true }));
+      return waitFor(`${key} card after search`, () => {
+        const cards = modal.querySelectorAll(".vault-theme-card");
+        const card = themeCard(modal, key);
+        // Wait for the deferred filter to apply and the preview to render.
+        return card &&
+          cards.length < 10 &&
+          card.querySelector(".vault-theme-card__half")
+          ? card
+          : null;
+      });
+    };
     const closeSettings = async () => {
       const modal = doc.querySelector<HTMLElement>(".vault-settings-modal");
       if (!modal) {
@@ -1342,9 +1365,7 @@ export async function runDesktopSmoke(): Promise<void> {
         );
       }
       const modal = await openAppearanceSettings();
-      const card = await waitFor("Test Palette card in Settings", () =>
-        themeCard(modal, TEST_PALETTE.key),
-      );
+      const card = await searchThemeCard(modal, TEST_PALETTE.key);
       const tag = card.querySelector(".vault-theme-card__tag")?.textContent;
       const autoBadge = card.querySelector(
         '.vault-theme-card__half[data-mode="light"] .vault-theme-card__auto',
@@ -1385,9 +1406,7 @@ export async function runDesktopSmoke(): Promise<void> {
 
     await themeStep("theme-switch-applies", async () => {
       const modal = await openAppearanceSettings();
-      (
-        await waitFor("Dracula card", () => themeCard(modal, "Dracula"))
-      ).click();
+      (await searchThemeCard(modal, "Dracula")).click();
       (
         await waitFor("Dark mode button", () =>
           Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -1797,11 +1816,7 @@ export async function runDesktopSmoke(): Promise<void> {
 
     await themeStep("theme-user-palette-applies", async () => {
       const modal = await openAppearanceSettings();
-      (
-        await waitFor("Test Palette card", () =>
-          themeCard(modal, TEST_PALETTE.key),
-        )
-      ).click();
+      (await searchThemeCard(modal, TEST_PALETTE.key)).click();
       await waitFor(
         "--vault-bg = Test Palette mSurface",
         () => (rootVar("--vault-bg") === TEST_PALETTE.mSurface ? true : null),
