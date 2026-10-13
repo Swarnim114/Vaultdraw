@@ -165,18 +165,33 @@ const expectTokenGuarantees = (
 describe("built-in themes", () => {
   const themes = loadBuiltinThemes();
 
-  it("ships the expected palettes, all hand-authored in both modes", () => {
-    expect(themes.map((t) => t.id)).toEqual([
-      "default",
-      "dracula",
-      "tokyo-night",
+  it("ships the bundled palettes, all hand-authored in both modes", () => {
+    const ids = themes.map((t) => t.id);
+    expect(ids[0]).toBe("default");
+    expect(ids.length).toBeGreaterThanOrEqual(100);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Noctalia's built-ins (MIT) are all present.
+    for (const id of [
+      "ayu",
       "catppuccin",
-      "everforest",
+      "dracula",
+      "eldritch",
       "gruvbox",
+      "kanagawa",
+      "noctalia",
       "nord",
       "rose-pine",
-      "solarized",
-    ]);
+      "tokyo-night",
+    ]) {
+      expect(ids).toContain(id);
+    }
+    // Default first, then by name.
+    const names = themes.slice(1).map((t) => t.name);
+    expect(names).toEqual(
+      [...names].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" }),
+      ),
+    );
     for (const t of themes) {
       expect(t.generated).toEqual({ dark: false, light: false });
       expect(t.author).toBeTruthy();

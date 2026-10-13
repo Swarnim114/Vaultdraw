@@ -54,8 +54,10 @@ describe("theme registry rules", () => {
         }),
       ),
     ]);
-    expect(findTheme(reg, "tokyo night")?.key).toBe("Tokyo Night");
-    expect(findTheme(reg, "TOKYO-NIGHT")?.key).toBe("Tokyo Night");
+    // Noctalia names it "Tokyo-Night"; the old "Tokyo Night" still matches by slug.
+    expect(findTheme(reg, "tokyo night")?.key).toBe("Tokyo-Night");
+    expect(findTheme(reg, "TOKYO-NIGHT")?.key).toBe("Tokyo-Night");
+    expect(findTheme(reg, "Rose Pine")?.key).toBe("Rosé Pine");
     expect(findTheme(reg, "My-Theme")?.key).toBe("my-theme");
     expect(findTheme(reg, "ocean breeze")?.key).toBe("my-theme");
     expect(findTheme(reg, "nope")).toBeNull();
@@ -63,6 +65,8 @@ describe("theme registry rules", () => {
 
   it("a user theme overrides the built-in with the same name, in place", () => {
     const builtins = builtinRegistry().themes.length;
+    const index = builtinRegistry().themes.findIndex((t) => t.id === "dracula");
+    expect(index).toBeGreaterThan(0);
     const reg = buildThemeRegistry([
       file("dracula", palette("#101010", "#fafafa", "#ff00ff")),
     ]);
@@ -71,7 +75,7 @@ describe("theme registry rules", () => {
     expect(entry.source).toBe("user");
     expect(entry.overridesBuiltin).toBe(true);
     expect(entry.theme.dark.mSurface).toBe("#101010");
-    expect(reg.themes.indexOf(entry)).toBe(1);
+    expect(reg.themes.indexOf(entry)).toBe(index);
   });
 
   it("new user themes are appended after the built-ins", () => {

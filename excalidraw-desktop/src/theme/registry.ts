@@ -11,14 +11,26 @@
  * - An unknown or broken selected theme falls back to Default with a problem.
  *
  * In a plain browser (Playwright harness, tests) only built-ins exist.
+ *
+ * Built-ins are parsed lazily: an entry's `theme` is resolved on first
+ * access, so building the registry (100+ themes) only reads names. Lists use
+ * `listThemeSummaries()` (cheap previews); `resolveTheme()` / `entry.theme`
+ * parse the one theme actually used.
  */
 
 import { isTauriAvailable } from "../vault/DesktopVaultRepository";
 
 import { parseThemeFile, slugify } from "./normalize";
 
-import { DEFAULT_THEME_ID, loadBuiltinThemes } from "./index";
+import {
+  builtinThemeFiles,
+  builtinThemePreview,
+  DEFAULT_THEME_ID,
+  getBuiltinTheme,
+  previewFromTheme,
+} from "./builtins";
 
+import type { BuiltinOrigin, BuiltinThemeFile, ThemePreview } from "./builtins";
 import type { ResolvedTheme } from "./types";
 
 /** One row of the Rust `list_themes` result. */
@@ -32,14 +44,46 @@ export interface ThemeListingEntry {
 export interface ThemeEntry {
   /** Value stored in `appearance.theme`: built-in name or user file id. */
   key: string;
-  theme: ResolvedTheme;
+  /** Slug of the theme name (cheap; same as `theme.id`). */
+  id: string;
+  /** Display name (cheap; same as `theme.name`). */
+  name: string;
+  author?: string;
+  /**
+   * The fully resolved theme. For built-ins this is a lazy getter: the file
+   * is parsed on first access. Avoid touching it for every entry in a list;
+   * use `summary` / `listThemeSummaries()` instead.
+   */
+  readonly theme: ResolvedTheme;
+  /** Cheap card data (previews etc.). */
+  readonly summary: ThemeSummary;
   source: "builtin" | "user";
+  /** Which bundled set a built-in comes from (null for user themes). */
+  origin: BuiltinOrigin | null;
   /** Theme file on disk (user themes only). */
   path: string | null;
   /** Problems worth showing (user themes only; built-in notes are hidden). */
   warnings: string[];
   /** True when this user theme replaces a built-in of the same name. */
   overridesBuiltin: boolean;
+}
+
+/** Everything a theme card / list row needs, without resolving the theme. */
+export interface ThemeSummary {
+  /** Value to store in `appearance.theme` (pass to resolveTheme / findTheme). */
+  key: string;
+  id: string;
+  name: string;
+  author?: string;
+  source: "builtin" | "user";
+  origin: BuiltinOrigin | null;
+  /** Theme file on disk (user themes only). */
+  path: string | null;
+  overridesBuiltin: boolean;
+  /** User-theme problems worth showing (empty for built-ins). */
+  warnings: string[];
+  /** dark/light preview colours + which modes are generated. */
+  preview: ThemePreview;
 }
 
 export interface ThemeFileProblem {
@@ -66,22 +110,79 @@ export interface ResolvedSelection {
 
 const lower = (s: string) => s.trim().toLowerCase();
 
-const builtinEntries = (): ThemeEntry[] =>
-  loadBuiltinThemes().map((theme) => ({
-    key: theme.name,
-    theme,
-    source: "builtin",
+const summaryOf = (
+  entry: Omit<ThemeEntry, "theme" | "summary">,
+  preview: ThemePreview,
+): ThemeSummary => ({
+  key: entry.key,
+  id: entry.id,
+  name: entry.name,
+  ...(entry.author ? { author: entry.author } : {}),
+  source: entry.source,
+  origin: entry.origin,
+  path: entry.path,
+  overridesBuiltin: entry.overridesBuiltin,
+  warnings: entry.warnings,
+  preview,
+});
+
+/** A built-in entry whose theme and preview are computed on first access. */
+const builtinEntry = (file: BuiltinThemeFile): ThemeEntry => {
+  const base: Omit<ThemeEntry, "theme" | "summary"> = {
+    key: file.name,
+    id: file.id,
+    name: file.name,
+    ...(file.author ? { author: file.author } : {}),
+    source: "builtin" as const,
+    origin: file.origin,
     path: null,
     warnings: [],
     overridesBuiltin: false,
-  }));
+  };
+  let summary: ThemeSummary | null = null;
+  return {
+    ...base,
+    get theme() {
+      return getBuiltinTheme(file.id) as ResolvedTheme;
+    },
+    get summary() {
+      return (summary ??= summaryOf(
+        base,
+        builtinThemePreview(file.id) as ThemePreview,
+      ));
+    },
+  };
+};
+
+const userEntry = (
+  theme: ResolvedTheme,
+  key: string,
+  path: string,
+  overridesBuiltin: boolean,
+): ThemeEntry => {
+  const base = {
+    key,
+    id: theme.id,
+    name: theme.name,
+    ...(theme.author ? { author: theme.author } : {}),
+    source: "user" as const,
+    origin: null,
+    path,
+    warnings: theme.warnings,
+    overridesBuiltin,
+  };
+  return { ...base, theme, summary: summaryOf(base, previewFromTheme(theme)) };
+};
+
+const builtinEntries = (): ThemeEntry[] =>
+  builtinThemeFiles().map(builtinEntry);
 
 const sameName = (entry: ThemeEntry, id: string) => {
   const q = lower(id);
   return (
     lower(entry.key) === q ||
-    lower(entry.theme.name) === q ||
-    entry.theme.id === slugify(id)
+    lower(entry.name) === q ||
+    entry.id === slugify(id)
   );
 };
 
@@ -162,15 +263,9 @@ export const buildThemeRegistry = (
       continue;
     }
     try {
-      const theme = parseThemeFile(json, item.id);
-      userEntries.push({
-        key: item.id,
-        theme,
-        source: "user",
-        path: item.path,
-        warnings: theme.warnings,
-        overridesBuiltin: false,
-      });
+      userEntries.push(
+        userEntry(parseThemeFile(json, item.id), item.id, item.path, false),
+      );
     } catch (err) {
       fileProblems.push({
         id: item.id,
@@ -190,13 +285,18 @@ export const buildThemeRegistry = (
       (b) => b.source === "builtin" && sameName(b, entry.key),
     );
     if (index >= 0) {
-      themes[index] = { ...entry, overridesBuiltin: true };
+      themes[index] = userEntry(
+        entry.theme,
+        entry.key,
+        entry.path as string,
+        true,
+      );
     } else {
       extra.push(entry);
     }
   }
   extra.sort((a, b) =>
-    a.theme.name.localeCompare(b.theme.name, undefined, {
+    a.name.localeCompare(b.name, undefined, {
       sensitivity: "base",
     }),
   );
@@ -214,22 +314,22 @@ export const findTheme = (
   }
   return (
     registry.themes.find((e) => lower(e.key) === q) ??
-    registry.themes.find((e) => lower(e.theme.name) === q) ??
-    registry.themes.find((e) => e.theme.id === slugify(name)) ??
+    registry.themes.find((e) => lower(e.name) === q) ??
+    registry.themes.find((e) => e.id === slugify(name)) ??
     null
   );
 };
 
 export const getDefaultEntry = (registry: ThemeRegistry): ThemeEntry =>
   registry.themes.find(
-    (e) => e.source === "builtin" && e.theme.id === DEFAULT_THEME_ID,
+    (e) => e.source === "builtin" && e.id === DEFAULT_THEME_ID,
   ) ??
   findTheme(registry, "Default") ??
   builtinEntries()[0];
 
 /** True when the entry is the stock Default look (no tokens applied). */
 export const isStockDefault = (entry: ThemeEntry) =>
-  entry.source === "builtin" && entry.theme.id === DEFAULT_THEME_ID;
+  entry.source === "builtin" && entry.id === DEFAULT_THEME_ID;
 
 /** The theme to use for a selected name, falling back to Default. */
 export const resolveSelectedTheme = (
@@ -247,10 +347,27 @@ export const resolveSelectedTheme = (
   return {
     entry: fallback,
     problem: broken
-      ? `Theme "${selected}" could not be loaded: ${broken.message}. Using ${fallback.theme.name}.`
-      : `Theme "${selected}" was not found in the themes folder. Using ${fallback.theme.name}.`,
+      ? `Theme "${selected}" could not be loaded: ${broken.message}. Using ${fallback.name}.`
+      : `Theme "${selected}" was not found in the themes folder. Using ${fallback.name}.`,
   };
 };
+
+/**
+ * Cheap list of every theme for pickers: names + preview colours. Built-ins
+ * are not parsed (their previews come straight from the JSON).
+ */
+export const listThemeSummaries = (
+  registry: ThemeRegistry = getThemeRegistry(),
+): ThemeSummary[] => registry.themes.map((e) => e.summary);
+
+/**
+ * Fully resolves one theme by key, name or slug (parsing a built-in on first
+ * use). Null when unknown; use resolveSelectedTheme for the Default fallback.
+ */
+export const resolveTheme = (
+  key: string,
+  registry: ThemeRegistry = getThemeRegistry(),
+): ResolvedTheme | null => findTheme(registry, key)?.theme ?? null;
 
 // ---------------------------------------------------------------------------
 // Runtime (Tauri): load, cache and live reload

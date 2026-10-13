@@ -1,7 +1,7 @@
 /**
  * Theme engine public API.
  *
- *   const theme = loadBuiltinThemes()[0];
+ *   const theme = getBuiltinTheme("default");   // parsed lazily, cached
  *   const variant = theme[mode];
  *   const tokens = deriveTokens(variant, mode);
  *   const handle = applyThemeTokens(document, tokens,
@@ -9,18 +9,7 @@
  *   // later: handle.restore();
  */
 
-import catppuccin from "./builtin/catppuccin.json";
-import defaultTheme from "./builtin/default.json";
-import dracula from "./builtin/dracula.json";
-import everforest from "./builtin/everforest.json";
-import gruvbox from "./builtin/gruvbox.json";
-import nord from "./builtin/nord.json";
-import rosePine from "./builtin/rose-pine.json";
-import solarized from "./builtin/solarized.json";
-import tokyoNight from "./builtin/tokyo-night.json";
-import { parseThemeFile } from "./normalize";
-
-import type { ResolvedTheme } from "./types";
+import { builtinThemeFiles } from "./builtins";
 
 export * from "./types";
 export * from "./color";
@@ -38,33 +27,28 @@ export {
   resolveFamilyTargets,
   HUE_FAMILIES,
 } from "./canvas";
+export {
+  DEFAULT_THEME_ID,
+  builtinThemeFiles,
+  builtinThemePreview,
+  getBuiltinTheme,
+  loadBuiltinThemes,
+  previewFromTheme,
+  previewFromVariant,
+} from "./builtins";
+export type {
+  BuiltinOrigin,
+  BuiltinThemeFile,
+  ThemePreview,
+  ThemePreviewColors,
+} from "./builtins";
 
-/** Built-in theme files in display order, with the name used if a file lacks one. */
-export const BUILTIN_THEME_FILES: ReadonlyArray<[string, unknown]> = [
-  ["Default", defaultTheme],
-  ["Dracula", dracula],
-  ["Tokyo Night", tokyoNight],
-  ["Catppuccin", catppuccin],
-  ["Everforest", everforest],
-  ["Gruvbox", gruvbox],
-  ["Nord", nord],
-  ["Rosé Pine", rosePine],
-  ["Solarized", solarized],
-];
-
-export const DEFAULT_THEME_ID = "default";
-
-let builtinCache: ResolvedTheme[] | null = null;
-
-/** Parses (once) and returns every built-in theme, Default first. */
-export const loadBuiltinThemes = (): ResolvedTheme[] => {
-  if (!builtinCache) {
-    builtinCache = BUILTIN_THEME_FILES.map(([name, json]) =>
-      parseThemeFile(json, name),
-    );
-  }
-  return builtinCache;
-};
+/**
+ * Built-in theme files in display order as [name, json] (no parsing).
+ * @deprecated use builtinThemeFiles()
+ */
+export const BUILTIN_THEME_FILES: ReadonlyArray<[string, unknown]> =
+  builtinThemeFiles().map((f) => [f.name, f.json]);
 
 /** id of the fallback <style> element carrying Excalidraw variable overrides. */
 export const EXCALIDRAW_OVERRIDE_STYLE_ID = "vault-theme-excalidraw-vars";

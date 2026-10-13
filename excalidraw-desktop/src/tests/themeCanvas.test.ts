@@ -106,8 +106,12 @@ describe("buildCanvasColorTransform", () => {
     expect(solarized.violet).toBe("#6c71c4");
     expect(solarized.blue).toBe("#268bd2");
 
+    // Noctalia's Gruvbox has no orange role: it is synthesised between red and yellow.
     const gruvbox = resolveFamilyTargets(byId("gruvbox").dark);
-    expect(gruvbox.orange).toBe("#fe8019");
+    expect(gruvbox.red).toBe("#cc241d");
+    const orangeHue = hexToOklch(gruvbox.orange).h;
+    expect(orangeHue).toBeGreaterThan(hexToOklch(gruvbox.red).h);
+    expect(orangeHue).toBeLessThan(hexToOklch(gruvbox.yellow).h);
   });
 
   it("works for a minimal (derived) theme too", () => {
