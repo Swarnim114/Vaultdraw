@@ -28,6 +28,11 @@ ownerWindow.EXCALIDRAW_ASSET_PATH = new ownerWindow.URL(
   ownerWindow.location.href,
 ).href;
 ownerWindow.__EXCALIDRAW_SHA__ = import.meta.env.VITE_APP_GIT_SHA;
+// The macOS window uses an overlay title bar (see tauri.conf.json), so the
+// app's own top bar leaves room for the window buttons.
+if (/Mac/.test(ownerWindow.navigator.userAgent)) {
+  ownerDocument.documentElement.classList.add("vault-macos");
+}
 if (ownerWindow.matchMedia("(prefers-color-scheme: dark)").matches) {
   ownerDocument.documentElement.classList.add("dark");
 }

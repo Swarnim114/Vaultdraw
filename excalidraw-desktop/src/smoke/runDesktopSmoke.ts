@@ -245,9 +245,9 @@ export async function runDesktopSmoke(): Promise<void> {
         try {
           button("Open Vault Folder").click();
           vaultForReport = await waitFor("native test vault", () => {
-            const path = root.querySelector<HTMLElement>(
-              ".vault-navigator__subtitle",
-            )?.title;
+            const path =
+              root.querySelector<HTMLElement>("[data-vault-path]")?.dataset
+                .vaultPath;
             return path === env.vaultPath
               ? { handle: "", path, name: "", readOnly: false }
               : null;
@@ -759,8 +759,8 @@ export async function runDesktopSmoke(): Promise<void> {
       await waitFor(
         "vault remains configured after UI switch",
         () =>
-          root.querySelector<HTMLElement>(".vault-navigator__subtitle")
-            ?.title === activeVault.path,
+          root.querySelector<HTMLElement>("[data-vault-path]")?.dataset
+            .vaultPath === activeVault.path,
       );
       const search = root.querySelector<HTMLInputElement>(
         '[placeholder="Search drawings..."]',

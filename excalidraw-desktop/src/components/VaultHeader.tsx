@@ -37,29 +37,50 @@ export const VaultHeader = ({
   const fileName = pathParts.pop();
 
   return (
-    <header className="vault-header" role="banner">
-      <div className="vault-header__left">
-        <nav className="vault-breadcrumbs" aria-label="Breadcrumb">
-          <span className="vault-breadcrumbs__item" title={vault.name}>
+    // `data-tauri-drag-region` makes the bar drag the window (it doubles as the
+    // macOS title bar). Tauri only honours it on the element that is clicked,
+    // so non-interactive children carry it too.
+    <header className="vault-header" role="banner" data-tauri-drag-region>
+      <div className="vault-header__left" data-tauri-drag-region>
+        <nav
+          className="vault-breadcrumbs"
+          aria-label="Breadcrumb"
+          data-tauri-drag-region
+        >
+          <span
+            className="vault-breadcrumbs__item"
+            title={vault.name}
+            data-tauri-drag-region
+          >
             {vault.name}
           </span>
           {pathParts.map((part, index) => (
             <span
               key={index}
-              style={{ display: "inline-flex", alignItems: "center" }}
+              className="vault-breadcrumbs__segment"
+              data-tauri-drag-region
             >
-              <span className="vault-breadcrumbs__sep">/</span>
-              <span className="vault-breadcrumbs__item" title={part}>
+              <span className="vault-breadcrumbs__sep" data-tauri-drag-region>
+                /
+              </span>
+              <span
+                className="vault-breadcrumbs__item"
+                title={part}
+                data-tauri-drag-region
+              >
                 {part}
               </span>
             </span>
           ))}
           {fileName && (
-            <span style={{ display: "inline-flex", alignItems: "center" }}>
-              <span className="vault-breadcrumbs__sep">/</span>
+            <span className="vault-breadcrumbs__segment" data-tauri-drag-region>
+              <span className="vault-breadcrumbs__sep" data-tauri-drag-region>
+                /
+              </span>
               <span
                 className="vault-breadcrumbs__item vault-breadcrumbs__item--active"
                 title={fileName}
+                data-tauri-drag-region
               >
                 {fileName.replace(/\.excalidraw$/i, "")}
               </span>
@@ -68,7 +89,7 @@ export const VaultHeader = ({
         </nav>
       </div>
 
-      <div className="vault-header__center">
+      <div className="vault-header__center" data-tauri-drag-region>
         {vault.readOnly && (
           <span
             className="vault-badge vault-badge--readonly"

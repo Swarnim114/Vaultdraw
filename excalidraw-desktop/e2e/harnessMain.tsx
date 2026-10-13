@@ -26,6 +26,9 @@ setAutosaveDelayMs(
   Number(params.get("autosave")) || E2E_AUTOSAVE_MS,
   ownerWindow,
 );
+if (params.get("chrome") === "macos") {
+  ownerDocument.documentElement.classList.add("vault-macos");
+}
 if (params.get("theme") === "dark") {
   ownerDocument.documentElement.classList.add("dark");
 }

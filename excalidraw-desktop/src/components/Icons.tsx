@@ -16,6 +16,7 @@ export const IconFolder = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** A drawing file: a canvas with a hand-drawn stroke. */
 export const IconDrawing = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width="15"
@@ -28,9 +29,75 @@ export const IconDrawing = (props: SVGProps<SVGSVGElement>) => (
     strokeLinejoin="round"
     {...props}
   >
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <path d="M10 13l2 2 4-4" />
+    <rect x="3" y="3" width="18" height="18" rx="4" />
+    <path d="M7 15.5c1.2-2.6 2.6-4 3.8-3.1 1.1.9.6 2.6 1.9 2.7 1.5.1 2.4-3.3 4.3-5.6" />
+  </svg>
+);
+
+export const IconNewDrawing = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 3H7a4 4 0 0 0-4 4v10a4 4 0 0 0 4 4h10a4 4 0 0 0 4-4v-5" />
+    <path d="M18.4 2.6a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4z" />
+  </svg>
+);
+
+export const IconFolderPlus = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <line x1="12" y1="11" x2="12" y2="17" />
+    <line x1="9" y1="14" x2="15" y2="14" />
+  </svg>
+);
+
+export const IconMore = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="none"
+    {...props}
+  >
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
+
+export const IconChevronsUpDown = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <polyline points="7 15 12 20 17 15" />
+    <polyline points="7 9 12 4 17 9" />
   </svg>
 );
 

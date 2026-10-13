@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { getPreferences, updatePreferences } from "../vault/preferences";
-import { getBaseName, getParentPath, searchEntries } from "../vault/treeStore";
+import { getParentPath, searchEntries } from "../vault/treeStore";
 
 import {
   IconChevronDown,
   IconChevronRight,
+  IconChevronsUpDown,
   IconClose,
   IconCopy,
   IconDrawing,
   IconEdit,
   IconFolder,
+  IconFolderPlus,
+  IconMore,
   IconMove,
+  IconNewDrawing,
   IconPlus,
   IconRefresh,
   IconReveal,
@@ -22,6 +26,8 @@ import {
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
+
+import type { ReactNode } from "react";
 
 import type { TreeNode } from "../vault/treeStore";
 
@@ -97,6 +103,7 @@ export const VaultNavigator = ({
   const [renameTarget, setRenameTarget] = useState<VaultEntry | null>(null);
   const [moveTarget, setMoveTarget] = useState<VaultEntry | null>(null);
   const [trashTarget, setTrashTarget] = useState<VaultEntry | null>(null);
+  const [menu, setMenu] = useState<RowMenuState | null>(null);
 
   const treeId = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -284,6 +291,7 @@ export const VaultNavigator = ({
       style={collapsed ? undefined : { width, flexBasis: width }}
       aria-label="Vault File Navigator"
       aria-hidden={collapsed}
+      data-vault-path={vault.path}
     >
       {!collapsed && (
         <div
@@ -301,69 +309,60 @@ export const VaultNavigator = ({
           }}
         />
       )}
-      <div className="vault-navigator__header">
-        <div className="vault-navigator__title-group">
-          <div className="vault-navigator__title" title={vault.name}>
-            {vault.name}
-          </div>
-          <div className="vault-navigator__subtitle" title={vault.path}>
-            {vault.path}
-          </div>
-        </div>
-        <div className="vault-navigator__actions">
-          {!vault.readOnly && (
-            <>
-              <button
-                type="button"
-                className="vault-btn vault-btn--ghost vault-btn--icon"
-                onClick={() => {
-                  setCreateParent("");
-                  setCreateKind("drawing");
-                  setCreateName("");
-                  setCreateError(null);
-                }}
-                title="New Drawing at root"
-                aria-label="New Drawing"
-              >
-                <IconDrawing />
-              </button>
-              <button
-                type="button"
-                className="vault-btn vault-btn--ghost vault-btn--icon"
-                onClick={() => {
-                  setCreateParent("");
-                  setCreateKind("folder");
-                  setCreateName("");
-                  setCreateError(null);
-                }}
-                title="New Folder at root"
-                aria-label="New Folder"
-              >
-                <IconFolder />
-              </button>
-            </>
-          )}
-          {onRefresh && (
+      <div className="vault-navigator__toolbar">
+        {!vault.readOnly && (
+          <>
             <button
               type="button"
               className="vault-btn vault-btn--ghost vault-btn--icon"
-              onClick={onRefresh}
-              title="Refresh files"
-              aria-label="Refresh files"
+              onClick={() => {
+                setCreateParent("");
+                setCreateKind("drawing");
+                setCreateName("");
+                setCreateError(null);
+              }}
+              title="New drawing"
+              aria-label="New Drawing"
             >
-              <IconRefresh />
+              <IconNewDrawing />
             </button>
-          )}
+            <button
+              type="button"
+              className="vault-btn vault-btn--ghost vault-btn--icon"
+              onClick={() => {
+                setCreateParent("");
+                setCreateKind("folder");
+                setCreateName("");
+                setCreateError(null);
+              }}
+              title="New folder"
+              aria-label="New Folder"
+            >
+              <IconFolderPlus />
+            </button>
+          </>
+        )}
+        {onRefresh && (
           <button
             type="button"
             className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onToggleCollapse}
-            title="Collapse Navigator"
-            aria-label="Collapse Navigator"
+            onClick={onRefresh}
+            title="Refresh files"
+            aria-label="Refresh files"
           >
-            <IconClose />
+            <IconRefresh />
           </button>
-        </div>
+        )}
+        <span className="vault-navigator__toolbar-spacer" />
+        <button
+          type="button"
+          className="vault-btn vault-btn--ghost vault-btn--icon"
+          onClick={onToggleCollapse}
+          title="Hide navigator"
+          aria-label="Collapse Navigator"
+        >
+          <IconClose />
+        </button>
       </div>
 
       {/* Search Input */}
@@ -497,56 +496,57 @@ export const VaultNavigator = ({
                   setCreateName("");
                   setCreateError(null);
                 }}
-                onRename={(entry) => setRenameTarget(entry)}
-                onMove={(entry) => setMoveTarget(entry)}
-                onDuplicate={(entry) => void onDuplicateDrawing(entry.path)}
-                onTrash={(entry) => setTrashTarget(entry)}
-                onReveal={(entry) => void onRevealEntry(entry.path)}
+                onOpenMenu={(entry, x, y) => setMenu({ entry, x, y })}
               />
             )}
           </div>
         )}
       </div>
 
-      {/* Switch Vault Footer Button & Settings */}
-      <div
-        style={{
-          padding: "8px 12px",
-          borderTop: "1px solid var(--vault-border)",
-          backgroundColor: "var(--vault-bg)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      {/* Vault switcher and settings (Obsidian-style footer) */}
+      <div className="vault-navigator__footer">
+        <button
+          type="button"
+          className="vault-navigator__vault"
+          onClick={() => void onSwitchVault()}
+          title={`${vault.path}\nClick to open another vault`}
+          aria-label="Close current vault and open another"
+        >
+          <span className="vault-navigator__vault-name">{vault.name}</span>
+          <IconChevronsUpDown />
+        </button>
+        {onOpenSettings && (
           <button
             type="button"
-            className="vault-btn vault-btn--ghost vault-btn--sm"
-            onClick={() => void onSwitchVault()}
-            title="Close current vault and open another"
+            className="vault-btn vault-btn--ghost vault-btn--icon"
+            onClick={onOpenSettings}
+            title="Settings"
+            aria-label="Settings"
           >
-            <IconFolder />
-            <span>Switch Vault</span>
+            <IconSettings />
           </button>
-          {onOpenSettings && (
-            <button
-              type="button"
-              className="vault-btn vault-btn--ghost vault-btn--icon"
-              onClick={onOpenSettings}
-              title="Settings"
-              aria-label="Settings"
-              style={{ width: "28px", height: "28px", padding: "0" }}
-            >
-              <IconSettings />
-            </button>
-          )}
-        </div>
-        <span style={{ fontSize: "0.72rem", color: "var(--vault-text-faint)" }}>
-          {allIndexedEntries.filter((e) => e.kind === "drawing").length}{" "}
-          drawings
-        </span>
+        )}
       </div>
+
+      {menu && (
+        <RowMenu
+          state={menu}
+          readOnly={vault.readOnly}
+          ownerDocument={asideRef.current?.ownerDocument ?? ownerDocument}
+          onClose={() => setMenu(null)}
+          onNewInside={(folderPath) => {
+            setCreateParent(folderPath);
+            setCreateKind("drawing");
+            setCreateName("");
+            setCreateError(null);
+          }}
+          onDuplicate={(entry) => void onDuplicateDrawing(entry.path)}
+          onRename={(entry) => setRenameTarget(entry)}
+          onMove={(entry) => setMoveTarget(entry)}
+          onReveal={(entry) => void onRevealEntry(entry.path)}
+          onTrash={(entry) => setTrashTarget(entry)}
+        />
+      )}
 
       {/* Create Modal */}
       {createKind && (
@@ -694,11 +694,7 @@ interface TreeRendererProps {
   onSelect: (path: string, kind: "folder" | "drawing") => void;
   onToggleFolder: (path: string) => void;
   onNewInside: (folderPath: string, kind: "folder" | "drawing") => void;
-  onRename: (entry: VaultEntry) => void;
-  onMove: (entry: VaultEntry) => void;
-  onDuplicate: (entry: VaultEntry) => void;
-  onTrash: (entry: VaultEntry) => void;
-  onReveal: (entry: VaultEntry) => void;
+  onOpenMenu: (entry: VaultEntry, x: number, y: number) => void;
 }
 
 const TreeRenderer = ({
@@ -711,11 +707,7 @@ const TreeRenderer = ({
   onSelect,
   onToggleFolder,
   onNewInside,
-  onRename,
-  onMove,
-  onDuplicate,
-  onTrash,
-  onReveal,
+  onOpenMenu,
 }: TreeRendererProps) => {
   return (
     <>
@@ -738,6 +730,10 @@ const TreeRenderer = ({
               aria-selected={isActive}
               tabIndex={isFocused ? 0 : -1}
               onClick={() => onSelect(entry.path, entry.kind)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onOpenMenu(entry, e.clientX, e.clientY);
+              }}
             >
               <div className="vault-tree-item__main">
                 {isFolder ? (
@@ -752,12 +748,10 @@ const TreeRenderer = ({
                     {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
                   </span>
                 ) : (
-                  <span style={{ width: "14px", display: "inline-block" }} />
+                  <span className="vault-tree-item__icon">
+                    <IconDrawing />
+                  </span>
                 )}
-
-                <span className="vault-tree-item__icon">
-                  {isFolder ? <IconFolder /> : <IconDrawing />}
-                </span>
 
                 <span className="vault-tree-item__name" title={entry.path}>
                   {isFolder
@@ -781,63 +775,19 @@ const TreeRenderer = ({
                     <IconPlus />
                   </button>
                 )}
-
-                {!isFolder && !readOnly && (
-                  <button
-                    type="button"
-                    className="vault-tree-action-btn"
-                    title="Duplicate drawing"
-                    onClick={() => onDuplicate(entry)}
-                    aria-label="Duplicate drawing"
-                  >
-                    <IconCopy />
-                  </button>
-                )}
-
-                {!readOnly && (
-                  <>
-                    <button
-                      type="button"
-                      className="vault-tree-action-btn"
-                      title="Rename"
-                      onClick={() => onRename(entry)}
-                      aria-label="Rename"
-                    >
-                      <IconEdit />
-                    </button>
-                    <button
-                      type="button"
-                      className="vault-tree-action-btn"
-                      title="Move"
-                      onClick={() => onMove(entry)}
-                      aria-label="Move"
-                    >
-                      <IconMove />
-                    </button>
-                  </>
-                )}
-
                 <button
                   type="button"
                   className="vault-tree-action-btn"
-                  title="Reveal in OS file manager"
-                  onClick={() => onReveal(entry)}
-                  aria-label="Reveal in file manager"
+                  title="More actions"
+                  aria-label="More actions"
+                  aria-haspopup="menu"
+                  onClick={(e) => {
+                    const box = e.currentTarget.getBoundingClientRect();
+                    onOpenMenu(entry, box.right, box.bottom + 4);
+                  }}
                 >
-                  <IconReveal />
+                  <IconMore />
                 </button>
-
-                {!readOnly && (
-                  <button
-                    type="button"
-                    className="vault-tree-action-btn"
-                    title="Trash"
-                    onClick={() => onTrash(entry)}
-                    aria-label="Trash"
-                  >
-                    <IconTrash />
-                  </button>
-                )}
               </div>
             </div>
 
@@ -852,16 +802,151 @@ const TreeRenderer = ({
                 onSelect={onSelect}
                 onToggleFolder={onToggleFolder}
                 onNewInside={onNewInside}
-                onRename={onRename}
-                onMove={onMove}
-                onDuplicate={onDuplicate}
-                onTrash={onTrash}
-                onReveal={onReveal}
+                onOpenMenu={onOpenMenu}
               />
             )}
           </div>
         );
       })}
     </>
+  );
+};
+
+interface RowMenuState {
+  entry: VaultEntry;
+  x: number;
+  y: number;
+}
+
+interface RowMenuProps {
+  state: RowMenuState;
+  readOnly: boolean;
+  ownerDocument?: Document | null;
+  onClose: () => void;
+  onNewInside: (folderPath: string) => void;
+  onDuplicate: (entry: VaultEntry) => void;
+  onRename: (entry: VaultEntry) => void;
+  onMove: (entry: VaultEntry) => void;
+  onReveal: (entry: VaultEntry) => void;
+  onTrash: (entry: VaultEntry) => void;
+}
+
+const MENU_WIDTH = 200;
+
+/** Row actions shown from the "More actions" button or a right-click. */
+const RowMenu = ({
+  state,
+  readOnly,
+  ownerDocument,
+  onClose,
+  onNewInside,
+  onDuplicate,
+  onRename,
+  onMove,
+  onReveal,
+  onTrash,
+}: RowMenuProps) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { entry } = state;
+  const isFolder = entry.kind === "folder";
+
+  useEffect(() => {
+    const doc = menuRef.current?.ownerDocument ?? ownerDocument;
+    const win = doc?.defaultView;
+    if (!doc || !win) {
+      return;
+    }
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>("[role='menuitem']")
+      ?.focus();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+        return;
+      }
+      event.preventDefault();
+      const items = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>(
+          "[role='menuitem']",
+        ) ?? [],
+      );
+      const index = items.indexOf(doc.activeElement as HTMLButtonElement);
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    };
+    doc.addEventListener("pointerdown", onPointerDown, true);
+    doc.addEventListener("keydown", onKeyDown, true);
+    win.addEventListener("blur", onClose);
+    win.addEventListener("resize", onClose);
+    return () => {
+      doc.removeEventListener("pointerdown", onPointerDown, true);
+      doc.removeEventListener("keydown", onKeyDown, true);
+      win.removeEventListener("blur", onClose);
+      win.removeEventListener("resize", onClose);
+    };
+  }, [onClose, ownerDocument]);
+
+  const win = ownerDocument?.defaultView;
+  const maxX = (win?.innerWidth ?? 1280) - MENU_WIDTH - 8;
+  const maxY = (win?.innerHeight ?? 800) - 220;
+  const left = Math.max(8, Math.min(state.x - MENU_WIDTH, maxX));
+  const top = Math.max(8, Math.min(state.y, maxY));
+
+  const item = (
+    label: string,
+    icon: ReactNode,
+    action: () => void,
+    danger = false,
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      className={`vault-menu__item ${danger ? "vault-menu__item--danger" : ""}`}
+      onClick={() => {
+        onClose();
+        action();
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
+  return (
+    <div
+      ref={menuRef}
+      className="vault-menu"
+      role="menu"
+      aria-label={`Actions for ${entry.name}`}
+      style={{ left, top, width: MENU_WIDTH }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {isFolder &&
+        !readOnly &&
+        item("New drawing here", <IconNewDrawing />, () =>
+          onNewInside(entry.path),
+        )}
+      {!isFolder &&
+        !readOnly &&
+        item("Duplicate", <IconCopy />, () => onDuplicate(entry))}
+      {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
+      {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
+      {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}
+      {!readOnly && (
+        <>
+          <div className="vault-menu__separator" role="separator" />
+          {item("Move to Trash", <IconTrash />, () => onTrash(entry), true)}
+        </>
+      )}
+    </div>
   );
 };

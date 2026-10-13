@@ -28,10 +28,15 @@ const treeRow = (page: Page, name: string): Locator =>
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Row action buttons are display:none until the row is hovered. */
+/** Row actions live in the "More actions" menu; folders also keep a "+" button. */
 const rowAction = async (page: Page, name: string, label: string) => {
   const row = treeRow(page, name);
   await row.hover();
-  return row.getByRole("button", { name: label, exact: true });
+  if (label === "New drawing in folder") {
+    return row.getByRole("button", { name: label, exact: true });
+  }
+  await row.getByRole("button", { name: "More actions" }).click();
+  return page.getByRole("menuitem", { name: label, exact: true });
 };
 
 const treeNames = (page: Page) =>
@@ -199,7 +204,7 @@ test("4. duplicate a drawing keeps element count", async ({ page }, info) => {
   await openFromTree(page, "Graphs");
   const original = await liveElementCount(page, GRAPHS);
 
-  await (await rowAction(page, "Graphs", "Duplicate drawing")).click();
+  await (await rowAction(page, "Graphs", "Duplicate")).click();
 
   const copyPath = "DSA/Graphs copy.excalidraw";
   await expect
@@ -216,7 +221,7 @@ test("4. duplicate a drawing keeps element count", async ({ page }, info) => {
 test("5. move a drawing into another folder", async ({ page }, info) => {
   const errors = trackErrors(page);
   await expandFolder(page, "DSA");
-  await (await rowAction(page, "Graphs", "Move")).click();
+  await (await rowAction(page, "Graphs", "Move to…")).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "DSA/Dynamic Programming" }).click();
@@ -235,7 +240,7 @@ test("5. move a drawing into another folder", async ({ page }, info) => {
 test("6. delete a drawing after confirmation", async ({ page }, info) => {
   const errors = trackErrors(page);
   await expandFolder(page, "DSA");
-  await (await rowAction(page, "Graphs", "Trash")).click();
+  await (await rowAction(page, "Graphs", "Move to Trash")).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Graphs.excalidraw");

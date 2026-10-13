@@ -1,6 +1,12 @@
 import { isTauriAvailable } from "../vault/DesktopVaultRepository";
 
-import { IconAlert, IconClose, IconFolder, IconPlus } from "./Icons";
+import {
+  IconAlert,
+  IconClose,
+  IconDrawing,
+  IconFolder,
+  IconPlus,
+} from "./Icons";
 
 interface OnboardingProps {
   recentVaults: string[];
@@ -29,8 +35,12 @@ export const Onboarding = ({
 
   return (
     <div className="vault-onboarding">
+      {/* Empty title-bar strip so the window can be dragged before a vault opens. */}
+      <div className="vault-titlebar-drag" data-tauri-drag-region />
       <div className="vault-onboarding__card">
-        <div className="vault-onboarding__logo">📁 ✏️</div>
+        <div className="vault-onboarding__logo" aria-hidden="true">
+          <IconDrawing width={28} height={28} />
+        </div>
         <h1 className="vault-onboarding__title">Excalidraw Vault</h1>
         <p className="vault-onboarding__desc">
           Your offline, local canvas notebook. All drawings are standard files
