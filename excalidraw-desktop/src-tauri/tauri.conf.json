@@ -11,7 +11,17 @@
   },
   "app": {
     "withGlobalTauri": false,
-    "windows": [{ "title": "Excalidraw Vault", "width": 1280, "height": 850, "minWidth": 760, "minHeight": 560, "incognito": true }],
+    "windows": [
+      {
+        "title": "Excalidraw Vault",
+        "width": 1280,
+        "height": 850,
+        "minWidth": 760,
+        "minHeight": 560,
+        "incognito": true,
+        "create": false
+      }
+    ],
     "security": {
       "csp": "default-src 'self' tauri: asset:; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
@@ -19,8 +29,16 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": {"../../LICENSE": "licenses/Excalidraw-MIT.txt"},
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "resources": {
+      "../../LICENSE": "licenses/Excalidraw-MIT.txt"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   },
   "plugins": {}
 }

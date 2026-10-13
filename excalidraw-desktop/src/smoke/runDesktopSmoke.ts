@@ -447,6 +447,26 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // Informational: about 120 on ProMotion displays when WebKit's 60fps cap is
+    // disabled (see webview_configuration in lib.rs), about 60 otherwise.
+    await step("render-frame-rate", async () => {
+      const frames = await new Promise<number>((resolve) => {
+        let count = 0;
+        let start = 0;
+        const tick = (now: number) => {
+          start ||= now;
+          count += 1;
+          if (now - start < 1000) {
+            win.requestAnimationFrame(tick);
+          } else {
+            resolve(Math.round((count * 1000) / (now - start)));
+          }
+        };
+        win.requestAnimationFrame(tick);
+      });
+      return { requestAnimationFramePerSecond: frames };
+    });
+
     await step("canvas-pointer-draw", async () => {
       // Ensure editor and excalidraw container resolve flex height in WebKit
       const editorEl = root.querySelector<HTMLElement>(".vault-editor");
