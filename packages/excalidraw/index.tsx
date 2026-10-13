@@ -114,6 +114,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     validateEmbeddable,
     renderEmbeddable,
     aiEnabled,
+    onExportImage,
     showDeprecatedFonts,
     renderScrollbars,
     viewportStatusFrame,
@@ -256,6 +257,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           validateEmbeddable={validateEmbeddable}
           renderEmbeddable={renderEmbeddable}
           aiEnabled={aiEnabled !== false}
+          onExportImage={onExportImage}
           showDeprecatedFonts={showDeprecatedFonts}
           renderScrollbars={renderScrollbars}
           viewportStatusFrame={viewportStatusFrame}
@@ -498,6 +500,8 @@ export type {
   ViewportStatusFrame,
   ElementRenderOverride,
   ElementRenderOverrides,
+  ImageExportRequest,
+  ImageExportType,
 } from "./types";
 
 export { zoomToFitBounds, DEFAULT_OVERSCROLL } from "./viewport";

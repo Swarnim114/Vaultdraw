@@ -542,12 +542,15 @@
     "title": {
       "exportToPng": "Export to PNG",
       "exportToSvg": "Export to SVG",
-      "copyPngToClipboard": "Copy PNG to clipboard"
+      "copyPngToClipboard": "Copy PNG to clipboard",
+      "copySvgToClipboard": "Copy SVG to clipboard"
     },
     "button": {
       "exportToPng": "PNG",
       "exportToSvg": "SVG",
-      "copyPngToClipboard": "Copy to clipboard"
+      "copyPngToClipboard": "Copy to clipboard",
+      "copyPng": "Copy PNG",
+      "copySvgToClipboard": "Copy SVG"
     }
   },
   "encrypted": {

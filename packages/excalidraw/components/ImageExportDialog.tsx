@@ -58,6 +58,7 @@ type ImageExportModalProps = {
   files: BinaryFiles;
   actionManager: ActionManager;
   onExportImage: AppClassProperties["onExportImage"];
+  hostHandlesExport: boolean;
   name: string;
   exportWithDarkMode: boolean;
 };
@@ -68,6 +69,7 @@ const ImageExportModal = ({
   files,
   actionManager,
   onExportImage,
+  hostHandlesExport,
   name,
   exportWithDarkMode,
 }: ImageExportModalProps) => {
@@ -91,11 +93,17 @@ const ImageExportModal = ({
   const [renderError, setRenderError] = useState<Error | null>(null);
 
   const { onCopy, copyStatus, resetCopyStatus } = useCopyStatus();
+  const {
+    onCopy: onCopySvg,
+    copyStatus: copySvgStatus,
+    resetCopyStatus: resetCopySvgStatus,
+  } = useCopyStatus();
 
   useEffect(() => {
     // if user changes setting right after export to clipboard, reset the status
     // so they don't have to wait for the timeout to click the button again
     resetCopyStatus();
+    resetCopySvgStatus();
   }, [
     projectName,
     exportWithBackground,
@@ -103,6 +111,7 @@ const ImageExportModal = ({
     exportScale,
     embedScene,
     resetCopyStatus,
+    resetCopySvgStatus,
   ]);
 
   const { exportedElements, exportingFrame } = prepareElementsForExport(
@@ -197,7 +206,7 @@ const ImageExportModal = ({
           {renderError && <ErrorCanvasPreview />}
         </div>
         <div className="ImageExportModal__preview__filename">
-          {!nativeFileSystemSupported && (
+          {!nativeFileSystemSupported && !hostHandlesExport && (
             <input
               type="text"
               className="TextInput"
@@ -325,7 +334,9 @@ const ImageExportModal = ({
           >
             {t("imageExportDialog.button.exportToSvg")}
           </FilledButton>
-          {(probablySupportsClipboardBlob || isFirefox) && (
+          {(probablySupportsClipboardBlob ||
+            isFirefox ||
+            hostHandlesExport) && (
             <FilledButton
               className="ImageExportModal__settings__buttons__button"
               label={t("imageExportDialog.title.copyPngToClipboard")}
@@ -342,7 +353,25 @@ const ImageExportModal = ({
               }}
               icon={copyIcon}
             >
-              {t("imageExportDialog.button.copyPngToClipboard")}
+              {t("imageExportDialog.button.copyPng")}
+            </FilledButton>
+          )}
+          {(probablySupportsClipboardBlob ||
+            isFirefox ||
+            hostHandlesExport) && (
+            <FilledButton
+              className="ImageExportModal__settings__buttons__button"
+              label={t("imageExportDialog.title.copySvgToClipboard")}
+              status={copySvgStatus}
+              onClick={async () => {
+                await onExportImage("clipboard-svg", exportedElements, {
+                  exportingFrame,
+                });
+                onCopySvg();
+              }}
+              icon={copyIcon}
+            >
+              {t("imageExportDialog.button.copySvgToClipboard")}
             </FilledButton>
           )}
         </div>
@@ -390,6 +419,7 @@ export const ImageExportDialog = ({
   files,
   actionManager,
   onExportImage,
+  hostHandlesExport = false,
   onCloseRequest,
   name,
 }: {
@@ -398,6 +428,7 @@ export const ImageExportDialog = ({
   files: BinaryFiles;
   actionManager: ActionManager;
   onExportImage: AppClassProperties["onExportImage"];
+  hostHandlesExport?: boolean;
   onCloseRequest: () => void;
   name: string;
 }) => {
@@ -418,6 +449,7 @@ export const ImageExportDialog = ({
         files={files}
         actionManager={actionManager}
         onExportImage={onExportImage}
+        hostHandlesExport={hostHandlesExport}
         name={name}
         exportWithDarkMode={appState.exportWithDarkMode}
       />

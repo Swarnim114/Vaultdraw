@@ -230,6 +230,7 @@ const LayerUI = ({
         files={files}
         actionManager={actionManager}
         onExportImage={onExportImage}
+        hostHandlesExport={!!app.props.onExportImage}
         onCloseRequest={() => setAppState({ openDialog: null })}
         name={app.getName()}
       />

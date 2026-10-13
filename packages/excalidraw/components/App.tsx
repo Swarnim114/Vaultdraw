@@ -81,7 +81,6 @@ import {
   arrayToMap,
   applyDarkModeFilter,
   AppEventBus,
-  type EXPORT_IMAGE_TYPES,
   CLASSES,
   Emitter,
   MINIMUM_ARROW_SIZE,
@@ -449,6 +448,7 @@ import type {
   AppClassProperties,
   AppProps,
   AppState,
+  ImageExportType,
   ElementRenderOffsets,
   ElementRenderOverrides,
   BinaryFileData,
@@ -2775,23 +2775,48 @@ class App extends React.Component<AppProps, AppState> {
     });
   };
 
+  /**
+   * Single entry point for image exports: delegates to the host's
+   * `onExportImage` when provided, otherwise to the default `exportCanvas`.
+   */
+  public exportImage = async (
+    type: ImageExportType,
+    elements: ExportedElements,
+    exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null,
+    appState: AppState = this.state,
+  ) => {
+    if (elements.length === 0) {
+      throw new Error(t("alerts.cannotExportEmptyCanvas"));
+    }
+    if (this.props.onExportImage) {
+      await this.props.onExportImage({
+        type,
+        elements,
+        appState,
+        files: this.files,
+        exportingFrame,
+        name: this.getName(),
+      });
+      return null;
+    }
+    return exportCanvas(type, elements, appState, this.files, {
+      exportBackground: appState.exportBackground,
+      name: this.getName(),
+      viewBackgroundColor: appState.viewBackgroundColor,
+      exportingFrame,
+    });
+  };
+
   public onExportImage = async (
-    type: keyof typeof EXPORT_IMAGE_TYPES,
+    type: ImageExportType,
     elements: ExportedElements,
     opts: { exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null },
   ) => {
     trackEvent("export", type, "ui");
-    const fileHandle = await exportCanvas(
+    const fileHandle = await this.exportImage(
       type,
       elements,
-      this.state,
-      this.files,
-      {
-        exportBackground: this.state.exportBackground,
-        name: this.getName(),
-        viewBackgroundColor: this.state.viewBackgroundColor,
-        exportingFrame: opts.exportingFrame,
-      },
+      opts.exportingFrame,
     )
       .catch(muteFSAbortError)
       .catch((error) => {

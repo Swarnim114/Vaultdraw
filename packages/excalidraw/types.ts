@@ -64,6 +64,7 @@ import type Library from "./data/library";
 import type { ContextMenuItems } from "./components/ContextMenu";
 import type { SnapLine } from "./snapping";
 import type { ImportedDataState } from "./data/types";
+import type { ExportedElements } from "./data/index";
 import type { SetViewportOptions } from "./viewport";
 
 import type { Language } from "./i18n";
@@ -1045,6 +1046,12 @@ export interface ExcalidrawProps {
     appState: AppState,
   ) => JSX.Element | null;
   aiEnabled?: boolean;
+  /**
+   * When set, the host handles every image export: the export dialog buttons
+   * and copy-as-PNG/SVG. The default export (file save / system clipboard)
+   * is skipped. Throw to show an error message.
+   */
+  onExportImage?: (request: ImageExportRequest) => Promise<void>;
   showDeprecatedFonts?: boolean;
   renderScrollbars?: boolean;
   viewportStatusFrame?: ViewportStatusFrame | null;
@@ -1157,6 +1164,17 @@ export type UIOptions = Partial<{
   welcomeScreen?: boolean;
 }>;
 
+export type ImageExportType = "png" | "svg" | "clipboard" | "clipboard-svg";
+
+export type ImageExportRequest = {
+  type: ImageExportType;
+  elements: ExportedElements;
+  appState: AppState;
+  files: BinaryFiles;
+  exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
+  name: string;
+};
+
 export type AppProps = Merge<
   ExcalidrawProps,
   {
@@ -1205,6 +1223,7 @@ export type AppClassProperties = {
   id: App["id"];
   onInsertElements: App["onInsertElements"];
   onExportImage: App["onExportImage"];
+  exportImage: App["exportImage"];
   viewport: App["viewport"];
   addFiles: App["addFiles"];
   addElementsFromPasteOrLibrary: App["addElementsFromPasteOrLibrary"];

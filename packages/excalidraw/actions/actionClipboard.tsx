@@ -14,7 +14,7 @@ import {
   readSystemClipboard,
 } from "../clipboard";
 import { DuplicateIcon, cutIcon, pngIcon, svgIcon } from "../components/icons";
-import { exportCanvas, prepareElementsForExport } from "../data/index";
+import { prepareElementsForExport } from "../data/index";
 import { t } from "../i18n";
 
 import { actionDeleteSelected } from "./actionDeleteSelected";
@@ -140,16 +140,11 @@ export const actionCopyAsSvg = register({
     );
 
     try {
-      await exportCanvas(
+      await app.exportImage(
         "clipboard-svg",
         exportedElements,
+        exportingFrame,
         appState,
-        app.files,
-        {
-          ...appState,
-          exportingFrame,
-          name: app.getName(),
-        },
       );
 
       const selectedElements = app.scene.getSelectedElements({
@@ -212,11 +207,12 @@ export const actionCopyAsPng = register({
       true,
     );
     try {
-      await exportCanvas("clipboard", exportedElements, appState, app.files, {
-        ...appState,
+      await app.exportImage(
+        "clipboard",
+        exportedElements,
         exportingFrame,
-        name: app.getName(),
-      });
+        appState,
+      );
       return {
         appState: {
           ...appState,
