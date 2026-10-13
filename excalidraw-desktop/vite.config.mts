@@ -26,6 +26,9 @@ export default defineConfig({
     "import.meta.env.VITE_APP_SMOKE_TEST": JSON.stringify(
       process.env.VITE_APP_SMOKE_TEST ?? "false",
     ),
+    "import.meta.env.VITE_APP_PERF_TEST": JSON.stringify(
+      process.env.VITE_APP_PERF_TEST ?? "false",
+    ),
   },
   server: {
     port: 1420,

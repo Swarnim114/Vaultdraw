@@ -1,6 +1,6 @@
 //! Optional packaged-app smoke bridge. This module is compiled only with `smoke-test`.
 use serde_json::{json, Value};
-use std::{env, fs, path::PathBuf, sync::{Mutex, OnceLock}};
+use std::{env, fs, io::Write, path::PathBuf, sync::{Mutex, OnceLock}};
 use tauri::AppHandle;
 
 const ENV_DIR: &str = "EXCALIDRAW_VAULT_SMOKE_DIR";
@@ -49,6 +49,13 @@ pub fn smoke_environment() -> Result<Value, String> {
 #[tauri::command]
 pub fn smoke_log(step: String, ok: bool, details: Option<Value>) -> Result<(), String> {
     let record = json!({ "step": step, "ok": ok, "details": details });
+    // Live line for external runners; one line per record, flushed immediately.
+    {
+        let stdout = std::io::stdout();
+        let mut out = stdout.lock();
+        let _ = writeln!(out, "VAULTDRAW_SMOKE_LOG {record}");
+        let _ = out.flush();
+    }
     report().lock().map_err(|_| "smoke report lock poisoned".to_string())?.push(record);
     Ok(())
 }

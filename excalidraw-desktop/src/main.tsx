@@ -80,7 +80,19 @@ void initSettings(ownerWindow)
         <VaultApp ownerDocument={ownerDocument} ownerWindow={ownerWindow} />
       </StrictMode>,
     );
-    if (import.meta.env.VITE_APP_SMOKE_TEST === "true") {
+    if (import.meta.env.VITE_APP_PERF_TEST === "true") {
+      ownerWindow.setTimeout(() => {
+        void import("./perf/runDesktopPerf")
+          .then(({ runDesktopPerf }) => runDesktopPerf())
+          .catch(async (error: unknown) => {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("smoke_finish", {
+              status: 1,
+              details: { startupFailure: String(error) },
+            });
+          });
+      }, 100);
+    } else if (import.meta.env.VITE_APP_SMOKE_TEST === "true") {
       ownerWindow.setTimeout(() => {
         void import("./smoke/runDesktopSmoke")
           .then(({ runDesktopSmoke }) => runDesktopSmoke())
