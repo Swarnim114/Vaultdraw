@@ -895,6 +895,195 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // ---- Tree drag and drop (pointer-based, components/tree/useTreeDrag.ts) ----
+    await step("ui-tree-drag-drop", async () => {
+      const suite = `smoke-suite-${runId}`;
+      const target = `${suite}/dnd-target`;
+      const drawing = `${nested}/ui-edited.excalidraw`;
+      const moved = `${target}/ui-edited.excalidraw`;
+      const clear = root.querySelector<HTMLButtonElement>(
+        '[aria-label="Clear search"]',
+      );
+      clear?.click();
+      await call("create_folder", { handle: activeVault.handle, path: target });
+      button("Refresh files").click();
+      const row = (path: string) =>
+        root.querySelector<HTMLElement>(
+          `.vault-tree-item[data-tree-path="${win.CSS.escape(path)}"]`,
+        );
+      await waitFor("drop target folder row", () => row(target));
+      await waitFor("open drawing row", () => row(drawing));
+      const pointer = (el: Element, type: string, x: number, y: number) =>
+        el.dispatchEvent(
+          new win.PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            // WebKit only lets the real mouse id (1) take pointer capture.
+            pointerId: 1,
+            pointerType: "mouse",
+            isPrimary: true,
+            button: 0,
+            buttons: type === "pointerup" ? 0 : 1,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      /** Drags a tree row onto another row; returns the ghost state seen over it. */
+      const dragRow = async (fromPath: string, toPath: string) => {
+        const from = row(fromPath);
+        const to = row(toPath);
+        if (!from || !to) {
+          throw new Error(`Drag rows missing: ${fromPath} -> ${toPath}`);
+        }
+        from.scrollIntoView({ block: "center" });
+        const a = from.getBoundingClientRect();
+        const sx = a.left + 24;
+        const sy = a.top + a.height / 2;
+        pointer(from, "pointerdown", sx, sy);
+        to.scrollIntoView({ block: "nearest" });
+        const b = to.getBoundingClientRect();
+        const tx = b.left + 24;
+        const ty = b.top + b.height / 2;
+        for (let i = 1; i <= 6; i++) {
+          const x = sx + ((tx - sx) * i) / 6;
+          const y = sy + ((ty - sy) * i) / 6;
+          pointer(doc.elementFromPoint(x, y) ?? doc.body, "pointermove", x, y);
+          await delay(win, 16);
+        }
+        await delay(win, 50);
+        const ghost = doc.querySelector<HTMLElement>(".vault-tree-drag-ghost");
+        const seen = {
+          ghost: Boolean(ghost),
+          allowed: ghost?.dataset.allowed ?? null,
+          hint: ghost?.textContent ?? null,
+          highlighted: Boolean(
+            row(toPath)?.classList.contains("vault-tree-item--drop-target"),
+          ),
+        };
+        pointer(doc.elementFromPoint(tx, ty) ?? doc.body, "pointerup", tx, ty);
+        await delay(win, 50);
+        return seen;
+      };
+      const names = async (path: string) =>
+        (
+          await call("list_directory", { handle: activeVault.handle, path })
+        ).map((entry) => entry.path);
+      const liveRectangles = async (path: string) => {
+        const read = await call("read_drawing", {
+          handle: activeVault.handle,
+          path,
+        });
+        const parsed = JSON.parse(read.json) as {
+          elements?: Array<{ isDeleted?: boolean; type?: string }>;
+        };
+        return (parsed.elements ?? []).filter(
+          (element) => !element.isDeleted && element.type === "rectangle",
+        ).length;
+      };
+
+      // 1. The open drawing into another folder.
+      const before = await liveRectangles(drawing);
+      const intoFolder = await dragRow(drawing, target);
+      if (intoFolder.allowed !== "true" || !intoFolder.highlighted) {
+        throw new Error(
+          `Drop onto folder not offered: ${JSON.stringify(intoFolder)}`,
+        );
+      }
+      const until = win.performance.now() + timeout;
+      while (!(await names(target)).includes(moved)) {
+        if (win.performance.now() > until) {
+          throw new Error("Dragged drawing never arrived in the target folder");
+        }
+        await delay(win, 100);
+      }
+      if ((await names(nested)).includes(drawing)) {
+        throw new Error("Dragged drawing still exists at its old path");
+      }
+      await waitFor("editor follows the moved drawing", () =>
+        root.querySelector<HTMLElement>(
+          ".vault-tree-item--active .vault-tree-item__name",
+        )?.title === moved && root.querySelector(".vault-editor canvas")
+          ? true
+          : null,
+      );
+
+      // 2. Editing after the move saves to the new path.
+      const canvas = root.querySelector<HTMLCanvasElement>(
+        ".vault-editor canvas.interactive",
+      );
+      const rectangleTool = root.querySelector<HTMLElement>(
+        '[data-testid="toolbar-rectangle"]',
+      );
+      if (!canvas || !rectangleTool) {
+        throw new Error("Editor canvas/tools missing after move");
+      }
+      rectangleTool.click();
+      await delay(win, 150);
+      const box = canvas.getBoundingClientRect();
+      const x1 = box.left + box.width * 0.55;
+      const y1 = box.top + box.height * 0.55;
+      pointer(canvas, "pointerdown", x1, y1);
+      pointer(canvas, "pointermove", x1 + 40, y1 + 30);
+      pointer(canvas, "pointermove", x1 + 80, y1 + 60);
+      pointer(canvas, "pointerup", x1 + 80, y1 + 60);
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          key: "s",
+          metaKey: true,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      const saveUntil = win.performance.now() + timeout;
+      let after = await liveRectangles(moved);
+      while (after <= before && win.performance.now() < saveUntil) {
+        await delay(win, 250);
+        after = await liveRectangles(moved);
+      }
+      if (after <= before) {
+        throw new Error(
+          `Edit after move did not save to the new path (${before} -> ${after})`,
+        );
+      }
+      if ((await names(nested)).includes(drawing)) {
+        throw new Error("A save after the move recreated the old path");
+      }
+
+      // 3. Blocked: a folder into its own descendant changes nothing.
+      const blocked = await dragRow(suite, nested);
+      if (blocked.allowed !== "false" || blocked.highlighted) {
+        throw new Error(
+          `Descendant drop was not blocked: ${JSON.stringify(blocked)}`,
+        );
+      }
+      await delay(win, 300);
+      if (!(await names(suite)).includes(nested)) {
+        throw new Error("Blocked drop changed the tree");
+      }
+
+      // 4. Move it back so later steps see the original layout.
+      const back = await dragRow(moved, nested);
+      if (back.allowed !== "true") {
+        throw new Error(`Drop back not offered: ${JSON.stringify(back)}`);
+      }
+      const backUntil = win.performance.now() + timeout;
+      while (!(await names(nested)).includes(drawing)) {
+        if (win.performance.now() > backUntil) {
+          throw new Error("Drawing did not move back");
+        }
+        await delay(win, 100);
+      }
+      return {
+        moved,
+        rectanglesBeforeAfter: [before, after],
+        intoFolder,
+        blocked,
+        method:
+          "synthetic pointer events on tree rows (pointer DnD), native list/read assertions",
+      };
+    });
+
     // ---- Config folder (personal/planning/config.md) ----
     await step("config-loaded", async () => {
       const loaded = await call("load_settings");
