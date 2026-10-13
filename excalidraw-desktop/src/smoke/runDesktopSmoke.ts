@@ -1084,6 +1084,92 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // ---- Canvas file drop (HTML5 drop in WKWebView; native interception is off) ----
+    await step("ui-canvas-file-drop", async () => {
+      const path = `${nested}/ui-edited.excalidraw`;
+      const readLive = async () => {
+        const read = await call("read_drawing", {
+          handle: activeVault.handle,
+          path,
+        });
+        const parsed = JSON.parse(read.json) as {
+          elements?: Array<{ isDeleted?: boolean; type?: string }>;
+        };
+        return (parsed.elements ?? []).filter((e) => !e.isDeleted);
+      };
+      const target = await waitFor(
+        "excalidraw drop target",
+        () => root.querySelector<HTMLElement>(".vault-editor .excalidraw"),
+        5000,
+      );
+      const rect = target.getBoundingClientRect();
+      const drop = (file: File) => {
+        const dataTransfer = new win.DataTransfer();
+        dataTransfer.items.add(file);
+        const init = {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        };
+        target.dispatchEvent(new win.DragEvent("dragenter", init));
+        target.dispatchEvent(new win.DragEvent("dragover", init));
+        target.dispatchEvent(new win.DragEvent("drop", init));
+      };
+      const before = (await readLive()).length;
+      // A scene file must not replace the open drawing (VaultEditor guard).
+      drop(
+        new win.File(
+          ['{"type":"excalidraw","elements":[]}'],
+          "other.excalidraw",
+          {
+            type: "application/vnd.excalidraw+json",
+          },
+        ),
+      );
+      await delay(win, 800);
+      // 1x1 PNG, inserted as an image element.
+      const bytes = Uint8Array.from(
+        win.atob(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        ),
+        (c) => c.charCodeAt(0),
+      );
+      drop(new win.File([bytes], "dropped.png", { type: "image/png" }));
+      let live = await readLive();
+      const until = win.performance.now() + 8000;
+      while (!live.some((e) => e.type === "image")) {
+        if (win.performance.now() > until) {
+          throw new Error("Dropped PNG did not become an image element");
+        }
+        doc.dispatchEvent(
+          new win.KeyboardEvent("keydown", {
+            key: "s",
+            metaKey: true,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        await delay(win, 1200);
+        live = await readLive();
+      }
+      if (live.length !== before + 1) {
+        throw new Error(
+          `Expected exactly one new element after the drops, got ${
+            live.length - before
+          }`,
+        );
+      }
+      return {
+        before,
+        after: live.length,
+        method:
+          "synthetic HTML5 drop events with DataTransfer files; native dragDropEnabled=false verified in tauri.conf.json",
+      };
+    });
+
     // ---- Config folder (personal/planning/config.md) ----
     await step("config-loaded", async () => {
       const loaded = await call("load_settings");
@@ -2128,7 +2214,10 @@ export async function runDesktopSmoke(): Promise<void> {
           backgroundColor?: string;
         }>;
       };
-      const live = (scene.elements ?? []).filter((e) => !e.isDeleted);
+      // Images (from the canvas-drop step) have a transparent stroke by design.
+      const live = (scene.elements ?? []).filter(
+        (e) => !e.isDeleted && e.type !== "image",
+      );
       const strokes = Array.from(new Set(live.map((e) => e.strokeColor)));
       const fills = Array.from(new Set(live.map((e) => e.backgroundColor)));
       const viewBg = scene.appState?.viewBackgroundColor;

@@ -75,6 +75,31 @@ describe("VaultEditor safety and drop guard", () => {
     expect(dropEvent.defaultPrevented).toBe(false);
   });
 
+  it("lets plain image drops reach the canvas but guards embedded-scene exports", () => {
+    const { container } = render(
+      <VaultEditor
+        documentId="doc-safety-img"
+        initialJson={BLANK_SCENE}
+        name="test.excalidraw"
+        onChange={vi.fn()}
+      />,
+    );
+    const editorEl = container.querySelector(".vault-editor") as HTMLElement;
+    const drop = (name: string, type: string) => {
+      const event = new Event("drop", {
+        bubbles: true,
+        cancelable: true,
+      }) as any;
+      event.dataTransfer = { files: [new File(["x"], name, { type })] };
+      event.shiftKey = false;
+      fireEvent(editorEl, event);
+      return event.defaultPrevented as boolean;
+    };
+    expect(drop("photo.png", "image/png")).toBe(false);
+    expect(drop("logo.svg", "image/svg+xml")).toBe(false);
+    expect(drop("board.excalidraw.png", "image/png")).toBe(true);
+  });
+
   it("mounts safely with readOnly and disabled flags", () => {
     const onChange = vi.fn();
     const { container } = render(

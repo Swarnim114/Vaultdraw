@@ -76,14 +76,14 @@ const VaultEditorComponent = ({
   const [editorError, setEditorError] = useState<string | null>(null);
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    // Files that carry a scene (.excalidraw/.json, or Excalidraw's
+    // "embed scene" exports named *.excalidraw.png/.svg) would replace the
+    // drawing. Plain images are inserted as image elements, so let them through.
     const mayReplaceScene = Array.from(event.dataTransfer.files).some(
       (file) =>
-        /\.(excalidraw|json|png|svg)$/i.test(file.name) ||
-        [
-          "image/png",
-          "image/svg+xml",
-          "application/vnd.excalidraw+json",
-        ].includes(file.type),
+        /\.(excalidraw|json)$/i.test(file.name) ||
+        /\.excalidraw\.(png|svg)$/i.test(file.name) ||
+        file.type === "application/vnd.excalidraw+json",
     );
     if (mayReplaceScene && !event.shiftKey) {
       // The core editor normally replaces the scene on file drop. In a vault
