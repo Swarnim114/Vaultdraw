@@ -1,3 +1,4 @@
+import { DEFAULT_SORT_ORDER, sortEntries, type SortOrder } from "./sortOrder";
 import { joinPath, type VaultEntry, type VaultRepository } from "./types";
 
 export { joinPath };
@@ -226,12 +227,13 @@ export async function scanVaultMetadata(
 export function buildTree(
   directoryMap: Map<string, VaultEntry[]>,
   currentPath = "",
+  sort: SortOrder = DEFAULT_SORT_ORDER,
 ): TreeNode[] {
-  const entries = directoryMap.get(currentPath) ?? [];
+  const entries = sortEntries(directoryMap.get(currentPath) ?? [], sort);
   return entries.map((entry) => {
     if (entry.kind === "folder") {
       const children = directoryMap.has(entry.path)
-        ? buildTree(directoryMap, entry.path)
+        ? buildTree(directoryMap, entry.path, sort)
         : undefined;
       return {
         entry,

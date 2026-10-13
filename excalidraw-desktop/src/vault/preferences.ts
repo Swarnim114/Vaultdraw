@@ -203,6 +203,22 @@ let memoryStore: {
   persist: PersistCallback;
 } | null = null;
 
+const listeners = new Set<() => void>();
+
+/** Called after every preference change (any storage mode); returns unsubscribe. */
+export function subscribePreferences(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+const notifyPreferences = () => {
+  for (const listener of [...listeners]) {
+    listener();
+  }
+};
+
 export function attachPreferencesStore(
   initial: VaultPreferences,
   persist: PersistCallback,
@@ -223,6 +239,7 @@ export function replaceStoredPreferences(next: VaultPreferences): void {
   if (memoryStore) {
     memoryStore.prefs = clonePreferences(next);
   }
+  notifyPreferences();
 }
 
 function getStorage(win?: Window | null): Storage | null {
@@ -282,6 +299,7 @@ export function updatePreferences(
     } catch {
       // persistence failures are reported by the store, never thrown here
     }
+    notifyPreferences();
     return clonePreferences(next);
   }
   const current = getPreferences(win);
@@ -297,6 +315,7 @@ export function updatePreferences(
       // quota or security error ignored gracefully
     }
   }
+  notifyPreferences();
   return next;
 }
 

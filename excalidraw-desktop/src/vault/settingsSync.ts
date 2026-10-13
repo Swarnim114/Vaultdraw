@@ -278,10 +278,10 @@ export const STATE_FIELDS = [
 type StateField = typeof STATE_FIELDS[number];
 export type PersistedState = Pick<VaultPreferences, StateField>;
 
-const show = (value: unknown) =>
+export const show = (value: unknown) =>
   typeof value === "string" ? `"${value}"` : JSON.stringify(value);
 
-const readDotted = (
+export const readDotted = (
   config: Record<string, unknown>,
   key: string,
 ): { present: boolean; value: unknown } => {
