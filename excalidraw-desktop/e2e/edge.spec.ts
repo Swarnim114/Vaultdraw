@@ -5,9 +5,11 @@ import {
   openDrawing,
   openVault,
   readScene,
+  screenshot,
   SHOTS,
   trackErrors,
 } from "./helpers";
+import { AFTER_AUTOSAVE_MS } from "./constants";
 
 const GRAPHS = "DSA/Graphs.excalidraw";
 const INTRO = "DSA/Dynamic Programming/01 Introduction.excalidraw";
@@ -101,18 +103,18 @@ test("1. undo survives autosave", async ({ page }, info) => {
       timeout: 5000,
     })
     .toBe(baseline + 1);
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
   await waitForSaved(page);
 
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
   await waitForSaved(page);
   await expect
     .poll(async () => (await liveRectangles(page, GRAPHS)).length, {
       timeout: 5000,
     })
     .toBe(baseline);
-  await page.screenshot({ path: `${SHOTS}/edge-1-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-1-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -141,14 +143,14 @@ test("2. external edit with no local changes reloads the editor", async ({
     [GRAPHS, JSON.stringify(external)],
   );
 
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
   await expect(page.locator(".vault-badge--conflict")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator(".vault-status--saved")).toBeVisible();
   // The editor must show the disk version, and no stale autosave may clobber it.
   const ids = (await liveElements(page, GRAPHS)).map((el: any) => el.id);
   expect(ids).toContain("rect-external");
-  await page.screenshot({ path: `${SHOTS}/edge-2-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-2-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -179,7 +181,7 @@ test("3. external edit while local edits are pending is a conflict, not silent l
 
   const badge = page.locator(".vault-badge--conflict");
   await expect(badge).toBeVisible({ timeout: 5000 });
-  await page.screenshot({ path: `${SHOTS}/edge-3-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-3-${info.project.name}.png` });
 
   // The disk file keeps the external version; the local rectangle is not written over it.
   const disk = await liveRectangles(page, GRAPHS);
@@ -220,7 +222,7 @@ test("4. external delete of the open drawing shows a clear message", async ({
   await badge.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog")).toContainText(/deleted|changed/i);
-  await page.screenshot({ path: `${SHOTS}/edge-4-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-4-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -253,9 +255,9 @@ test("5. rapid switching keeps edits in both drawings", async ({
       timeout: 5000,
     })
     .toBe(graphsBaseline + 1);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
   expect((await liveElements(page, INTRO)).length).toBe(introBaseline);
-  await page.screenshot({ path: `${SHOTS}/edge-5-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-5-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -285,7 +287,7 @@ test("6. renaming the open drawing with unsaved edits keeps the edits", async ({
       timeout: 5000,
     })
     .toBe(baseline + 1);
-  await page.screenshot({ path: `${SHOTS}/edge-6-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-6-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -327,7 +329,7 @@ test("7. typing in rename and new-folder inputs never triggers canvas tools", as
     "aria-pressed",
     "true",
   );
-  await page.screenshot({ path: `${SHOTS}/edge-7-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-7-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -377,7 +379,7 @@ test("8. keyboard shortcuts work immediately on a new drawing", async ({
       timeout: 5000,
     })
     .toBe(1);
-  await page.screenshot({ path: `${SHOTS}/edge-8-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-8-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -397,7 +399,7 @@ test("9. library sidebar button opens the library", async ({ page }, info) => {
       )
       .first(),
   ).toContainText(/Library|Add to library|Publish/i);
-  await page.screenshot({ path: `${SHOTS}/edge-9-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-9-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });
 
@@ -420,6 +422,6 @@ test("10. zoom shortcut changes the zoom label and drawing still works", async (
       timeout: 5000,
     })
     .toBe(baseline + 1);
-  await page.screenshot({ path: `${SHOTS}/edge-10-${info.project.name}.png` });
+  await screenshot(page, { path: `${SHOTS}/edge-10-${info.project.name}.png` });
   expect(errors).toEqual([]);
 });

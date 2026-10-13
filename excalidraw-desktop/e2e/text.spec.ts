@@ -5,9 +5,11 @@ import {
   openDrawing,
   openVault,
   readScene,
+  screenshot,
   SHOTS,
   trackErrors,
 } from "./helpers";
+import { AFTER_AUTOSAVE_MS } from "./constants";
 
 const DRAWING = "DSA/Graphs.excalidraw";
 const textarea = "textarea.excalidraw-wysiwyg";
@@ -34,7 +36,7 @@ test("typing survives autosave pauses and is saved", async ({ page }, info) => {
 
   await page.keyboard.type("Hello", { delay: 30 });
   // Longer than the idle autosave so at least one save + watcher echo happens.
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
   await expect(page.locator(textarea)).toBeFocused();
   await page.keyboard.type(" vault rocks", { delay: 30 });
   await expect(page.locator(textarea)).toHaveValue("Hello vault rocks");
@@ -49,7 +51,7 @@ test("typing survives autosave pauses and is saved", async ({ page }, info) => {
   await expect
     .poll(() => textElements(page), { timeout: 5000 })
     .toContain("Hello vault rocks");
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-text-saved.png`,
   });
   expect(errors).toEqual([]);

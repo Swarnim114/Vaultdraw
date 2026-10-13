@@ -3,8 +3,11 @@ import { createRoot } from "react-dom/client";
 
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import { SAMPLE_SCENE } from "../src/tests/fixtures";
+import { setAutosaveDelayMs } from "../src/vault/preferences";
 
 import "../src/desktop.css";
+
+import { E2E_AUTOSAVE_MS } from "./constants";
 
 // Browser-only harness for Playwright: mounts the real VaultApp backed by the
 // in-memory FakeVaultRepository so the editor can be driven with real input.
@@ -18,6 +21,11 @@ ownerWindow.EXCALIDRAW_ASSET_PATH = new ownerWindow.URL(
   "./",
   ownerWindow.location.href,
 ).href;
+// Short autosave so specs don't sit through the 500ms production default.
+setAutosaveDelayMs(
+  Number(params.get("autosave")) || E2E_AUTOSAVE_MS,
+  ownerWindow,
+);
 if (params.get("theme") === "dark") {
   ownerDocument.documentElement.classList.add("dark");
 }

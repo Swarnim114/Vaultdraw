@@ -2,6 +2,16 @@ import { expect, type Page } from "@playwright/test";
 
 export const SHOTS = "../.cache/e2e-shots";
 
+/** Debug screenshots are only taken in full runs (E2E_FULL=1). */
+export const screenshot = async (
+  page: Page,
+  options: Parameters<Page["screenshot"]>[0],
+) => {
+  if (process.env.E2E_FULL === "1") {
+    await page.screenshot(options);
+  }
+};
+
 /** Collect console errors / page errors so every spec can assert none occurred. */
 export const trackErrors = (page: Page) => {
   const errors: string[] = [];

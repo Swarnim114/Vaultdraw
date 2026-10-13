@@ -6,6 +6,7 @@ import {
   openDrawing,
   openVault,
   readScene,
+  screenshot,
   SHOTS,
   trackErrors,
 } from "./helpers";
@@ -112,7 +113,7 @@ test("1. create a folder at root via UI", async ({ page }, info) => {
   await expect
     .poll(async () => listDir(page, ""), { timeout: 5000 })
     .toContainEqual({ path: "Notes", kind: "folder" });
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-1.png`,
   });
   expect(errors).toEqual([]);
@@ -151,7 +152,7 @@ test("2. create a drawing inside a folder, draw, and save", async ({
       timeout: 5000,
     })
     .toBeGreaterThan(0);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-2.png`,
   });
   expect(errors).toEqual([]);
@@ -186,7 +187,7 @@ test("3. rename a drawing", async ({ page }, info) => {
   ).toBeVisible();
   await expect(page.locator(".vault-editor canvas.interactive")).toBeVisible();
   expect(await liveElementCount(page, newPath)).toBe(before);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-3.png`,
   });
   expect(errors).toEqual([]);
@@ -206,7 +207,7 @@ test("4. duplicate a drawing keeps element count", async ({ page }, info) => {
     .toBe(true);
   await expect(treeRow(page, "Graphs copy")).toBeVisible();
   expect(await liveElementCount(page, copyPath)).toBe(original);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-4.png`,
   });
   expect(errors).toEqual([]);
@@ -225,7 +226,7 @@ test("5. move a drawing into another folder", async ({ page }, info) => {
   const dest = "DSA/Dynamic Programming/Graphs.excalidraw";
   await expect.poll(() => pathExists(page, dest), { timeout: 5000 }).toBe(true);
   await expect.poll(() => pathExists(page, GRAPHS)).toBe(false);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-5.png`,
   });
   expect(errors).toEqual([]);
@@ -240,7 +241,7 @@ test("6. delete a drawing after confirmation", async ({ page }, info) => {
   await expect(dialog).toContainText("Graphs.excalidraw");
   // Modal fades in (opacity 0 -> 1); wait so the screenshot is not mid-animation.
   await expect(dialog.locator(".vault-modal")).toHaveCSS("opacity", "1");
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-6a.png`,
   });
   await dialog.getByRole("button", { name: "Move to Trash" }).click();
@@ -252,7 +253,7 @@ test("6. delete a drawing after confirmation", async ({ page }, info) => {
     .toBe(false);
   const dsa = await listDir(page, "DSA");
   expect(dsa.map((e: { path: string }) => e.path)).not.toContain(GRAPHS);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-6.png`,
   });
   expect(errors).toEqual([]);
@@ -270,7 +271,7 @@ test("7. search finds a drawing and clicking opens it", async ({
     .first();
   await expect(result).toBeVisible();
   await expect(page.getByText(/1 result/)).toBeVisible();
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-7a.png`,
   });
 
@@ -279,7 +280,7 @@ test("7. search finds a drawing and clicking opens it", async ({
   await expect(
     page.locator(".vault-breadcrumbs__item--active", { hasText: "Graphs" }),
   ).toBeVisible();
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-7.png`,
   });
   expect(errors).toEqual([]);
@@ -313,7 +314,7 @@ test("8. edits in each drawing survive switching", async ({ page }, info) => {
       timeout: 5000,
     })
     .toBe(introBaseline + 1);
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-8a.png`,
   });
 
@@ -326,7 +327,7 @@ test("8. edits in each drawing survive switching", async ({ page }, info) => {
   expect((await rectanglesOf(page, GRAPHS)).length).toBe(graphsBaseline + 1);
   expect((await rectanglesOf(page, INTRO)).length).toBe(introBaseline + 1);
 
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-8.png`,
   });
   expect(errors).toEqual([]);
@@ -370,7 +371,7 @@ test("9. PNG and SVG export go through the repository", async ({
   for (const e of exported) {
     expect(e.size).toBeGreaterThan(0);
   }
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-9.png`,
   });
   expect(errors).toEqual([]);
@@ -399,7 +400,7 @@ test("10. dark theme via settings applies to app and canvas", async ({
   await expandFolder(page, "DSA");
   await openFromTree(page, "Graphs");
   await expect(page.locator(".excalidraw.theme--dark").first()).toBeVisible();
-  await page.screenshot({
+  await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-10.png`,
   });
   expect(errors).toEqual([]);

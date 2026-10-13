@@ -16,7 +16,8 @@
     "tauri:build": "tauri build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:full": "E2E_FULL=1 playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.2",
