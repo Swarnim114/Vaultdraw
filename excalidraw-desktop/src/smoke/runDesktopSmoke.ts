@@ -44,6 +44,15 @@ type Native = {
   export_file: (args: { name: string; bytes: number[] }) => Promise<boolean>;
   load_settings: () => Promise<LoadSettingsResult>;
   update_config: (args: { changes: ConfigChange[] }) => Promise<void>;
+  load_vault_settings: (args: { handle: string }) => Promise<{
+    path: string;
+    settings: Record<string, unknown> | null;
+    settingsError: { message: string; line?: number | null } | null;
+  }>;
+  update_vault_settings: (args: {
+    handle: string;
+    changes: ConfigChange[];
+  }) => Promise<void>;
   smoke_environment: () => Promise<SmokeEnvironment>;
   smoke_log: (args: {
     step: string;
@@ -73,6 +82,11 @@ const DEFAULT_CONFIG_JSON = {
     roughness: 1,
   },
   saving: { autosave_delay_ms: 500 },
+  // Commented-out tables in the default config.toml parse as empty tables.
+  interface: {},
+  navigator: {},
+  files: {},
+  hotkeys: {},
 };
 
 /** Recursive key-order-insensitive comparison; returns mismatching paths. */
@@ -963,25 +977,26 @@ export async function runDesktopSmoke(): Promise<void> {
           (item) => item.textContent?.trim() === text,
         ) ?? null;
       (
-        await waitFor("Appearance tab", () => modalButton("Appearance & Theme"))
+        await waitFor("Appearance tab", () => modalButton("Appearance"))
       ).click();
       (await waitFor("Dark theme button", () => modalButton("Dark"))).click();
-      (
-        await waitFor("Vault & Storage tab", () =>
-          modalButton("Vault & Storage"),
-        )
-      ).click();
+      (await waitFor("General tab", () => modalButton("General"))).click();
       const configRow = await waitFor("config path row", () =>
         modal.querySelector<HTMLElement>('[data-testid="settings-config-row"]'),
       );
       const shownPath =
         configRow.querySelector(".vault-config-path")?.textContent ?? null;
+      (await waitFor("Files tab", () => modalButton("Files"))).click();
       const select = await waitFor("autosave select", () =>
-        Array.from(modal.querySelectorAll<HTMLSelectElement>("select")).find(
-          (item) =>
-            Array.from(item.options).some((option) => option.value === "1000"),
+        modal.querySelector<HTMLSelectElement>(
+          'select[aria-label="Autosave delay preset"]',
         ),
       );
+      if (
+        !Array.from(select.options).some((option) => option.value === "1000")
+      ) {
+        throw new Error("Autosave select has no 1000 ms option");
+      }
       const setSelect = Object.getOwnPropertyDescriptor(
         win.HTMLSelectElement.prototype,
         "value",
@@ -1028,7 +1043,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return {
         shownPath,
         method:
-          "Settings UI: Appearance > Dark, Vault & Storage > autosave select 1000",
+          "Settings UI: Appearance > Dark, General > config path, Files > autosave select 1000",
         commentsCheck:
           "no native file-read smoke helper; comments verified by the operator reading config.toml after the run",
       };
@@ -1124,6 +1139,145 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     });
 
+    await step("config-hotkey-key-roundtrip", async () => {
+      const key = "hotkeys.vault.newDrawing";
+      await call("update_config", { changes: [{ key, value: ["Mod+N"] }] });
+      const written = await call("load_settings");
+      const hotkeys = (written.config as Record<string, unknown> | null)
+        ?.hotkeys as Record<string, unknown> | undefined;
+      if (JSON.stringify(hotkeys?.["vault.newDrawing"]) !== '["Mod+N"]') {
+        throw new Error(
+          `hotkeys["vault.newDrawing"] not written: ${JSON.stringify(hotkeys)}`,
+        );
+      }
+      await call("update_config", { changes: [{ key, value: null }] });
+      const removed = await call("load_settings");
+      const after = (removed.config as Record<string, unknown> | null)
+        ?.hotkeys as Record<string, unknown> | undefined;
+      if (!after || Object.keys(after).length) {
+        throw new Error(
+          `hotkeys not empty after removal: ${JSON.stringify(after)}`,
+        );
+      }
+      if (removed.configError) {
+        throw new Error(
+          `config error after removal: ${JSON.stringify(removed.configError)}`,
+        );
+      }
+      // Let the config-change echo settle before the next step.
+      await delay(win, 600);
+      return { written: hotkeys, afterRemoval: after };
+    });
+
+    await step("vault-settings-roundtrip", async () => {
+      const handle = vault.handle;
+      const initial = await call("load_vault_settings", { handle });
+      if (initial.settingsError || JSON.stringify(initial.settings) !== "{}") {
+        throw new Error(
+          `Fresh vault settings are not {}: ${JSON.stringify(initial)}`,
+        );
+      }
+      const { listen } = await import("@tauri-apps/api/event");
+      let eventAt: number | null = null;
+      const off = await listen("vault-settings-change", (event) => {
+        const payload = event.payload as { handle?: string };
+        if (payload.handle === handle && eventAt === null) {
+          eventAt = win.performance.now();
+        }
+      });
+      const startedAt = win.performance.now();
+      let written: Awaited<ReturnType<Native["load_vault_settings"]>>;
+      try {
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "files.new_drawing_folder", value: "Inbox" }],
+        });
+        written = await call("load_vault_settings", { handle });
+        const files = written.settings?.files as
+          | Record<string, unknown>
+          | undefined;
+        if (files?.new_drawing_folder !== "Inbox") {
+          throw new Error(
+            `new_drawing_folder not written: ${JSON.stringify(written)}`,
+          );
+        }
+        await waitFor(
+          "vault-settings-change for this vault",
+          () => eventAt,
+          2000,
+        );
+      } finally {
+        off();
+      }
+      const eventLatencyMs = Math.round((eventAt ?? startedAt) - startedAt);
+      await call("update_vault_settings", {
+        handle,
+        changes: [{ key: "files.new_drawing_folder", value: null }],
+      });
+      const removed = await call("load_vault_settings", { handle });
+      const removedFiles = removed.settings?.files as
+        | Record<string, unknown>
+        | undefined;
+      if (
+        removed.settingsError ||
+        removedFiles?.new_drawing_folder !== undefined
+      ) {
+        throw new Error(
+          `new_drawing_folder not removed: ${JSON.stringify(removed)}`,
+        );
+      }
+      // Let the removal's watcher event settle before the next step.
+      await delay(win, 800);
+      return {
+        path: written.path,
+        initial: initial.settings,
+        written: written.settings,
+        afterRemoval: removed.settings,
+        eventLatencyMs,
+      };
+    });
+
+    await step("settings-cmd-comma", async () => {
+      if (doc.querySelector(".vault-settings-modal")) {
+        throw new Error("Settings modal already open before Cmd+,");
+      }
+      const event = new win.KeyboardEvent("keydown", {
+        key: ",",
+        code: "Comma",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      doc.dispatchEvent(event);
+      const modal = await waitFor(
+        "settings modal via Cmd+,",
+        () => doc.querySelector<HTMLElement>(".vault-settings-modal"),
+        3000,
+      );
+      const search = await waitFor("settings search field", () =>
+        modal.querySelector<HTMLInputElement>(".vault-settings-search__input"),
+      );
+      const searchFocused = await waitFor(
+        "settings search focused",
+        () => (doc.activeElement === search ? true : null),
+        2000,
+      ).catch(() => false);
+      (
+        await waitFor("Close Settings", () =>
+          modal.querySelector<HTMLButtonElement>(
+            '[aria-label="Close Settings"]',
+          ),
+        )
+      ).click();
+      await waitFor("settings modal closed", () =>
+        doc.querySelector(".vault-settings-modal") ? null : true,
+      );
+      return {
+        defaultPrevented: event.defaultPrevented,
+        searchFocused,
+      };
+    });
+
     // ---- Colour themes (personal/planning/themes.md "Final decisions") ----
     type Rgba = [number, number, number, number];
     const hexToRgb = (hex: string): Rgba => {
@@ -1211,7 +1365,7 @@ export async function runDesktopSmoke(): Promise<void> {
       (
         await waitFor("Appearance tab", () =>
           Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
-            (item) => item.textContent?.trim() === "Appearance & Theme",
+            (item) => item.textContent?.trim() === "Appearance",
           ),
         )
       ).click();
