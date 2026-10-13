@@ -51,6 +51,59 @@ describe("SettingsModal component and preference persistence", () => {
     expect(screen.getByText("Colour Theme")).toBeInTheDocument();
   });
 
+  it("lists Mode first, then Colour Theme, then the sync switch", () => {
+    render(
+      <SettingsModal
+        vault={mockVault}
+        onClose={vi.fn()}
+        ownerDocument={document}
+      />,
+    );
+    const mode = screen.getByText("Mode");
+    const colour = screen.getByText("Colour Theme");
+    const sync = screen.getByText("Sync canvas with theme");
+    const follows = (a: Element, b: Element) =>
+      !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(mode, colour)).toBe(true);
+    expect(follows(colour, sync)).toBe(true);
+  });
+
+  it("Escape clears the theme search first and closes Settings only after", () => {
+    const onClose = vi.fn();
+    render(
+      <SettingsModal
+        vault={mockVault}
+        onClose={onClose}
+        ownerDocument={document}
+      />,
+    );
+    const search = screen.getByRole("searchbox", {
+      name: "Search colour themes",
+    });
+    const all = screen.getAllByRole("radio").length;
+    const target = screen
+      .getAllByRole("radio")
+      [all - 1].getAttribute("aria-label")!;
+    const query = target.toUpperCase();
+    fireEvent.change(search, { target: { value: query } });
+    const matches = screen
+      .getAllByRole("radio")
+      .map((r) => r.getAttribute("aria-label")!);
+    expect(matches).toContain(target);
+    expect(matches.length).toBeLessThan(all);
+    for (const name of matches) {
+      expect(name.toUpperCase()).toContain(query);
+    }
+
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(search).toHaveValue("");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("radio")).toHaveLength(all);
+
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("updates and persists theme preference when toggling between themes", () => {
     const onClose = vi.fn();
     const onThemeChanged = vi.fn();

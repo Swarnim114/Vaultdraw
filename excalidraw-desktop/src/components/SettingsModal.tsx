@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getEditorDefaults,
@@ -83,7 +83,12 @@ export const SettingsModal = ({
     () => getPreferences(win).syncCanvas,
   );
   const [themesAction, setThemesAction] = useState<string | null>(null);
-  const registry = themeRegistry ?? getThemeRegistry();
+  // Stable between renders: getThemeRegistry() without a cache builds new
+  // entries each call, which would defeat the picker's memoised cards.
+  const registry = useMemo(
+    () => themeRegistry ?? getThemeRegistry(),
+    [themeRegistry],
+  );
   const selection = resolveSelectedTheme(registry, colorTheme);
   const userThemeProblems = registry.fileProblems;
   const [defaults, setDefaultsState] = useState(() => getEditorDefaults(win));
@@ -171,7 +176,9 @@ export const SettingsModal = ({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      // A control that handled Escape itself (e.g. clearing the theme
+      // search) marks it handled; it must not close Settings too.
+      if (e.key === "Escape" && !e.defaultPrevented) {
         e.preventDefault();
         onClose();
       }
@@ -196,8 +203,10 @@ export const SettingsModal = ({
   };
 
   const handleColorThemeChange = (entry: ThemeEntry) => {
-    setColorThemeState(entry.key);
-    updatePreferences({ colorTheme: entry.key }, win);
+    // summary.key is the value stored in appearance.theme.
+    const { key } = entry.summary;
+    setColorThemeState(key);
+    updatePreferences({ colorTheme: key }, win);
     onAppearanceChanged?.();
   };
 
@@ -394,6 +403,35 @@ export const SettingsModal = ({
             {/* 1. APPEARANCE TAB */}
             {activeTab === "appearance" && (
               <div className="vault-settings-section">
+                <div className="vault-setting-row">
+                  <div className="vault-setting-info">
+                    <div className="vault-setting-label">Mode</div>
+                    <div className="vault-setting-desc">
+                      Light, dark, or follow the system appearance.
+                    </div>
+                  </div>
+                  <div className="vault-segmented-control">
+                    {[
+                      { key: "system", label: "Match System" },
+                      { key: "light", label: "Light" },
+                      { key: "dark", label: "Dark" },
+                    ].map((t) => (
+                      <button
+                        key={t.key}
+                        type="button"
+                        className={`vault-segmented-btn ${
+                          currentTheme === t.key
+                            ? "vault-segmented-btn--active"
+                            : ""
+                        }`}
+                        onClick={() => handleThemeChange(t.key as VaultTheme)}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div
                   className="vault-setting-block"
                   data-testid="settings-theme"
@@ -436,35 +474,6 @@ export const SettingsModal = ({
                       {registry.loadError}
                     </div>
                   )}
-                </div>
-
-                <div className="vault-setting-row">
-                  <div className="vault-setting-info">
-                    <div className="vault-setting-label">Mode</div>
-                    <div className="vault-setting-desc">
-                      Light, dark, or follow the system appearance.
-                    </div>
-                  </div>
-                  <div className="vault-segmented-control">
-                    {[
-                      { key: "system", label: "Match System" },
-                      { key: "light", label: "Light" },
-                      { key: "dark", label: "Dark" },
-                    ].map((t) => (
-                      <button
-                        key={t.key}
-                        type="button"
-                        className={`vault-segmented-btn ${
-                          currentTheme === t.key
-                            ? "vault-segmented-btn--active"
-                            : ""
-                        }`}
-                        onClick={() => handleThemeChange(t.key as VaultTheme)}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="vault-setting-row">
