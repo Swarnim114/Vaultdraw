@@ -9,9 +9,7 @@ import {
   getNavigatorCollapsed,
   getPreferences,
   getRecentVaults,
-  getTheme,
   removeRecentVault,
-  resolveTheme,
   setExpandedFolders as saveExpandedFolders,
   setNavigatorCollapsed as saveNavigatorCollapsed,
   setTheme,
@@ -31,6 +29,7 @@ import {
   scanVaultMetadata,
 } from "./vault/treeStore";
 import { useVaultDocument } from "./vault/useVaultDocument";
+import { useAppearance } from "./vault/useAppearance";
 import VaultEditor from "./editor/VaultEditor";
 import { VaultHeader } from "./components/VaultHeader";
 import { VaultNavigator } from "./components/VaultNavigator";
@@ -105,77 +104,43 @@ export const VaultApp = ({
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [appTheme, setAppTheme] = useState<"light" | "dark">(() => {
-    return resolveTheme(getTheme(win), win);
-  });
+  // Colour theme + mode: tokens, html.dark, canvas sync (see useAppearance).
+  const appearance = useAppearance(doc, win);
+  const { refresh: refreshAppearance } = appearance;
+  const appTheme = appearance.snapshot.mode;
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
       setTheme(newTheme, win);
-      const resolved = resolveTheme(newTheme, win);
-      setAppTheme(resolved);
-      doc?.documentElement.classList.toggle("dark", resolved === "dark");
+      refreshAppearance();
     },
-    [doc, win],
+    [win, refreshAppearance],
   );
 
-  useEffect(() => {
-    if (doc) {
-      doc.documentElement.classList.toggle("dark", appTheme === "dark");
-    }
-  }, [doc, appTheme]);
-
-  useEffect(() => {
-    if (!win) {
-      return;
-    }
-    const media = win.matchMedia("(prefers-color-scheme: dark)");
-    const handleMediaChange = () => {
-      const prefTheme = getTheme(win);
-      if (prefTheme === "system") {
-        const resolved = resolveTheme("system", win);
-        setAppTheme(resolved);
-        doc?.documentElement.classList.toggle("dark", resolved === "dark");
-      }
-    };
-    try {
-      media.addEventListener("change", handleMediaChange);
-      return () => media.removeEventListener("change", handleMediaChange);
-    } catch {
-      media.addListener(handleMediaChange);
-      return () => media.removeListener(handleMediaChange);
-    }
-  }, [win, doc]);
-
   // Live config folder sync: config.toml edits (by hand or another window)
-  // reload preferences; re-render so theme, autosave delay and defaults
-  // follow. Settings problems (parse errors, invalid values, failed writes)
-  // reuse the global alert banner.
+  // reload preferences; re-render so autosave delay and defaults follow
+  // (useAppearance re-applies the theme itself).
   const [, setPreferencesVersion] = useState(0);
-  const settingsAlertRef = useRef<string | null>(null);
+  // Settings and theme problems get their own persistent banner: unrelated
+  // setGlobalAlert(null) calls must not hide a still-broken config.
+  const [settingsProblems, setSettingsProblems] = useState<string[]>(() =>
+    getSettingsStatus().problems.map((p) => p.message),
+  );
+  const [dismissedProblem, setDismissedProblem] = useState<string | null>(null);
 
   useEffect(() => {
     if (!win) {
       return;
     }
     const showSettingsStatus = (settingsStatus: SettingsStatus) => {
-      const [first, ...rest] = settingsStatus.problems;
-      if (first) {
-        const message = rest.length
-          ? `${first.message} (and ${rest.length} more)`
-          : first.message;
-        settingsAlertRef.current = message;
-        setGlobalAlert({ message, type: "error" });
-      } else if (settingsAlertRef.current) {
-        const stale = settingsAlertRef.current;
-        settingsAlertRef.current = null;
-        setGlobalAlert((prev) => (prev?.message === stale ? null : prev));
-      }
+      const next = settingsStatus.problems.map((p) => p.message);
+      setSettingsProblems((prev) =>
+        prev.length === next.length && prev.every((m, i) => m === next[i])
+          ? prev
+          : next,
+      );
     };
     const handlePreferencesChanged = () => {
-      const resolved = resolveTheme(getTheme(win), win);
-      setAppTheme(resolved);
-      doc?.documentElement.classList.toggle("dark", resolved === "dark");
       setNavigatorCollapsed(getNavigatorCollapsed(win));
       setPreferencesVersion((v) => v + 1);
     };
@@ -193,7 +158,26 @@ export const VaultApp = ({
       );
       win.removeEventListener(SETTINGS_STATUS_EVENT, handleStatus);
     };
-  }, [win, doc]);
+  }, [win]);
+
+  const allProblems = [
+    ...settingsProblems,
+    ...(appearance.snapshot.problem ? [appearance.snapshot.problem] : []),
+    ...(appearance.registry.loadError ? [appearance.registry.loadError] : []),
+  ];
+  const problemText = allProblems.length
+    ? allProblems.length > 1
+      ? `${allProblems[0]} (and ${allProblems.length - 1} more)`
+      : allProblems[0]
+    : null;
+  const visibleProblem =
+    problemText && problemText !== dismissedProblem ? problemText : null;
+  // Once fixed, the same problem coming back is shown again.
+  useEffect(() => {
+    if (!problemText) {
+      setDismissedProblem(null);
+    }
+  }, [problemText]);
 
   // Refs for tracking active lifecycle, generations, and loaded folders
   const vaultRef = useRef<VaultInfo | null>(vault);
@@ -1026,6 +1010,23 @@ export const VaultApp = ({
         ref={setRootNode}
         className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
       >
+        {visibleProblem && (
+          <div
+            className="vault-global-alert vault-settings-alert"
+            role="alert"
+            data-testid="settings-problem-banner"
+          >
+            <span>{visibleProblem}</span>
+            <button
+              type="button"
+              className="vault-btn vault-btn--ghost vault-btn--icon"
+              onClick={() => setDismissedProblem(problemText)}
+              aria-label="Dismiss settings problem"
+            >
+              <IconClose />
+            </button>
+          </div>
+        )}
         <Onboarding
           recentVaults={recentVaults}
           lastVaultPath={lastVaultPath}
@@ -1101,6 +1102,23 @@ export const VaultApp = ({
       ref={setRootNode}
       className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
     >
+      {visibleProblem && (
+        <div
+          className="vault-global-alert vault-settings-alert"
+          role="alert"
+          data-testid="settings-problem-banner"
+        >
+          <span>{visibleProblem}</span>
+          <button
+            type="button"
+            className="vault-btn vault-btn--ghost vault-btn--icon"
+            onClick={() => setDismissedProblem(problemText)}
+            aria-label="Dismiss settings problem"
+          >
+            <IconClose />
+          </button>
+        </div>
+      )}
       {globalAlert && (
         <div
           className="vault-global-alert"
@@ -1289,9 +1307,8 @@ export const VaultApp = ({
         <SettingsModal
           vault={vault}
           onClose={() => setShowSettingsModal(false)}
-          onThemeChanged={(newTheme) => {
-            setAppTheme(newTheme);
-          }}
+          onAppearanceChanged={refreshAppearance}
+          themeRegistry={appearance.registry}
           onRevealVault={(path) => {
             void handleRevealEntry(path);
           }}

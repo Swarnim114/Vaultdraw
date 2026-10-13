@@ -24,6 +24,9 @@
   --vault-primary-active: #4a47b1;
   --vault-primary-light: #f1f0ff;
   --vault-primary-border: #d0ceff;
+  /* Text/icons on primary buttons (themes derive a readable one). */
+  --vault-on-primary: #ffffff;
+  --vault-on-danger: #ffffff;
 
   --vault-success: #1b8a3e;
   --vault-success-bg: #eaf8ee;
@@ -66,6 +69,8 @@ html.dark {
   --vault-primary-active: #7875e8;
   --vault-primary-light: #242338;
   --vault-primary-border: #444275;
+  --vault-on-primary: #ffffff;
+  --vault-on-danger: #ffffff;
 
   --vault-success: #4ecb71;
   --vault-success-bg: #132b1a;
@@ -416,7 +421,7 @@ button.vault-status:hover:not(:disabled) {
 
 .vault-btn--primary {
   background-color: var(--vault-primary);
-  color: #ffffff;
+  color: var(--vault-on-primary);
   border-color: var(--vault-primary);
 }
 
@@ -432,7 +437,7 @@ button.vault-status:hover:not(:disabled) {
 
 .vault-btn--danger {
   background-color: var(--vault-danger);
-  color: #ffffff;
+  color: var(--vault-on-danger);
   border-color: var(--vault-danger);
 }
 
@@ -1479,4 +1484,259 @@ button.vault-status:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 50%;
+}
+
+/* Settings/theme problems: persistent, separate from the transient alert */
+.vault-settings-alert {
+  background-color: var(--vault-warning-bg);
+  border-bottom-color: var(--vault-warning-border);
+  color: var(--vault-warning);
+}
+
+/* Settings -> Appearance: colour theme picker */
+.vault-setting-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  background-color: var(--vault-surface);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+}
+
+.vault-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.vault-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  background-color: var(--vault-bg);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+  color: var(--vault-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.vault-theme-card:hover {
+  border-color: var(--vault-border-strong);
+}
+
+.vault-theme-card:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 1px;
+}
+
+.vault-theme-card--selected,
+.vault-theme-card--selected:hover {
+  border-color: var(--vault-primary);
+  box-shadow: 0 0 0 1px var(--vault-primary);
+}
+
+.vault-theme-card__preview {
+  display: flex;
+  height: 58px;
+  border-radius: var(--vault-radius-sm);
+  overflow: hidden;
+  /* keeps a near-background half visible against the card */
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.18);
+}
+
+.vault-theme-card__half {
+  position: relative;
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 7px 7px;
+  min-width: 0;
+}
+
+.vault-theme-card__bar {
+  height: 9px;
+  margin: 0 -7px 2px;
+}
+
+.vault-theme-card__line {
+  height: 3px;
+  width: 70%;
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+.vault-theme-card__line--short {
+  width: 45%;
+}
+
+.vault-theme-card__swatches {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: auto;
+}
+
+.vault-theme-card__pill {
+  width: 14px;
+  height: 7px;
+  border-radius: 4px;
+}
+
+.vault-theme-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.vault-theme-card__auto {
+  position: absolute;
+  top: 12px;
+  right: 4px;
+  padding: 0 4px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  opacity: 0.9;
+}
+
+.vault-theme-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.vault-theme-card__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-theme-card--selected .vault-theme-card__name {
+  color: var(--vault-primary);
+}
+
+.vault-theme-card__tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  color: var(--vault-text-faint);
+}
+
+.vault-theme-card__warning {
+  padding: 0 2px;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--vault-warning);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-theme-problem {
+  font-size: 0.76rem;
+  color: var(--vault-warning);
+}
+
+.vault-theme-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  user-select: text;
+}
+
+.vault-theme-problems__item--error {
+  color: var(--vault-danger);
+}
+
+.vault-theme-problems__item--warning {
+  color: var(--vault-warning);
+}
+
+/* Switch (checkbox role="switch") */
+.vault-switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.vault-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.vault-switch__track {
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background-color: var(--vault-border-strong);
+  transition: background-color 0.15s ease;
+}
+
+.vault-switch__thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--vault-menu-bg);
+  box-shadow: var(--vault-shadow-sm);
+  transition: transform 0.15s ease;
+}
+
+.vault-switch input:checked + .vault-switch__track {
+  background-color: var(--vault-primary);
+}
+
+.vault-switch input:checked + .vault-switch__track .vault-switch__thumb {
+  transform: translateX(14px);
+  background-color: var(--vault-on-primary);
+}
+
+.vault-switch input:focus-visible + .vault-switch__track {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 2px;
+}
+
+.vault-fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.vault-setting-row--disabled .vault-fieldset {
+  opacity: 0.45;
+}
+
+.vault-fieldset:disabled .vault-color-swatch,
+.vault-fieldset:disabled .vault-color-input {
+  cursor: not-allowed;
+  transform: none;
 }

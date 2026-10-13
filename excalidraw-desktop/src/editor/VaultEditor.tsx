@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  CaptureUpdateAction,
   Excalidraw,
   exportToBlob,
   exportToSvg,
@@ -10,17 +11,18 @@ import {
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
 
-import type {
-  BinaryFiles,
-  ExcalidrawImperativeAPI,
-} from "@excalidraw/excalidraw/types";
-
 import {
   ExportImageIcon,
   saveAs,
   settingsIcon,
 } from "@excalidraw/excalidraw/components/icons";
 
+import type {
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+
+import { registerCanvasRepaint, withStandardCanvasColors } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
 
 import type { FlushOptions } from "./editorFlush";
@@ -115,6 +117,8 @@ const VaultEditorComponent = ({
       setEditorError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
     }
+    // documentId: a new document must load fresh even with identical JSON.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialJson, documentId]);
 
   const commitTextEditing = useCallback(() => {
@@ -167,6 +171,25 @@ const VaultEditorComponent = ({
   useEffect(
     () => registerEditorFlush(documentId, flushImmediate),
     [documentId, flushImmediate],
+  );
+
+  // Canvas sync: the display colour transform changed (theme, mode, sync
+  // toggle, export). Element caches invalidate on the next render, so force
+  // one by re-committing the same elements (no history entry, no save: the
+  // scene version is unchanged).
+  useEffect(
+    () =>
+      registerCanvasRepaint(() => {
+        const api = apiRef.current;
+        if (!api || !ready.current) {
+          return;
+        }
+        api.updateScene({
+          elements: api.getSceneElementsIncludingDeleted(),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }),
+    [documentId],
   );
 
   useEffect(() => {
@@ -256,24 +279,24 @@ const VaultEditorComponent = ({
     const baseName = name.replace(/\.excalidraw$/i, "") || "Drawing";
     setExporting(true);
     try {
-      let suffix: string;
-      let blob: Blob;
-      if (format === "excalidraw") {
-        suffix = "excalidraw";
-        blob = new ownerDocument.defaultView!.Blob(
-          [serializeAsJSON(elements, appState, files, "local")],
-          { type: "application/json" },
-        );
-      } else if (format === "png") {
-        suffix = "png";
-        blob = await exportToBlob({
-          elements,
-          appState,
-          files,
-          mimeType: "image/png",
-        });
-      } else {
-        suffix = "svg";
+      const suffix = format;
+      // Exports must contain the drawing's real colours, never the theme's
+      // on-screen canvas sync colours (the transform is global).
+      const blob = await withStandardCanvasColors(async (): Promise<Blob> => {
+        if (format === "excalidraw") {
+          return new ownerDocument.defaultView!.Blob(
+            [serializeAsJSON(elements, appState, files, "local")],
+            { type: "application/json" },
+          );
+        }
+        if (format === "png") {
+          return exportToBlob({
+            elements,
+            appState,
+            files,
+            mimeType: "image/png",
+          });
+        }
         const svg = await exportToSvg({
           elements,
           appState,
@@ -281,11 +304,11 @@ const VaultEditorComponent = ({
           renderEmbeddables: false,
         });
         const Serializer = ownerDocument.defaultView!.XMLSerializer;
-        blob = new ownerDocument.defaultView!.Blob(
+        return new ownerDocument.defaultView!.Blob(
           [new Serializer().serializeToString(svg)],
           { type: "image/svg+xml" },
         );
-      }
+      });
       const bytes = new Uint8Array(await blob.arrayBuffer());
       await exportRef.current(`${baseName}.${suffix}`, bytes);
       setEditorError(null);

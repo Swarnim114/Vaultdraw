@@ -47,7 +47,8 @@ describe("SettingsModal component and preference persistence", () => {
       screen.getByRole("tab", { name: /vault & storage/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /about/i })).toBeInTheDocument();
-    expect(screen.getByText("Theme Mode")).toBeInTheDocument();
+    expect(screen.getByText("Mode")).toBeInTheDocument();
+    expect(screen.getByText("Colour Theme")).toBeInTheDocument();
   });
 
   it("updates and persists theme preference when toggling between themes", () => {

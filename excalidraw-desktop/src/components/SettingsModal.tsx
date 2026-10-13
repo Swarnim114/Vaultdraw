@@ -8,6 +8,7 @@ import {
   setAutosaveDelayMs,
   setEditorDefaults,
   setTheme,
+  updatePreferences,
   type VaultTheme,
 } from "../vault/preferences";
 import {
@@ -18,7 +19,16 @@ import {
   SETTINGS_STATUS_EVENT,
 } from "../vault/settingsSync";
 
+import {
+  getThemeRegistry,
+  openThemesDir,
+  resolveSelectedTheme,
+  type ThemeEntry,
+  type ThemeRegistry,
+} from "../theme/registry";
+
 import { IconClose, IconDrawing, IconFolder, IconSettings } from "./Icons";
+import { ThemePicker } from "./ThemePicker";
 
 import type { VaultInfo } from "../vault/types";
 
@@ -26,6 +36,10 @@ export interface SettingsModalProps {
   vault: VaultInfo | null;
   onClose: () => void;
   onThemeChanged?: (resolvedTheme: "light" | "dark") => void;
+  /** Colour theme, mode or canvas sync changed (re-apply the appearance). */
+  onAppearanceChanged?: () => void;
+  /** Built-in + user themes; defaults to the cached registry. */
+  themeRegistry?: ThemeRegistry;
   onRevealVault?: (path: string) => void;
   ownerDocument?: Document | null;
 }
@@ -46,6 +60,8 @@ export const SettingsModal = ({
   vault,
   onClose,
   onThemeChanged,
+  onAppearanceChanged,
+  themeRegistry,
   onRevealVault,
   ownerDocument,
 }: SettingsModalProps) => {
@@ -60,6 +76,16 @@ export const SettingsModal = ({
   const [currentTheme, setCurrentThemeState] = useState<VaultTheme>(() =>
     getTheme(win),
   );
+  const [colorTheme, setColorThemeState] = useState(
+    () => getPreferences(win).colorTheme,
+  );
+  const [syncCanvas, setSyncCanvasState] = useState(
+    () => getPreferences(win).syncCanvas,
+  );
+  const [themesAction, setThemesAction] = useState<string | null>(null);
+  const registry = themeRegistry ?? getThemeRegistry();
+  const selection = resolveSelectedTheme(registry, colorTheme);
+  const userThemeProblems = registry.fileProblems;
   const [defaults, setDefaultsState] = useState(() => getEditorDefaults(win));
   const [autosaveDelay, setAutosaveDelayState] = useState(
     () => getPreferences(win).autosaveDelayMs,
@@ -79,6 +105,8 @@ export const SettingsModal = ({
     const handlePreferencesChanged = () => {
       const prefs = getPreferences(win);
       setCurrentThemeState(prefs.theme);
+      setColorThemeState(prefs.colorTheme);
+      setSyncCanvasState(prefs.syncCanvas);
       setDefaultsState(getEditorDefaults(win));
       setAutosaveDelayState(prefs.autosaveDelayMs);
     };
@@ -164,6 +192,32 @@ export const SettingsModal = ({
       targetDoc.documentElement.classList.toggle("dark", resolved === "dark");
     }
     onThemeChanged?.(resolved);
+    onAppearanceChanged?.();
+  };
+
+  const handleColorThemeChange = (entry: ThemeEntry) => {
+    setColorThemeState(entry.key);
+    updatePreferences({ colorTheme: entry.key }, win);
+    onAppearanceChanged?.();
+  };
+
+  const handleSyncCanvasChange = (next: boolean) => {
+    setSyncCanvasState(next);
+    updatePreferences({ syncCanvas: next }, win);
+    onAppearanceChanged?.();
+  };
+
+  const handleOpenThemesDir = async () => {
+    setThemesAction(null);
+    try {
+      await openThemesDir();
+    } catch (err) {
+      setThemesAction(
+        `Could not open the themes folder: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   };
 
   const handleUpdateDefaults = (
@@ -340,11 +394,55 @@ export const SettingsModal = ({
             {/* 1. APPEARANCE TAB */}
             {activeTab === "appearance" && (
               <div className="vault-settings-section">
+                <div
+                  className="vault-setting-block"
+                  data-testid="settings-theme"
+                >
+                  <div className="vault-setting-info">
+                    <div className="vault-setting-label">Colour Theme</div>
+                    <div className="vault-setting-desc">
+                      Colours for the whole app. Every theme works in light and
+                      dark mode.
+                    </div>
+                  </div>
+                  <ThemePicker
+                    themes={registry.themes}
+                    selectedKey={selection.entry.key}
+                    onSelect={handleColorThemeChange}
+                  />
+                  {selection.problem && (
+                    <div className="vault-theme-problem" role="status">
+                      {selection.problem}
+                    </div>
+                  )}
+                  {userThemeProblems.length > 0 && (
+                    <ul
+                      className="vault-theme-problems"
+                      aria-label="Theme file problems"
+                    >
+                      {userThemeProblems.map((p) => (
+                        <li
+                          key={`${p.path}:${p.message}`}
+                          className={`vault-theme-problems__item vault-theme-problems__item--${p.kind}`}
+                          title={p.path}
+                        >
+                          {p.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {registry.loadError && (
+                    <div className="vault-theme-problem" role="status">
+                      {registry.loadError}
+                    </div>
+                  )}
+                </div>
+
                 <div className="vault-setting-row">
                   <div className="vault-setting-info">
-                    <div className="vault-setting-label">Theme Mode</div>
+                    <div className="vault-setting-label">Mode</div>
                     <div className="vault-setting-desc">
-                      Choose canvas and interface theme with instant preview.
+                      Light, dark, or follow the system appearance.
                     </div>
                   </div>
                   <div className="vault-segmented-control">
@@ -371,14 +469,53 @@ export const SettingsModal = ({
 
                 <div className="vault-setting-row">
                   <div className="vault-setting-info">
+                    <label
+                      className="vault-setting-label"
+                      htmlFor="vault-sync-canvas"
+                    >
+                      Sync canvas with theme
+                    </label>
+                    <div className="vault-setting-desc">
+                      Shows the canvas and palette colours in the theme&apos;s
+                      colours. On screen only: files and exports keep standard
+                      colours.
+                    </div>
+                  </div>
+                  <label className="vault-switch">
+                    <input
+                      id="vault-sync-canvas"
+                      type="checkbox"
+                      role="switch"
+                      checked={syncCanvas}
+                      aria-checked={syncCanvas}
+                      onChange={(e) => handleSyncCanvasChange(e.target.checked)}
+                    />
+                    <span className="vault-switch__track" aria-hidden="true">
+                      <span className="vault-switch__thumb" />
+                    </span>
+                  </label>
+                </div>
+
+                <div
+                  className={`vault-setting-row ${
+                    syncCanvas ? "vault-setting-row--disabled" : ""
+                  }`}
+                  data-testid="settings-canvas-background"
+                >
+                  <div className="vault-setting-info">
                     <div className="vault-setting-label">
                       Default Canvas Background
                     </div>
                     <div className="vault-setting-desc">
-                      Background color applied to newly created drawings.
+                      {syncCanvas
+                        ? "The canvas follows the theme while sync is on."
+                        : "Background color applied to newly created drawings."}
                     </div>
                   </div>
-                  <div className="vault-color-options">
+                  <fieldset
+                    className="vault-color-options vault-fieldset"
+                    disabled={syncCanvas}
+                  >
                     {canvasBgColors.map((color) => (
                       <button
                         key={color}
@@ -410,8 +547,39 @@ export const SettingsModal = ({
                       }
                       title="Custom canvas background color"
                     />
-                  </div>
+                  </fieldset>
                 </div>
+
+                {registry.mode === "tauri" && (
+                  <div
+                    className="vault-setting-row"
+                    data-testid="themes-folder"
+                  >
+                    <div className="vault-setting-info">
+                      <div className="vault-setting-label">Themes Folder</div>
+                      <div className="vault-setting-desc">
+                        Drop Noctalia palettes (.json) here; they appear above
+                        automatically.
+                      </div>
+                      {themesAction && (
+                        <div
+                          className="vault-config-status vault-config-status--error"
+                          role="status"
+                        >
+                          {themesAction}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="vault-btn vault-btn--sm"
+                      onClick={() => void handleOpenThemesDir()}
+                    >
+                      <IconFolder />
+                      <span>Open themes folder</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

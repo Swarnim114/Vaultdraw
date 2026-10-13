@@ -22,14 +22,16 @@ body {
 
 body {
   font-family: "Assistant", system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: var(--island-bg, #ffffff);
-  color: var(--text-primary, #1e1e1e);
+  /* --vault-* come from the active colour theme (inline on <html>) or
+     VaultShell.css; the fallbacks cover the moment before either loads. */
+  background: var(--vault-bg, #ffffff);
+  color: var(--vault-text, #1e1e1e);
   -webkit-font-smoothing: antialiased;
 }
 
 html.dark body {
-  background: #121212;
-  color: #e9e9e9;
+  background: var(--vault-bg, #121212);
+  color: var(--vault-text, #e9e9e9);
 }
 
 #root {

@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { getTheme, resolveTheme } from "./vault/preferences";
+import { getPreferences, getTheme, resolveTheme } from "./vault/preferences";
 import { initSettings } from "./vault/settingsSync";
 
 import "./desktop.css";
@@ -46,11 +46,27 @@ if (ownerWindow.matchMedia("(prefers-color-scheme: dark)").matches) {
 // render so every synchronous preferences read sees config.toml values.
 // initSettings never throws; in a plain browser it keeps localStorage.
 void initSettings(ownerWindow)
-  .then(() => {
+  .then(async () => {
     ownerDocument.documentElement.classList.toggle(
       "dark",
       resolveTheme(getTheme(ownerWindow), ownerWindow) === "dark",
     );
+    // Colour theme before the first render (no flash of the default look).
+    // Never fatal: a broken theme setup falls back to the stock look.
+    try {
+      const [{ loadThemeRegistry }, { applyAppearance, computeAppearance }] =
+        await Promise.all([
+          import("./theme/registry"),
+          import("./vault/appearance"),
+        ]);
+      const registry = await loadThemeRegistry(ownerWindow);
+      applyAppearance(
+        ownerDocument,
+        computeAppearance(getPreferences(ownerWindow), registry, ownerWindow),
+      );
+    } catch {
+      // VaultApp retries through useAppearance.
+    }
     return import("./VaultApp");
   })
   .then(({ default: VaultApp }) => {
