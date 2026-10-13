@@ -69,7 +69,7 @@ autosave_delay_ms = 500
 # sort = "name_asc"
 
 [files]
-# Folder for new drawings, relative to the vault root ("" = vault root)
+# Folder for new drawings, relative to the vault root (empty = next to the open drawing)
 # new_drawing_folder = ""
 
 [hotkeys]
@@ -976,7 +976,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            out.contains("[interface]\n# Whole-app zoom in percent (Cmd+Shift +/-/0)\nzoom = 125\n\n[navigator]\n# name_asc | name_desc | modified_desc | modified_asc\nsort = \"modified_desc\"\n\n[files]\n# Folder for new drawings, relative to the vault root (\"\" = vault root)\nnew_drawing_folder = \"Inbox\"\n\n[hotkeys]\n"),
+            out.contains("[interface]\n# Whole-app zoom in percent (Cmd+Shift +/-/0)\nzoom = 125\n\n[navigator]\n# name_asc | name_desc | modified_desc | modified_asc\nsort = \"modified_desc\"\n\n[files]\n# Folder for new drawings, relative to the vault root (empty = next to the open drawing)\nnew_drawing_folder = \"Inbox\"\n\n[hotkeys]\n"),
             "{out}"
         );
         assert_eq!(out.matches("[interface]").count(), 1);
