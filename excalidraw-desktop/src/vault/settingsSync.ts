@@ -9,9 +9,12 @@
  * harness, Vitest without injected deps) nothing here touches Tauri and
  * preferences.ts keeps its localStorage behaviour.
  */
+import { isSortOrder, SORT_ORDERS } from "./sortOrder";
 import { isTauriAvailable } from "./DesktopVaultRepository";
 import {
   attachPreferencesStore,
+  MAX_ZOOM,
+  MIN_ZOOM,
   DEFAULT_PREFERENCES,
   detachPreferencesStore,
   getPreferences,
@@ -105,7 +108,12 @@ type ConfigField =
   | "defaultFillStyle"
   | "defaultStrokeWidth"
   | "defaultRoughness"
-  | "autosaveDelayMs";
+  | "autosaveDelayMs"
+  | "accentColor"
+  | "zoom"
+  | "confirmDelete"
+  | "navigatorSort"
+  | "newDrawingFolder";
 
 interface ConfigMapping {
   field: ConfigField;
@@ -126,6 +134,30 @@ const isColor = (v: unknown) => typeof v === "string" && COLOR_RE.test(v);
 const isInt = (v: unknown) => typeof v === "number" && Number.isInteger(v);
 const isPositive = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1000;
+
+const ACCENT_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/**
+ * A folder inside the vault: relative, "/"-separated, no "." or ".." parts,
+ * no backslash, drive letter or reserved metadata folder. "" = unset.
+ * The native side validates again when the folder is created.
+ */
+export const isVaultRelativeFolder = (v: unknown): v is string =>
+  typeof v === "string" &&
+  v.length <= 1024 &&
+  !v.includes("\\") &&
+  !v.includes("\0") &&
+  !v.startsWith("/") &&
+  !/^[a-z]:/i.test(v) &&
+  v
+    .split("/")
+    .every(
+      (part, i, all) =>
+        (part === "" ? all.length === 1 && i === 0 : true) &&
+        part !== "." &&
+        part !== ".." &&
+        part.toLowerCase() !== ".excalidraw-vault",
+    );
 
 export const CONFIG_MAPPING: readonly ConfigMapping[] = [
   {
@@ -201,6 +233,37 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
     key: "saving.autosave_delay_ms",
     expected: "an integer between 0 and 600000",
     valid: (v) => isInt(v) && (v as number) >= 0 && (v as number) <= 600000,
+  },
+  {
+    field: "accentColor",
+    key: "appearance.accent_color",
+    expected: 'a colour like "#6965db", or "" for the theme\'s own',
+    valid: (v) => v === "" || (typeof v === "string" && ACCENT_RE.test(v)),
+  },
+  {
+    field: "zoom",
+    key: "interface.zoom",
+    expected: `a whole number between ${MIN_ZOOM} and ${MAX_ZOOM} (percent)`,
+    valid: (v) =>
+      isInt(v) && (v as number) >= MIN_ZOOM && (v as number) <= MAX_ZOOM,
+  },
+  {
+    field: "confirmDelete",
+    key: "files.confirm_delete",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "navigatorSort",
+    key: "navigator.sort",
+    expected: SORT_ORDERS.map((s) => `"${s}"`).join(", "),
+    valid: isSortOrder,
+  },
+  {
+    field: "newDrawingFolder",
+    key: "files.new_drawing_folder",
+    expected: 'a folder path inside the vault like "Sketches/Inbox", or ""',
+    valid: isVaultRelativeFolder,
   },
 ];
 

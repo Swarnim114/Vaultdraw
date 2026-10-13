@@ -1,0 +1,61 @@
+/**
+ * Navigator sort order: the value type, labels and the comparator. Pure data
+ * and functions (no React, no preferences) so the settings schema, the tree
+ * builder and tests share one definition.
+ */
+import type { VaultEntry } from "./types";
+
+export const SORT_ORDERS = [
+  "name_asc",
+  "name_desc",
+  "modified_desc",
+  "modified_asc",
+] as const;
+
+export type SortOrder = typeof SORT_ORDERS[number];
+
+export const DEFAULT_SORT_ORDER: SortOrder = "name_asc";
+
+export const isSortOrder = (value: unknown): value is SortOrder =>
+  typeof value === "string" &&
+  (SORT_ORDERS as readonly string[]).includes(value);
+
+export const SORT_LABELS: Record<SortOrder, string> = {
+  name_asc: "Name (A to Z)",
+  name_desc: "Name (Z to A)",
+  modified_desc: "Modified (new to old)",
+  modified_asc: "Modified (old to new)",
+};
+
+// One collator: numeric so "Drawing 2" sorts before "Drawing 10".
+const collator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+/** Folders always come first; `order` applies within folders and drawings. */
+export const compareEntries = (
+  a: Pick<VaultEntry, "kind" | "name" | "modifiedAt">,
+  b: Pick<VaultEntry, "kind" | "name" | "modifiedAt">,
+  order: SortOrder,
+): number => {
+  if (a.kind !== b.kind) {
+    return a.kind === "folder" ? -1 : 1;
+  }
+  switch (order) {
+    case "name_desc":
+      return collator.compare(b.name, a.name);
+    case "modified_desc":
+      return b.modifiedAt - a.modifiedAt || collator.compare(a.name, b.name);
+    case "modified_asc":
+      return a.modifiedAt - b.modifiedAt || collator.compare(a.name, b.name);
+    default:
+      return collator.compare(a.name, b.name);
+  }
+};
+
+/** A sorted copy (the input is never mutated). */
+export const sortEntries = (
+  entries: readonly VaultEntry[],
+  order: SortOrder,
+): VaultEntry[] => [...entries].sort((a, b) => compareEntries(a, b, order));

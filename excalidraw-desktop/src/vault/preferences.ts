@@ -1,3 +1,5 @@
+import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from "./sortOrder";
+
 export type VaultTheme = "light" | "dark" | "system";
 
 export interface VaultPreferences {
@@ -20,6 +22,16 @@ export interface VaultPreferences {
   defaultRoughness: number;
   autosaveDelayMs: number;
   defaultCanvasBackground?: string;
+  /** Replaces the theme's primary colour ("#rrggbb"); "" = the theme's own. */
+  accentColor: string;
+  /** Whole-window zoom in percent (webview zoom), 50 to 200. */
+  zoom: number;
+  /** Ask before moving a file or folder to the OS Trash. */
+  confirmDelete: boolean;
+  /** Global navigator sort order; a vault's settings.toml may override it. */
+  navigatorSort: SortOrder;
+  /** Folder for new drawings, relative to the vault root ("" = unset). A vault's settings.toml may override it. */
+  newDrawingFolder: string;
 }
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
@@ -45,7 +57,15 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   defaultRoughness: 1,
   autosaveDelayMs: 500,
   defaultCanvasBackground: "#ffffff",
+  accentColor: "",
+  zoom: 100,
+  confirmDelete: true,
+  navigatorSort: DEFAULT_SORT_ORDER,
+  newDrawingFolder: "",
 };
+
+export const MIN_ZOOM = 50;
+export const MAX_ZOOM = 200;
 
 export const isVaultTheme = (value: unknown): value is VaultTheme =>
   value === "light" || value === "dark" || value === "system";
@@ -142,6 +162,20 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       parsed.defaultCanvasBackground,
       isString,
       d.defaultCanvasBackground,
+    ),
+    accentColor: pick(parsed.accentColor, isString, d.accentColor),
+    zoom: pick(
+      parsed.zoom,
+      (v) =>
+        isNumber(v) && (v as number) >= MIN_ZOOM && (v as number) <= MAX_ZOOM,
+      d.zoom,
+    ),
+    confirmDelete: pick(parsed.confirmDelete, isBoolean, d.confirmDelete),
+    navigatorSort: pick(parsed.navigatorSort, isSortOrder, d.navigatorSort),
+    newDrawingFolder: pick(
+      parsed.newDrawingFolder,
+      isString,
+      d.newDrawingFolder,
     ),
   };
 }
