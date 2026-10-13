@@ -119,6 +119,23 @@ With `sync_canvas = true` (**Sync canvas with theme** in Settings), the canvas i
 
 Themes are data only: colour values, no code.
 
+## Search
+
+Search finds text inside every drawing in the vault. Type in the search box at the top of the navigator, or press Cmd+Shift+F (Ctrl+Shift+F on Windows and Linux) to move there.
+
+It searches drawing names and folder paths, text elements, labels inside shapes and arrows, and frame names. Text inside library items is not searched.
+
+Results are grouped by drawing, with up to five highlighted snippets under each one. Use Up and Down to move, Enter to open the selected row, and Escape to clear the search. Clicking a snippet opens the drawing, zooms to that element and selects it. For a label, the shape or arrow it belongs to is selected.
+
+Matching rules:
+
+- Case, accents and character width are ignored: `cafe` finds `Café`, and full-width letters find ASCII.
+- A term can match inside a word, so `graph` finds `Dijkstra graphs`.
+- Every word you type must appear in the drawing, but the words can be in different elements.
+- Chinese, Japanese and Korean text is searched as written, without spaces between words.
+
+The index is stored outside the vault, in the state folder (`~/.local/state/vaultdraw/index/` by default; `VAULTDRAW_STATE_DIR` changes the folder). Nothing is written into your vault. The index is rebuilt automatically when it is missing or damaged, and it is safe to delete. When a large vault is indexed for the first time, the status line shows progress, such as "Indexing 1,234 of 5,000 drawings…", and results cover only the drawings indexed so far.
+
 ## Repository layout
 
 | Path | What it is |
