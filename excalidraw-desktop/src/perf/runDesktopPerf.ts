@@ -20,6 +20,28 @@ export async function runDesktopPerf(): Promise<void> {
       details: { name, wallMs: Date.now(), perfMs: win.performance.now() },
     });
 
+  const markPids = async () => {
+    try {
+      const pids = await invoke<unknown>("perf_process_ids");
+      await invoke("smoke_log", {
+        step: "perf-mark",
+        ok: true,
+        details: {
+          name: "pids",
+          wallMs: Date.now(),
+          perfMs: win.performance.now(),
+          pids,
+        },
+      });
+    } catch (error) {
+      await invoke("smoke_log", {
+        step: "perf-mark",
+        ok: false,
+        details: { name: "pids", error: String(error) },
+      });
+    }
+  };
+
   let root: HTMLElement | null = null;
   for (let i = 0; i < 200 && !root; i++) {
     root = doc.querySelector<HTMLElement>(".vault-app");
@@ -60,6 +82,7 @@ export async function runDesktopPerf(): Promise<void> {
       await sleep(20);
     }
     await mark("interactive");
+    await markPids();
 
     const { samples, info, errors } = await runPerfScenarios({
       root,
@@ -69,6 +92,30 @@ export async function runDesktopPerf(): Promise<void> {
       config: fixturesConfig,
       mark,
     });
+
+    // Idle must be truly idle: wait until autosave has settled (no write started for 1.5 s).
+    let lastWriteAt = win.performance.now();
+    let inFlight = 0;
+    const originalWrite = desktopRepository.writeDrawing;
+    desktopRepository.writeDrawing = async (input) => {
+      inFlight += 1;
+      lastWriteAt = win.performance.now();
+      try {
+        return await originalWrite(input);
+      } finally {
+        inFlight -= 1;
+        lastWriteAt = win.performance.now();
+      }
+    };
+    const settleUntil = win.performance.now() + 30_000;
+    while (
+      (inFlight > 0 || win.performance.now() - lastWriteAt < 1500) &&
+      win.performance.now() < settleUntil
+    ) {
+      await sleep(100);
+    }
+    desktopRepository.writeDrawing = originalWrite;
+    await markPids();
 
     await mark("idle-begin");
     await sleep(IDLE_MS);

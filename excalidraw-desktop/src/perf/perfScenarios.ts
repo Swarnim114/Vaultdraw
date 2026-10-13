@@ -467,6 +467,7 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
           const prefix = query.slice(0, i);
           const t0 = now();
           setSearch(prefix);
+          push("search.keystrokeJs", now() - t0);
           if (searchInput().value !== prefix) {
             throw new Error("Search input did not take the typed value");
           }
@@ -690,6 +691,7 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
           data: char,
         }),
       );
+      push("typing.keystrokeJs", now() - t0);
       await afterPaint();
       push("typing.keystroke", now() - t0);
     }

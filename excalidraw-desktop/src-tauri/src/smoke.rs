@@ -77,3 +77,69 @@ pub fn smoke_finish(app: AppHandle, status: i32, details: Option<Value>) -> Resu
     Ok(())
 }
 
+
+/// Pids of this app and its WebKit helper processes (WKWebView private API), for exact perf attribution.
+#[cfg(target_os = "macos")]
+fn webkit_pids(ptr: *mut std::ffi::c_void) -> (Option<i32>, Option<i32>, Option<i32>) {
+    use objc2::runtime::AnyObject;
+    use objc2::{msg_send, sel};
+    if ptr.is_null() {
+        return (None, None, None);
+    }
+    // SAFETY: ptr is the live WKWebView handed out by wry on the main thread; every private
+    // selector is guarded with respondsToSelector before it is sent.
+    unsafe {
+        let view: &AnyObject = &*(ptr as *mut AnyObject);
+        let responds = |obj: &AnyObject, sel: objc2::runtime::Sel| -> bool {
+            msg_send![obj, respondsToSelector: sel]
+        };
+        let positive = |pid: i32| if pid > 0 { Some(pid) } else { None };
+        let mut web = None;
+        let mut network = None;
+        let mut gpu = None;
+        if responds(view, sel!(_webProcessIdentifier)) {
+            let pid: i32 = msg_send![view, _webProcessIdentifier];
+            web = positive(pid);
+        }
+        if responds(view, sel!(_gpuProcessIdentifier)) {
+            let pid: i32 = msg_send![view, _gpuProcessIdentifier];
+            gpu = positive(pid);
+        }
+        let config: *mut AnyObject = msg_send![view, configuration];
+        if !config.is_null() {
+            let pool: *mut AnyObject = msg_send![&*config, processPool];
+            if !pool.is_null() {
+                let pool: &AnyObject = &*pool;
+                if responds(pool, sel!(_networkProcessIdentifier)) {
+                    let pid: i32 = msg_send![pool, _networkProcessIdentifier];
+                    network = positive(pid);
+                }
+                if gpu.is_none() && responds(pool, sel!(_gpuProcessIdentifier)) {
+                    let pid: i32 = msg_send![pool, _gpuProcessIdentifier];
+                    gpu = positive(pid);
+                }
+            }
+        }
+        (web, network, gpu)
+    }
+}
+
+/// Async so the main thread stays free to run the with_webview closure.
+#[tauri::command]
+pub async fn perf_process_ids(window: tauri::WebviewWindow) -> Result<Value, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    #[cfg(target_os = "macos")]
+    window
+        .with_webview(move |webview| {
+            let _ = tx.send(webkit_pids(webview.inner()));
+        })
+        .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (&window, tx);
+    }
+    let (web, network, gpu) = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap_or((None, None, None));
+    Ok(json!({ "app": std::process::id(), "webContent": web, "network": network, "gpu": gpu }))
+}

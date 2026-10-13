@@ -1134,7 +1134,7 @@ pub fn run() {
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status,
-                smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish
+                smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids
             ])
         } else {
             builder.invoke_handler(tauri::generate_handler![

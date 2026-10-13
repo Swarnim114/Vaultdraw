@@ -113,6 +113,8 @@ export async function runAppOnce({
   const appPid = child.pid;
   let appPidResolved = false;
   const helpers = new Set();
+  let exactPids = false;
+  let pidsInfo = null;
   let peakRssKB = 0;
   let interactiveSeen = false;
   let coldToInteractive;
@@ -123,6 +125,7 @@ export async function runAppOnce({
 
   const livePids = () => [appPid, ...helpers];
   async function rediscover() {
+    if (exactPids) return;
     const found = await discoverWebKitHelpers(before);
     for (const pid of found) {
       if (helpers.has(pid)) continue;
@@ -168,6 +171,25 @@ export async function runAppOnce({
     const name = entry?.details?.name;
     if (entry.step !== "perf-mark" || typeof name !== "string") return;
     marks.push({ name, wallMs: entry.details.wallMs, nodeMs: Date.now() });
+    if (name === "pids") {
+      const p = entry.details.pids;
+      const ids = p ? [p.webContent, p.network, p.gpu].filter((n) => Number.isInteger(n) && n > 0) : [];
+      if (ids.length) {
+        if (!exactPids) peakRssKB = 0; // earlier samples may have included other apps' helpers (pid-diff)
+        exactPids = true;
+        helpers.clear();
+        for (const pid of ids) {
+          if (helpers.has(pid)) continue;
+          helpers.add(pid);
+          if (lowEnd) {
+            const ok = await applyBackgroundPolicy(pid);
+            if (!ok) notes.push(`taskpolicy -b -p ${pid} failed`);
+          }
+        }
+        pidsInfo = p;
+      }
+      return;
+    }
     if (name === "interactive") {
       interactiveSeen = true;
       coldToInteractive = entry.details.wallMs - spawnWallMs;
@@ -250,7 +272,8 @@ export async function runAppOnce({
   } else {
     notes.push("idle marks missing; idle.cpuPercent not measured");
   }
-  if (helpers.size) notes.push(`WebKit helpers attributed to the app: ${helpers.size} (new since spawn; may include other apps' helpers)`);
+  if (exactPids) notes.push(`WebKit helpers from perf_process_ids (exact): ${helpers.size}`);
+  else if (helpers.size) notes.push(`perf_process_ids unavailable; WebKit helpers attributed by pid-diff (${helpers.size}; may include other apps' helpers)`);
   else notes.push("no WebKit helper processes discovered (RSS/CPU cover the app process only)");
 
   if (errors.length && (stderrTail || stdoutTail)) {

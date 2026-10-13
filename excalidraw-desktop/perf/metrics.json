@@ -29,6 +29,8 @@
       "unit": "ms",
       "desc": "No absolute budget by decision: the large drawing embeds ~18 MB of images, so only the 5% regression gate applies."
     },
+    "search.keystrokeJs": { "unit": "ms", "desc": "per keystroke, JS cost of the input event (dispatch to return, no frame wait)", "slack": 0.5 },
+    "typing.keystrokeJs": { "unit": "ms", "desc": "per character in the WYSIWYG editor, JS cost of the input event (dispatch to return)", "slack": 0.5 },
     "save.medium": { "unit": "ms" },
     "save.large": { "unit": "ms" },
     "pan.frame": { "unit": "ms", "desc": "frame interval while panning", "gate": ["p95"], "report": ["max"] },
