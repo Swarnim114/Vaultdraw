@@ -461,6 +461,10 @@ export const useVaultDocument = (
     [activate],
   );
 
+  // A move in flight: change events for it must wait until the active
+  // document's path is updated, or they read the old path and see NOT_FOUND.
+  const relocation = useRef<Promise<unknown> | null>(null);
+
   const relocate = useCallback(
     async (from: string, to: string) => {
       const current = active.current;
@@ -481,7 +485,23 @@ export const useVaultDocument = (
       ) {
         return;
       }
-      await repositoryRef.current.move(currentVault.handle, from, to);
+      // Set before calling move: a repository may emit its change event
+      // synchronously from inside move().
+      let settle = () => {};
+      const pending = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      relocation.current = pending;
+      try {
+        await repositoryRef.current.move(currentVault.handle, from, to);
+      } finally {
+        settle();
+        // The path update below is synchronous, so a waiting event handler
+        // resumes only after it.
+        if (relocation.current === pending) {
+          relocation.current = null;
+        }
+      }
       if (
         mine !== generation.current ||
         vaultRef.current?.handle !== currentVault.handle ||
@@ -535,6 +555,9 @@ export const useVaultDocument = (
         void (async () => {
           // Do not drop watcher events during writes: wait for the acknowledgement
           // to advance the revision, then compare against the settled disk state.
+          if (relocation.current) {
+            await relocation.current;
+          }
           if (coordinator.current?.isWriting) {
             try {
               await coordinator.current.flush();
