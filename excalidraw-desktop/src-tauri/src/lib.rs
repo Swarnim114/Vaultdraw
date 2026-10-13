@@ -13,6 +13,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod clipboard;
 mod config;
 mod search;
 mod themes;
@@ -807,7 +808,9 @@ async fn reveal_entry(handle: String, path: String, state: State<'_, Service>) -
         .map_err(ioerr)
 }
 #[tauri::command]
-async fn export_file(name: String, bytes: Vec<u8>) -> Result<bool> {
+async fn export_file(request: tauri::ipc::Request<'_>) -> Result<bool> {
+    let name = clipboard::percent_decode(&clipboard::header(&request, "x-file-name")?)?;
+    let bytes = clipboard::raw_body(&request)?;
     if bytes.len() as u64 > MAX_DRAWING_BYTES {
         return Err(err("INVALID_FILE", "Export exceeds 32 MiB"));
     }
@@ -832,7 +835,7 @@ async fn export_file(name: String, bytes: Vec<u8>) -> Result<bool> {
             "Export destination already exists; choose another name",
         ));
     }
-    write_atomic_new(&path, &bytes)?;
+    write_atomic_new(&path, bytes)?;
     Ok(true)
 }
 #[tauri::command]
@@ -1133,18 +1136,19 @@ pub fn run() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-                export_file, list_recovery, discard_recovery,
+                export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status,
-                smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids
+                smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
+                clipboard::smoke_read_clipboard
             ])
         } else {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-                export_file, list_recovery, discard_recovery,
+                export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
@@ -1155,7 +1159,7 @@ pub fn run() {
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-            export_file, list_recovery, discard_recovery,
+            export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
