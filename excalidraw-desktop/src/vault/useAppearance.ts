@@ -82,7 +82,12 @@ export const useAppearance = (
     }
     setCanvasSync(
       snapshot.syncCanvas
-        ? { variant: snapshot.variant, mode: snapshot.mode, key: snapshot.key }
+        ? // The canvas palette follows the theme, not the accent.
+          {
+            variant: snapshot.entry.theme[snapshot.mode],
+            mode: snapshot.mode,
+            key: snapshot.key,
+          }
         : null,
     );
   }, [doc, snapshot]);

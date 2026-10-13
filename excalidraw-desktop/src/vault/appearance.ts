@@ -4,14 +4,17 @@
  * `html.dark` class. Used before the first paint (main.tsx) and by
  * useAppearance whenever the theme, mode, OS appearance or theme files change.
  *
- * The stock Default theme applies nothing: VaultShell.css and Excalidraw's
- * own stylesheet render exactly the pre-theme look.
+ * The stock Default theme applies nothing (VaultShell.css and Excalidraw's
+ * own stylesheet render exactly the pre-theme look), except that an accent
+ * colour applies the primary-related properties only.
  */
 
 import {
+  applyAccent,
   applyThemeTokens,
   deriveTokens,
   excalidrawVariableOverrides,
+  normalizeAccent,
   pickOn,
 } from "../theme";
 import {
@@ -29,8 +32,10 @@ export interface AppearanceSnapshot {
   /** Resolved mode (light/dark/system → actual). */
   mode: ThemeMode;
   entry: ThemeEntry;
-  /** The entry's variant for `mode`. */
+  /** The entry's variant for `mode`, with the accent applied. */
   variant: ThemeVariant;
+  /** Normalised accent ("#rrggbb"), "" when none/invalid. */
+  accent: string;
   syncCanvas: boolean;
   /** Unknown/broken selected theme (Default is used instead). */
   problem: string | null;
@@ -39,18 +44,20 @@ export interface AppearanceSnapshot {
 }
 
 export const computeAppearance = (
-  prefs: Pick<VaultPreferences, "theme" | "colorTheme" | "syncCanvas">,
+  prefs: Pick<VaultPreferences, "theme" | "colorTheme" | "syncCanvas"> &
+    Partial<Pick<VaultPreferences, "accentColor">>,
   registry: ThemeRegistry,
   win: Window | null | undefined,
 ): AppearanceSnapshot => {
   const mode = resolveTheme(prefs.theme, win);
   const { entry, problem } = resolveSelectedTheme(registry, prefs.colorTheme);
-  const variant = entry.theme[mode];
+  const accent = normalizeAccent(prefs.accentColor);
+  const variant = applyAccent(entry.theme[mode], accent, mode);
   const syncCanvas = !!prefs.syncCanvas;
   const key = `${entry.source}:${entry.key}:${mode}:${
     syncCanvas ? 1 : 0
-  }:${JSON.stringify(variant)}`;
-  return { mode, entry, variant, syncCanvas, problem, key };
+  }:${accent}:${JSON.stringify(variant)}`;
+  return { mode, entry, variant, accent, syncCanvas, problem, key };
 };
 
 let applied: {
@@ -59,10 +66,23 @@ let applied: {
   handle: AppliedTheme | null;
 } | null = null;
 
+/** Custom properties derived from the primary colour. */
+const PRIMARY_PROPERTY =
+  /primary|brand|link-color|focus-highlight|select-highlight|logo-icon|color-selection|slider-track|icon-white/;
+
+// --text-primary-color is the body text colour, not the accent.
+const onlyPrimary = (vars: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(vars).filter(
+      ([name]) =>
+        PRIMARY_PROPERTY.test(name) && name !== "--text-primary-color",
+    ),
+  );
+
 /** Token key (theme content + mode); sync does not change the chrome. */
 const tokenKey = (s: AppearanceSnapshot) =>
   isStockDefault(s.entry)
-    ? `default:${s.mode}`
+    ? `default:${s.mode}:${s.accent}`
     : `${s.entry.source}:${s.entry.key}:${s.mode}:${JSON.stringify(s.variant)}`;
 
 /**
@@ -86,20 +106,23 @@ export const applyAppearance = (
     applied.handle?.restore();
   }
   let handle: AppliedTheme | null = null;
-  if (!isStockDefault(snapshot.entry)) {
+  const stock = isStockDefault(snapshot.entry);
+  if (!stock || snapshot.accent) {
     const tokens = deriveTokens(snapshot.variant, snapshot.mode);
+    const all = {
+      ...tokens,
+      // Label on danger buttons (dark themes have light danger colours).
+      "--vault-on-danger": pickOn(
+        tokens["--vault-danger"],
+        ["#ffffff", tokens["--vault-bg"], "#000000"],
+        4.5,
+      ),
+    };
+    const excalidraw = excalidrawVariableOverrides(tokens, snapshot.mode);
     handle = applyThemeTokens(
       doc,
-      {
-        ...tokens,
-        // Label on danger buttons (dark themes have light danger colours).
-        "--vault-on-danger": pickOn(
-          tokens["--vault-danger"],
-          ["#ffffff", tokens["--vault-bg"], "#000000"],
-          4.5,
-        ),
-      },
-      excalidrawVariableOverrides(tokens, snapshot.mode),
+      stock ? onlyPrimary(all) : all,
+      stock ? onlyPrimary(excalidraw) : excalidraw,
     );
   }
   applied = { doc, key, handle };

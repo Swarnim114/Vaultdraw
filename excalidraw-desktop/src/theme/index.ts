@@ -19,6 +19,8 @@ export {
   generateVariant,
   slugify,
 } from "./normalize";
+export { applyAccent, normalizeAccent, resolveAccent } from "./accent";
+export type { ResolvedAccent } from "./accent";
 export { deriveTokens, CONTRAST } from "./tokens";
 export { excalidrawVariableOverrides } from "./excalidrawVars";
 export {
