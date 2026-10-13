@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "seed": 20261014,
+  "drawingCount": 5000,
+  "openTargets": {
+    "small": "perf-small.excalidraw",
+    "medium": "perf-medium.excalidraw",
+    "large": "perf-large.excalidraw"
+  },
+  "openTargetSpecs": {
+    "small": { "elements": 50, "textRatio": 0.3, "images": 0 },
+    "medium": { "elements": 1500, "textRatio": 0.3, "images": 0 },
+    "large": { "elements": 5000, "textRatio": 0.3, "images": 6, "imageTotalMB": 18 }
+  },
+  "typingTarget": {
+    "comment": "Rectangle in perf-medium with this id; the saved appState scroll/zoom puts its centre at the viewport point given by the in-app runner (it selects it by clicking its centre computed from scene coords).",
+    "elementId": "perf-typing-target",
+    "x": 100,
+    "y": 100,
+    "width": 240,
+    "height": 120
+  },
+  "imageHeavy": [
+    { "path": "Media/scans-5mb.excalidraw", "imageTotalMB": 5 },
+    { "path": "Media/Archive/photos-15mb.excalidraw", "imageTotalMB": 15 },
+    { "path": "Media/Archive/moodboard-28mb.excalidraw", "imageTotalMB": 28 }
+  ],
+  "bigFolder": { "path": "Journal/2024", "drawings": 500 },
+  "needle": { "path": "Projects/Atlas/Research/Deep/zebra-needle-4242.excalidraw", "query": "zebra-needle-4242" },
+  "searchQueries": ["meeting", "graph notes", "q3 roadmap", "zz"],
+  "maxDrawingBytes": 31000000
+}
