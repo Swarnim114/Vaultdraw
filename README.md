@@ -11,11 +11,10 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - Detects changes made outside the app without losing unsaved edits
 - Export to PNG and SVG
 - Works fully offline (fonts and assets are bundled)
-- Plain-text config folder, editable by hand or in Settings, reloaded live (in progress)
+- Plain-text config folder, editable by hand or in Settings, reloaded live
+- Colour themes in Noctalia format, nine built in, light and dark (in progress)
 
 ## Configuration
-
-> In progress: this describes how configuration works once the current work lands.
 
 All settings live in one folder, like kitty, Ghostty or Zed:
 
@@ -59,20 +58,66 @@ autosave_delay_ms = 500      # idle time before an edit is written to disk
 
 `state.json` holds machine state (recent vaults, navigator width, expanded folders). It is not meant for hand editing.
 
-### Themes (coming soon)
+### Themes
 
-Every theme has a dark and a light variant; `mode` picks which one you see. To add a theme, drop a palette in [Noctalia](https://github.com/noctalia-dev/noctalia-colorschemes) format into `themes/` and choose it in Settings or set `theme` to its name. Existing Noctalia palettes work unchanged. A minimal theme needs only a background, text and accent colour per mode; the rest is derived:
+A theme sets the colours of the whole app: the file tree, header, Settings and Excalidraw's toolbars, menus and dialogs. Every theme has a dark and a light variant, so theme and mode are chosen separately, in **Settings → Appearance** or in `config.toml`:
+
+```toml
+[appearance]
+theme = "Tokyo Night"   # theme name, case-insensitive
+mode = "system"         # light | dark | system (follows the OS)
+sync_canvas = true      # canvas follows the theme too
+```
+
+**Built-in themes:** Default, Dracula, Tokyo Night, Catppuccin, Everforest, Gruvbox, Nord, Rosé Pine, Solarized. If `theme` names a theme that doesn't exist, Vaultdraw uses Default and shows a warning.
+
+#### Adding a theme
+
+Themes use the [Noctalia](https://github.com/noctalia-dev/noctalia-colorschemes) palette format, so existing Noctalia palettes work unchanged. Put the `.json` file in `themes/` inside the config folder (`~/.config/vaultdraw/themes/` on macOS and Linux), in either layout:
+
+```
+themes/
+├── Midnight.json          a single file
+└── Paper/
+    └── Paper.json         a folder, as Noctalia ships them
+```
+
+The file or folder name is the theme's name: `theme = "Midnight"` selects `Midnight.json`. A theme in `themes/` with the same name as a built-in one replaces it.
+
+A theme needs only three colours per variant (background, text, accent); everything else is derived:
 
 ```json
 {
-  "dark":  { "mSurface": "#282a36", "mOnSurface": "#f8f8f2", "mPrimary": "#bd93f9" },
-  "light": { "mSurface": "#f8f8f2", "mOnSurface": "#282a36", "mPrimary": "#7c3aed" }
+  "dark":  { "mSurface": "#1b1d2b", "mOnSurface": "#d8dae8", "mPrimary": "#82aaff" },
+  "light": { "mSurface": "#f6f6fa", "mOnSurface": "#2b2d3a", "mPrimary": "#3b6fd8" }
 }
 ```
 
-A theme colours both the vault UI and the Excalidraw toolbars and menus. With `sync_canvas = true` the canvas background, strokes and colour palette follow the theme on screen only; saved drawings and exports keep their own colours.
+You can also leave out `light` or `dark` entirely; the missing variant is generated from the other one. Whatever colours a theme uses, Vaultdraw adjusts them where needed so text stays readable.
 
-Themes are data only: CSS colour values, no code.
+The full set of roles, all optional except the first three:
+
+| Role | Colours in Vaultdraw |
+| --- | --- |
+| `mSurface` | Canvas and app background; base of the sidebar, header and menus |
+| `mOnSurface` | Text and icons; black and grey strokes on a synced canvas |
+| `mPrimary` | Accent: selected items and tools, buttons, links, focus rings, selection outline |
+| `mOnPrimary` | Text and icons on accent-coloured buttons |
+| `mSurfaceVariant` | Tint of the sidebar and header |
+| `mOnSurfaceVariant` | Secondary (muted) text |
+| `mError` | Errors and delete actions; red on a synced canvas |
+| `mSecondary`, `mTertiary` | Extra accents, used for palette colours on a synced canvas |
+| `mShadow` | Shadows under menus and dialogs |
+| `mOnSecondary`, `mOnTertiary`, `mOnError`, `mOutline`, `mHover`, `mOnHover` | Accepted for Noctalia compatibility; derived if missing |
+| `terminal` | Optional ANSI colours: green and yellow set success and warning; all of them feed the canvas palette when synced |
+
+Optional top-level `name` and `author` fields are for display only.
+
+#### Sync canvas with theme
+
+With `sync_canvas = true` (**Sync canvas with theme** in Settings), the canvas is recoloured on screen: its background becomes the theme's background, and the pencil, stroke and fill colours from Excalidraw's palette become matching theme colours. This only changes what you see. Saved drawings and PNG/SVG exports keep Excalidraw's standard colours, so they look the same for anyone who opens them. With it off, the canvas renders as in regular Excalidraw.
+
+Themes are data only: colour values, no code.
 
 ## Repository layout
 
