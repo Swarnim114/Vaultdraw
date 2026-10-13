@@ -59,6 +59,22 @@ roughness = 1
 [saving]
 # Milliseconds of idle time before an edit is written to disk
 autosave_delay_ms = 500
+
+[interface]
+# Whole-app zoom in percent (Cmd+Shift +/-/0)
+# zoom = 100
+
+[navigator]
+# name_asc | name_desc | modified_desc | modified_asc
+# sort = "name_asc"
+
+[files]
+# Folder for new drawings, relative to the vault root ("" = vault root)
+# new_drawing_folder = ""
+
+[hotkeys]
+# Override a command's keys; [] removes them. Example:
+# "vault.newDrawing" = ["Mod+N"]
 "##;
 
 /// Serializes every config/state write within the process.
@@ -142,8 +158,8 @@ pub(crate) fn resolve_dirs() -> Result<Dirs> {
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigError {
-    message: String,
-    line: Option<usize>,
+    pub(crate) message: String,
+    pub(crate) line: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -160,9 +176,9 @@ pub(crate) struct LoadedSettings {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigChange {
-    key: String,
+    pub(crate) key: String,
     #[serde(default)]
-    value: Json,
+    pub(crate) value: Json,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -198,16 +214,30 @@ fn ensure_config_files(dirs: &Dirs) -> Result<()> {
 
 /// Reads `config.toml` as UTF-8: regular files only, capped at 1 MiB.
 fn read_config_text(path: &Path) -> Result<String> {
+    read_toml_text(path, CONFIG_FILE, MAX_CONFIG_BYTES)
+}
+
+/// Reads a TOML settings file named `name` as UTF-8: regular files only (symbolic
+/// links are refused), capped at `max` bytes.
+pub(crate) fn read_toml_text(path: &Path, name: &str, max: u64) -> Result<String> {
     let meta = fs::symlink_metadata(path).map_err(ioerr)?;
     if meta.file_type().is_symlink() {
-        return Err(err("INVALID_PATH", "config.toml is a symbolic link; only regular files are read"));
+        return Err(err("INVALID_PATH", format!("{name} is a symbolic link; only regular files are read")));
     }
     if !meta.is_file() {
-        return Err(err("INVALID_PATH", "config.toml is not a regular file"));
+        return Err(err("INVALID_PATH", format!("{name} is not a regular file")));
     }
-    let bytes = read_bounded(path, MAX_CONFIG_BYTES)
-        .map_err(|e| if e.code == "INVALID_FILE" { err("INVALID_FILE", "config.toml exceeds 1 MiB") } else { e })?;
-    String::from_utf8(bytes).map_err(|_| err("INVALID_FILE", "config.toml is not valid UTF-8"))
+    let bytes = read_bounded(path, max)
+        .map_err(|e| if e.code == "INVALID_FILE" { err("INVALID_FILE", format!("{name} exceeds {}", size_label(max))) } else { e })?;
+    String::from_utf8(bytes).map_err(|_| err("INVALID_FILE", format!("{name} is not valid UTF-8")))
+}
+
+fn size_label(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 && bytes % (1024 * 1024) == 0 {
+        format!("{} MiB", bytes / (1024 * 1024))
+    } else {
+        format!("{} KiB", bytes / 1024)
+    }
 }
 
 fn line_of(text: &str, offset: usize) -> usize {
@@ -279,15 +309,23 @@ pub(crate) fn load_settings_in(dirs: &Dirs) -> Result<LoadedSettings> {
 // Editing
 // ---------------------------------------------------------------------------
 
+/// Splits `table.key` on the **first** dot: the table name is `[A-Za-z0-9_-]`, the
+/// key may also contain dots (`hotkeys.vault.newDrawing` → `hotkeys` / `vault.newDrawing`),
+/// which `toml_edit` writes as a quoted key. A key without a dot is a root key.
 fn split_key(key: &str) -> Result<(Option<&str>, &str)> {
-    let valid = |s: &str| {
-        !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    let bad = || err("INVALID_ARGUMENT", format!("Invalid config key \"{key}\"; expected \"table.key\""));
+    let valid = |s: &str, dots: bool| {
+        !s.is_empty()
+            && s.len() <= 64
+            && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || (dots && c == '.'))
+            && !s.starts_with('.')
+            && !s.ends_with('.')
+            && !s.contains("..")
     };
-    let parts: Vec<&str> = key.split('.').collect();
-    match parts.as_slice() {
-        [k] if valid(k) => Ok((None, k)),
-        [t, k] if valid(t) && valid(k) => Ok((Some(t), k)),
-        _ => Err(err("INVALID_ARGUMENT", format!("Invalid config key \"{key}\"; expected \"table.key\""))),
+    match key.split_once('.') {
+        None if valid(key, false) => Ok((None, key)),
+        Some((t, k)) if valid(t, false) && valid(k, true) => Ok((Some(t), k)),
+        _ => Err(bad()),
     }
 }
 
@@ -318,18 +356,24 @@ fn json_to_toml(key: &str, v: &Json, nested: bool) -> Result<toml_edit::Value> {
     })
 }
 
-/// Applies `changes` to TOML text, preserving comments, order and formatting.
+/// Applies `changes` to `config.toml` text, preserving comments, order and formatting.
 pub(crate) fn apply_changes(text: &str, changes: &[ConfigChange]) -> Result<String> {
+    apply_toml_changes(text, changes, CONFIG_FILE, MAX_CONFIG_BYTES)
+}
+
+/// Applies `changes` to the TOML text of the file `name`, preserving comments, order
+/// and formatting. Everything is validated first, so a bad change applies nothing.
+pub(crate) fn apply_toml_changes(text: &str, changes: &[ConfigChange], name: &str, max: u64) -> Result<String> {
     if changes.len() > MAX_CHANGES {
         return Err(err("INVALID_ARGUMENT", "Too many config changes in one call"));
     }
     if let Err(e) = parse_config(text) {
         let at = e.line.map(|l| format!(" (line {l})")).unwrap_or_default();
-        return Err(err("CONFIG_INVALID", format!("config.toml does not parse{at}: {}", e.message)));
+        return Err(err("CONFIG_INVALID", format!("{name} does not parse{at}: {}", e.message)));
     }
     let mut doc: toml_edit::DocumentMut = text
         .parse()
-        .map_err(|e: toml_edit::TomlError| err("CONFIG_INVALID", format!("config.toml does not parse: {}", e.message())))?;
+        .map_err(|e: toml_edit::TomlError| err("CONFIG_INVALID", format!("{name} does not parse: {}", e.message())))?;
     // Validate everything before mutating so a bad change applies nothing.
     let mut planned = Vec::with_capacity(changes.len());
     for change in changes {
@@ -350,7 +394,7 @@ pub(crate) fn apply_changes(text: &str, changes: &[ConfigChange]) -> Result<Stri
                 }
                 root.get_mut(t)
                     .and_then(toml_edit::Item::as_table_like_mut)
-                    .ok_or_else(|| err("INVALID_ARGUMENT", format!("\"{t}\" in config.toml is not a table")))?
+                    .ok_or_else(|| err("INVALID_ARGUMENT", format!("\"{t}\" in {name} is not a table")))?
             }
         };
         match value {
@@ -365,22 +409,99 @@ pub(crate) fn apply_changes(text: &str, changes: &[ConfigChange]) -> Result<Stri
                     *existing = toml_edit::Item::Value(new);
                 }
                 Some(_) => {
-                    return Err(err("INVALID_ARGUMENT", format!("\"{}\" in config.toml is a table, not a value", change_key(table, key))))
+                    return Err(err("INVALID_ARGUMENT", format!("\"{}\" in {name} is a table, not a value", change_key(table, key))))
                 }
                 None => {
                     target.insert(key, toml_edit::Item::Value(new));
+                    if let Some(t) = table {
+                        adopt_commented_default(&mut doc, t, key);
+                    }
                 }
             },
         }
     }
     let out = doc.to_string();
-    if out.len() as u64 > MAX_CONFIG_BYTES {
-        return Err(err("INVALID_FILE", "config.toml would exceed 1 MiB"));
+    if out.len() as u64 > max {
+        return Err(err("INVALID_FILE", format!("{name} would exceed {}", size_label(max))));
     }
     Ok(out)
 }
 fn change_key(table: Option<&str>, key: &str) -> String {
     table.map(|t| format!("{t}.{key}")).unwrap_or_else(|| key.to_string())
+}
+
+/// True when `line` is a commented-out assignment of `key`, e.g. `# zoom = 1.0` or
+/// `# "vault.newDrawing" = ["Mod+N"]`.
+fn is_commented_assignment(line: &str, key: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix('#') else { return false };
+    let rest = rest.trim_start();
+    let (name, after) = if let Some(quoted) = rest.strip_prefix('"') {
+        match quoted.split_once('"') {
+            Some((name, after)) => (name, after),
+            None => return false,
+        }
+    } else {
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+            .unwrap_or(rest.len());
+        rest.split_at(end)
+    };
+    name == key && after.trim_start().starts_with('=')
+}
+
+/// A key newly added to an explicit `[table]` is appended after the table's last value,
+/// i.e. *before* any comments that follow it (`toml_edit` stores those as the prefix of
+/// the next table, or as the document trailer). If those comments contain a commented
+/// default for the key (`# zoom = 1.0`), the new value takes that line's place and the
+/// comments above it become the key's own comments, so the documentation stays with it.
+fn adopt_commented_default(doc: &mut toml_edit::DocumentMut, table: &str, key: &str) {
+    fn positions(t: &toml_edit::Table, path: &mut Vec<String>, out: &mut Vec<(isize, Vec<String>)>) {
+        for (k, item) in t.iter() {
+            if let Some(sub) = item.as_table() {
+                path.push(k.to_string());
+                if let Some(pos) = sub.position().filter(|_| !sub.is_implicit()) {
+                    out.push((pos, path.clone()));
+                }
+                positions(sub, path, out);
+                path.pop();
+            }
+        }
+    }
+    let Some(own) = doc.get(table).and_then(toml_edit::Item::as_table) else { return };
+    if own.is_implicit() {
+        return;
+    }
+    let Some(own_pos) = own.position() else { return };
+    let mut all = Vec::new();
+    positions(doc.as_table(), &mut Vec::new(), &mut all);
+    let next = all.into_iter().filter(|(p, _)| *p > own_pos).min_by_key(|(p, _)| *p).map(|(_, path)| path);
+
+    let gap = match &next {
+        Some(path) => table_at(doc, path).and_then(|t| t.decor().prefix()).and_then(|r| r.as_str()),
+        None => doc.trailing().as_str(),
+    };
+    let Some(gap) = gap.map(str::to_owned) else { return };
+    let lines: Vec<&str> = gap.split_inclusive('\n').collect();
+    let Some(i) = lines.iter().position(|l| is_commented_assignment(l, key)) else { return };
+    let before: String = lines[..i].concat();
+    let after: String = lines[i + 1..].concat();
+    match &next {
+        Some(path) => {
+            if let Some(t) = table_at_mut(doc, path) {
+                t.decor_mut().set_prefix(after);
+            }
+        }
+        None => doc.set_trailing(after),
+    }
+    if let Some(mut k) = doc.get_mut(table).and_then(toml_edit::Item::as_table_mut).and_then(|t| t.key_mut(key)) {
+        k.leaf_decor_mut().set_prefix(before);
+    }
+}
+fn table_at<'a>(doc: &'a toml_edit::DocumentMut, path: &[String]) -> Option<&'a toml_edit::Table> {
+    path.iter().try_fold(doc.as_table(), |t, k| t.get(k)?.as_table())
+}
+fn table_at_mut<'a>(doc: &'a mut toml_edit::DocumentMut, path: &[String]) -> Option<&'a mut toml_edit::Table> {
+    path.iter().try_fold(doc.as_table_mut(), |t, k| t.get_mut(k)?.as_table_mut())
 }
 
 pub(crate) fn update_config_in(dirs: &Dirs, changes: &[ConfigChange]) -> Result<()> {
@@ -640,11 +761,107 @@ mod tests {
 
     #[test]
     fn rejects_bad_keys_and_values_without_partial_application() {
-        for (k, v) in [("a.b.c", json!(1)), ("", json!(1)), ("a b.c", json!(1)), ("a.b", json!({"x": 1})), ("a.b", json!([[1]])), ("a.b", json!(u64::MAX))] {
+        for (k, v) in [("a.b..c", json!(1)), ("a.b.", json!(1)), (".a", json!(1)), ("a.", json!(1)), ("a.b c", json!(1)), ("a.b\"c", json!(1)), ("a.b/c", json!(1)), ("", json!(1)), ("a b.c", json!(1)), ("a.b", json!({"x": 1})), ("a.b", json!([[1]])), ("a.b", json!(u64::MAX))] {
             let e = apply_changes(DEFAULT_CONFIG, &[change("appearance.mode", json!("dark")), change(k, v)]).unwrap_err();
             assert_eq!(e.code, "INVALID_ARGUMENT", "{k}");
         }
         assert_eq!(apply_changes("[editor]\n", &[change("editor", json!(1))]).unwrap_err().code, "INVALID_ARGUMENT");
+    }
+
+    #[test]
+    fn split_key_uses_the_first_dot_only() {
+        assert_eq!(split_key("hotkeys.vault.newDrawing").unwrap(), (Some("hotkeys"), "vault.newDrawing"));
+        assert_eq!(split_key("appearance.mode").unwrap(), (Some("appearance"), "mode"));
+        assert_eq!(split_key("root").unwrap(), (None, "root"));
+        assert_eq!(split_key("hotkeys.view.zoom-in_2").unwrap(), (Some("hotkeys"), "view.zoom-in_2"));
+    }
+
+    #[test]
+    fn dotted_hotkey_keys_round_trip_quoted_with_comments_preserved() {
+        let src = "# top\n[hotkeys]\n# mine\n\"file.save\" = [\"Mod+S\"] # keep\n\n[saving]\nautosave_delay_ms = 500\n";
+        let out = apply_changes(
+            src,
+            &[
+                change("hotkeys.vault.newDrawing", json!(["Mod+N", "Mod+Alt+N"])),
+                change("hotkeys.view.toggleNavigator", json!([])),
+                change("hotkeys.file.save", json!(["Mod+Shift+S"])),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            "# top\n[hotkeys]\n# mine\n\"file.save\" = [\"Mod+Shift+S\"] # keep\n\"vault.newDrawing\" = [\"Mod+N\", \"Mod+Alt+N\"]\n\"view.toggleNavigator\" = []\n\n[saving]\nautosave_delay_ms = 500\n"
+        );
+        let v = parse_config(&out).unwrap();
+        assert_eq!(v["hotkeys"]["vault.newDrawing"], json!(["Mod+N", "Mod+Alt+N"]));
+        assert_eq!(v["hotkeys"]["view.toggleNavigator"], json!([]));
+        assert_eq!(v["hotkeys"]["file.save"], json!(["Mod+Shift+S"]));
+        // Removing restores the default (line deleted); other comments stay.
+        let out = apply_changes(&out, &[change("hotkeys.vault.newDrawing", Json::Null), change("hotkeys.view.toggleNavigator", Json::Null)]).unwrap();
+        assert_eq!(out, src.replace("[\"Mod+S\"]", "[\"Mod+Shift+S\"]"));
+    }
+
+    #[test]
+    fn load_settings_returns_dotted_hotkeys_as_flat_keys() {
+        let t = tempdir().unwrap();
+        let d = dirs_in(t.path());
+        load_settings_in(&d).unwrap();
+        update_config_in(&d, &[change("hotkeys.vault.newDrawing", json!(["Mod+N"])), change("hotkeys.file.rename", json!([]))]).unwrap();
+        let config = load_settings_in(&d).unwrap().config.unwrap();
+        assert_eq!(config["hotkeys"]["vault.newDrawing"], json!(["Mod+N"]));
+        assert_eq!(config["hotkeys"]["file.rename"], json!([]));
+        let text = fs::read_to_string(d.config.join(CONFIG_FILE)).unwrap();
+        // The commented example is replaced by the real binding; its explanation stays above it.
+        assert!(
+            text.ends_with("[hotkeys]\n# Override a command's keys; [] removes them. Example:\n\"vault.newDrawing\" = [\"Mod+N\"]\n\"file.rename\" = []\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn default_config_documents_upcoming_tables_without_values() {
+        for section in ["[interface]\n# Whole-app zoom", "# zoom = 100", "[navigator]\n", "# sort = \"name_asc\"", "[files]\n", "# new_drawing_folder = \"\"", "[hotkeys]\n", "# \"vault.newDrawing\" = [\"Mod+N\"]"] {
+            assert!(DEFAULT_CONFIG.contains(section), "{section}");
+        }
+        let v = parse_config(DEFAULT_CONFIG).unwrap();
+        for table in ["interface", "navigator", "files", "hotkeys"] {
+            assert_eq!(v[table], json!({}), "{table}");
+        }
+    }
+
+    #[test]
+    fn new_keys_land_in_their_commented_tables() {
+        let out = apply_changes(
+            DEFAULT_CONFIG,
+            &[change("interface.zoom", json!(125)), change("navigator.sort", json!("modified_desc")), change("files.new_drawing_folder", json!("Inbox"))],
+        )
+        .unwrap();
+        assert!(
+            out.contains("[interface]\n# Whole-app zoom in percent (Cmd+Shift +/-/0)\nzoom = 125\n\n[navigator]\n# name_asc | name_desc | modified_desc | modified_asc\nsort = \"modified_desc\"\n\n[files]\n# Folder for new drawings, relative to the vault root (\"\" = vault root)\nnew_drawing_folder = \"Inbox\"\n\n[hotkeys]\n"),
+            "{out}"
+        );
+        assert_eq!(out.matches("[interface]").count(), 1);
+        let v = parse_config(&out).unwrap();
+        assert_eq!(v["interface"]["zoom"], 125);
+        assert_eq!(v["navigator"]["sort"], "modified_desc");
+        // Everything before the new tables is untouched.
+        let head = &DEFAULT_CONFIG[..DEFAULT_CONFIG.find("[interface]").unwrap()];
+        assert!(out.starts_with(head));
+        // A key that isn't documented by a comment is simply appended to its table.
+        let out = apply_changes(DEFAULT_CONFIG, &[change("interface.show_hints", json!(false))]).unwrap();
+        assert!(out.contains("[interface]\nshow_hints = false\n# Whole-app zoom"), "{out}");
+        assert_eq!(parse_config(&out).unwrap()["interface"]["show_hints"], false);
+    }
+
+    #[test]
+    fn commented_assignment_matching() {
+        assert!(is_commented_assignment("# zoom = 1.0\n", "zoom"));
+        assert!(is_commented_assignment("  #zoom=1", "zoom"));
+        assert!(is_commented_assignment("# \"vault.newDrawing\" = [\"Mod+N\"]\n", "vault.newDrawing"));
+        assert!(!is_commented_assignment("# zoomed = 1", "zoom"));
+        assert!(!is_commented_assignment("# Whole-app zoom in percent (Cmd+Shift +/-/0)", "zoom"));
+        assert!(!is_commented_assignment("zoom = 1", "zoom"));
+        assert!(!is_commented_assignment("# vault.newDrawing = []", "vault.newDrawing"));
     }
 
     #[test]

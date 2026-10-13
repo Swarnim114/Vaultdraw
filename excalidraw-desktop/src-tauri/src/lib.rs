@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 mod config;
 mod themes;
+mod vault_settings;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 
@@ -61,6 +62,12 @@ struct VaultChange {
     handle: String,
     paths: Vec<String>,
     rescan: bool,
+}
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, allow(dead_code))]
+struct VaultSettingsChange {
+    handle: String,
 }
 #[derive(Debug, Serialize)]
 struct NativeError {
@@ -401,6 +408,37 @@ fn open_lock_file(lock_path: &Path) -> Option<File> {
         Err(_) => None,
     }
 }
+#[derive(Debug, PartialEq, Eq)]
+enum WatchedPath {
+    /// Vault metadata, the lock file or our own temp files.
+    Ignore,
+    /// `.excalidraw-vault/settings.toml` (or the metadata folder itself) changed.
+    Settings,
+    /// A user-visible vault-relative path.
+    Entry(String),
+    /// Outside the root or not a valid vault path: the frontend should rescan.
+    Rescan,
+}
+/// Classifies a watcher event path for `vault-change` / `vault-settings-change`.
+fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
+    let Ok(rel) = p.strip_prefix(root) else { return WatchedPath::Rescan };
+    let text = rel.to_string_lossy().replace('\\', "/");
+    if text.split('/').any(|part| part.starts_with(".excalidraw-tmp-")) {
+        return WatchedPath::Ignore;
+    }
+    // The metadata folder itself (deleted, renamed or replaced) may take settings.toml with it.
+    if text == META_DIR || text == format!("{META_DIR}/{}", vault_settings::SETTINGS_FILE) {
+        return WatchedPath::Settings;
+    }
+    if text.starts_with(&format!("{META_DIR}/")) || text == format!("{META_DIR}.lock") {
+        return WatchedPath::Ignore;
+    }
+    if validate_relative(&text).is_ok() {
+        WatchedPath::Entry(text)
+    } else {
+        WatchedPath::Rescan
+    }
+}
 fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<VaultInfo> {
     let root = root.canonicalize().map_err(ioerr)?;
     if !root.is_dir() {
@@ -436,30 +474,30 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
             }
             let mut paths = Vec::new();
             let mut rescan = false;
+            let mut settings_changed = false;
             for event in batch {
                 match event {
                     Ok(e) => {
                         for p in e.paths {
-                            if let Ok(rel) = p.strip_prefix(&r) {
-                                let text = rel.to_string_lossy().replace('\\', "/");
-                                if text == META_DIR || text.starts_with(&format!("{META_DIR}/")) || text == format!("{META_DIR}.lock") || text.split('/').any(|part| part.starts_with(".excalidraw-tmp-")) {
-                                    continue;
-                                }
-                                if validate_relative(&text).is_ok() {
-                                    paths.push(text);
-                                } else {
-                                    rescan = true;
-                                }
-                            } else {
-                                rescan = true;
+                            match classify_vault_event(&r, &p) {
+                                WatchedPath::Ignore => {}
+                                WatchedPath::Settings => settings_changed = true,
+                                WatchedPath::Entry(text) => paths.push(text),
+                                WatchedPath::Rescan => rescan = true,
                             }
                         }
                     }
-                    Err(_) => rescan = true,
+                    Err(_) => {
+                        rescan = true;
+                        settings_changed = true;
+                    }
                 }
             }
             paths.sort();
             paths.dedup();
+            if settings_changed {
+                let _ = app_handle.emit("vault-settings-change", VaultSettingsChange { handle: h.clone() });
+            }
             if !paths.is_empty() || rescan {
                 let _ = app_handle.emit(
                     "vault-change",
@@ -894,6 +932,20 @@ mod tests {
         assert_eq!(fs::read_to_string(target).unwrap(), "outside");
     }
     #[test]
+    fn watcher_routes_settings_file_separately_from_vault_entries() {
+        let root = Path::new("/v");
+        let c = |p: &str| classify_vault_event(root, &root.join(p));
+        assert_eq!(c(".excalidraw-vault/settings.toml"), WatchedPath::Settings);
+        assert_eq!(c(".excalidraw-vault"), WatchedPath::Settings);
+        assert_eq!(c(".excalidraw-vault/recovery/x.json"), WatchedPath::Ignore);
+        assert_eq!(c(".excalidraw-vault/.excalidraw-tmp-1-2"), WatchedPath::Ignore);
+        assert_eq!(c(".excalidraw-vault.lock"), WatchedPath::Ignore);
+        assert_eq!(c("a/b.excalidraw"), WatchedPath::Entry("a/b.excalidraw".into()));
+        assert_eq!(c("a/.excalidraw-tmp-1"), WatchedPath::Ignore);
+        assert_eq!(c("bad?.excalidraw"), WatchedPath::Rescan);
+        assert_eq!(classify_vault_event(root, Path::new("/elsewhere/x")), WatchedPath::Rescan);
+    }
+    #[test]
     fn atomic_write_and_hash_revision_roundtrip() {
         let t = tempdir().unwrap(); let p = t.path().join("scene.excalidraw");
         write_atomic(&p, SCENE.as_bytes()).unwrap();
@@ -1069,6 +1121,7 @@ pub fn run() {
                 export_file, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
+                vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish
             ])
         } else {
@@ -1077,7 +1130,8 @@ pub fn run() {
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
-                themes::list_themes, themes::open_themes_dir
+                themes::list_themes, themes::open_themes_dir,
+                vault_settings::load_vault_settings, vault_settings::update_vault_settings
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1086,7 +1140,8 @@ pub fn run() {
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
             export_file, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
-            themes::list_themes, themes::open_themes_dir
+            themes::list_themes, themes::open_themes_dir,
+            vault_settings::load_vault_settings, vault_settings::update_vault_settings
         ]);
         let app = builder
             .build(tauri::generate_context!())
