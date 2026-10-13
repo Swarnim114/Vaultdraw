@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 mod clipboard;
 mod config;
 mod search;
+mod library;
 mod themes;
 mod vault_settings;
 #[cfg(feature = "smoke-test")]
@@ -414,6 +415,8 @@ fn open_lock_file(lock_path: &Path) -> Option<File> {
 enum WatchedPath {
     /// Vault metadata, the lock file or our own temp files.
     Ignore,
+    /// `<root>/library.excalidrawlib` (root level only, exact name).
+    Library,
     /// `.excalidraw-vault/settings.toml` (or the metadata folder itself) changed.
     Settings,
     /// A user-visible vault-relative path.
@@ -427,6 +430,9 @@ fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
     let text = rel.to_string_lossy().replace('\\', "/");
     if text.split('/').any(|part| part.starts_with(".excalidraw-tmp-")) {
         return WatchedPath::Ignore;
+    }
+    if text == library::LIBRARY_FILE {
+        return WatchedPath::Library;
     }
     // The metadata folder itself (deleted, renamed or replaced) may take settings.toml with it.
     if text == META_DIR || text == format!("{META_DIR}/{}", vault_settings::SETTINGS_FILE) {
@@ -477,6 +483,7 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
             let mut paths = Vec::new();
             let mut rescan = false;
             let mut settings_changed = false;
+            let mut library_changed = false;
             for event in batch {
                 match event {
                     Ok(e) => {
@@ -484,6 +491,7 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
                             match classify_vault_event(&r, &p) {
                                 WatchedPath::Ignore => {}
                                 WatchedPath::Settings => settings_changed = true,
+                                WatchedPath::Library => library_changed = true,
                                 WatchedPath::Entry(text) => paths.push(text),
                                 WatchedPath::Rescan => rescan = true,
                             }
@@ -492,6 +500,7 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
                     Err(_) => {
                         rescan = true;
                         settings_changed = true;
+                        library_changed = true;
                     }
                 }
             }
@@ -502,6 +511,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
             }
             if settings_changed {
                 let _ = app_handle.emit("vault-settings-change", VaultSettingsChange { handle: h.clone() });
+            }
+            if library_changed {
+                library::emit_change(&app_handle, Some(h.clone()));
             }
             if !paths.is_empty() || rescan {
                 let _ = app_handle.emit(
@@ -953,6 +965,10 @@ mod tests {
         assert_eq!(c(".excalidraw-vault/recovery/x.json"), WatchedPath::Ignore);
         assert_eq!(c(".excalidraw-vault/.excalidraw-tmp-1-2"), WatchedPath::Ignore);
         assert_eq!(c(".excalidraw-vault.lock"), WatchedPath::Ignore);
+        assert_eq!(c("library.excalidrawlib"), WatchedPath::Library);
+        assert_eq!(c("sub/library.excalidrawlib"), WatchedPath::Entry("sub/library.excalidrawlib".into()));
+        assert_eq!(c("Library.excalidrawlib"), WatchedPath::Entry("Library.excalidrawlib".into()));
+        assert_eq!(c(".excalidraw-tmp-1-2"), WatchedPath::Ignore);
         assert_eq!(c("a/b.excalidraw"), WatchedPath::Entry("a/b.excalidraw".into()));
         assert_eq!(c("a/.excalidraw-tmp-1"), WatchedPath::Ignore);
         assert_eq!(c("bad?.excalidraw"), WatchedPath::Rescan);
@@ -1141,6 +1157,7 @@ pub fn run() {
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status,
+                library::read_library, library::write_library, library::pick_library_file,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 clipboard::smoke_read_clipboard
             ])
@@ -1152,7 +1169,8 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-                search::search_vault, search::search_index_status
+                search::search_vault, search::search_index_status,
+                library::read_library, library::write_library, library::pick_library_file
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1163,7 +1181,8 @@ pub fn run() {
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-            search::search_vault, search::search_index_status
+            search::search_vault, search::search_index_status,
+            library::read_library, library::write_library, library::pick_library_file
         ]);
         let app = builder
             .build(tauri::generate_context!())

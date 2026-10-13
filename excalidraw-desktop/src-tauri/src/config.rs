@@ -80,7 +80,7 @@ autosave_delay_ms = 500
 /// Serializes every config/state write within the process.
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
-fn write_guard() -> Result<std::sync::MutexGuard<'static, ()>> {
+pub(crate) fn write_guard() -> Result<std::sync::MutexGuard<'static, ()>> {
     WRITE_LOCK
         .lock()
         .map_err(|_| err("INTERNAL", "Config write state unavailable"))
@@ -724,6 +724,19 @@ fn is_temp_file(p: &Path) -> bool {
     p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(TEMP_PREFIX))
 }
 
+/// Splits `<config>/library.excalidrawlib` out of a batch of changed paths: it is reported
+/// by `library-change` instead of `config-change`. Returns the remaining paths and whether
+/// the library file was among them.
+fn split_library_paths(root: &Path, paths: Vec<String>) -> (Vec<String>, bool) {
+    let is_library = |p: &str| {
+        let p = Path::new(p);
+        p.parent() == Some(root) && p.file_name().is_some_and(|n| n == super::library::LIBRARY_FILE)
+    };
+    let is_lock = |p: &str| Path::new(p).file_name().is_some_and(|n| n == super::library::LOCK_FILE);
+    let (library, rest): (Vec<String>, Vec<String>) = paths.into_iter().partition(|p| is_library(p));
+    (rest.into_iter().filter(|p| !is_lock(p)).collect(), !library.is_empty())
+}
+
 /// Watches the config dir recursively and emits debounced `config-change` events.
 pub(crate) fn start_watcher(app: &AppHandle) -> std::result::Result<ConfigWatcher, NativeError> {
     let dirs = resolve_dirs()?;
@@ -766,6 +779,11 @@ pub(crate) fn start_watcher(app: &AppHandle) -> std::result::Result<ConfigWatche
                 }
                 paths.sort();
                 paths.dedup();
+                let (paths, library_changed) = split_library_paths(&root, paths);
+                let mut paths = paths;
+                if library_changed || failed {
+                    super::library::emit_change(&app, None);
+                }
                 if paths.is_empty() && failed {
                     paths.push(root.to_string_lossy().into_owned());
                 }
@@ -788,6 +806,26 @@ pub(crate) fn start_watcher(app: &AppHandle) -> std::result::Result<ConfigWatche
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn library_path_is_split_from_config_changes() {
+        let root = Path::new("/c/vaultdraw");
+        let s = |v: &[&str]| v.iter().map(|p| p.to_string()).collect::<Vec<_>>();
+        assert_eq!(split_library_paths(root, s(&["/c/vaultdraw/library.excalidrawlib"])), (vec![], true));
+        // Our lock and temp files never count as a library (or config) change.
+        assert_eq!(
+            split_library_paths(root, s(&["/c/vaultdraw/.library.excalidrawlib.lock"])),
+            (vec![], false)
+        );
+        assert_eq!(
+            split_library_paths(root, s(&["/c/vaultdraw/config.toml", "/c/vaultdraw/library.excalidrawlib"])),
+            (s(&["/c/vaultdraw/config.toml"]), true)
+        );
+        assert_eq!(
+            split_library_paths(root, s(&["/c/vaultdraw/themes/library.excalidrawlib", "/c/vaultdraw/config.toml"])),
+            (s(&["/c/vaultdraw/themes/library.excalidrawlib", "/c/vaultdraw/config.toml"]), false)
+        );
+    }
     use serde_json::json;
     use std::collections::HashMap;
     use tempfile::tempdir;
