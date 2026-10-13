@@ -1,0 +1,176 @@
+#!/usr/bin/env node
+// Perf harness CLI. Callers wrap the whole command in the shared build lock:
+//   lockf -k /Users/kalon/Opensource/excalidraw/.cache/build.lock node excalidraw-desktop/perf/run.mjs ...
+// This runner never takes the lock itself (nested lockf would deadlock).
+import { parseArgs } from "node:util";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadCatalogue, specFor, unitOf } from "./lib/catalogue.mjs";
+import { aggregate } from "./lib/stats.mjs";
+import { compare, pickBaseline } from "./lib/compare.mjs";
+import { buildPerfApp, reuseBuiltApp, runAppOnce, gitInfo, perfCacheDir } from "./lib/app.mjs";
+import { machineInfo, resultTable, comparisonTable, updateBaseline } from "./lib/report.mjs";
+
+const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
+
+  --low-end              packaged app under taskpolicy -c background (+ WebKit helpers clamped), memory_pressure -S on
+  --runs N               measured runs (default 4), after --warmup (default 1) discarded run
+  --warmup N             warmup runs to discard
+  --compare <file>       gate against a baseline (single result or combined {modes:{normal,"low-end"}}); exit 1 on regression
+  --out <file>           result JSON (default <wt>/.cache/perf/results/<timestamp>-<mode>.json)
+  --update-baseline <f>  merge this result into modes[mode] of combined file <f> (+ sibling .md)
+  --no-build             reuse <wt>/.cache/perf/app/Excalidraw Vault.app
+  --skip-browser         skip Chromium mode (lib/browser.mjs; skipped automatically if absent)
+  --skip-app             skip the packaged-app mode
+  --memory-pressure      run 'memory_pressure -S' (simulated; needs root, else noted and ignored) in normal mode too
+  --keep-runs            keep per-run vault clones under .cache/perf/runs
+  --quick                1 run, no warmup, no extra noise runs (harness smoke test)
+
+The runner does not take the build lock. Wrap the whole command:
+  lockf -k /Users/kalon/Opensource/excalidraw/.cache/build.lock node excalidraw-desktop/perf/run.mjs [options]
+`;
+
+const { values: o } = parseArgs({
+  options: {
+    "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
+    out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
+    "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
+    "keep-runs": { type: "boolean" }, quick: { type: "boolean" }, help: { type: "boolean", short: "h" },
+  },
+});
+if (o.help) { console.log(HELP); process.exit(0); }
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const wtRoot = path.resolve(here, "..", "..");
+const cacheDir = perfCacheDir(wtRoot);
+const mode = o["low-end"] ? "low-end" : "normal";
+const runs = o.quick ? 1 : Number(o.runs ?? 4);
+const warmup = o.quick ? 0 : Number(o.warmup ?? 1);
+const log = (m) => console.error(`[perf] ${m}`);
+const t0 = Date.now();
+const elapsedMin = () => (Date.now() - t0) / 60000;
+
+const catalogue = loadCatalogue();
+const config = JSON.parse(readFileSync(path.join(here, "fixtures.config.json"), "utf8"));
+const errors = [];
+const notes = [];
+const rawApp = [];
+let rawBrowser = [];
+let git = gitInfo(wtRoot);
+let fixtureHash = createHash("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 12);
+
+const gatedNoisy = (metrics) => Object.entries(metrics).some(([id, m]) => m.noisy && specFor(catalogue, id));
+
+// ---- app mode ----
+let appTarget = null;
+if (!o["skip-app"]) {
+  try {
+    const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
+    const { vaultDir, manifest } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
+    if (manifest?.hash) fixtureHash = String(manifest.hash).slice(0, 12);
+    const built = o["no-build"] ? reuseBuiltApp({ wtRoot }) : await buildPerfApp({ wtRoot, log });
+    git = built.git ?? git;
+    appTarget = {
+      runOne: async (i) => {
+        const r = await runAppOnce({
+          appPath: built.appPath, pristineVault: vaultDir, lowEnd: mode === "low-end", runIndex: i,
+          keepRuns: !!o["keep-runs"], memoryPressure: mode === "low-end" || !!o["memory-pressure"], log,
+        });
+        for (const n of r.notes) if (!notes.includes(n)) notes.push(n);
+        return r;
+      },
+    };
+  } catch (e) {
+    errors.push(`app mode: ${e.message}`);
+    log(`app mode failed: ${e.message}`);
+  }
+}
+
+async function collectApp(count, label) {
+  for (let i = 0; i < count; i++) {
+    log(`app ${label} run ${i + 1}/${count} (${mode})`);
+    const r = await appTarget.runOne(rawApp.length + i + (label === "warmup" ? 1000 : 0));
+    if (label === "warmup") continue;
+    if (r.errors.length) errors.push(...r.errors.map((e) => `app run: ${e}`));
+    if (Object.keys(r.samples).length) rawApp.push(r.samples);
+  }
+}
+
+if (appTarget) {
+  await collectApp(warmup, "warmup");
+  await collectApp(runs, "measured");
+  let extra = 0;
+  while (!o.quick && extra < 2 && rawApp.length && elapsedMin() < 7 && gatedNoisy(aggregate(rawApp, unitOf(catalogue)))) {
+    extra++;
+    log(`noisy gated metric(s); extra run ${extra}/2 (${elapsedMin().toFixed(1)} min elapsed)`);
+    await collectApp(1, "measured");
+  }
+  if (extra) notes.push(`${extra} extra app run(s) added because of noise`);
+}
+
+// ---- browser mode ----
+if (!o["skip-browser"]) {
+  const bf = path.join(here, "lib", "browser.mjs");
+  if (!existsSync(bf)) {
+    notes.push("browser mode skipped: lib/browser.mjs not present");
+  } else {
+    try {
+      const { runBrowser } = await import(pathToFileURL(bf).href);
+      const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
+      const { vaultDir } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
+      const r = await runBrowser({ mode, runs: runs + warmup, vaultDir, config, log });
+      rawBrowser = (r.samples ?? []).slice(warmup).map((run) =>
+        Object.fromEntries(Object.entries(run).map(([k, v]) => [k.startsWith("browser.") ? k : `browser.${k}`, v])));
+      if (r.info) notes.push(`browser info: ${JSON.stringify(r.info)}`);
+    } catch (e) {
+      errors.push(`browser mode: ${e.message}`);
+    }
+  }
+}
+
+const metrics = {
+  ...aggregate(rawApp, unitOf(catalogue)),
+  ...aggregate(rawBrowser, unitOf(catalogue)),
+};
+for (const [id, m] of Object.entries(metrics)) if (!specFor(catalogue, id)) notes.push(`uncatalogued metric ${id} (not gated)`);
+const noisyIds = Object.entries(metrics).filter(([id, m]) => m.noisy && specFor(catalogue, id)).map(([id]) => id);
+if (noisyIds.length) notes.push(`still noisy: ${noisyIds.join(", ")}`);
+
+const result = {
+  version: 1, mode, createdAt: new Date().toISOString(), git, machine: machineInfo(),
+  config: { runs: rawApp.length, warmup, fixtureHash, drawingCount: config.drawingCount },
+  metrics, raw: { app: rawApp, browser: rawBrowser }, notes, errors,
+};
+
+const outFile = o.out ? path.resolve(o.out) : path.join(cacheDir, "results", `${new Date().toISOString().replace(/[:.]/g, "-")}-${mode}.json`);
+mkdirSync(path.dirname(outFile), { recursive: true });
+writeFileSync(outFile, JSON.stringify(result, null, 2) + "\n");
+
+console.log(`\nVaultdraw perf - ${mode} - ${rawApp.length} measured run(s) + ${warmup} warmup - ${git.sha.slice(0, 10)}${git.dirty ? " (dirty)" : ""}`);
+console.log(resultTable(result, catalogue));
+for (const n of notes) console.log(`note: ${n}`);
+
+let exitCode = 0;
+if (o.compare) {
+  const { baseline, warnings } = pickBaseline(JSON.parse(readFileSync(o.compare, "utf8")), mode, result.machine);
+  for (const w of warnings) console.log(`WARNING: ${w}`);
+  const cmp = compare(result, baseline, catalogue);
+  console.log(`\nComparison vs ${o.compare}`);
+  console.log(comparisonTable(cmp.rows));
+  const pre = cmp.rows.filter((r) => r.status === "budget-preexisting");
+  if (pre.length) console.log(`\nWARNING: ${pre.length} budget breach(es) already present in the baseline (not failing): ${pre.map((r) => `${r.metric}.${r.stat}`).join(", ")}`);
+  if (cmp.failing.length) console.log(`\nFAIL: ${cmp.failing.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ")}`);
+  exitCode = cmp.exitCode;
+}
+if (o["update-baseline"]) {
+  const r = updateBaseline(path.resolve(o["update-baseline"]), result, catalogue);
+  console.log(`baseline updated: ${r.file} (+ ${r.md})`);
+}
+if (errors.length) {
+  console.log(`\nERRORS:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
+  exitCode = 1;
+}
+console.log(`\nresult: ${outFile}\nelapsed: ${elapsedMin().toFixed(1)} min`);
+process.exit(exitCode);
