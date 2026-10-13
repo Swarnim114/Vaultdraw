@@ -1286,6 +1286,43 @@ button.vault-status:hover:not(:disabled) {
   line-height: 1.35;
 }
 
+/* Config folder row (Settings -> Vault & Storage) */
+.vault-config-row {
+  align-items: flex-start;
+}
+
+.vault-config-path {
+  margin-top: 6px;
+  padding: 4px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--vault-text);
+  background-color: var(--vault-bg);
+  border: 1px solid var(--vault-border);
+  border-radius: 4px;
+  word-break: break-all;
+  user-select: text;
+}
+
+.vault-config-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.vault-config-status {
+  margin-top: 6px;
+  font-size: 0.75rem;
+}
+
+.vault-config-status--info {
+  color: var(--vault-text-muted);
+}
+
+.vault-config-status--error {
+  color: var(--vault-danger);
+}
+
 /* Segmented Control Buttons */
 .vault-segmented-control {
   display: flex;

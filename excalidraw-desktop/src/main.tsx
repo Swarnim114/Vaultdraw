@@ -1,6 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { getTheme, resolveTheme } from "./vault/preferences";
+import { initSettings } from "./vault/settingsSync";
+
 import "./desktop.css";
 
 // Desktop-only bootstrap. No Sentry, Firebase, collaboration, service
@@ -39,7 +42,17 @@ if (ownerWindow.matchMedia("(prefers-color-scheme: dark)").matches) {
 
 // Establish the local asset policy before the editor's font modules initialize.
 // An external module script respects CSP without allowing inline scripts.
-void import("./VaultApp")
+// Settings are hydrated from the config folder (Tauri) before the first
+// render so every synchronous preferences read sees config.toml values.
+// initSettings never throws; in a plain browser it keeps localStorage.
+void initSettings(ownerWindow)
+  .then(() => {
+    ownerDocument.documentElement.classList.toggle(
+      "dark",
+      resolveTheme(getTheme(ownerWindow), ownerWindow) === "dark",
+    );
+    return import("./VaultApp");
+  })
   .then(({ default: VaultApp }) => {
     const root = createRoot(mountNode);
     root.render(

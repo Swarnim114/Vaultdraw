@@ -7,6 +7,10 @@ export interface VaultPreferences {
   navigatorWidth: number;
   expandedFolders: Record<string, string[]>;
   theme: VaultTheme;
+  /** Colour theme name: a built-in name or a theme in the config themes/ folder. */
+  colorTheme: string;
+  /** Make the canvas background, pencil and palette colours follow the theme. */
+  syncCanvas: boolean;
   defaultFontFamily: number;
   defaultFontSize: number;
   defaultStrokeColor: string;
@@ -20,6 +24,9 @@ export interface VaultPreferences {
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
 
+/** Excalidraw's FONT_FAMILY.Excalifont (packages/common/src/constants.ts). */
+export const DEFAULT_FONT_FAMILY = 5;
+
 export const DEFAULT_PREFERENCES: VaultPreferences = {
   recentVaults: [],
   lastVaultPath: null,
@@ -27,7 +34,9 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   navigatorWidth: 280,
   expandedFolders: {},
   theme: "system",
-  defaultFontFamily: 1,
+  colorTheme: "Default",
+  syncCanvas: false,
+  defaultFontFamily: DEFAULT_FONT_FAMILY,
   defaultFontSize: 20,
   defaultStrokeColor: "#1e1e1e",
   defaultBackgroundColor: "transparent",
@@ -37,6 +46,150 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   autosaveDelayMs: 500,
   defaultCanvasBackground: "#ffffff",
 };
+
+export const isVaultTheme = (value: unknown): value is VaultTheme =>
+  value === "light" || value === "dark" || value === "system";
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+export const isExpandedFolders = (
+  value: unknown,
+): value is Record<string, string[]> =>
+  !!value &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  Object.values(value as Record<string, unknown>).every(isStringArray);
+
+const pick = <T>(
+  value: unknown,
+  guard: (value: unknown) => boolean,
+  fallback: T,
+): T => (guard(value) ? (value as T) : fallback);
+
+const isNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value);
+const isString = (value: unknown) => typeof value === "string";
+const isBoolean = (value: unknown) => typeof value === "boolean";
+
+/**
+ * Field-by-field normalization of an untrusted preferences object: anything
+ * with the wrong type falls back to that field's default.
+ */
+export function normalizePreferences(input: unknown): VaultPreferences {
+  const parsed =
+    input && typeof input === "object"
+      ? (input as Partial<Record<keyof VaultPreferences, unknown>>)
+      : {};
+  const d = DEFAULT_PREFERENCES;
+  return {
+    ...d,
+    ...(parsed as Partial<VaultPreferences>),
+    recentVaults: Array.isArray(parsed.recentVaults)
+      ? (parsed.recentVaults as string[])
+      : [],
+    lastVaultPath:
+      typeof parsed.lastVaultPath === "string" ? parsed.lastVaultPath : null,
+    navigatorCollapsed: pick(
+      parsed.navigatorCollapsed,
+      isBoolean,
+      d.navigatorCollapsed,
+    ),
+    navigatorWidth: pick(parsed.navigatorWidth, isNumber, d.navigatorWidth),
+    expandedFolders:
+      parsed.expandedFolders && typeof parsed.expandedFolders === "object"
+        ? (parsed.expandedFolders as Record<string, string[]>)
+        : {},
+    theme: isVaultTheme(parsed.theme) ? parsed.theme : d.theme,
+    colorTheme:
+      typeof parsed.colorTheme === "string" && parsed.colorTheme.trim()
+        ? parsed.colorTheme
+        : d.colorTheme,
+    syncCanvas: pick(parsed.syncCanvas, isBoolean, d.syncCanvas),
+    defaultFontFamily: pick(
+      parsed.defaultFontFamily,
+      isNumber,
+      d.defaultFontFamily,
+    ),
+    defaultFontSize: pick(parsed.defaultFontSize, isNumber, d.defaultFontSize),
+    defaultStrokeColor: pick(
+      parsed.defaultStrokeColor,
+      isString,
+      d.defaultStrokeColor,
+    ),
+    defaultBackgroundColor: pick(
+      parsed.defaultBackgroundColor,
+      isString,
+      d.defaultBackgroundColor,
+    ),
+    defaultFillStyle: pick(
+      parsed.defaultFillStyle,
+      isString,
+      d.defaultFillStyle,
+    ),
+    defaultStrokeWidth: pick(
+      parsed.defaultStrokeWidth,
+      isNumber,
+      d.defaultStrokeWidth,
+    ),
+    defaultRoughness: pick(
+      parsed.defaultRoughness,
+      isNumber,
+      d.defaultRoughness,
+    ),
+    autosaveDelayMs: pick(parsed.autosaveDelayMs, isNumber, d.autosaveDelayMs),
+    defaultCanvasBackground: pick(
+      parsed.defaultCanvasBackground,
+      isString,
+      d.defaultCanvasBackground,
+    ),
+  };
+}
+
+const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
+  ...prefs,
+  recentVaults: [...prefs.recentVaults],
+  expandedFolders: { ...prefs.expandedFolders },
+});
+
+// ---------------------------------------------------------------------------
+// In-memory store (desktop config folder mode)
+//
+// In the Tauri app, settingsSync.ts attaches an in-memory store hydrated from
+// config.toml + state.json. Reads come from memory; writes update memory
+// synchronously and hand the change to the store's persist callback. Without
+// an attached store (browser harness, unit tests) the module keeps its
+// original localStorage behaviour.
+// ---------------------------------------------------------------------------
+
+type PersistCallback = (next: VaultPreferences, prev: VaultPreferences) => void;
+
+let memoryStore: {
+  prefs: VaultPreferences;
+  persist: PersistCallback;
+} | null = null;
+
+export function attachPreferencesStore(
+  initial: VaultPreferences,
+  persist: PersistCallback,
+): void {
+  memoryStore = { prefs: clonePreferences(initial), persist };
+}
+
+export function detachPreferencesStore(): void {
+  memoryStore = null;
+}
+
+export function isPreferencesStoreAttached(): boolean {
+  return memoryStore !== null;
+}
+
+/** Replace the in-memory preferences without persisting (used on reload). */
+export function replaceStoredPreferences(next: VaultPreferences): void {
+  if (memoryStore) {
+    memoryStore.prefs = clonePreferences(next);
+  }
+}
 
 function getStorage(win?: Window | null): Storage | null {
   try {
@@ -49,79 +202,54 @@ function getStorage(win?: Window | null): Storage | null {
   }
 }
 
-export function getPreferences(win?: Window | null): VaultPreferences {
+/** Raw preferences object stored in localStorage, if any (for migration). */
+export function readLocalStoragePreferences(
+  win?: Window | null,
+): Partial<VaultPreferences> | null {
   const storage = getStorage(win);
   if (!storage) {
-    return { ...DEFAULT_PREFERENCES };
+    return null;
   }
   try {
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) {
-      return { ...DEFAULT_PREFERENCES };
+      return null;
     }
-    const parsed = JSON.parse(raw) as Partial<VaultPreferences>;
-    return {
-      ...DEFAULT_PREFERENCES,
-      ...parsed,
-      recentVaults: Array.isArray(parsed.recentVaults)
-        ? parsed.recentVaults
-        : [],
-      expandedFolders:
-        parsed.expandedFolders && typeof parsed.expandedFolders === "object"
-          ? parsed.expandedFolders
-          : {},
-      theme:
-        parsed.theme === "light" ||
-        parsed.theme === "dark" ||
-        parsed.theme === "system"
-          ? parsed.theme
-          : DEFAULT_PREFERENCES.theme,
-      defaultFontFamily:
-        typeof parsed.defaultFontFamily === "number"
-          ? parsed.defaultFontFamily
-          : DEFAULT_PREFERENCES.defaultFontFamily,
-      defaultFontSize:
-        typeof parsed.defaultFontSize === "number"
-          ? parsed.defaultFontSize
-          : DEFAULT_PREFERENCES.defaultFontSize,
-      defaultStrokeColor:
-        typeof parsed.defaultStrokeColor === "string"
-          ? parsed.defaultStrokeColor
-          : DEFAULT_PREFERENCES.defaultStrokeColor,
-      defaultBackgroundColor:
-        typeof parsed.defaultBackgroundColor === "string"
-          ? parsed.defaultBackgroundColor
-          : DEFAULT_PREFERENCES.defaultBackgroundColor,
-      defaultFillStyle:
-        typeof parsed.defaultFillStyle === "string"
-          ? parsed.defaultFillStyle
-          : DEFAULT_PREFERENCES.defaultFillStyle,
-      defaultStrokeWidth:
-        typeof parsed.defaultStrokeWidth === "number"
-          ? parsed.defaultStrokeWidth
-          : DEFAULT_PREFERENCES.defaultStrokeWidth,
-      defaultRoughness:
-        typeof parsed.defaultRoughness === "number"
-          ? parsed.defaultRoughness
-          : DEFAULT_PREFERENCES.defaultRoughness,
-      autosaveDelayMs:
-        typeof parsed.autosaveDelayMs === "number"
-          ? parsed.autosaveDelayMs
-          : DEFAULT_PREFERENCES.autosaveDelayMs,
-      defaultCanvasBackground:
-        typeof parsed.defaultCanvasBackground === "string"
-          ? parsed.defaultCanvasBackground
-          : DEFAULT_PREFERENCES.defaultCanvasBackground,
-    };
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Partial<VaultPreferences>)
+      : null;
   } catch {
+    return null;
+  }
+}
+
+export function getPreferences(win?: Window | null): VaultPreferences {
+  if (memoryStore) {
+    return clonePreferences(memoryStore.prefs);
+  }
+  const parsed = readLocalStoragePreferences(win);
+  if (!parsed) {
     return { ...DEFAULT_PREFERENCES };
   }
+  return normalizePreferences(parsed);
 }
 
 export function updatePreferences(
   partial: Partial<VaultPreferences>,
   win?: Window | null,
 ): VaultPreferences {
+  if (memoryStore) {
+    const prev = memoryStore.prefs;
+    const next: VaultPreferences = { ...prev, ...partial };
+    memoryStore.prefs = next;
+    try {
+      memoryStore.persist(clonePreferences(next), clonePreferences(prev));
+    } catch {
+      // persistence failures are reported by the store, never thrown here
+    }
+    return clonePreferences(next);
+  }
   const current = getPreferences(win);
   const next: VaultPreferences = {
     ...current,

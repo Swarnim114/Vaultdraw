@@ -10,14 +10,15 @@ import {
   setTheme,
   type VaultTheme,
 } from "../vault/preferences";
-
 import {
-  IconClose,
-  IconDrawing,
-  IconFolder,
-  IconReveal,
-  IconSettings,
-} from "./Icons";
+  getSettingsStatus,
+  openConfigDir,
+  PREFERENCES_CHANGED_EVENT,
+  reloadSettings,
+  SETTINGS_STATUS_EVENT,
+} from "../vault/settingsSync";
+
+import { IconClose, IconDrawing, IconFolder, IconSettings } from "./Icons";
 
 import type { VaultInfo } from "../vault/types";
 
@@ -30,6 +31,16 @@ export interface SettingsModalProps {
 }
 
 type SettingsTab = "appearance" | "editor" | "vault" | "about";
+
+// Excalidraw's real FONT_FAMILY ids (packages/common/src/constants.ts).
+const FONT_OPTIONS = [
+  { id: 5, label: "Excalifont (Hand-drawn)" },
+  { id: 6, label: "Nunito (Clean / Normal)" },
+  { id: 8, label: "Comic Shanns (Code / Monospace)" },
+  { id: 1, label: "Virgil (Classic hand-drawn)" },
+  { id: 2, label: "Helvetica (Classic normal)" },
+  { id: 3, label: "Cascadia (Classic code)" },
+] as const;
 
 export const SettingsModal = ({
   vault,
@@ -53,6 +64,75 @@ export const SettingsModal = ({
   const [autosaveDelay, setAutosaveDelayState] = useState(
     () => getPreferences(win).autosaveDelayMs,
   );
+
+  const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
+  const [configAction, setConfigAction] = useState<{
+    message: string;
+    type: "info" | "error";
+  } | null>(null);
+
+  // Refresh displayed values when config.toml is reloaded while open.
+  useEffect(() => {
+    if (!win) {
+      return;
+    }
+    const handlePreferencesChanged = () => {
+      const prefs = getPreferences(win);
+      setCurrentThemeState(prefs.theme);
+      setDefaultsState(getEditorDefaults(win));
+      setAutosaveDelayState(prefs.autosaveDelayMs);
+    };
+    const handleStatus = () => setSettingsStatus(getSettingsStatus());
+    win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
+    win.addEventListener(SETTINGS_STATUS_EVENT, handleStatus);
+    return () => {
+      win.removeEventListener(
+        PREFERENCES_CHANGED_EVENT,
+        handlePreferencesChanged,
+      );
+      win.removeEventListener(SETTINGS_STATUS_EVENT, handleStatus);
+    };
+  }, [win]);
+
+  const handleOpenConfigDir = async () => {
+    setConfigAction(null);
+    try {
+      await openConfigDir();
+    } catch (err) {
+      setConfigAction({
+        message: `Could not open the config folder: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        type: "error",
+      });
+    }
+  };
+
+  const handleReloadConfig = async () => {
+    setConfigAction(null);
+    try {
+      const changed = await reloadSettings();
+      const status = getSettingsStatus();
+      setSettingsStatus(status);
+      setConfigAction(
+        status.problems.length
+          ? { message: status.problems[0].message, type: "error" }
+          : {
+              message: changed
+                ? "Reloaded config.toml."
+                : "config.toml is up to date.",
+              type: "info",
+            },
+      );
+    } catch (err) {
+      setConfigAction({
+        message: `Could not reload: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        type: "error",
+      });
+    }
+  };
 
   // Close on Escape key
   useEffect(() => {
@@ -89,11 +169,8 @@ export const SettingsModal = ({
   const handleUpdateDefaults = (
     partial: Parameters<typeof setEditorDefaults>[0],
   ) => {
-    setDefaultsState((prev) => {
-      const next = { ...prev, ...partial };
-      setEditorDefaults(next, win);
-      return next;
-    });
+    setEditorDefaults(partial, win);
+    setDefaultsState(getEditorDefaults(win));
   };
 
   const handleAutosaveChange = (val: number) => {
@@ -360,11 +437,18 @@ export const SettingsModal = ({
                     }
                     style={{ width: "220px" }}
                   >
-                    <option value={1}>1: Excalifont (Hand-drawn)</option>
-                    <option value={2}>2: Nunito (Clean / Normal)</option>
-                    <option value={3}>
-                      3: Comic Shanns (Code / Monospace)
-                    </option>
+                    {!FONT_OPTIONS.some(
+                      (f) => f.id === defaults.defaultFontFamily,
+                    ) && (
+                      <option value={defaults.defaultFontFamily}>
+                        {defaults.defaultFontFamily}: Other
+                      </option>
+                    )}
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.id}: {f.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -607,6 +691,48 @@ export const SettingsModal = ({
             {/* 3. VAULT & STORAGE TAB */}
             {activeTab === "vault" && (
               <div className="vault-settings-section">
+                {settingsStatus.mode === "tauri" && (
+                  <div
+                    className="vault-setting-row vault-config-row"
+                    data-testid="settings-config-row"
+                  >
+                    <div className="vault-setting-info">
+                      <div className="vault-setting-label">Config File</div>
+                      <div className="vault-setting-desc">
+                        Settings live in a plain text file you can edit by hand;
+                        changes apply live.
+                      </div>
+                      <code className="vault-config-path">
+                        {settingsStatus.configPath ?? "Unknown location"}
+                      </code>
+                      {configAction && (
+                        <div
+                          className={`vault-config-status vault-config-status--${configAction.type}`}
+                          role="status"
+                        >
+                          {configAction.message}
+                        </div>
+                      )}
+                    </div>
+                    <div className="vault-config-actions">
+                      <button
+                        type="button"
+                        className="vault-btn vault-btn--sm"
+                        onClick={() => void handleOpenConfigDir()}
+                      >
+                        <IconFolder />
+                        <span>Open config folder</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="vault-btn vault-btn--sm"
+                        onClick={() => void handleReloadConfig()}
+                      >
+                        <span>Reload</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="vault-setting-row">
                   <div className="vault-setting-info">
                     <div className="vault-setting-label">

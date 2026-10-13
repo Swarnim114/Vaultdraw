@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { SettingsModal } from "../components/SettingsModal";
-import { getEditorDefaults, getTheme } from "../vault/preferences";
+import {
+  getEditorDefaults,
+  getPreferences,
+  getTheme,
+} from "../vault/preferences";
+import {
+  disposeSettings,
+  initSettings,
+  reloadSettings,
+} from "../vault/settingsSync";
 
 import type { VaultInfo } from "../vault/types";
 
@@ -119,5 +128,124 @@ describe("SettingsModal component and preference persistence", () => {
     const revealBtn = screen.getByRole("button", { name: /reveal folder/i });
     fireEvent.click(revealBtn);
     expect(onReveal).toHaveBeenCalled();
+  });
+
+  it("uses Excalidraw's real font ids, defaulting to Excalifont (5)", () => {
+    window.localStorage.clear();
+    render(
+      <SettingsModal
+        vault={mockVault}
+        onClose={vi.fn()}
+        ownerDocument={document}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /drawing defaults/i }));
+    const select = screen.getByDisplayValue(/Excalifont/) as HTMLSelectElement;
+    expect(select.value).toBe("5");
+    const ids = Array.from(select.options).map((o) => Number(o.value));
+    expect(ids.sort((a, b) => a - b)).toEqual([1, 2, 3, 5, 6, 8]);
+    fireEvent.change(select, { target: { value: "8" } });
+    expect(getEditorDefaults(window).defaultFontFamily).toBe(8);
+  });
+
+  it("hides config folder controls in browser mode", () => {
+    render(
+      <SettingsModal
+        vault={mockVault}
+        onClose={vi.fn()}
+        ownerDocument={document}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /vault & storage/i }));
+    expect(screen.queryByText(/open config folder/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^reload$/i })).toBeNull();
+  });
+
+  describe("with the config folder (Tauri)", () => {
+    afterEach(() => {
+      disposeSettings();
+      window.localStorage.clear();
+    });
+
+    const setup = async () => {
+      const config = {
+        appearance: { mode: "light" },
+        editor: { stroke_width: 2 },
+      } as Record<string, Record<string, unknown>>;
+      const invoke = vi.fn(async (cmd: string) => {
+        if (cmd === "load_settings") {
+          return {
+            configDir: "/cfg",
+            configPath: "/cfg/config.toml",
+            statePath: "/state/state.json",
+            config: JSON.parse(JSON.stringify(config)),
+            configError: null,
+            state: {},
+          };
+        }
+        return undefined;
+      });
+      await initSettings(window, {
+        tauri: true,
+        invoke: invoke as any,
+        listen: vi.fn(async () => () => {}) as any,
+      });
+      return { config, invoke };
+    };
+
+    it("shows the config path with Open config folder and Reload", async () => {
+      const { invoke } = await setup();
+      render(
+        <SettingsModal
+          vault={mockVault}
+          onClose={vi.fn()}
+          ownerDocument={document}
+        />,
+      );
+      fireEvent.click(screen.getByRole("tab", { name: /vault & storage/i }));
+      expect(screen.getByText("/cfg/config.toml")).toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /open config folder/i }),
+      );
+      expect(invoke).toHaveBeenCalledWith("open_config_dir");
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^reload$/i }));
+      });
+      expect(
+        invoke.mock.calls.filter(([c]) => c === "load_settings"),
+      ).toHaveLength(2);
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /up to date/i,
+      );
+    });
+
+    it("refreshes displayed values when config.toml changes while open", async () => {
+      const { config } = await setup();
+      render(
+        <SettingsModal
+          vault={mockVault}
+          onClose={vi.fn()}
+          ownerDocument={document}
+        />,
+      );
+      expect(screen.getByRole("button", { name: "Light" })).toHaveClass(
+        "vault-segmented-btn--active",
+      );
+      config.appearance.mode = "dark";
+      config.editor.stroke_width = 4;
+      await act(async () => {
+        await reloadSettings();
+      });
+      expect(getPreferences(window).theme).toBe("dark");
+      expect(screen.getByRole("button", { name: "Dark" })).toHaveClass(
+        "vault-segmented-btn--active",
+      );
+      fireEvent.click(screen.getByRole("tab", { name: /drawing defaults/i }));
+      expect(screen.getByRole("button", { name: "Bold (4px)" })).toHaveClass(
+        "vault-segmented-btn--active",
+      );
+    });
   });
 });

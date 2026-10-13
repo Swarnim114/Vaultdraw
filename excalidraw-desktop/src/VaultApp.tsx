@@ -17,6 +17,12 @@ import {
   setTheme,
 } from "./vault/preferences";
 import {
+  getSettingsStatus,
+  PREFERENCES_CHANGED_EVENT,
+  SETTINGS_STATUS_EVENT,
+  type SettingsStatus,
+} from "./vault/settingsSync";
+import {
   buildTree,
   duplicateName,
   getBaseName,
@@ -120,7 +126,9 @@ export const VaultApp = ({
   }, [doc, appTheme]);
 
   useEffect(() => {
-    if (!win) return;
+    if (!win) {
+      return;
+    }
     const media = win.matchMedia("(prefers-color-scheme: dark)");
     const handleMediaChange = () => {
       const prefTheme = getTheme(win);
@@ -137,6 +145,54 @@ export const VaultApp = ({
       media.addListener(handleMediaChange);
       return () => media.removeListener(handleMediaChange);
     }
+  }, [win, doc]);
+
+  // Live config folder sync: config.toml edits (by hand or another window)
+  // reload preferences; re-render so theme, autosave delay and defaults
+  // follow. Settings problems (parse errors, invalid values, failed writes)
+  // reuse the global alert banner.
+  const [, setPreferencesVersion] = useState(0);
+  const settingsAlertRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!win) {
+      return;
+    }
+    const showSettingsStatus = (settingsStatus: SettingsStatus) => {
+      const [first, ...rest] = settingsStatus.problems;
+      if (first) {
+        const message = rest.length
+          ? `${first.message} (and ${rest.length} more)`
+          : first.message;
+        settingsAlertRef.current = message;
+        setGlobalAlert({ message, type: "error" });
+      } else if (settingsAlertRef.current) {
+        const stale = settingsAlertRef.current;
+        settingsAlertRef.current = null;
+        setGlobalAlert((prev) => (prev?.message === stale ? null : prev));
+      }
+    };
+    const handlePreferencesChanged = () => {
+      const resolved = resolveTheme(getTheme(win), win);
+      setAppTheme(resolved);
+      doc?.documentElement.classList.toggle("dark", resolved === "dark");
+      setNavigatorCollapsed(getNavigatorCollapsed(win));
+      setPreferencesVersion((v) => v + 1);
+    };
+    const handleStatus = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsStatus>).detail;
+      showSettingsStatus(detail ?? getSettingsStatus());
+    };
+    showSettingsStatus(getSettingsStatus());
+    win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
+    win.addEventListener(SETTINGS_STATUS_EVENT, handleStatus);
+    return () => {
+      win.removeEventListener(
+        PREFERENCES_CHANGED_EVENT,
+        handlePreferencesChanged,
+      );
+      win.removeEventListener(SETTINGS_STATUS_EVENT, handleStatus);
+    };
   }, [win, doc]);
 
   // Refs for tracking active lifecycle, generations, and loaded folders

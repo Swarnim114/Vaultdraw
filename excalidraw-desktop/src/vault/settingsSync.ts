@@ -1,0 +1,718 @@
+/**
+ * Bridge between the synchronous preferences API (preferences.ts) and the
+ * desktop config folder owned by the Rust side:
+ *
+ *   ~/.config/vaultdraw/config.toml      user settings (hand-editable)
+ *   ~/.local/state/vaultdraw/state.json  machine state
+ *
+ * Contract: personal/planning/config.md. In a plain browser (Playwright
+ * harness, Vitest without injected deps) nothing here touches Tauri and
+ * preferences.ts keeps its localStorage behaviour.
+ */
+import { isTauriAvailable } from "./DesktopVaultRepository";
+import {
+  attachPreferencesStore,
+  DEFAULT_PREFERENCES,
+  detachPreferencesStore,
+  getPreferences,
+  isExpandedFolders,
+  isVaultTheme,
+  readLocalStoragePreferences,
+  replaceStoredPreferences,
+  type VaultPreferences,
+} from "./preferences";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type InvokeFn = <T = unknown>(
+  cmd: string,
+  args?: Record<string, unknown>,
+) => Promise<T>;
+
+export type ListenFn = <T = unknown>(
+  event: string,
+  handler: (event: { payload: T }) => void,
+) => Promise<() => void>;
+
+export interface ConfigErrorPayload {
+  message: string;
+  line: number | null;
+}
+
+export interface LoadSettingsResult {
+  configDir: string;
+  configPath: string;
+  statePath: string;
+  config: Record<string, unknown> | null;
+  configError: ConfigErrorPayload | null;
+  state: Record<string, unknown> | null;
+}
+
+export interface ConfigChange {
+  key: string;
+  value: unknown;
+}
+
+export type SettingsProblemKind = "parse" | "invalid" | "io";
+
+export interface SettingsProblem {
+  kind: SettingsProblemKind;
+  /** Human readable, ready for the banner. */
+  message: string;
+  /** Dotted config key for `invalid` problems. */
+  key?: string;
+  line?: number | null;
+}
+
+export interface SettingsStatus {
+  /** "tauri" when backed by the config folder, "browser" for localStorage. */
+  mode: "tauri" | "browser";
+  configDir: string | null;
+  configPath: string | null;
+  statePath: string | null;
+  problems: SettingsProblem[];
+}
+
+export interface SettingsDeps {
+  invoke?: InvokeFn;
+  listen?: ListenFn;
+  /** Force config-folder mode (tests). Defaults to isTauriAvailable(win). */
+  tauri?: boolean;
+  /** write_state debounce, default 300 ms. */
+  stateDebounceMs?: number;
+}
+
+/** Fired on window when a reload changed the preferences. detail = prefs. */
+export const PREFERENCES_CHANGED_EVENT = "vault-preferences-changed";
+/** Fired on window when the settings status (problems, paths) changed. */
+export const SETTINGS_STATUS_EVENT = "vault-settings-status";
+
+// ---------------------------------------------------------------------------
+// Mapping table (preference field <-> config.toml dotted key)
+// ---------------------------------------------------------------------------
+
+type ConfigField =
+  | "colorTheme"
+  | "theme"
+  | "syncCanvas"
+  | "defaultCanvasBackground"
+  | "defaultFontFamily"
+  | "defaultFontSize"
+  | "defaultStrokeColor"
+  | "defaultBackgroundColor"
+  | "defaultFillStyle"
+  | "defaultStrokeWidth"
+  | "defaultRoughness"
+  | "autosaveDelayMs";
+
+interface ConfigMapping {
+  field: ConfigField;
+  key: string;
+  /** Human description of what is accepted, used in problem messages. */
+  expected: string;
+  valid: (value: unknown) => boolean;
+}
+
+/** Every id in Excalidraw's FONT_FAMILY (packages/common/src/constants.ts). */
+export const EXCALIDRAW_FONT_IDS = [1, 2, 3, 5, 6, 7, 8, 9, 10] as const;
+export const FILL_STYLES = ["solid", "hachure", "cross-hatch"] as const;
+
+const COLOR_RE =
+  /^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|transparent|[a-z]+)$/i;
+
+const isColor = (v: unknown) => typeof v === "string" && COLOR_RE.test(v);
+const isInt = (v: unknown) => typeof v === "number" && Number.isInteger(v);
+const isPositive = (v: unknown) =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1000;
+
+export const CONFIG_MAPPING: readonly ConfigMapping[] = [
+  {
+    field: "colorTheme",
+    key: "appearance.theme",
+    expected: "a theme name",
+    valid: (v) => typeof v === "string" && v.trim().length > 0,
+  },
+  {
+    field: "theme",
+    key: "appearance.mode",
+    expected: '"light", "dark" or "system"',
+    valid: isVaultTheme,
+  },
+  {
+    field: "syncCanvas",
+    key: "appearance.sync_canvas",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "defaultCanvasBackground",
+    key: "appearance.canvas_background",
+    expected: 'a colour like "#ffffff"',
+    valid: isColor,
+  },
+  {
+    field: "defaultFontFamily",
+    key: "editor.font_family",
+    expected: `one of ${EXCALIDRAW_FONT_IDS.join(", ")}`,
+    valid: (v) =>
+      isInt(v) &&
+      (EXCALIDRAW_FONT_IDS as readonly number[]).includes(v as number),
+  },
+  {
+    field: "defaultFontSize",
+    key: "editor.font_size",
+    expected: "a positive number",
+    valid: isPositive,
+  },
+  {
+    field: "defaultStrokeColor",
+    key: "editor.stroke_color",
+    expected: 'a colour like "#1e1e1e"',
+    valid: isColor,
+  },
+  {
+    field: "defaultBackgroundColor",
+    key: "editor.background_color",
+    expected: 'a colour like "transparent"',
+    valid: isColor,
+  },
+  {
+    field: "defaultFillStyle",
+    key: "editor.fill_style",
+    expected: FILL_STYLES.map((s) => `"${s}"`).join(", "),
+    valid: (v) => (FILL_STYLES as readonly unknown[]).includes(v),
+  },
+  {
+    field: "defaultStrokeWidth",
+    key: "editor.stroke_width",
+    expected: "a positive number",
+    valid: isPositive,
+  },
+  {
+    field: "defaultRoughness",
+    key: "editor.roughness",
+    expected: "0, 1 or 2",
+    valid: (v) => v === 0 || v === 1 || v === 2,
+  },
+  {
+    field: "autosaveDelayMs",
+    key: "saving.autosave_delay_ms",
+    expected: "an integer between 0 and 600000",
+    valid: (v) => isInt(v) && (v as number) >= 0 && (v as number) <= 600000,
+  },
+];
+
+export const STATE_FIELDS = [
+  "recentVaults",
+  "lastVaultPath",
+  "navigatorCollapsed",
+  "navigatorWidth",
+  "expandedFolders",
+] as const;
+
+type StateField = typeof STATE_FIELDS[number];
+export type PersistedState = Pick<VaultPreferences, StateField>;
+
+const show = (value: unknown) =>
+  typeof value === "string" ? `"${value}"` : JSON.stringify(value);
+
+const readDotted = (
+  config: Record<string, unknown>,
+  key: string,
+): { present: boolean; value: unknown } => {
+  const [table, name] = key.split(".");
+  const section = config[table];
+  if (!section || typeof section !== "object" || Array.isArray(section)) {
+    return { present: false, value: undefined };
+  }
+  const record = section as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, name)
+    ? { present: true, value: record[name] }
+    : { present: false, value: undefined };
+};
+
+/**
+ * Parsed config.toml (as JSON) -> config-mapped preference fields. Missing
+ * keys take their default; invalid values take their default and produce a
+ * problem.
+ */
+export function configToPreferences(config: Record<string, unknown>): {
+  values: Pick<VaultPreferences, ConfigField>;
+  problems: SettingsProblem[];
+} {
+  const values = {} as Record<ConfigField, unknown>;
+  const problems: SettingsProblem[] = [];
+  for (const mapping of CONFIG_MAPPING) {
+    const fallback = DEFAULT_PREFERENCES[mapping.field];
+    const { present, value } = readDotted(config, mapping.key);
+    if (!present) {
+      values[mapping.field] = fallback;
+    } else if (mapping.valid(value)) {
+      values[mapping.field] = value;
+    } else {
+      values[mapping.field] = fallback;
+      problems.push({
+        kind: "invalid",
+        key: mapping.key,
+        message: `config.toml: ${mapping.key} = ${show(
+          value,
+        )} is not valid (expected ${mapping.expected}); using ${show(
+          fallback,
+        )}`,
+      });
+    }
+  }
+  return {
+    values: values as Pick<VaultPreferences, ConfigField>,
+    problems,
+  };
+}
+
+/** Changed config-mapped fields -> update_config changes (dotted keys). */
+export function preferencesToConfigChanges(
+  prev: VaultPreferences,
+  next: VaultPreferences,
+): ConfigChange[] {
+  const changes: ConfigChange[] = [];
+  for (const { field, key } of CONFIG_MAPPING) {
+    if (!sameValue(prev[field], next[field])) {
+      const value = next[field];
+      changes.push({ key, value: value === undefined ? null : value });
+    }
+  }
+  return changes;
+}
+
+/** state.json object -> state preference fields (invalid -> default). */
+export function stateToPreferences(
+  state: Record<string, unknown> | null | undefined,
+): PersistedState {
+  const s = state && typeof state === "object" ? state : {};
+  const d = DEFAULT_PREFERENCES;
+  return {
+    recentVaults:
+      Array.isArray(s.recentVaults) &&
+      s.recentVaults.every((v) => typeof v === "string")
+        ? (s.recentVaults as string[])
+        : [...d.recentVaults],
+    lastVaultPath:
+      typeof s.lastVaultPath === "string" ? s.lastVaultPath : d.lastVaultPath,
+    navigatorCollapsed:
+      typeof s.navigatorCollapsed === "boolean"
+        ? s.navigatorCollapsed
+        : d.navigatorCollapsed,
+    navigatorWidth:
+      typeof s.navigatorWidth === "number" && Number.isFinite(s.navigatorWidth)
+        ? s.navigatorWidth
+        : d.navigatorWidth,
+    expandedFolders: isExpandedFolders(s.expandedFolders)
+      ? s.expandedFolders
+      : { ...d.expandedFolders },
+  };
+}
+
+export function preferencesToState(prefs: VaultPreferences): PersistedState {
+  return {
+    recentVaults: prefs.recentVaults,
+    lastVaultPath: prefs.lastVaultPath,
+    navigatorCollapsed: prefs.navigatorCollapsed,
+    navigatorWidth: prefs.navigatorWidth,
+    expandedFolders: prefs.expandedFolders,
+  };
+}
+
+const sameValue = (a: unknown, b: unknown) =>
+  a === b || JSON.stringify(a) === JSON.stringify(b);
+
+const configSlice = (prefs: VaultPreferences) =>
+  Object.fromEntries(CONFIG_MAPPING.map(({ field }) => [field, prefs[field]]));
+
+export function formatConfigError(error: ConfigErrorPayload): string {
+  return error.line != null
+    ? `config.toml line ${error.line}: ${error.message}`
+    : `config.toml: ${error.message}`;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime
+// ---------------------------------------------------------------------------
+
+interface Runtime {
+  win: Window;
+  invoke: InvokeFn;
+  stateDebounceMs: number;
+  unlisten: (() => void) | null;
+  /** Serialized update_config / reload chain. */
+  queue: Promise<unknown>;
+  /** Bumped on every local config edit; stale reloads are discarded. */
+  localEdits: number;
+  stateTimer: ReturnType<Window["setTimeout"]> | null;
+  lastWrittenState: string;
+  /** Problems from the last load (parse/invalid). */
+  loadProblems: SettingsProblem[];
+  /** Problems from the last failed write (cleared on next success). */
+  writeProblems: SettingsProblem[];
+  disposed: boolean;
+}
+
+let runtime: Runtime | null = null;
+let status: SettingsStatus = browserStatus();
+let lastStatusKey = "";
+
+function browserStatus(): SettingsStatus {
+  return {
+    mode: "browser",
+    configDir: null,
+    configPath: null,
+    statePath: null,
+    problems: [],
+  };
+}
+
+export function getSettingsStatus(): SettingsStatus {
+  return { ...status, problems: [...status.problems] };
+}
+
+export function isConfigFolderActive(): boolean {
+  return runtime !== null;
+}
+
+function publishStatus(win: Window | null, patch: Partial<SettingsStatus>) {
+  status = { ...status, ...patch };
+  const key = JSON.stringify(status);
+  if (key === lastStatusKey) {
+    return;
+  }
+  lastStatusKey = key;
+  dispatch(win, SETTINGS_STATUS_EVENT, getSettingsStatus());
+}
+
+function refreshProblems(rt: Runtime) {
+  publishStatus(rt.win, {
+    problems: [...rt.loadProblems, ...rt.writeProblems],
+  });
+}
+
+function dispatch(win: Window | null, type: string, detail: unknown) {
+  if (!win) {
+    return;
+  }
+  try {
+    const EventCtor =
+      (win as Window & { CustomEvent?: typeof CustomEvent }).CustomEvent ??
+      CustomEvent;
+    win.dispatchEvent(new EventCtor(type, { detail }));
+  } catch {
+    // a broken listener must never break settings sync
+  }
+}
+
+const errorText = (err: unknown): string => {
+  if (err && typeof err === "object") {
+    const e = err as { message?: unknown; code?: unknown };
+    if (typeof e.message === "string") {
+      return typeof e.code === "string" ? `${e.code}: ${e.message}` : e.message;
+    }
+  }
+  return String(err);
+};
+
+function enqueue<T>(rt: Runtime, task: () => Promise<T>): Promise<T> {
+  const run = rt.queue.then(task, task);
+  rt.queue = run.catch(() => undefined);
+  return run;
+}
+
+function persist(rt: Runtime, next: VaultPreferences, prev: VaultPreferences) {
+  if (rt.disposed) {
+    return;
+  }
+  const changes = preferencesToConfigChanges(prev, next);
+  if (changes.length > 0) {
+    rt.localEdits++;
+    void enqueue(rt, async () => {
+      try {
+        await rt.invoke("update_config", { changes });
+        if (rt.writeProblems.length) {
+          rt.writeProblems = [];
+          refreshProblems(rt);
+        }
+      } catch (err) {
+        rt.writeProblems = [
+          {
+            kind: "io",
+            message: `Could not save settings to config.toml: ${errorText(
+              err,
+            )}`,
+          },
+        ];
+        refreshProblems(rt);
+      }
+    });
+  }
+
+  const stateChanged = STATE_FIELDS.some(
+    (field) => !sameValue(prev[field], next[field]),
+  );
+  if (stateChanged) {
+    scheduleStateWrite(rt);
+  }
+}
+
+function scheduleStateWrite(rt: Runtime) {
+  if (rt.stateTimer !== null) {
+    rt.win.clearTimeout(rt.stateTimer);
+  }
+  rt.stateTimer = rt.win.setTimeout(() => {
+    rt.stateTimer = null;
+    void flushState(rt);
+  }, rt.stateDebounceMs);
+}
+
+async function flushState(rt: Runtime): Promise<void> {
+  if (rt.disposed) {
+    return;
+  }
+  const state = preferencesToState(getPreferences(rt.win));
+  const serialized = JSON.stringify(state);
+  if (serialized === rt.lastWrittenState) {
+    return;
+  }
+  rt.lastWrittenState = serialized;
+  try {
+    await rt.invoke("write_state", { state });
+  } catch {
+    // Let the next change retry; machine state is best effort.
+    rt.lastWrittenState = "";
+  }
+}
+
+/**
+ * Apply a load_settings result. Returns true if the in-memory preferences
+ * changed. `includeState` is only set on startup: state.json belongs to this
+ * process and is not watched, so reloads leave the in-memory state alone.
+ */
+function applyLoad(
+  rt: Runtime,
+  result: LoadSettingsResult,
+  includeState: boolean,
+): boolean {
+  const current = getPreferences(rt.win);
+  let next: VaultPreferences = { ...current };
+  const loadProblems: SettingsProblem[] = [];
+
+  if (result.configError) {
+    // Parse error: keep the last good config values.
+    loadProblems.push({
+      kind: "parse",
+      line: result.configError.line,
+      message: formatConfigError(result.configError),
+    });
+  }
+  if (result.config && typeof result.config === "object") {
+    const { values, problems } = configToPreferences(result.config);
+    next = { ...next, ...values };
+    loadProblems.push(...problems);
+  }
+  if (includeState) {
+    next = { ...next, ...stateToPreferences(result.state) };
+    rt.lastWrittenState = JSON.stringify(preferencesToState(next));
+  }
+
+  rt.loadProblems = loadProblems;
+  publishStatus(rt.win, {
+    mode: "tauri",
+    configDir: result.configDir ?? null,
+    configPath: result.configPath ?? null,
+    statePath: result.statePath ?? null,
+    problems: [...loadProblems, ...rt.writeProblems],
+  });
+
+  const changed =
+    JSON.stringify(configSlice(current)) !==
+      JSON.stringify(configSlice(next)) ||
+    (includeState &&
+      JSON.stringify(preferencesToState(current)) !==
+        JSON.stringify(preferencesToState(next)));
+  if (changed) {
+    replaceStoredPreferences(next);
+  }
+  return changed;
+}
+
+async function resolveDeps(deps: SettingsDeps) {
+  const invoke =
+    deps.invoke ?? ((await import("@tauri-apps/api/core")).invoke as InvokeFn);
+  const listen =
+    deps.listen ??
+    ((await import("@tauri-apps/api/event")).listen as unknown as ListenFn);
+  return { invoke, listen };
+}
+
+/**
+ * Hydrate preferences from the config folder (Tauri) and start watching it.
+ * In a browser this is a no-op and preferences stay on localStorage. Never
+ * throws: if the native side fails, the app falls back to localStorage and
+ * the failure is reported through the settings status.
+ */
+export async function initSettings(
+  win: Window | null | undefined,
+  deps: SettingsDeps = {},
+): Promise<SettingsStatus> {
+  disposeSettings();
+  const useTauri = deps.tauri ?? isTauriAvailable(win);
+  if (!win || !useTauri) {
+    return getSettingsStatus();
+  }
+
+  let invoke: InvokeFn;
+  let listen: ListenFn;
+  let result: LoadSettingsResult;
+  try {
+    ({ invoke, listen } = await resolveDeps(deps));
+    result = await invoke<LoadSettingsResult>("load_settings");
+  } catch (err) {
+    publishStatus(win, {
+      ...browserStatus(),
+      problems: [
+        {
+          kind: "io",
+          message: `Could not load the config folder (using local settings): ${errorText(
+            err,
+          )}`,
+        },
+      ],
+    });
+    return getSettingsStatus();
+  }
+
+  // Start from defaults (not localStorage): config.toml is the source of
+  // truth. Machine state is migrated once from localStorage when state.json
+  // is empty, so recent vaults survive the switch.
+  const rt: Runtime = {
+    win,
+    invoke,
+    stateDebounceMs: deps.stateDebounceMs ?? 300,
+    unlisten: null,
+    queue: Promise.resolve(),
+    localEdits: 0,
+    stateTimer: null,
+    lastWrittenState: "",
+    loadProblems: [],
+    writeProblems: [],
+    disposed: false,
+  };
+  runtime = rt;
+  attachPreferencesStore({ ...DEFAULT_PREFERENCES }, (next, prev) =>
+    persist(rt, next, prev),
+  );
+
+  const state =
+    result.state && typeof result.state === "object" ? result.state : {};
+  const legacy =
+    Object.keys(state).length === 0 ? readLocalStoragePreferences(win) : null;
+  applyLoad(rt, { ...result, state: legacy ? { ...legacy } : state }, true);
+  if (legacy) {
+    rt.lastWrittenState = "";
+    scheduleStateWrite(rt);
+  }
+
+  try {
+    const unlisten = await listen<{ paths?: string[] }>("config-change", () => {
+      void reloadSettings();
+    });
+    if (rt.disposed) {
+      unlisten();
+    } else {
+      rt.unlisten = unlisten;
+    }
+  } catch {
+    // Live reload unavailable; the Reload button still works.
+  }
+  return getSettingsStatus();
+}
+
+/**
+ * Re-read config.toml (load_settings) and apply it. Dispatches
+ * `vault-preferences-changed` only when a value actually changed. Waits for
+ * pending update_config writes first so our own echoes are idempotent.
+ */
+export async function reloadSettings(): Promise<boolean> {
+  const rt = runtime;
+  if (!rt) {
+    return false;
+  }
+  return enqueue(rt, async () => {
+    if (rt.disposed) {
+      return false;
+    }
+    const editsBefore = rt.localEdits;
+    let result: LoadSettingsResult;
+    try {
+      result = await rt.invoke<LoadSettingsResult>("load_settings");
+    } catch (err) {
+      rt.loadProblems = [
+        {
+          kind: "io",
+          message: `Could not reload config.toml: ${errorText(err)}`,
+        },
+      ];
+      refreshProblems(rt);
+      return false;
+    }
+    if (rt.disposed || rt.localEdits !== editsBefore) {
+      // A local edit raced this read; its own write will trigger a reload.
+      return false;
+    }
+    const changed = applyLoad(rt, result, false);
+    if (changed) {
+      dispatch(rt.win, PREFERENCES_CHANGED_EVENT, getPreferences(rt.win));
+    }
+    return changed;
+  });
+}
+
+/** Reveal the config folder in Finder / Explorer / the file manager. */
+export async function openConfigDir(): Promise<void> {
+  const rt = runtime;
+  if (!rt) {
+    throw new Error("The config folder is only available in the desktop app");
+  }
+  await rt.invoke("open_config_dir");
+}
+
+/** Write any pending state.json change now (e.g. before quitting). */
+export async function flushSettings(): Promise<void> {
+  const rt = runtime;
+  if (!rt) {
+    return;
+  }
+  if (rt.stateTimer !== null) {
+    rt.win.clearTimeout(rt.stateTimer);
+    rt.stateTimer = null;
+  }
+  await flushState(rt);
+  await rt.queue;
+}
+
+/** Stop syncing and return preferences to localStorage mode. */
+export function disposeSettings(): void {
+  const rt = runtime;
+  runtime = null;
+  if (rt) {
+    rt.disposed = true;
+    if (rt.stateTimer !== null) {
+      rt.win.clearTimeout(rt.stateTimer);
+    }
+    try {
+      rt.unlisten?.();
+    } catch {
+      // ignore
+    }
+  }
+  detachPreferencesStore();
+  status = browserStatus();
+  lastStatusKey = "";
+}
