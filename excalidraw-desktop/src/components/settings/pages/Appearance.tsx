@@ -1,12 +1,14 @@
 import { useState } from "react";
 
+import { resolveAccent } from "../../../theme/accent";
 import { openThemesDir } from "../../../theme/registry";
+import { resolveTheme } from "../../../vault/preferences";
 import { IconFolder } from "../../Icons";
 import { ThemePicker } from "../../ThemePicker";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
-import { ColorSwatches, Segmented } from "./controls";
+import { ColorSwatches, Segmented, Switch } from "./controls";
 
 import type { VaultTheme } from "../../../vault/preferences";
 
@@ -79,19 +81,11 @@ const SyncCanvasSetting = () => {
   const { syncCanvas, setSyncCanvas } = useSettings();
   return (
     <SettingRow id="sync-canvas" htmlFor="vault-sync-canvas">
-      <label className="vault-switch">
-        <input
-          id="vault-sync-canvas"
-          type="checkbox"
-          role="switch"
-          checked={syncCanvas}
-          aria-checked={syncCanvas}
-          onChange={(e) => setSyncCanvas(e.target.checked)}
-        />
-        <span className="vault-switch__track" aria-hidden="true">
-          <span className="vault-switch__thumb" />
-        </span>
-      </label>
+      <Switch
+        id="vault-sync-canvas"
+        checked={syncCanvas}
+        onChange={setSyncCanvas}
+      />
     </SettingRow>
   );
 };
@@ -119,6 +113,68 @@ const CanvasBackgroundSetting = () => {
         customTitle="Custom canvas background color"
         disabled={syncCanvas}
       />
+    </SettingRow>
+  );
+};
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+
+const AccentSetting = () => {
+  const { win, mode, selection, accentColor, setAccentColor } = useSettings();
+  const resolvedMode = resolveTheme(mode, win);
+  const variant = selection.entry.theme[resolvedMode];
+  const resolved = resolveAccent(variant, accentColor, resolvedMode);
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? accentColor;
+  const commitDraft = () => {
+    const text = (draft ?? "").trim();
+    setDraft(null);
+    if (text === "") {
+      setAccentColor("");
+    } else if (HEX_RE.test(text)) {
+      setAccentColor(text.toLowerCase());
+    }
+  };
+  return (
+    <SettingRow
+      id="accent-colour"
+      testId="settings-accent"
+      onReset={accentColor ? () => setAccentColor("") : undefined}
+      details={
+        accentColor && resolved.adjusted ? (
+          <div className="vault-setting-note" role="status">
+            Adjusted for contrast: {resolved.primary}
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="vault-setting-inline">
+        <input
+          type="color"
+          className="vault-color-input"
+          aria-label="Accent colour picker"
+          value={resolved.primary}
+          onChange={(e) => setAccentColor(e.target.value)}
+        />
+        <input
+          type="text"
+          className="vault-input vault-input--compact"
+          aria-label="Accent colour hex"
+          placeholder="Theme default"
+          spellCheck={false}
+          value={shown}
+          aria-invalid={
+            draft !== null && draft !== "" && !HEX_RE.test(draft.trim())
+          }
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              commitDraft();
+            }
+          }}
+        />
+      </div>
     </SettingRow>
   );
 };
@@ -168,6 +224,7 @@ export const appearanceControls: SettingControls = {
   mode: { Component: ModeSetting },
   "colour-theme": { Component: ColourThemeSetting },
   "sync-canvas": { Component: SyncCanvasSetting },
+  "accent-colour": { Component: AccentSetting },
   "canvas-background": { Component: CanvasBackgroundSetting },
   "themes-folder": {
     Component: ThemesFolderSetting,

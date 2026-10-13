@@ -1521,6 +1521,34 @@ button.vault-status:hover:not(:disabled) {
   accent-color: var(--vault-primary);
 }
 
+.vault-setting-readout {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-setting-pervault {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vault-text-muted, inherit);
+  white-space: nowrap;
+}
+
+.vault-setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vault-setting-hint,
+.vault-setting-note {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
 .vault-input--font {
   width: 220px;
 }
@@ -2150,4 +2178,9 @@ button.vault-status:hover:not(:disabled) {
 .vault-fieldset:disabled .vault-color-input {
   cursor: not-allowed;
   transform: none;
+}
+
+.vault-menu__check {
+  margin-left: auto;
+  flex-shrink: 0;
 }

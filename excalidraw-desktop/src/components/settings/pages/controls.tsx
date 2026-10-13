@@ -26,6 +26,40 @@ export const Segmented = <T extends string | number>({
   </div>
 );
 
+/** Toggle switch; `id` lets a SettingRow label target it. */
+export const Switch = ({
+  id,
+  checked,
+  onChange,
+  label,
+  disabled = false,
+  title,
+}: {
+  id?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  /** Accessible name when no visible label targets the input. */
+  label?: string;
+  disabled?: boolean;
+  title?: string;
+}) => (
+  <label className="vault-switch" title={title}>
+    <input
+      id={id}
+      type="checkbox"
+      role="switch"
+      checked={checked}
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+    <span className="vault-switch__track" aria-hidden="true">
+      <span className="vault-switch__thumb" />
+    </span>
+  </label>
+);
+
 /** Swatch colour as a custom property; the class paints it. */
 const swatchStyle = (color: string) =>
   ({ "--vault-swatch": color } as CSSProperties);

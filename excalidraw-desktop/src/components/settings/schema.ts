@@ -24,7 +24,7 @@ export interface SettingsPage {
 
 /**
  * Sidebar order. A page with no available settings is not shown, so
- * Interface and Hotkeys stay hidden until later phases give them rows.
+ * Hotkeys stays hidden until a later phase gives it rows.
  */
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "general", label: "General", group: "Options" },
@@ -114,6 +114,43 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["theme", "folder", "noctalia", "json", "custom", "import"],
   },
 
+  {
+    id: "accent-colour",
+    page: "appearance",
+    label: "Accent Colour",
+    description:
+      "Overrides the theme's primary colour. Leave unset to use the theme's own.",
+    keywords: ["accent", "colour", "color", "primary", "highlight", "brand"],
+    configKey: "appearance.accent_color",
+  },
+
+  // ---- Interface ----
+  {
+    id: "interface-zoom",
+    page: "interface",
+    label: "Interface Zoom",
+    description: "Scales the whole window. Cmd+Shift +/- and 0 also work.",
+    keywords: ["zoom", "scale", "magnify", "size", "cmd shift plus minus"],
+    configKey: "interface.zoom",
+  },
+  {
+    id: "sort-order",
+    page: "interface",
+    label: "Navigator Sort Order",
+    description: "How folders and drawings are ordered in the file navigator.",
+    keywords: [
+      "sort",
+      "order",
+      "name",
+      "modified",
+      "navigator",
+      "files",
+      "a-z",
+    ],
+    configKey: "navigator.sort",
+    perVault: true,
+  },
+
   // ---- Drawing ----
   {
     id: "font-family",
@@ -188,6 +225,23 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
       "Time to wait after last drawing edit before writing atomically to disk.",
     keywords: ["save", "autosave", "delay", "debounce", "ms", "storage"],
     configKey: "saving.autosave_delay_ms",
+  },
+  {
+    id: "confirm-delete",
+    page: "files",
+    label: "Confirm before delete",
+    description: "Ask before moving a drawing or folder to the Trash.",
+    keywords: ["delete", "trash", "confirm", "ask", "dialog"],
+    configKey: "files.confirm_delete",
+  },
+  {
+    id: "new-drawing-folder",
+    page: "files",
+    label: "Default Folder for New Drawings",
+    description: "Vault folder where new drawings are created.",
+    keywords: ["default folder", "location", "new drawing", "inbox", "folder"],
+    configKey: "files.new_drawing_folder",
+    perVault: true,
   },
 ];
 

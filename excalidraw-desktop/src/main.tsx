@@ -51,6 +51,10 @@ void initSettings(ownerWindow)
       "dark",
       resolveTheme(getTheme(ownerWindow), ownerWindow) === "dark",
     );
+    // Interface zoom before the first render (no native call at 100 %).
+    void import("./vault/zoom").then(({ applyWebviewZoom, clampZoom }) =>
+      applyWebviewZoom(clampZoom(getPreferences(ownerWindow).zoom)),
+    );
     // Colour theme before the first render (no flash of the default look).
     // Never fatal: a broken theme setup falls back to the stock look.
     try {

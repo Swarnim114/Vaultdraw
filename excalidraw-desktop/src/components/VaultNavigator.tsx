@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { getPreferences, updatePreferences } from "../vault/preferences";
+import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 import { checkTreeDrop, getParentPath } from "../vault/treeStore";
 
 import {
@@ -9,6 +10,7 @@ import {
   IconChevronRight,
   IconChevronsUpDown,
   IconClose,
+  IconCheck,
   IconCopy,
   IconDrawing,
   IconEdit,
@@ -22,6 +24,7 @@ import {
   IconReveal,
   IconSearch,
   IconSettings,
+  IconSort,
   IconTrash,
 } from "./Icons";
 import { SearchResults } from "./search/SearchResults";
@@ -77,6 +80,10 @@ interface VaultNavigatorProps {
   isIndexing?: boolean;
   onRefresh?: () => void;
   onOpenSettings?: () => void;
+  sortOrder: SortOrder;
+  onSortChange: (order: SortOrder) => void;
+  /** False: "Move to Trash" acts immediately, without the dialog. */
+  confirmDelete: boolean;
   ownerDocument?: Document | null;
 }
 
@@ -105,6 +112,9 @@ export const VaultNavigator = ({
   isIndexing = false,
   onRefresh,
   onOpenSettings,
+  sortOrder,
+  onSortChange,
+  confirmDelete,
   ownerDocument,
 }: VaultNavigatorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -122,6 +132,18 @@ export const VaultNavigator = ({
   const [moveTarget, setMoveTarget] = useState<VaultEntry | null>(null);
   const [trashTarget, setTrashTarget] = useState<VaultEntry | null>(null);
   const [menu, setMenu] = useState<RowMenuState | null>(null);
+  const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
+  // Trash now, or ask first when confirmation is on.
+  const requestTrash = (entry: VaultEntry) => {
+    if (confirmDelete) {
+      setTrashTarget(entry);
+    } else {
+      void onTrashEntry(entry.path);
+    }
+  };
 
   const treeId = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -305,7 +327,7 @@ export const VaultNavigator = ({
           const item = visible.find((i) => i.path === focusedPath);
           if (item) {
             e.preventDefault();
-            setTrashTarget(item);
+            requestTrash(item);
           }
         }
         break;
@@ -407,6 +429,19 @@ export const VaultNavigator = ({
             <IconRefresh />
           </button>
         )}
+        <button
+          type="button"
+          className="vault-btn vault-btn--ghost vault-btn--icon"
+          onClick={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setSortMenu({ x: box.right, y: box.bottom + 4 });
+          }}
+          title="Sort order"
+          aria-label="Sort order"
+          aria-haspopup="menu"
+        >
+          <IconSort />
+        </button>
         <span className="vault-navigator__toolbar-spacer" />
         <button
           type="button"
@@ -593,6 +628,28 @@ export const VaultNavigator = ({
           (asideRef.current?.ownerDocument ?? ownerDocument ?? document).body,
         )}
 
+      {sortMenu && (
+        <MenuPopup
+          x={sortMenu.x}
+          y={sortMenu.y}
+          label="Sort order"
+          ownerDocument={asideRef.current?.ownerDocument ?? ownerDocument}
+          onClose={() => setSortMenu(null)}
+        >
+          {SORT_ORDERS.map((order) => (
+            <MenuItem
+              key={order}
+              label={SORT_LABELS[order]}
+              checked={order === sortOrder}
+              onSelect={() => {
+                setSortMenu(null);
+                onSortChange(order);
+              }}
+            />
+          ))}
+        </MenuPopup>
+      )}
+
       {menu && (
         <RowMenu
           state={menu}
@@ -609,7 +666,7 @@ export const VaultNavigator = ({
           onRename={(entry) => setRenameTarget(entry)}
           onMove={(entry) => setMoveTarget(entry)}
           onReveal={(entry) => void onRevealEntry(entry.path)}
-          onTrash={(entry) => setTrashTarget(entry)}
+          onTrash={requestTrash}
         />
       )}
 
@@ -918,23 +975,25 @@ interface RowMenuProps {
 
 const MENU_WIDTH = 200;
 
-/** Row actions shown from the "More actions" button or a right-click. */
-const RowMenu = ({
-  state,
-  readOnly,
+interface MenuPopupProps {
+  x: number;
+  y: number;
+  label: string;
+  ownerDocument?: Document | null;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+/** Positioned `vault-menu` with focus, arrow-key and dismiss handling. */
+const MenuPopup = ({
+  x,
+  y,
+  label,
   ownerDocument,
   onClose,
-  onNewInside,
-  onDuplicate,
-  onRename,
-  onMove,
-  onReveal,
-  onTrash,
-}: RowMenuProps) => {
+  children,
+}: MenuPopupProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const { entry } = state;
-  const isFolder = entry.kind === "folder";
-
   useEffect(() => {
     const doc = menuRef.current?.ownerDocument ?? ownerDocument;
     const win = doc?.defaultView;
@@ -942,7 +1001,7 @@ const RowMenu = ({
       return;
     }
     menuRef.current
-      ?.querySelector<HTMLButtonElement>("[role='menuitem']")
+      ?.querySelector<HTMLButtonElement>("[role^='menuitem']")
       ?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
@@ -961,7 +1020,7 @@ const RowMenu = ({
       event.preventDefault();
       const items = Array.from(
         menuRef.current?.querySelectorAll<HTMLButtonElement>(
-          "[role='menuitem']",
+          "[role^='menuitem']",
         ) ?? [],
       );
       const index = items.indexOf(doc.activeElement as HTMLButtonElement);
@@ -983,8 +1042,66 @@ const RowMenu = ({
   const win = ownerDocument?.defaultView;
   const maxX = (win?.innerWidth ?? 1280) - MENU_WIDTH - 8;
   const maxY = (win?.innerHeight ?? 800) - 220;
-  const left = Math.max(8, Math.min(state.x - MENU_WIDTH, maxX));
-  const top = Math.max(8, Math.min(state.y, maxY));
+  const left = Math.max(8, Math.min(x - MENU_WIDTH, maxX));
+  const top = Math.max(8, Math.min(y, maxY));
+
+  return (
+    <div
+      ref={menuRef}
+      className="vault-menu"
+      role="menu"
+      aria-label={label}
+      style={{ left, top, width: MENU_WIDTH }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {children}
+    </div>
+  );
+};
+
+interface MenuItemProps {
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  checked?: boolean;
+  onSelect: () => void;
+}
+
+const MenuItem = ({
+  label,
+  icon,
+  danger,
+  checked,
+  onSelect,
+}: MenuItemProps) => (
+  <button
+    type="button"
+    role={checked === undefined ? "menuitem" : "menuitemradio"}
+    aria-checked={checked}
+    className={`vault-menu__item ${danger ? "vault-menu__item--danger" : ""}`}
+    onClick={onSelect}
+  >
+    {icon}
+    <span>{label}</span>
+    {checked && <IconCheck className="vault-menu__check" />}
+  </button>
+);
+
+/** Row actions shown from the "More actions" button or a right-click. */
+const RowMenu = ({
+  state,
+  readOnly,
+  ownerDocument,
+  onClose,
+  onNewInside,
+  onDuplicate,
+  onRename,
+  onMove,
+  onReveal,
+  onTrash,
+}: RowMenuProps) => {
+  const { entry } = state;
+  const isFolder = entry.kind === "folder";
 
   const item = (
     label: string,
@@ -992,28 +1109,24 @@ const RowMenu = ({
     action: () => void,
     danger = false,
   ) => (
-    <button
-      type="button"
-      role="menuitem"
-      className={`vault-menu__item ${danger ? "vault-menu__item--danger" : ""}`}
-      onClick={() => {
+    <MenuItem
+      label={label}
+      icon={icon}
+      danger={danger}
+      onSelect={() => {
         onClose();
         action();
       }}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
+    />
   );
 
   return (
-    <div
-      ref={menuRef}
-      className="vault-menu"
-      role="menu"
-      aria-label={`Actions for ${entry.name}`}
-      style={{ left, top, width: MENU_WIDTH }}
-      onContextMenu={(e) => e.preventDefault()}
+    <MenuPopup
+      x={state.x}
+      y={state.y}
+      label={`Actions for ${entry.name}`}
+      ownerDocument={ownerDocument}
+      onClose={onClose}
     >
       {isFolder &&
         !readOnly &&
@@ -1032,6 +1145,6 @@ const RowMenu = ({
           {item("Move to Trash", <IconTrash />, () => onTrash(entry), true)}
         </>
       )}
-    </div>
+    </MenuPopup>
   );
 };

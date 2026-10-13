@@ -1,0 +1,260 @@
+/**
+ * Settings phase 2: accent, zoom, confirm-delete, per-vault rows, search
+ * discovery and the navigator's sort menu / delete confirmation.
+ */
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { VaultNavigator } from "../components/VaultNavigator";
+import { searchSettings } from "../components/settings/schema";
+import { SettingsModal } from "../components/settings/SettingsModal";
+import { getPreferences } from "../vault/preferences";
+import { disposeSettings } from "../vault/settingsSync";
+import {
+  attachVaultSettings,
+  detachVaultSettings,
+  getVaultSettingsSnapshot,
+} from "../vault/vaultSettings";
+
+import type { ComponentProps } from "react";
+
+import type { VaultEntry, VaultInfo } from "../vault/types";
+
+const vault: VaultInfo = {
+  handle: "p2",
+  name: "P2 Vault",
+  path: "/Users/test/P2",
+  readOnly: false,
+};
+
+const renderModal = (v: VaultInfo | null = vault) => {
+  render(
+    <SettingsModal vault={v} onClose={vi.fn()} ownerDocument={document} />,
+  );
+  return screen.getByRole("searchbox", { name: "Search settings" });
+};
+
+beforeEach(() => window.localStorage.clear());
+afterEach(() => {
+  detachVaultSettings();
+  disposeSettings();
+  window.localStorage.clear();
+});
+
+describe("phase 2 settings are discoverable", () => {
+  it.each([
+    ["trash", "confirm-delete"],
+    ["zoom", "interface-zoom"],
+    ["accent", "accent-colour"],
+    ["sort", "sort-order"],
+    ["inbox", "new-drawing-folder"],
+  ])("search %s finds %s from another page", (query, id) => {
+    expect(searchSettings(query).map((s) => s.id)).toContain(id);
+    const search = renderModal();
+    fireEvent.change(search, { target: { value: query } });
+    expect(
+      screen
+        .getByRole("region", { name: /search results/i })
+        .querySelector(`[data-setting-id="${id}"]`),
+    ).not.toBeNull();
+  });
+
+  it("shows the Interface page", () => {
+    renderModal();
+    expect(screen.getByRole("tab", { name: "Interface" })).toBeInTheDocument();
+  });
+});
+
+describe("accent, zoom and confirm-delete controls", () => {
+  it("sets and resets the accent colour", () => {
+    renderModal();
+    const hex = screen.getByLabelText("Accent colour hex");
+    fireEvent.change(hex, { target: { value: "#336699" } });
+    fireEvent.blur(hex);
+    expect(getPreferences(window).accentColor).toBe("#336699");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Accent Colour" }),
+    );
+    expect(getPreferences(window).accentColor).toBe("");
+  });
+
+  it("does not save an invalid accent", () => {
+    renderModal();
+    const hex = screen.getByLabelText("Accent colour hex");
+    fireEvent.change(hex, { target: { value: "nope" } });
+    fireEvent.blur(hex);
+    expect(getPreferences(window).accentColor).toBe("");
+  });
+
+  it("zoom slider writes the preference and reset restores 100", () => {
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
+    fireEvent.change(screen.getByLabelText("Interface zoom"), {
+      target: { value: "130" },
+    });
+    expect(getPreferences(window).zoom).toBe(130);
+    expect(screen.getByText("130 %")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Interface Zoom" }),
+    );
+    expect(getPreferences(window).zoom).toBe(100);
+  });
+
+  it("confirm before delete toggles the preference", () => {
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    const toggle = screen.getByRole("switch", {
+      name: "Confirm before delete",
+    });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(getPreferences(window).confirmDelete).toBe(false);
+  });
+});
+
+describe("per-vault rows", () => {
+  it("the This vault switch stores and removes the override", async () => {
+    await attachVaultSettings(window, vault.handle);
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
+    const toggle = screen.getByRole("switch", { name: "This vault" });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(getVaultSettingsSnapshot().overrides.navigatorSort).toBe(
+        "name_asc",
+      ),
+    );
+    expect(
+      screen.getByText("This vault", { selector: ".vault-setting-badge" }),
+    ).toBeInTheDocument();
+
+    // Edits go to the override while it is on.
+    fireEvent.change(screen.getByLabelText("Navigator sort order"), {
+      target: { value: "modified_desc" },
+    });
+    await waitFor(() =>
+      expect(getVaultSettingsSnapshot().overrides.navigatorSort).toBe(
+        "modified_desc",
+      ),
+    );
+    expect(getPreferences(window).navigatorSort).toBe("name_asc");
+
+    fireEvent.click(screen.getByRole("switch", { name: "This vault" }));
+    await waitFor(() =>
+      expect(
+        getVaultSettingsSnapshot().overrides.navigatorSort,
+      ).toBeUndefined(),
+    );
+  });
+
+  it("edits the global value when not stored per vault", async () => {
+    await attachVaultSettings(window, vault.handle);
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
+    fireEvent.change(screen.getByLabelText("Navigator sort order"), {
+      target: { value: "name_desc" },
+    });
+    expect(getPreferences(window).navigatorSort).toBe("name_desc");
+  });
+
+  it("disables the switch without a vault", () => {
+    renderModal(null);
+    fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
+    expect(screen.getByRole("switch", { name: "This vault" })).toBeDisabled();
+  });
+
+  it("validates the default folder and normalises slashes", async () => {
+    await attachVaultSettings(window, vault.handle);
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    const input = screen.getByLabelText("Default folder for new drawings");
+    fireEvent.change(input, { target: { value: "../escape" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(getPreferences(window).newDrawingFolder).toBe("");
+
+    fireEvent.change(input, { target: { value: " /Inbox/Sketches/ " } });
+    fireEvent.blur(input);
+    expect(getPreferences(window).newDrawingFolder).toBe("Inbox/Sketches");
+  });
+});
+
+describe("VaultNavigator sort and delete", () => {
+  const entry: VaultEntry = {
+    path: "a.excalidraw",
+    name: "a",
+    kind: "drawing",
+    modifiedAt: 1,
+    size: 1,
+  };
+  const props = (
+    over: Partial<ComponentProps<typeof VaultNavigator>> = {},
+  ): ComponentProps<typeof VaultNavigator> => ({
+    vault,
+    activePath: null,
+    collapsed: false,
+    onToggleCollapse: vi.fn(),
+    onOpenDrawing: vi.fn(),
+    onCreateDrawing: vi.fn(),
+    onCreateFolder: vi.fn(),
+    onRenameEntry: vi.fn(),
+    onMoveEntry: vi.fn(),
+    onDuplicateDrawing: vi.fn(),
+    onTrashEntry: vi.fn(),
+    onRevealEntry: vi.fn(),
+    onSwitchVault: vi.fn(),
+    treeNodes: [{ entry, children: [] } as never],
+    expandedFolders: new Set(),
+    onToggleFolder: vi.fn(),
+    onExpandFolder: vi.fn(),
+    allIndexedEntries: [entry],
+    sortOrder: "name_asc",
+    onSortChange: vi.fn(),
+    confirmDelete: true,
+    ...over,
+  });
+
+  it("the sort menu marks the active order and reports a change", () => {
+    const p = props({ sortOrder: "modified_desc" });
+    render(<VaultNavigator {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sort order" }));
+    expect(
+      screen.getByRole("menuitemradio", { name: "Modified (new to old)" }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: "Name (Z to A)" }),
+    );
+    expect(p.onSortChange).toHaveBeenCalledWith("name_desc");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  const openTrash = () => {
+    fireEvent.contextMenu(screen.getByText("a"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Move to Trash/ }));
+  };
+
+  it("asks first when confirmDelete is on", async () => {
+    const p = props();
+    render(<VaultNavigator {...p} />);
+    openTrash();
+    expect(p.onTrashEntry).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+    });
+    expect(p.onTrashEntry).toHaveBeenCalledWith("a.excalidraw");
+  });
+
+  it("trashes immediately when confirmDelete is off", () => {
+    const p = props({ confirmDelete: false });
+    render(<VaultNavigator {...p} />);
+    openTrash();
+    expect(p.onTrashEntry).toHaveBeenCalledWith("a.excalidraw");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

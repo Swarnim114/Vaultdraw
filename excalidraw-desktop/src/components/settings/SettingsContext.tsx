@@ -31,7 +31,13 @@ import {
   type ThemeRegistry,
 } from "../../theme/registry";
 
+import { clampZoom } from "../../vault/zoom";
+import { useVaultSettingsView } from "../../vault/useVaultSettingsView";
+
+import type { UseVaultSettings } from "../../vault/useVaultSettings";
+import type { VaultPreferences } from "../../vault/preferences";
 import type { VaultInfo } from "../../vault/types";
+import type { VaultField } from "../../vault/vaultSettings";
 
 export type EditorDefaults = ReturnType<typeof getEditorDefaults>;
 
@@ -53,6 +59,26 @@ export interface SettingsContextValue {
 
   syncCanvas: boolean;
   setSyncCanvas: (next: boolean) => void;
+
+  /** "" = the theme's own primary colour. */
+  accentColor: string;
+  setAccentColor: (hex: string) => void;
+
+  zoom: number;
+  setZoom: (percent: number) => void;
+
+  confirmDelete: boolean;
+  setConfirmDelete: (next: boolean) => void;
+
+  /** Read-only view of the per-vault store (overrides, effective values). */
+  vaultSettings: UseVaultSettings;
+  /** Edit a per-vault field in whichever layer is active. */
+  setPerVaultValue: <F extends VaultField>(
+    field: F,
+    value: VaultPreferences[F],
+  ) => void;
+  /** On: store the effective value in the vault; off: use the global one. */
+  setPerVaultStored: (field: VaultField, stored: boolean) => void;
 
   defaults: EditorDefaults;
   updateDefaults: (partial: Parameters<typeof setEditorDefaults>[0]) => void;
@@ -113,6 +139,14 @@ export const useSettingsController = ({
   const [autosaveDelay, setAutosaveDelayState] = useState(
     () => getPreferences(win).autosaveDelayMs,
   );
+  const [accentColor, setAccentColorState] = useState(
+    () => getPreferences(win).accentColor,
+  );
+  const [zoom, setZoomState] = useState(() => getPreferences(win).zoom);
+  const [confirmDelete, setConfirmDeleteState] = useState(
+    () => getPreferences(win).confirmDelete,
+  );
+  const vaultSettings = useVaultSettingsView(win);
   const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
 
   // Refresh displayed values when config.toml is reloaded while open.
@@ -127,6 +161,9 @@ export const useSettingsController = ({
       setSyncCanvasState(prefs.syncCanvas);
       setDefaultsState(getEditorDefaults(win));
       setAutosaveDelayState(prefs.autosaveDelayMs);
+      setAccentColorState(prefs.accentColor);
+      setZoomState(prefs.zoom);
+      setConfirmDeleteState(prefs.confirmDelete);
     };
     const handleStatus = () => setSettingsStatus(getSettingsStatus());
     win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
@@ -165,6 +202,41 @@ export const useSettingsController = ({
     onAppearanceChanged?.();
   };
 
+  const setAccentColor = (hex: string) => {
+    setAccentColorState(hex);
+    updatePreferences({ accentColor: hex }, win);
+    onAppearanceChanged?.();
+  };
+
+  const setZoom = (percent: number) => {
+    const next = clampZoom(percent);
+    setZoomState(next);
+    updatePreferences({ zoom: next }, win);
+  };
+
+  const setConfirmDelete = (next: boolean) => {
+    setConfirmDeleteState(next);
+    updatePreferences({ confirmDelete: next }, win);
+  };
+
+  const setPerVaultValue = <F extends VaultField>(
+    field: F,
+    value: VaultPreferences[F],
+  ) => {
+    if (vaultSettings.isOverridden(field)) {
+      void vaultSettings.setOverride(field, value);
+    } else {
+      updatePreferences({ [field]: value }, win);
+    }
+  };
+
+  const setPerVaultStored = (field: VaultField, stored: boolean) => {
+    void vaultSettings.setOverride(
+      field,
+      stored ? vaultSettings.effective[field] : null,
+    );
+  };
+
   const updateDefaults = (partial: Parameters<typeof setEditorDefaults>[0]) => {
     setEditorDefaults(partial, win);
     setDefaultsState(getEditorDefaults(win));
@@ -186,6 +258,15 @@ export const useSettingsController = ({
     selectColourTheme,
     syncCanvas,
     setSyncCanvas,
+    accentColor,
+    setAccentColor,
+    zoom,
+    setZoom,
+    confirmDelete,
+    setConfirmDelete,
+    vaultSettings,
+    setPerVaultValue,
+    setPerVaultStored,
     defaults,
     updateDefaults,
     autosaveDelay,

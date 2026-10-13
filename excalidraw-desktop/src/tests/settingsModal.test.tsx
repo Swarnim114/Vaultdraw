@@ -45,8 +45,8 @@ describe("SettingsModal component and preference persistence", () => {
     expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
     // General holds About (and the config file in Tauri).
     expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
-    // No rows yet: hidden until later phases.
-    expect(screen.queryByRole("tab", { name: "Interface" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Interface" })).toBeInTheDocument();
+    // No rows yet: hidden until a later phase.
     expect(screen.queryByRole("tab", { name: "Hotkeys" })).toBeNull();
     expect(
       screen.getByRole("searchbox", { name: "Search settings" }),

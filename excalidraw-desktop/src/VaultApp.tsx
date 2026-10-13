@@ -17,6 +17,7 @@ import {
   setExpandedFolders as saveExpandedFolders,
   setNavigatorCollapsed as saveNavigatorCollapsed,
   setTheme,
+  updatePreferences,
 } from "./vault/preferences";
 import {
   getSettingsStatus,
@@ -34,6 +35,13 @@ import {
 } from "./vault/treeStore";
 import { useVaultDocument } from "./vault/useVaultDocument";
 import { useAppearance } from "./vault/useAppearance";
+import { useInterfaceZoom } from "./vault/useInterfaceZoom";
+import { useVaultSettings } from "./vault/useVaultSettings";
+import {
+  ensureFolder,
+  folderChain,
+  resolveNewDrawingParent,
+} from "./vault/newDrawing";
 import VaultEditor from "./editor/VaultEditor";
 import { VaultHeader } from "./components/VaultHeader";
 import { VaultNavigator } from "./components/VaultNavigator";
@@ -130,6 +138,11 @@ export const VaultApp = ({
   const appearance = useAppearance(doc, win);
   const { refresh: refreshAppearance } = appearance;
   const appTheme = appearance.snapshot.mode;
+  useInterfaceZoom(doc, win);
+  // Per-vault settings.toml overrides merged over config.toml (vault > global).
+  const vaultSettings = useVaultSettings(win, vault);
+  const { navigatorSort, newDrawingFolder } = vaultSettings.effective;
+  const confirmDelete = getPreferences(win).confirmDelete;
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
@@ -184,6 +197,7 @@ export const VaultApp = ({
 
   const allProblems = [
     ...settingsProblems,
+    ...vaultSettings.problems.map((p) => p.message),
     ...(appearance.snapshot.problem ? [appearance.snapshot.problem] : []),
     ...(appearance.registry.loadError ? [appearance.registry.loadError] : []),
   ];
@@ -874,6 +888,42 @@ export const VaultApp = ({
     }
   };
 
+  // New drawing from the header / empty state: honours the default folder
+  // setting (created when missing); otherwise next to the open drawing.
+  const handleNewDrawing = async () => {
+    if (!vault) {
+      return;
+    }
+    const parent = resolveNewDrawingParent(
+      newDrawingFolder,
+      activeDoc?.path ?? null,
+    );
+    const name = `Drawing-${Date.now().toString().slice(-4)}.excalidraw`;
+    if (newDrawingFolder && !vault.readOnly) {
+      try {
+        const created = await ensureFolder(repository, vault.handle, parent);
+        if (created.length > 0) {
+          const chain = ["", ...folderChain(parent)];
+          for (const folder of chain.slice(0, -1)) {
+            await loadDirectory(folder);
+            if (folder) {
+              handleExpandFolder(folder);
+            }
+          }
+        }
+      } catch (err) {
+        setGlobalAlert({
+          message: `Could not create the default folder "${parent}": ${errorMessage(
+            err,
+          )}`,
+          type: "error",
+        });
+        return;
+      }
+    }
+    await handleCreateDrawing(parent, name);
+  };
+
   // Create folder
   const handleCreateFolder = async (parentPath: string, name: string) => {
     if (!vault) {
@@ -1099,8 +1149,8 @@ export const VaultApp = ({
 
   // Build tree nodes for Navigator
   const treeNodes = useMemo(() => {
-    return buildTree(directoryMap, "");
-  }, [directoryMap]);
+    return buildTree(directoryMap, "", navigatorSort);
+  }, [directoryMap, navigatorSort]);
 
   const recentVaults = getRecentVaults(win);
   const lastVaultPath = getLastVaultPath(win);
@@ -1260,11 +1310,7 @@ export const VaultApp = ({
         recoveryCount={recoveryCount}
         navigatorCollapsed={navigatorCollapsed}
         onToggleNavigator={handleToggleNavigator}
-        onNewDrawing={() => {
-          const parent = activeDoc ? getParentPath(activeDoc.path) : "";
-          const full = `Drawing-${Date.now().toString().slice(-4)}.excalidraw`;
-          void handleCreateDrawing(parent, full);
-        }}
+        onNewDrawing={() => void handleNewDrawing()}
         onOpenConflict={() => setShowConflictDialog(true)}
         onOpenRecovery={() => setShowRecoveryDialog(true)}
         onSave={handleExplicitSave}
@@ -1315,12 +1361,7 @@ export const VaultApp = ({
                 <button
                   type="button"
                   className="vault-btn vault-btn--primary"
-                  onClick={() => {
-                    const name = `Drawing-${Date.now()
-                      .toString()
-                      .slice(-4)}.excalidraw`;
-                    void handleCreateDrawing("", name);
-                  }}
+                  onClick={() => void handleNewDrawing()}
                 >
                   <IconPlus />
                   <span>Create Drawing</span>
@@ -1370,6 +1411,17 @@ export const VaultApp = ({
           onTrashEntry={handleTrashEntry}
           onRevealEntry={handleRevealEntry}
           onSwitchVault={handleSwitchVault}
+          sortOrder={navigatorSort}
+          onSortChange={(order) => {
+            // Write where the value currently lives: this vault if it
+            // overrides the global order, else config.toml.
+            if (vaultSettings.isOverridden("navigatorSort")) {
+              void vaultSettings.setOverride("navigatorSort", order);
+            } else {
+              updatePreferences({ navigatorSort: order }, win);
+            }
+          }}
+          confirmDelete={confirmDelete}
           treeNodes={treeNodes}
           expandedFolders={expandedFolders}
           onToggleFolder={handleToggleFolder}
