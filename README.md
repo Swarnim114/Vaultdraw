@@ -9,7 +9,9 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - File tree beside the Excalidraw canvas: create, rename, duplicate, move and delete drawings and folders
 - Autosave with atomic writes and crash recovery
 - Detects changes made outside the app without losing unsaved edits
-- Export to PNG and SVG
+- Export image dialog (Shift+Cmd+E): PNG or SVG at 1x, 2x or 3x, with or without background, dark mode, embedded scene and selection only. The last-used scale, background and embed setting are remembered. Exports always use the drawing's own colours, even with "Sync canvas with theme" on
+- Copy PNG or SVG to the clipboard, from the export dialog or the right-click menu. On macOS the image goes to the native clipboard
+- Insert Mermaid diagrams from the main menu or More tools. Conversion runs fully offline, with no AI
 - Works fully offline (fonts and assets are bundled)
 - Plain-text config folder, editable by hand or in Settings, reloaded live
 - Colour themes in Noctalia format, nine built in, light and dark (in progress)
@@ -67,7 +69,7 @@ new_drawing_folder = ""      # relative to the vault root; "" = next to the open
 - **Typos are safe.** If the file can't be parsed, the app keeps the last good settings and shows a banner such as `config.toml line 7: <error>`. A value of the wrong type falls back to its default and is reported the same way.
 - **Settings → Open config folder** opens the folder; **Reload** re-reads it.
 
-`state.json` holds machine state (recent vaults, navigator width, expanded folders). It is not meant for hand editing.
+`state.json` holds machine state (recent vaults, navigator width, expanded folders, last-used image export options). It is not meant for hand editing.
 
 ### Settings reference
 
