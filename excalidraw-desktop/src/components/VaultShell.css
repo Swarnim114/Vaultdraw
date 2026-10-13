@@ -1158,7 +1158,7 @@ button.vault-status:hover:not(:disabled) {
 /* Obsidian-Style Settings Modal */
 .vault-settings-modal {
   display: flex;
-  width: 780px;
+  width: 840px;
   max-width: 92vw;
   height: 540px;
   max-height: 85vh;
@@ -1176,36 +1176,108 @@ button.vault-status:hover:not(:disabled) {
   border-right: 1px solid var(--vault-border);
   display: flex;
   flex-direction: column;
-  padding: 16px 8px;
+  gap: 14px;
+  padding: 14px 8px;
   flex-shrink: 0;
+  overflow-y: auto;
 }
 
-.vault-settings-sidebar__title {
+/* Sidebar search (filters settings across every page) */
+.vault-settings-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--vault-text);
-  padding: 0 10px 14px;
-  border-bottom: 1px solid var(--vault-border);
-  margin-bottom: 10px;
 }
 
-.vault-settings-nav {
+.vault-settings-search__icon {
+  position: absolute;
+  left: 9px;
+  color: var(--vault-text-faint);
+  pointer-events: none;
+}
+
+.vault-settings-search__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 26px 0 28px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--vault-text);
+  background-color: var(--vault-bg);
+  border: 1px solid var(--vault-border-strong);
+  border-radius: var(--vault-radius);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.vault-settings-search__input::placeholder {
+  color: var(--vault-text-faint);
+}
+
+.vault-settings-search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.vault-settings-search__input:focus {
+  border-color: var(--vault-primary);
+  box-shadow: 0 0 0 2px var(--vault-primary-light);
+}
+
+.vault-settings-search__clear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--vault-radius-sm);
+  background: transparent;
+  color: var(--vault-text-muted);
+  cursor: pointer;
+}
+
+.vault-settings-search__clear:hover {
+  background-color: var(--vault-surface-hover);
+  color: var(--vault-text);
+}
+
+.vault-settings-nav-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+.vault-settings-nav-group__title {
+  padding: 0 12px 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vault-text-faint);
+}
+
+.vault-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .vault-settings-nav-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 7px 12px;
   border-radius: var(--vault-radius-sm);
   border: none;
   background: transparent;
   color: var(--vault-text-muted);
+  font-family: inherit;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -1213,9 +1285,18 @@ button.vault-status:hover:not(:disabled) {
   transition: all 0.15s ease;
 }
 
+.vault-settings-nav-item svg {
+  flex-shrink: 0;
+}
+
 .vault-settings-nav-item:hover {
   background-color: var(--vault-surface-hover);
   color: var(--vault-text);
+}
+
+.vault-settings-nav-item:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: -2px;
 }
 
 .vault-settings-nav-item--active {
@@ -1291,7 +1372,124 @@ button.vault-status:hover:not(:disabled) {
   line-height: 1.35;
 }
 
-/* Config folder row (Settings -> Vault & Storage) */
+.vault-setting-label-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Per-vault setting marker (used from the per-vault settings phase) */
+.vault-setting-badge {
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--vault-primary);
+  background-color: var(--vault-primary-light);
+  border: 1px solid var(--vault-primary-border);
+  border-radius: 999px;
+}
+
+.vault-setting-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: 6px;
+  max-width: 75%;
+}
+
+/* Narrow windows: long segmented controls wrap instead of overflowing. */
+.vault-setting-control .vault-segmented-control {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.vault-setting-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vault-range {
+  width: 130px;
+  accent-color: var(--vault-primary);
+}
+
+.vault-input--font {
+  width: 220px;
+}
+
+.vault-input--compact {
+  width: 110px;
+}
+
+/* Search results: settings from every page, under page headings */
+.vault-settings-results {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.vault-settings-result-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vault-settings-result-group__title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vault-settings-result-group__link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--vault-text-muted);
+  cursor: pointer;
+}
+
+.vault-settings-result-group__link:hover,
+.vault-settings-result-group__link:focus-visible {
+  color: var(--vault-primary);
+  text-decoration: underline;
+}
+
+.vault-settings-empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--vault-text-muted);
+}
+
+/* General -> About */
+.vault-settings-about__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0 4px;
+  color: var(--vault-text);
+}
+
+.vault-settings-about__name {
+  margin: 10px 0 4px;
+  font-size: 1.1rem;
+}
+
+.vault-settings-about__version {
+  font-size: 0.85rem;
+  color: var(--vault-text-muted);
+}
+
+/* Config folder row (Settings -> General) */
 .vault-config-row {
   align-items: flex-start;
 }
@@ -1371,6 +1569,7 @@ button.vault-status:hover:not(:disabled) {
 }
 
 .vault-color-swatch {
+  background-color: var(--vault-swatch, transparent);
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -1398,8 +1597,14 @@ button.vault-status:hover:not(:disabled) {
     linear-gradient(-45deg, #eee 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #eee 75%),
     linear-gradient(-45deg, transparent 75%, #eee 75%);
+  background-color: #ffffff;
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+.vault-color-swatch__none {
+  font-size: 10px;
+  color: #888888;
 }
 
 .vault-color-input {

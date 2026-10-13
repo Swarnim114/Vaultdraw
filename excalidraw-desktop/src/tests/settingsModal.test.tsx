@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
-import { SettingsModal } from "../components/SettingsModal";
+import { SettingsModal } from "../components/settings/SettingsModal";
 import {
   getEditorDefaults,
   getPreferences,
@@ -24,7 +24,7 @@ const mockVault: VaultInfo = {
 };
 
 describe("SettingsModal component and preference persistence", () => {
-  it("renders SettingsModal with all navigation tabs and default appearance view", () => {
+  it("renders the sidebar pages (with search) and opens on Appearance", () => {
     const onClose = vi.fn();
     const onThemeChanged = vi.fn();
 
@@ -37,16 +37,20 @@ describe("SettingsModal component and preference persistence", () => {
       />,
     );
 
+    expect(screen.getByRole("tab", { name: "Appearance" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Drawing" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Files" })).toBeInTheDocument();
+    // General holds About (and the config file in Tauri).
+    expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
+    // No rows yet: hidden until later phases.
+    expect(screen.queryByRole("tab", { name: "Interface" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Hotkeys" })).toBeNull();
     expect(
-      screen.getByRole("tab", { name: /appearance/i }),
+      screen.getByRole("searchbox", { name: "Search settings" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /drawing defaults/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /vault & storage/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /about/i })).toBeInTheDocument();
     expect(screen.getByText("Mode")).toBeInTheDocument();
     expect(screen.getByText("Colour Theme")).toBeInTheDocument();
   });
@@ -132,7 +136,7 @@ describe("SettingsModal component and preference persistence", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 
-  it("navigates to Drawing Defaults tab and updates default font and stroke width", () => {
+  it("navigates to the Drawing page and updates default font and stroke width", () => {
     const onClose = vi.fn();
     const onThemeChanged = vi.fn();
 
@@ -145,7 +149,7 @@ describe("SettingsModal component and preference persistence", () => {
       />,
     );
 
-    const defaultsTab = screen.getByRole("tab", { name: /drawing defaults/i });
+    const defaultsTab = screen.getByRole("tab", { name: "Drawing" });
     fireEvent.click(defaultsTab);
 
     expect(screen.getByText("Default Font Family")).toBeInTheDocument();
@@ -158,7 +162,7 @@ describe("SettingsModal component and preference persistence", () => {
     expect(updated.defaultStrokeWidth).toBe(4);
   });
 
-  it("navigates to Vault & Storage and displays current vault folder", () => {
+  it("navigates to Files and displays current vault folder", () => {
     const onClose = vi.fn();
     const onThemeChanged = vi.fn();
     const onReveal = vi.fn();
@@ -173,7 +177,7 @@ describe("SettingsModal component and preference persistence", () => {
       />,
     );
 
-    const vaultTab = screen.getByRole("tab", { name: /vault & storage/i });
+    const vaultTab = screen.getByRole("tab", { name: "Files" });
     fireEvent.click(vaultTab);
 
     expect(screen.getByText("/Users/test/Vault")).toBeInTheDocument();
@@ -193,7 +197,7 @@ describe("SettingsModal component and preference persistence", () => {
         ownerDocument={document}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: /drawing defaults/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "Drawing" }));
     const select = screen.getByDisplayValue(/Excalifont/) as HTMLSelectElement;
     expect(select.value).toBe("5");
     const ids = Array.from(select.options).map((o) => Number(o.value));
@@ -210,7 +214,8 @@ describe("SettingsModal component and preference persistence", () => {
         ownerDocument={document}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: /vault & storage/i }));
+    fireEvent.click(screen.getByRole("tab", { name: "General" }));
+    expect(screen.queryByTestId("settings-config-row")).toBeNull();
     expect(screen.queryByText(/open config folder/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /^reload$/i })).toBeNull();
   });
@@ -256,7 +261,7 @@ describe("SettingsModal component and preference persistence", () => {
           ownerDocument={document}
         />,
       );
-      fireEvent.click(screen.getByRole("tab", { name: /vault & storage/i }));
+      fireEvent.click(screen.getByRole("tab", { name: "General" }));
       expect(screen.getByText("/cfg/config.toml")).toBeInTheDocument();
 
       fireEvent.click(
@@ -296,7 +301,7 @@ describe("SettingsModal component and preference persistence", () => {
       expect(screen.getByRole("button", { name: "Dark" })).toHaveClass(
         "vault-segmented-btn--active",
       );
-      fireEvent.click(screen.getByRole("tab", { name: /drawing defaults/i }));
+      fireEvent.click(screen.getByRole("tab", { name: "Drawing" }));
       expect(screen.getByRole("button", { name: "Bold (4px)" })).toHaveClass(
         "vault-segmented-btn--active",
       );

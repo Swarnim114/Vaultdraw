@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsModal } from "../components/SettingsModal";
+import { SettingsModal } from "../components/settings/SettingsModal";
 import {
   isCanvasSyncActive,
   registerCanvasRepaint,

@@ -36,7 +36,7 @@ import { VaultNavigator } from "./components/VaultNavigator";
 import { Onboarding } from "./components/Onboarding";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { RecoveryDialog } from "./components/RecoveryDialog";
-import { SettingsModal } from "./components/SettingsModal";
+import { SettingsModal } from "./components/settings/SettingsModal";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 
@@ -308,6 +308,34 @@ export const VaultApp = ({
     doc.addEventListener("keydown", onKeyDown);
     return () => doc.removeEventListener("keydown", onKeyDown);
   }, [doc, handleExplicitSave]);
+
+  // Cmd+, (Ctrl+, elsewhere) opens Settings. Hard-wired until the command
+  // registry lands. Like Cmd+S it never ends a text edit: Settings opens
+  // without taking focus from an active text field (see SettingsModal).
+  const hasVault = vault !== null;
+  useEffect(() => {
+    if (!doc || !hasVault) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        !(e.metaKey || e.ctrlKey) ||
+        e.altKey ||
+        e.shiftKey ||
+        (e.key !== "," && e.code !== "Comma")
+      ) {
+        return;
+      }
+      e.preventDefault();
+      // Another dialog (rename, move, confirm...) or Settings itself is open.
+      if (doc.querySelector(".vault-modal-backdrop")) {
+        return;
+      }
+      setShowSettingsModal(true);
+    };
+    doc.addEventListener("keydown", onKeyDown);
+    return () => doc.removeEventListener("keydown", onKeyDown);
+  }, [doc, hasVault]);
 
   // Load a directory's entries with generation check and error surfacing
   const loadDirectory = useCallback(
