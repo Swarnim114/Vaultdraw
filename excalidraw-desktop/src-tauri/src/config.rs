@@ -23,7 +23,7 @@ const MAX_STATE_BYTES: u64 = 1024 * 1024;
 const MAX_CHANGES: usize = 256;
 const CONFIG_FILE: &str = "config.toml";
 const STATE_FILE: &str = "state.json";
-const THEMES_DIR: &str = "themes";
+pub(crate) const THEMES_DIR: &str = "themes";
 const TEMP_PREFIX: &str = ".excalidraw-tmp-";
 const DEBOUNCE: Duration = Duration::from_millis(150);
 const MAX_BATCH_DELAY: Duration = Duration::from_millis(1000);
@@ -431,8 +431,13 @@ pub(crate) async fn write_state(state: Json) -> Result<()> {
 #[tauri::command]
 pub(crate) async fn open_config_dir() -> Result<()> {
     let dirs = resolve_dirs()?;
-    fs::create_dir_all(&dirs.config).map_err(ioerr)?;
-    let dir = dirs.config.to_string_lossy().into_owned();
+    open_dir(&dirs.config)
+}
+
+/// Creates `dir` if missing and opens it in the platform file manager.
+pub(crate) fn open_dir(dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir).map_err(ioerr)?;
+    let dir = dir.to_string_lossy().into_owned();
     #[cfg(target_os = "macos")]
     let program = "open";
     #[cfg(target_os = "windows")]

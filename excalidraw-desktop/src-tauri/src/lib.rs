@@ -14,6 +14,7 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager, State};
 
 mod config;
+mod themes;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 
@@ -1067,6 +1068,7 @@ pub fn run() {
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
+                themes::list_themes, themes::open_themes_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish
             ])
         } else {
@@ -1074,7 +1076,8 @@ pub fn run() {
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, list_recovery, discard_recovery,
-                config::load_settings, config::update_config, config::write_state, config::open_config_dir
+                config::load_settings, config::update_config, config::write_state, config::open_config_dir,
+                themes::list_themes, themes::open_themes_dir
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1082,7 +1085,8 @@ pub fn run() {
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
             export_file, list_recovery, discard_recovery,
-            config::load_settings, config::update_config, config::write_state, config::open_config_dir
+            config::load_settings, config::update_config, config::write_state, config::open_config_dir,
+            themes::list_themes, themes::open_themes_dir
         ]);
         let app = builder
             .build(tauri::generate_context!())
