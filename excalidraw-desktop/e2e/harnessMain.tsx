@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
@@ -48,7 +49,10 @@ if (params.get("seed") !== "empty") {
   }
 }
 
+const libraryRepository = new FakeLibraryRepository();
+
 (ownerWindow as any).__vaultRepo = repository;
+(ownerWindow as any).__libraryRepo = libraryRepository;
 
 void import("../src/VaultApp").then(({ default: VaultApp }) => {
   createRoot(mountNode).render(
@@ -58,6 +62,7 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         ownerWindow={ownerWindow}
         repository={repository}
         search={new FakeVaultSearch(repository)}
+        libraryRepository={libraryRepository}
       />
     </StrictMode>,
   );

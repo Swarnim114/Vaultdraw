@@ -21,6 +21,7 @@ import type {
   ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
+import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
@@ -32,6 +33,9 @@ import {
 } from "./exportOptions";
 import { focusElement } from "./focusElement";
 import { renderImageExport } from "./imageExport";
+
+import type { LibraryStore } from "../library/libraryStore";
+import type { LibraryRepository } from "../library/types";
 
 import type { FlushOptions } from "./editorFlush";
 
@@ -54,6 +58,8 @@ type Props = {
     containerId: string | null;
     nonce: number;
   } | null;
+  /** Persisted library; omit to run with Excalidraw's in-memory library. */
+  library?: { store: LibraryStore; repository: LibraryRepository };
 };
 
 type Snapshot = Parameters<
@@ -75,6 +81,7 @@ const VaultEditorComponent = ({
   onThemeChange,
   onOpenSettings,
   focusRequest = null,
+  library,
 }: Props) => {
   const host = useRef<HTMLDivElement>(null);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -92,6 +99,10 @@ const VaultEditorComponent = ({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
   const handledFocusNonce = useRef<number | null>(null);
+  const [libraryApi, setLibraryApi] = useState<ExcalidrawImperativeAPI | null>(
+    null,
+  );
+  const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
@@ -233,6 +244,7 @@ const VaultEditorComponent = ({
   const onEditorChange = useCallback(
     (elements: Snapshot[0], appState: Snapshot[1], files: Snapshot[2]) => {
       latest.current = [elements, appState, files];
+      onAppState(appState);
       if (!ready.current) {
         return;
       }
@@ -265,11 +277,12 @@ const VaultEditorComponent = ({
         maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
       }
     },
-    [serializePending],
+    [serializePending, onAppState],
   );
 
   const onInitialize = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api;
+    setLibraryApi(api);
     latest.current = [
       api.getSceneElements(),
       api.getAppState(),
@@ -419,6 +432,7 @@ const VaultEditorComponent = ({
         interaction={disabled ? false : undefined}
         onExportImage={handleExportImage}
         aiEnabled={false}
+        libraryUIOptions={libraryUIOptions}
         UIOptions={{
           canvasActions: {
             toggleTheme: true,

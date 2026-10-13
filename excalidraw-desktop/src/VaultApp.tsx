@@ -42,6 +42,8 @@ import {
   folderChain,
   resolveNewDrawingParent,
 } from "./vault/newDrawing";
+import { LibraryStore } from "./library/libraryStore";
+import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
 import { VaultHeader } from "./components/VaultHeader";
 import { VaultNavigator } from "./components/VaultNavigator";
@@ -56,6 +58,7 @@ import "./components/VaultShell.css";
 
 import type { VaultSearch } from "./search/types";
 
+import type { LibraryRepository } from "./library/types";
 import type {
   VaultChange,
   VaultEntry,
@@ -70,6 +73,7 @@ export interface VaultAppProps {
   /** Vault-wide search; defaults to the native index under Tauri, else name-only. */
   search?: VaultSearch | null;
   initialVault?: VaultInfo | null;
+  libraryRepository?: LibraryRepository;
 }
 
 export const VaultApp = ({
@@ -78,7 +82,16 @@ export const VaultApp = ({
   repository = desktopRepository,
   search,
   initialVault = null,
+  libraryRepository = desktopLibraryRepository,
 }: VaultAppProps) => {
+  const libraryBundle = useMemo(
+    () => ({
+      store: new LibraryStore(libraryRepository),
+      repository: libraryRepository,
+    }),
+    [libraryRepository],
+  );
+  const libraryStore = libraryBundle.store;
   const [mountedDocument, setMountedDocument] = useState<Document | null>(null);
 
   // Derive browser APIs from the mounted node, never from ambient globals.
@@ -216,6 +229,10 @@ export const VaultApp = ({
   }, [problemText]);
 
   // Refs for tracking active lifecycle, generations, and loaded folders
+  useEffect(() => {
+    void libraryStore.setVault(vault?.handle ?? null, vault?.readOnly ?? false);
+  }, [libraryStore, vault?.handle, vault?.readOnly]);
+
   const vaultRef = useRef<VaultInfo | null>(vault);
   vaultRef.current = vault;
   const vaultGeneration = useRef(0);
@@ -268,6 +285,7 @@ export const VaultApp = ({
     const operation = (async () => {
       try {
         await docHookRef.current.flush();
+        await libraryStore.flush();
         await appWinRef.current?.destroy();
         setShowCloseDiscardConfirm(false);
       } catch {
@@ -278,7 +296,7 @@ export const VaultApp = ({
     })();
     closePromiseRef.current = operation;
     return operation;
-  }, []);
+  }, [libraryStore]);
 
   useEffect(() => {
     let unlistenClose: (() => void) | undefined;
@@ -694,6 +712,7 @@ export const VaultApp = ({
       vaultGeneration.current += 1;
       // Release old vault handle ONLY after old doc has flushed and closed
       if (oldVault) {
+        await libraryStore.flush();
         await repository.releaseVault(oldVault.handle);
       }
       // Immediately reset directory cache and indexes
@@ -1345,6 +1364,7 @@ export const VaultApp = ({
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
+                library={libraryBundle}
               />
             </div>
           ) : (
