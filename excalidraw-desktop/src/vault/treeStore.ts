@@ -130,6 +130,53 @@ export function isMoveAllowed(
 }
 
 /**
+ * The folder a tree row accepts drops for: a folder row is its own target,
+ * a drawing row drops into the folder that contains it (VS Code / Obsidian).
+ */
+export function resolveDropFolder(
+  rowPath: string,
+  rowKind: "folder" | "drawing",
+): string {
+  return rowKind === "folder" ? rowPath : getParentPath(rowPath);
+}
+
+/**
+ * Drop rules for dragging `source` into `targetFolder` ("" is the vault root).
+ * `existingNames` are the names already known in the target folder; a clash
+ * is refused up front (the backend refuses it too, this only explains why).
+ */
+export function checkTreeDrop(
+  source: Pick<VaultEntry, "path" | "name" | "kind">,
+  targetFolder: string,
+  options: { readOnly?: boolean; existingNames?: Iterable<string> } = {},
+): { allowed: boolean; reason?: string } {
+  if (options.readOnly) {
+    return { allowed: false, reason: "Vault is read-only" };
+  }
+  const base = isMoveAllowed(source.path, targetFolder);
+  if (!base.allowed) {
+    return base;
+  }
+  if (options.existingNames) {
+    for (const name of options.existingNames) {
+      if (name === source.name) {
+        const where = targetFolder
+          ? `"${getBaseName(targetFolder)}"`
+          : "the vault root";
+        return {
+          allowed: false,
+          reason: `"${source.name.replace(
+            /\.excalidraw$/i,
+            "",
+          )}" already exists in ${where}`,
+        };
+      }
+    }
+  }
+  return { allowed: true };
+}
+
+/**
  * Crawls vault directory metadata recursively for background search indexing.
  * Cancellable via AbortSignal.
  */

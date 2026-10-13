@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { getPreferences, updatePreferences } from "../vault/preferences";
-import { getParentPath, searchEntries } from "../vault/treeStore";
+import {
+  checkTreeDrop,
+  getParentPath,
+  searchEntries,
+} from "../vault/treeStore";
 
 import {
   IconChevronDown,
@@ -26,10 +31,13 @@ import {
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
+import { ghostTransform, useTreeDrag } from "./tree/useTreeDrag";
 
 import type { ReactNode } from "react";
 
 import type { TreeNode } from "../vault/treeStore";
+
+import type { DragSource } from "./tree/useTreeDrag";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
@@ -140,6 +148,41 @@ export const VaultNavigator = ({
     win.addEventListener("pointerup", onUp);
   };
   const treeContainerRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+
+  // Names already in a folder, from the loaded tree plus the search index.
+  const namesInFolder = (folder: string): string[] => {
+    const names = allIndexedEntries
+      .filter((e) => getParentPath(e.path) === folder)
+      .map((e) => e.name);
+    const find = (nodes: TreeNode[]): TreeNode[] | undefined => {
+      for (const node of nodes) {
+        if (node.entry.path === folder) {
+          return node.children;
+        }
+        if (node.children && folder.startsWith(`${node.entry.path}/`)) {
+          return find(node.children);
+        }
+      }
+      return undefined;
+    };
+    const children = folder === "" ? treeNodes : find(treeNodes);
+    return names.concat((children ?? []).map((c) => c.entry.name));
+  };
+
+  const { drag, onRowPointerDown, pointerRef } = useTreeDrag({
+    containerRef: treeContainerRef,
+    ghostRef,
+    enabled: !vault.readOnly && !searchQuery.trim(),
+    check: (source, folder) =>
+      checkTreeDrop(source, folder, {
+        readOnly: vault.readOnly,
+        existingNames: namesInFolder(folder),
+      }),
+    onDrop: (source, folder) => void onMoveEntry(source.path, folder),
+    isExpanded: (folder) => expandedFolders.has(folder),
+    onExpandFolder,
+  });
 
   // Collect all known folders for move destination picker
   const allFolderPaths = Array.from(
@@ -401,7 +444,9 @@ export const VaultNavigator = ({
       {/* Search Results or Tree View */}
       <div
         ref={treeContainerRef}
-        className="vault-tree-container"
+        className={`vault-tree-container ${
+          drag?.targetFolder === "" ? "vault-tree-container--drop-root" : ""
+        }`}
         role="tree"
         id={treeId}
         tabIndex={0}
@@ -468,7 +513,7 @@ export const VaultNavigator = ({
             )}
           </div>
         ) : (
-          <div>
+          <div className="vault-tree-body">
             {treeNodes.length === 0 ? (
               <div className="vault-tree-empty">
                 Vault is empty. Create your first drawing!
@@ -497,8 +542,17 @@ export const VaultNavigator = ({
                   setCreateError(null);
                 }}
                 onOpenMenu={(entry, x, y) => setMenu({ entry, x, y })}
+                onRowPointerDown={onRowPointerDown}
+                dropTarget={drag?.allowed ? drag.targetFolder : null}
+                dragSourcePath={drag?.source.path ?? null}
               />
             )}
+            {/* Empty space below the rows: dropping here moves to the root. */}
+            <div className="vault-tree-root-drop" aria-hidden="true">
+              {drag && drag.targetFolder === "" && drag.allowed && (
+                <span>Move to vault root</span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -527,6 +581,40 @@ export const VaultNavigator = ({
           </button>
         )}
       </div>
+
+      {drag &&
+        createPortal(
+          <div
+            ref={ghostRef}
+            className="vault-tree-drag-ghost"
+            data-allowed={drag.allowed ? "true" : "false"}
+            style={{
+              transform: ghostTransform(
+                pointerRef.current.x,
+                pointerRef.current.y,
+              ),
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="vault-tree-drag-ghost__name">
+              {drag.source.kind === "folder" ? <IconFolder /> : <IconDrawing />}
+              {drag.source.name.replace(/\.excalidraw$/i, "")}
+            </span>
+            {drag.targetFolder !== null && (
+              <span className="vault-tree-drag-ghost__hint">
+                {drag.allowed
+                  ? `Move to ${
+                      drag.targetFolder
+                        ? drag.targetFolder.split("/").pop()
+                        : "vault root"
+                    }`
+                  : drag.reason}
+              </span>
+            )}
+          </div>,
+          (asideRef.current?.ownerDocument ?? ownerDocument ?? document).body,
+        )}
 
       {menu && (
         <RowMenu
@@ -695,6 +783,13 @@ interface TreeRendererProps {
   onToggleFolder: (path: string) => void;
   onNewInside: (folderPath: string, kind: "folder" | "drawing") => void;
   onOpenMenu: (entry: VaultEntry, x: number, y: number) => void;
+  onRowPointerDown: (
+    event: React.PointerEvent<HTMLElement>,
+    entry: DragSource,
+  ) => void;
+  /** Folder highlighted as the drop target (only while a drop is allowed). */
+  dropTarget: string | null;
+  dragSourcePath: string | null;
 }
 
 const TreeRenderer = ({
@@ -708,6 +803,9 @@ const TreeRenderer = ({
   onToggleFolder,
   onNewInside,
   onOpenMenu,
+  onRowPointerDown,
+  dropTarget,
+  dragSourcePath,
 }: TreeRendererProps) => {
   return (
     <>
@@ -717,14 +815,21 @@ const TreeRenderer = ({
         const isExpanded = expandedFolders.has(entry.path);
         const isActive = entry.path === activePath;
         const isFocused = entry.path === focusedPath;
+        const isDropTarget = isFolder && dropTarget === entry.path;
+        const isDragSource = dragSourcePath === entry.path;
 
         return (
           <div key={entry.path} style={{ display: "contents" }}>
             <div
               className={`vault-tree-item ${
                 isActive ? "vault-tree-item--active" : ""
-              } ${isFocused ? "vault-tree-item--focused" : ""}`}
+              } ${isFocused ? "vault-tree-item--focused" : ""} ${
+                isDropTarget ? "vault-tree-item--drop-target" : ""
+              } ${isDragSource ? "vault-tree-item--drag-source" : ""}`}
               style={{ "--depth": depth } as React.CSSProperties}
+              data-tree-path={entry.path}
+              data-tree-kind={entry.kind}
+              onPointerDown={(e) => onRowPointerDown(e, entry)}
               role="treeitem"
               aria-expanded={isFolder ? isExpanded : undefined}
               aria-selected={isActive}
@@ -803,6 +908,9 @@ const TreeRenderer = ({
                 onToggleFolder={onToggleFolder}
                 onNewInside={onNewInside}
                 onOpenMenu={onOpenMenu}
+                onRowPointerDown={onRowPointerDown}
+                dropTarget={dropTarget}
+                dragSourcePath={dragSourcePath}
               />
             )}
           </div>

@@ -629,6 +629,110 @@ button.vault-status:hover:not(:disabled) {
   padding: 2px 0 8px;
 }
 
+/* Tree drag and drop (pointer-based, see components/tree/useTreeDrag.ts) */
+.vault-tree-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.vault-tree-body .vault-tree-item {
+  flex-shrink: 0;
+}
+
+.vault-tree-root-drop {
+  flex: 1 0 24px;
+  margin: 2px 6px 0;
+  border-radius: var(--vault-radius);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8px;
+  font-size: 0.75rem;
+  color: var(--vault-primary);
+}
+
+.vault-tree-dragging,
+.vault-tree-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.vault-tree-dragging:has(.vault-tree-drag-ghost[data-allowed="false"]),
+.vault-tree-dragging:has(.vault-tree-drag-ghost[data-allowed="false"]) * {
+  cursor: not-allowed !important;
+}
+
+.vault-tree-container--drop-root .vault-tree-root-drop {
+  background-color: var(--vault-primary-light);
+  box-shadow: inset 0 0 0 1.5px var(--vault-primary-border);
+}
+
+.vault-tree-item.vault-tree-item--drop-target,
+.vault-tree-item.vault-tree-item--drop-target:hover {
+  background-color: var(--vault-primary-light);
+  box-shadow: inset 0 0 0 1.5px var(--vault-primary);
+  color: var(--vault-text);
+}
+
+.vault-tree-item--drag-source {
+  opacity: 0.45;
+}
+
+.vault-tree-dragging .vault-tree-item:not(.vault-tree-item--drop-target):hover {
+  background-color: transparent;
+}
+
+.vault-tree-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background-color: var(--vault-menu-bg);
+  border: 1px solid var(--vault-border-strong);
+  box-shadow: var(--vault-shadow-lg);
+  font-family: var(--vault-font);
+  font-size: 0.8rem;
+  color: var(--vault-text);
+}
+
+.vault-tree-drag-ghost__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-tree-drag-ghost__name svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--vault-text-muted);
+}
+
+.vault-tree-drag-ghost__hint {
+  font-size: 0.72rem;
+  color: var(--vault-text-muted);
+}
+
+.vault-tree-drag-ghost[data-allowed="false"] {
+  border-color: var(--vault-danger-border);
+}
+
+.vault-tree-drag-ghost[data-allowed="false"] .vault-tree-drag-ghost__hint {
+  color: var(--vault-danger);
+}
+
 .vault-tree-empty {
   padding: 24px 16px;
   text-align: center;
