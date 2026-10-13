@@ -287,6 +287,11 @@ describe("settingsSync mapping", () => {
       navigatorCollapsed: false,
       navigatorWidth: 300,
       expandedFolders: { "/a": ["", "x"] },
+      exportOptions: {
+        scale: expect.any(Number),
+        background: true,
+        embedScene: false,
+      },
     });
   });
 });
@@ -390,6 +395,11 @@ describe("settingsSync runtime", () => {
       navigatorCollapsed: true,
       navigatorWidth: 300,
       expandedFolders: {},
+      exportOptions: {
+        scale: expect.any(Number),
+        background: true,
+        embedScene: false,
+      },
     });
     // state fields never go to update_config
     expect(backend.callsOf("update_config")).toHaveLength(0);

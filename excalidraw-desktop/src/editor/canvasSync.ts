@@ -70,6 +70,28 @@ export const registerCanvasRepaint = (repaint: () => void) => {
 };
 
 /**
+ * Shows standard (untransformed) colours until the returned release is
+ * called. Nests (counter); the last release restores the theme transform and
+ * repaints. The release is idempotent.
+ */
+export const suspendCanvasSync = (): (() => void) => {
+  if (suspended++ === 0 && currentTransform) {
+    setDisplayColorTransform(null);
+  }
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    if (--suspended === 0 && currentTransform) {
+      setDisplayColorTransform(currentTransform);
+      repaintAll();
+    }
+  };
+};
+
+/**
  * Runs `task` with the standard (untransformed) colours, e.g. PNG/SVG export,
  * then restores the theme transform and repaints.
  */
@@ -79,16 +101,11 @@ export const withStandardCanvasColors = async <T>(
   if (!currentTransform && suspended === 0) {
     return task();
   }
-  if (suspended++ === 0) {
-    setDisplayColorTransform(null);
-  }
+  const release = suspendCanvasSync();
   try {
     return await task();
   } finally {
-    if (--suspended === 0) {
-      setDisplayColorTransform(currentTransform);
-      repaintAll();
-    }
+    release();
   }
 };
 

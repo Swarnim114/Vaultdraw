@@ -2,12 +2,42 @@ import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from "./sortOrder";
 
 export type VaultTheme = "light" | "dark" | "system";
 
+/** Last-used image export options (machine state, not a user setting). */
+export interface ExportOptions {
+  scale: 1 | 2 | 3;
+  background: boolean;
+  embedScene: boolean;
+}
+
+const dpr = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
+
+/** Same default scale as the editor (appState.ts defaultExportScale). */
+export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
+  scale: dpr === 2 || dpr === 3 ? dpr : 1,
+  background: true,
+  embedScene: false,
+};
+
+export function normalizeExportOptions(input: unknown): ExportOptions {
+  const o =
+    input && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : {};
+  const d = DEFAULT_EXPORT_OPTIONS;
+  return {
+    scale: o.scale === 1 || o.scale === 2 || o.scale === 3 ? o.scale : d.scale,
+    background: typeof o.background === "boolean" ? o.background : d.background,
+    embedScene: typeof o.embedScene === "boolean" ? o.embedScene : d.embedScene,
+  };
+}
+
 export interface VaultPreferences {
   recentVaults: string[];
   lastVaultPath: string | null;
   navigatorCollapsed: boolean;
   navigatorWidth: number;
   expandedFolders: Record<string, string[]>;
+  exportOptions: ExportOptions;
   theme: VaultTheme;
   /** Colour theme name: a built-in name or a theme in the config themes/ folder. */
   colorTheme: string;
@@ -45,6 +75,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   navigatorCollapsed: false,
   navigatorWidth: 280,
   expandedFolders: {},
+  exportOptions: DEFAULT_EXPORT_OPTIONS,
   theme: "system",
   colorTheme: "Default",
   syncCanvas: false,
@@ -120,6 +151,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       parsed.expandedFolders && typeof parsed.expandedFolders === "object"
         ? (parsed.expandedFolders as Record<string, string[]>)
         : {},
+    exportOptions: normalizeExportOptions(parsed.exportOptions),
     theme: isVaultTheme(parsed.theme) ? parsed.theme : d.theme,
     colorTheme:
       typeof parsed.colorTheme === "string" && parsed.colorTheme.trim()

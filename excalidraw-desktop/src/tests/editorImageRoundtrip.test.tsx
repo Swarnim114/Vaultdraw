@@ -115,8 +115,8 @@ describe("VaultEditor component and bridge tests", () => {
       }
     });
     await openMainMenu();
-    expect(await screen.findByText("Export as PNG…")).toBeInTheDocument();
-    expect(screen.getByText("Export as SVG…")).toBeInTheDocument();
+    expect(await screen.findByText("Export image...")).toBeInTheDocument();
+    expect(screen.getByText("Insert Mermaid diagram…")).toBeInTheDocument();
     expect(screen.getByText("Save a copy…")).toBeInTheDocument();
   });
 
@@ -156,49 +156,6 @@ describe("VaultEditor component and bridge tests", () => {
     expect(bytes).toBeInstanceOf(Uint8Array);
     const text = new TextDecoder().decode(bytes);
     expect(text).toContain('"type": "excalidraw"');
-  });
-
-  it("routes 'PNG' and 'SVG' exports through onExport callback", async () => {
-    const onChange = vi.fn();
-    const onExport = vi.fn().mockResolvedValue(true);
-
-    const { container } = render(
-      <VaultEditor
-        documentId="doc-export-formats"
-        initialJson={BLANK_SCENE}
-        name="chart.excalidraw"
-        onChange={onChange}
-        onExport={onExport}
-      />,
-    );
-
-    await waitFor(() => {
-      const canvas = container.querySelector("canvas.interactive");
-      if (!canvas) {
-        throw new Error("canvas not ready");
-      }
-      if ((window as any).h?.state?.isLoading) {
-        throw new Error("still loading");
-      }
-    });
-
-    await clickMenuItem("Export as PNG…");
-
-    await waitFor(() => {
-      expect(onExport).toHaveBeenCalledWith(
-        "chart.png",
-        expect.any(Uint8Array),
-      );
-    });
-
-    await clickMenuItem("Export as SVG…");
-
-    await waitFor(() => {
-      expect(onExport).toHaveBeenCalledWith(
-        "chart.svg",
-        expect.any(Uint8Array),
-      );
-    });
   });
 
   it("handles keyboard shortcut Ctrl+S / Cmd+S without error", async () => {

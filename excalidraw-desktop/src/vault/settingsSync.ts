@@ -19,6 +19,7 @@ import {
   detachPreferencesStore,
   getPreferences,
   isExpandedFolders,
+  normalizeExportOptions,
   isVaultTheme,
   readLocalStoragePreferences,
   replaceStoredPreferences,
@@ -273,6 +274,7 @@ export const STATE_FIELDS = [
   "navigatorCollapsed",
   "navigatorWidth",
   "expandedFolders",
+  "exportOptions",
 ] as const;
 
 type StateField = typeof STATE_FIELDS[number];
@@ -373,6 +375,7 @@ export function stateToPreferences(
     expandedFolders: isExpandedFolders(s.expandedFolders)
       ? s.expandedFolders
       : { ...d.expandedFolders },
+    exportOptions: normalizeExportOptions(s.exportOptions),
   };
 }
 
@@ -383,6 +386,7 @@ export function preferencesToState(prefs: VaultPreferences): PersistedState {
     navigatorCollapsed: prefs.navigatorCollapsed,
     navigatorWidth: prefs.navigatorWidth,
     expandedFolders: prefs.expandedFolders,
+    exportOptions: prefs.exportOptions,
   };
 }
 

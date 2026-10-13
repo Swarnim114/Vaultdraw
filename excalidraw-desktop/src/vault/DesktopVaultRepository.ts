@@ -10,7 +10,8 @@ import {
 
 export type InvokeFn = <T>(
   cmd: string,
-  args?: Record<string, unknown>,
+  args?: Record<string, unknown> | Uint8Array,
+  options?: { headers?: Record<string, string> },
 ) => Promise<T>;
 export type EventCallback<T> = (event: { payload: T }) => void;
 export type ListenFn = <T>(
@@ -47,11 +48,8 @@ export function isTauriAvailable(win?: Window | null): boolean {
   return false;
 }
 
-/** Resolves the Tauri `invoke` (or an injected one); shared with other desktop bridges. */
-export async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
-  if (custom) {
-    return custom;
-  }
+/** Tauri's invoke, or null outside the desktop shell. */
+export async function loadTauriInvoke(): Promise<InvokeFn | null> {
   try {
     const core = await import("@tauri-apps/api/core");
     if (typeof core.invoke === "function") {
@@ -59,6 +57,18 @@ export async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
     }
   } catch {
     // module not resolved or running outside desktop shell
+  }
+  return null;
+}
+
+/** Resolves the Tauri `invoke` (or an injected one); shared with other desktop bridges. */
+export async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
+  if (custom) {
+    return custom;
+  }
+  const invoke = await loadTauriInvoke();
+  if (invoke) {
+    return invoke;
   }
   throw new VaultError(
     "TAURI_UNAVAILABLE",
@@ -253,9 +263,8 @@ export class DesktopVaultRepository implements VaultRepository {
   async exportFile(name: string, bytes: Uint8Array): Promise<boolean> {
     const invoke = await this.getInvoke();
     try {
-      return await invoke<boolean>("export_file", {
-        name,
-        bytes: Array.from(bytes),
+      return await invoke<boolean>("export_file", bytes, {
+        headers: { "x-file-name": encodeURIComponent(name) },
       });
     } catch (err) {
       throw normalizeError(err);

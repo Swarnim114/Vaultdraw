@@ -3,8 +3,6 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   CaptureUpdateAction,
   Excalidraw,
-  exportToBlob,
-  exportToSvg,
   getSceneVersion,
   loadFromBlob,
   MainMenu,
@@ -12,7 +10,7 @@ import {
 } from "@excalidraw/excalidraw";
 
 import {
-  ExportImageIcon,
+  mermaidLogoIcon,
   saveAs,
   settingsIcon,
 } from "@excalidraw/excalidraw/components/icons";
@@ -20,11 +18,20 @@ import {
 import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
+  ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
-import { registerCanvasRepaint, withStandardCanvasColors } from "./canvasSync";
+import { copyToClipboard } from "../vault/clipboard";
+
+import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
+import {
+  exportOptionsToAppState,
+  loadExportOptions,
+  rememberExportOptions,
+} from "./exportOptions";
 import { focusElement } from "./focusElement";
+import { renderImageExport } from "./imageExport";
 
 import type { FlushOptions } from "./editorFlush";
 
@@ -80,6 +87,7 @@ const VaultEditorComponent = ({
   const signature = useRef("");
   const pendingChanges = useRef(false);
   const fileRefs = useRef<BinaryFiles>({});
+  const releasePreview = useRef<(() => void) | null>(null);
   const [exporting, setExporting] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
@@ -121,7 +129,11 @@ const VaultEditorComponent = ({
       });
       const scene = await loadFromBlob(blob, null, null, null);
       // Never inherit a file handle or scene from a previously mounted editor.
-      scene.appState = { ...scene.appState, fileHandle: null };
+      scene.appState = {
+        ...scene.appState,
+        ...exportOptionsToAppState(loadExportOptions()),
+        fileHandle: null,
+      };
       return scene;
     } catch (cause) {
       setEditorError(cause instanceof Error ? cause.message : String(cause));
@@ -224,6 +236,15 @@ const VaultEditorComponent = ({
       if (!ready.current) {
         return;
       }
+      rememberExportOptions(appState);
+      // The dialog's live preview must show standard colours, not theme sync.
+      const previewing = appState.openDialog?.name === "imageExport";
+      if (previewing && !releasePreview.current) {
+        releasePreview.current = suspendCanvasSync();
+      } else if (!previewing && releasePreview.current) {
+        releasePreview.current();
+        releasePreview.current = null;
+      }
       const nextSignature = `${getSceneVersion(elements)}|${
         appState.viewBackgroundColor
       }|${appState.gridModeEnabled}`;
@@ -302,55 +323,35 @@ const VaultEditorComponent = ({
       }
       timer.current = maxTimer.current = null;
       apiRef.current = null;
+      releasePreview.current?.();
+      releasePreview.current = null;
     },
     [documentId],
   );
 
-  const exportFormat = async (format: "png" | "svg" | "excalidraw") => {
+  const saveCopy = async () => {
     const api = apiRef.current;
     const mounted = host.current;
     if (!api || !mounted || !exportRef.current || exporting) {
       return;
     }
     const ownerDocument = mounted.ownerDocument;
-    const elements = api.getSceneElements();
-    const appState = api.getAppState();
-    const files = api.getFiles();
     const baseName = name.replace(/\.excalidraw$/i, "") || "Drawing";
     setExporting(true);
     try {
-      const suffix = format;
-      // Exports must contain the drawing's real colours, never the theme's
-      // on-screen canvas sync colours (the transform is global).
-      const blob = await withStandardCanvasColors(async (): Promise<Blob> => {
-        if (format === "excalidraw") {
-          return new ownerDocument.defaultView!.Blob(
-            [serializeAsJSON(elements, appState, files, "local")],
-            { type: "application/json" },
-          );
-        }
-        if (format === "png") {
-          return exportToBlob({
-            elements,
-            appState,
-            files,
-            mimeType: "image/png",
-          });
-        }
-        const svg = await exportToSvg({
-          elements,
-          appState,
-          files,
-          renderEmbeddables: false,
-        });
-        const Serializer = ownerDocument.defaultView!.XMLSerializer;
-        return new ownerDocument.defaultView!.Blob(
-          [new Serializer().serializeToString(svg)],
-          { type: "image/svg+xml" },
-        );
+      const json = serializeAsJSON(
+        api.getSceneElements(),
+        api.getAppState(),
+        api.getFiles(),
+        "local",
+      );
+      const blob = new ownerDocument.defaultView!.Blob([json], {
+        type: "application/json",
       });
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      await exportRef.current(`${baseName}.${suffix}`, bytes);
+      await exportRef.current(
+        `${baseName}.excalidraw`,
+        new Uint8Array(await blob.arrayBuffer()),
+      );
       setEditorError(null);
     } catch (cause) {
       setEditorError(cause instanceof Error ? cause.message : String(cause));
@@ -358,6 +359,38 @@ const VaultEditorComponent = ({
       setExporting(false);
     }
   };
+
+  // Every image export (dialog, shortcuts, context menu copy) lands here.
+  // Throwing makes the editor show its own error.
+  const handleExportImage = useCallback(async (request: ImageExportRequest) => {
+    const win = host.current?.ownerDocument.defaultView;
+    if (!win) {
+      throw new Error("Editor window is not mounted");
+    }
+    const started = performance.now();
+    const image = await renderImageExport(request, win);
+    const rendered = performance.now();
+    if (request.type === "clipboard" || request.type === "clipboard-svg") {
+      await copyToClipboard(
+        request.type === "clipboard" ? "png" : "svg",
+        image.bytes,
+        win,
+      );
+    } else if (exportRef.current) {
+      // false = the user cancelled the save dialog, not an error.
+      await exportRef.current(image.fileName, image.bytes);
+    } else {
+      throw new Error("Exporting files is not available.");
+    }
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[export] ${request.type} render ${Math.round(
+        rendered - started,
+      )} ms, ipc ${Math.round(performance.now() - rendered)} ms, ${
+        image.bytes.byteLength
+      } bytes`,
+    );
+  }, []);
 
   return (
     <div
@@ -384,6 +417,7 @@ const VaultEditorComponent = ({
         validateEmbeddable={false}
         viewModeEnabled={readOnly}
         interaction={disabled ? false : undefined}
+        onExportImage={handleExportImage}
         aiEnabled={false}
         UIOptions={{
           canvasActions: {
@@ -391,33 +425,31 @@ const VaultEditorComponent = ({
             export: false,
             loadScene: false,
             saveToActiveFile: false,
-            saveAsImage: false,
+            saveAsImage: true,
           },
         }}
       >
         {/* Mirrors excalidraw.com's menu, with vault-safe export actions
             instead of open/save-as (the vault file is always the source). */}
         <MainMenu>
-          <MainMenu.Item
-            icon={ExportImageIcon}
-            onSelect={() => void exportFormat("png")}
-            disabled={exporting || !onExport}
-          >
-            Export as PNG…
-          </MainMenu.Item>
-          <MainMenu.Item
-            icon={ExportImageIcon}
-            onSelect={() => void exportFormat("svg")}
-            disabled={exporting || !onExport}
-          >
-            Export as SVG…
-          </MainMenu.Item>
+          <MainMenu.DefaultItems.SaveAsImage />
           <MainMenu.Item
             icon={saveAs}
-            onSelect={() => void exportFormat("excalidraw")}
+            onSelect={() => void saveCopy()}
             disabled={exporting || !onExport}
           >
             Save a copy…
+          </MainMenu.Item>
+          <MainMenu.Item
+            icon={mermaidLogoIcon}
+            onSelect={() =>
+              apiRef.current?.updateScene({
+                appState: { openDialog: { name: "ttd", tab: "mermaid" } },
+              })
+            }
+            disabled={readOnly}
+          >
+            Insert Mermaid diagram…
           </MainMenu.Item>
           <MainMenu.DefaultItems.SearchMenu />
           <MainMenu.DefaultItems.Help />

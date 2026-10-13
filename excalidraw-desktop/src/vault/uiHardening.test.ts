@@ -30,10 +30,13 @@ describe("DesktopVaultRepository hardening", () => {
     );
 
     expect(result).toBe(true);
-    expect(mockInvoke).toHaveBeenCalledWith("export_file", {
-      name: "test.excalidraw",
-      bytes: [1, 2, 3],
-    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "export_file",
+      new Uint8Array([1, 2, 3]),
+      {
+        headers: { "x-file-name": "test.excalidraw" },
+      },
+    );
   });
 
   it("reopenVault coalesces concurrent in-flight requests into one native invocation", async () => {
