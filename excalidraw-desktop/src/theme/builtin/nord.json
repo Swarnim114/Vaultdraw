@@ -1,0 +1,96 @@
+{
+  "name": "Nord",
+  "author": "Nord by Arctic Ice Studio & Sven Greb (MIT)",
+  "dark": {
+    "mPrimary": "#88c0d0",
+    "mOnPrimary": "#2e3440",
+    "mSecondary": "#81a1c1",
+    "mOnSecondary": "#2e3440",
+    "mTertiary": "#b48ead",
+    "mOnTertiary": "#2e3440",
+    "mError": "#bf616a",
+    "mOnError": "#2e3440",
+    "mSurface": "#2e3440",
+    "mOnSurface": "#eceff4",
+    "mSurfaceVariant": "#3b4252",
+    "mOnSurfaceVariant": "#d8dee9",
+    "mOutline": "#4c566a",
+    "mShadow": "#242933",
+    "mHover": "#b48ead",
+    "mOnHover": "#2e3440",
+    "terminal": {
+      "normal": {
+        "black": "#3b4252",
+        "red": "#bf616a",
+        "green": "#a3be8c",
+        "yellow": "#ebcb8b",
+        "blue": "#81a1c1",
+        "magenta": "#b48ead",
+        "cyan": "#88c0d0",
+        "white": "#e5e9f0"
+      },
+      "bright": {
+        "black": "#4c566a",
+        "red": "#bf616a",
+        "green": "#a3be8c",
+        "yellow": "#ebcb8b",
+        "blue": "#81a1c1",
+        "magenta": "#b48ead",
+        "cyan": "#8fbcbb",
+        "white": "#eceff4"
+      },
+      "foreground": "#d8dee9",
+      "background": "#2e3440",
+      "selectionFg": "#d8dee9",
+      "selectionBg": "#434c5e",
+      "cursorText": "#2e3440",
+      "cursor": "#d8dee9"
+    }
+  },
+  "light": {
+    "mPrimary": "#5e81ac",
+    "mOnPrimary": "#eceff4",
+    "mSecondary": "#81a1c1",
+    "mOnSecondary": "#2e3440",
+    "mTertiary": "#b48ead",
+    "mOnTertiary": "#2e3440",
+    "mError": "#bf616a",
+    "mOnError": "#eceff4",
+    "mSurface": "#eceff4",
+    "mOnSurface": "#2e3440",
+    "mSurfaceVariant": "#e5e9f0",
+    "mOnSurfaceVariant": "#4c566a",
+    "mOutline": "#d8dee9",
+    "mShadow": "#000000",
+    "mHover": "#b48ead",
+    "mOnHover": "#2e3440",
+    "terminal": {
+      "normal": {
+        "black": "#3b4252",
+        "red": "#bf616a",
+        "green": "#a3be8c",
+        "yellow": "#ebcb8b",
+        "blue": "#5e81ac",
+        "magenta": "#b48ead",
+        "cyan": "#88c0d0",
+        "white": "#d8dee9"
+      },
+      "bright": {
+        "black": "#4c566a",
+        "red": "#bf616a",
+        "green": "#a3be8c",
+        "yellow": "#ebcb8b",
+        "blue": "#81a1c1",
+        "magenta": "#b48ead",
+        "cyan": "#8fbcbb",
+        "white": "#e5e9f0"
+      },
+      "foreground": "#2e3440",
+      "background": "#eceff4",
+      "selectionFg": "#2e3440",
+      "selectionBg": "#d8dee9",
+      "cursorText": "#eceff4",
+      "cursor": "#2e3440"
+    }
+  }
+}

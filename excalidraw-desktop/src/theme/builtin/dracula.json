@@ -1,0 +1,96 @@
+{
+  "name": "Dracula",
+  "author": "Dracula Theme by Zeno Rocha (MIT) - draculatheme.com",
+  "dark": {
+    "mPrimary": "#bd93f9",
+    "mOnPrimary": "#282a36",
+    "mSecondary": "#ff79c6",
+    "mOnSecondary": "#282a36",
+    "mTertiary": "#8be9fd",
+    "mOnTertiary": "#282a36",
+    "mError": "#ff5555",
+    "mOnError": "#282a36",
+    "mSurface": "#282a36",
+    "mOnSurface": "#f8f8f2",
+    "mSurfaceVariant": "#343746",
+    "mOnSurfaceVariant": "#6272a4",
+    "mOutline": "#44475a",
+    "mShadow": "#191a21",
+    "mHover": "#8be9fd",
+    "mOnHover": "#282a36",
+    "terminal": {
+      "normal": {
+        "black": "#21222c",
+        "red": "#ff5555",
+        "green": "#50fa7b",
+        "yellow": "#f1fa8c",
+        "blue": "#bd93f9",
+        "magenta": "#ff79c6",
+        "cyan": "#8be9fd",
+        "white": "#f8f8f2"
+      },
+      "bright": {
+        "black": "#6272a4",
+        "red": "#ff6e6e",
+        "green": "#69ff94",
+        "yellow": "#ffffa5",
+        "blue": "#d6acff",
+        "magenta": "#ff92df",
+        "cyan": "#a4ffff",
+        "white": "#ffffff"
+      },
+      "foreground": "#f8f8f2",
+      "background": "#282a36",
+      "selectionFg": "#f8f8f2",
+      "selectionBg": "#44475a",
+      "cursorText": "#282a36",
+      "cursor": "#f8f8f2"
+    }
+  },
+  "light": {
+    "mPrimary": "#644ac9",
+    "mOnPrimary": "#fffbeb",
+    "mSecondary": "#a3144d",
+    "mOnSecondary": "#fffbeb",
+    "mTertiary": "#036a96",
+    "mOnTertiary": "#fffbeb",
+    "mError": "#cb3a2a",
+    "mOnError": "#fffbeb",
+    "mSurface": "#fffbeb",
+    "mOnSurface": "#1f1f1f",
+    "mSurfaceVariant": "#efeddc",
+    "mOnSurfaceVariant": "#635d97",
+    "mOutline": "#cfcfde",
+    "mShadow": "#000000",
+    "mHover": "#036a96",
+    "mOnHover": "#fffbeb",
+    "terminal": {
+      "normal": {
+        "black": "#1f1f1f",
+        "red": "#cb3a2a",
+        "green": "#14710a",
+        "yellow": "#846e15",
+        "blue": "#644ac9",
+        "magenta": "#a3144d",
+        "cyan": "#036a96",
+        "white": "#cfcfde"
+      },
+      "bright": {
+        "black": "#635d97",
+        "red": "#cb3a2a",
+        "green": "#14710a",
+        "yellow": "#846e15",
+        "blue": "#644ac9",
+        "magenta": "#a3144d",
+        "cyan": "#036a96",
+        "white": "#fffbeb"
+      },
+      "foreground": "#1f1f1f",
+      "background": "#fffbeb",
+      "selectionFg": "#1f1f1f",
+      "selectionBg": "#cfcfde",
+      "cursorText": "#fffbeb",
+      "cursor": "#1f1f1f"
+    }
+  }
+}
