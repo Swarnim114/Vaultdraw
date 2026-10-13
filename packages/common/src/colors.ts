@@ -83,11 +83,34 @@ const cssInvert = (
   return { r: invertedR, g: invertedG, b: invertedB };
 };
 
-export const applyDarkModeFilter = (color: string, enable = true): string => {
-  if (!enable) {
-    return color;
-  }
+export type DisplayColorTransform = (
+  color: string,
+  isDarkMode: boolean,
+) => string;
 
+// Host hook to recolour on-screen scene colours (e.g. custom themes);
+// when set, it replaces the default dark mode filter in both themes.
+let displayColorTransform: DisplayColorTransform | null = null;
+let displayColorTransformVersion = 0;
+
+export const setDisplayColorTransform = (
+  transform: DisplayColorTransform | null,
+) => {
+  displayColorTransform = transform;
+  displayColorTransformVersion++;
+};
+
+export const getDisplayColorTransformVersion = () =>
+  displayColorTransformVersion;
+
+export const applyDarkModeFilter = (color: string, enable = true): string => {
+  if (displayColorTransform) {
+    return displayColorTransform(color, enable);
+  }
+  return enable ? invertColorForDarkMode(color) : color;
+};
+
+export const invertColorForDarkMode = (color: string): string => {
   const cached = DARK_MODE_COLORS_CACHE?.get(color);
   if (cached) {
     return cached;

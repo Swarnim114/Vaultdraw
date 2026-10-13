@@ -26,6 +26,7 @@ import {
   COLOR_PALETTE,
   LINE_POLYGON_POINT_MERGE_DISTANCE,
   applyDarkModeFilter,
+  getDisplayColorTransformVersion,
   DEFAULT_STROKE_STREAMLINE,
 } from "@excalidraw/common";
 
@@ -84,7 +85,11 @@ export class ShapeCache {
   private static rg = new RoughGenerator();
   private static cache = new WeakMap<
     ExcalidrawElement,
-    { shape: ElementShape; theme: AppState["theme"] }
+    {
+      shape: ElementShape;
+      theme: AppState["theme"];
+      displayColorTransformVersion: number;
+    }
   >();
 
   /**
@@ -96,7 +101,11 @@ export class ShapeCache {
     theme: AppState["theme"] | null,
   ) => {
     const cached = ShapeCache.cache.get(element);
-    if (cached && (theme === null || cached.theme === theme)) {
+    if (
+      cached &&
+      (theme === null || cached.theme === theme) &&
+      cached.displayColorTransformVersion === getDisplayColorTransformVersion()
+    ) {
       return cached.shape as T["type"] extends keyof ElementShapes
         ? ElementShapes[T["type"]] | undefined
         : ElementShape | undefined;
@@ -158,6 +167,7 @@ export class ShapeCache {
       ShapeCache.cache.set(element, {
         shape,
         theme: renderConfig?.theme || THEME.LIGHT,
+        displayColorTransformVersion: getDisplayColorTransformVersion(),
       });
     }
 

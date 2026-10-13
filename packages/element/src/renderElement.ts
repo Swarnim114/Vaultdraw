@@ -24,6 +24,7 @@ import {
   getVerticalOffset,
   invariant,
   applyDarkModeFilter,
+  getDisplayColorTransformVersion,
   isSafari,
   STICKY_NOTE_EDGE_SHADOW_OPACITY,
   STICKY_NOTE_EDGE_SHADOW_WIDTH,
@@ -205,6 +206,7 @@ export interface ExcalidrawElementWithCanvas {
   element: ExcalidrawElement | ExcalidrawTextElement;
   canvas: HTMLCanvasElement;
   theme: AppState["theme"];
+  displayColorTransformVersion: number;
   scale: number;
   zoomValue: AppState["zoom"]["value"];
   canvasOffsetX: number;
@@ -328,6 +330,7 @@ const generateElementCanvas = (
     element,
     canvas,
     theme: appState.theme,
+    displayColorTransformVersion: getDisplayColorTransformVersion(),
     scale,
     zoomValue: zoom.value,
     canvasOffsetX,
@@ -705,6 +708,8 @@ const generateElementWithCanvas = (
     !prevElementWithCanvas ||
     shouldRegenerateBecauseZoom ||
     prevElementWithCanvas.theme !== appState.theme ||
+    prevElementWithCanvas.displayColorTransformVersion !==
+      getDisplayColorTransformVersion() ||
     prevElementWithCanvas.imageCrop !== imageCrop ||
     prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity
   ) {

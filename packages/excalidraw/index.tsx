@@ -9,9 +9,12 @@ import React, {
 import {
   applyDarkModeFilter,
   DEFAULT_IMAGE_OPTIONS,
+  getDisplayColorTransformVersion,
   DEFAULT_UI_OPTIONS,
   getStrokeWidthByKey,
+  invertColorForDarkMode,
   isShallowEqual,
+  setDisplayColorTransform,
 } from "@excalidraw/common";
 
 import App, {
@@ -555,4 +558,11 @@ export function useExcalidrawStateValue(
 
 export { _useOnAppStateChange as useOnExcalidrawStateChange };
 
-export { applyDarkModeFilter, getStrokeWidthByKey };
+export {
+  applyDarkModeFilter,
+  getDisplayColorTransformVersion,
+  getStrokeWidthByKey,
+  invertColorForDarkMode,
+  setDisplayColorTransform,
+};
+export type { DisplayColorTransform } from "@excalidraw/common";
