@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useDeferredValue } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 import { EDITOR_LS_KEYS, debounce, isDevEnv } from "@excalidraw/common";
 
@@ -38,6 +38,9 @@ const MERMAID_EXAMPLE =
   "flowchart TD\n A[Christmas] -->|Get money| B(Go shopping)\n B --> C{Let me think}\n C -->|One| D[Laptop]\n C -->|Two| E[iPhone]\n C -->|Three| F[Car]";
 
 const debouncedSaveMermaidDefinition = debounce(saveMermaidDataToStorage, 300);
+export const PREVIEW_DEBOUNCE_MS = 300;
+// auto-fix may run many full parses on the main thread, so skip big inputs
+export const AUTO_FIX_MAX_INPUT_LENGTH = 5000;
 const AUTO_FIX_DEBOUNCE_MS = 500;
 const AUTO_FIX_MAX_DEPTH = 4;
 const AUTO_FIX_MAX_CANDIDATES = 30;
@@ -72,7 +75,8 @@ const MermaidToExcalidraw = ({
       EditorLocalStorage.get<string>(EDITOR_LS_KEYS.MERMAID_TO_EXCALIDRAW) ||
       MERMAID_EXAMPLE,
   );
-  const deferredText = useDeferredValue(text);
+  // text the preview is (being) rendered for; trails `text` by the debounce
+  const [previewText, setPreviewText] = useState(text);
   const [error, setError] = useState<Error | null>(null);
   const [autoFixCandidate, setAutoFixCandidate] = useState<string | null>(null);
 
@@ -80,7 +84,7 @@ const MermaidToExcalidraw = ({
     if (!error?.message) {
       return null;
     }
-    return getMermaidErrorLineNumber(error.message, deferredText);
+    return getMermaidErrorLineNumber(error.message, previewText);
   })();
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -92,38 +96,74 @@ const MermaidToExcalidraw = ({
   const app = useApp();
   const { theme } = useUIAppState();
 
-  useEffect(() => {
-    const doRender = async () => {
+  const requestIdRef = useRef(0);
+  // the definition whose elements are currently held in `data`
+  const convertedTextRef = useRef<string | null>(null);
+
+  // only the latest request may update preview/error/data
+  const render = useCallback(
+    async (definition: string): Promise<boolean> => {
+      const requestId = ++requestIdRef.current;
+      const isStale = () => requestId !== requestIdRef.current;
       try {
-        if (!deferredText.trim()) {
+        if (!definition.trim()) {
+          convertedTextRef.current = null;
           resetPreview({ canvasRef, setError });
-          return;
+          return false;
         }
         const result = await convertMermaidToExcalidraw({
           canvasRef,
           data,
           mermaidToExcalidrawLib,
           setError,
-          mermaidDefinition: deferredText,
+          mermaidDefinition: definition,
           theme,
+          isStale,
         });
 
-        if (!result.success) {
-          const err = result.error ?? new Error("Invalid mermaid definition");
-          setError(err);
+        if (isStale()) {
+          return false;
         }
+        if (!result.success) {
+          convertedTextRef.current = null;
+          setError(result.error ?? new Error("Invalid mermaid definition"));
+          return false;
+        }
+        convertedTextRef.current = definition;
+        return true;
       } catch (err) {
         if (isDevEnv()) {
           console.error("Failed to parse mermaid definition", err);
         }
+        return false;
       }
-    };
+    },
+    [mermaidToExcalidrawLib, theme],
+  );
 
-    if (isActive) {
-      doRender();
-      debouncedSaveMermaidDefinition(deferredText);
+  // debounce typing; first open / tab activation render immediately because
+  // previewText starts equal to text
+  useEffect(() => {
+    if (!isActive || text === previewText) {
+      return;
     }
-  }, [deferredText, mermaidToExcalidrawLib, isActive, theme]);
+    const timer = setTimeout(() => setPreviewText(text), PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [text, previewText, isActive]);
+
+  useEffect(() => {
+    if (isActive) {
+      render(previewText);
+    }
+  }, [previewText, render, isActive]);
+
+  // save the raw text (not the debounced preview text) so closing right after
+  // typing never loses it; flushed on unmount below
+  useEffect(() => {
+    if (isActive) {
+      debouncedSaveMermaidDefinition(text);
+    }
+  }, [text, isActive]);
 
   useEffect(
     () => () => {
@@ -134,11 +174,12 @@ const MermaidToExcalidraw = ({
 
   useEffect(() => {
     const errorMessage = error?.message ?? "";
-    const sourceText = deferredText;
+    const sourceText = previewText;
     const shouldTryAutoFix =
       isActive &&
       isMermaidAutoFixableError(errorMessage) &&
       !!sourceText.trim() &&
+      sourceText.length <= AUTO_FIX_MAX_INPUT_LENGTH &&
       mermaidToExcalidrawLib.loaded;
 
     if (!shouldTryAutoFix) {
@@ -165,6 +206,9 @@ const MermaidToExcalidraw = ({
         let triedCandidates = 0;
 
         while (queue.length > 0 && triedCandidates < AUTO_FIX_MAX_CANDIDATES) {
+          if (cancelled) {
+            return;
+          }
           const current = queue.shift();
           if (!current || seen.has(current.text)) {
             continue;
@@ -212,9 +256,13 @@ const MermaidToExcalidraw = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [deferredText, error?.message, isActive, mermaidToExcalidrawLib]);
+  }, [previewText, error?.message, isActive, mermaidToExcalidrawLib]);
 
-  const onInsertToEditor = () => {
+  const onInsertToEditor = async () => {
+    // a debounced or in-flight conversion may not reflect the latest text yet
+    if (convertedTextRef.current !== text && !(await render(text))) {
+      return;
+    }
     insertToEditor({
       app,
       data,
