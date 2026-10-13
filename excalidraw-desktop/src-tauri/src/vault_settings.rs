@@ -107,27 +107,40 @@ pub(crate) fn update_vault_settings_at(v: &Vault, changes: &[ConfigChange]) -> R
     };
     match config::read_toml_text(&file, SETTINGS_FILE, MAX_SETTINGS_BYTES) {
         Ok(text) => {
-            let updated = config::apply_toml_changes(&text, changes, SETTINGS_FILE, MAX_SETTINGS_BYTES)?;
+            // A file holding only comments (e.g. the header after every setting was
+            // removed) is rebuilt like a new one, so its comments stay on top.
+            let comments_only = matches!(config::parse_config(&text), Ok(Json::Object(m)) if m.is_empty());
+            let updated = if comments_only && !only_removals {
+                with_head(text.trim_end(), changes)?
+            } else {
+                config::apply_toml_changes(&text, changes, SETTINGS_FILE, MAX_SETTINGS_BYTES)?
+            };
             if updated != text {
                 write_atomic(&file, updated.as_bytes())?;
             }
             Ok(())
         }
         Err(e) if e.code == "NOT_FOUND" => {
-            let body = config::apply_toml_changes("", changes, SETTINGS_FILE, MAX_SETTINGS_BYTES)?;
+            let text = with_head(HEADER.trim_end(), changes)?;
             if only_removals {
                 return Ok(());
-            }
-            // Comments in an otherwise empty document trail it in toml_edit, so the
-            // header is prepended to the rendered body rather than parsed with it.
-            let text = format!("{HEADER}\n{body}");
-            if text.len() as u64 > MAX_SETTINGS_BYTES {
-                return Err(err("INVALID_FILE", "settings.toml would exceed 256 KiB"));
             }
             write_atomic_new(&file, text.as_bytes())
         }
         Err(e) => Err(e),
     }
+}
+
+/// Renders `changes` applied to an empty document below the comment block `head`.
+/// Comments in an otherwise empty document trail it in toml_edit, so the head is
+/// prepended to the rendered body rather than parsed with it.
+fn with_head(head: &str, changes: &[ConfigChange]) -> Result<String> {
+    let body = config::apply_toml_changes("", changes, SETTINGS_FILE, MAX_SETTINGS_BYTES)?;
+    let text = if head.is_empty() { body } else { format!("{head}\n\n{body}") };
+    if text.len() as u64 > MAX_SETTINGS_BYTES {
+        return Err(err("INVALID_FILE", "settings.toml would exceed 256 KiB"));
+    }
+    Ok(text)
 }
 
 #[tauri::command]
@@ -211,6 +224,33 @@ mod tests {
         assert!(!text.contains("new_drawing_folder"));
         // No temp files are left behind.
         assert_eq!(fs::read_dir(t.path().join(META_DIR)).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn removing_the_last_key_prunes_its_empty_table() {
+        let t = tempdir().unwrap();
+        let v = vault(t.path(), false);
+        update_vault_settings_at(&v, &[change("files.new_drawing_folder", json!("Sketches"))]).unwrap();
+        update_vault_settings_at(&v, &[change("files.new_drawing_folder", Json::Null)]).unwrap();
+        let text = fs::read_to_string(file(t.path())).unwrap();
+        assert!(!text.contains("[files]"), "{text}");
+        assert!(text.starts_with(HEADER), "{text}");
+        assert_eq!(load_vault_settings_at(t.path()).settings, Some(json!({})));
+
+        // With two tables, the header stays on top of the one that is left.
+        update_vault_settings_at(&v, &[change("files.new_drawing_folder", json!("A")), change("navigator.sort", json!("name"))]).unwrap();
+        update_vault_settings_at(&v, &[change("files.new_drawing_folder", Json::Null)]).unwrap();
+        let text = fs::read_to_string(file(t.path())).unwrap();
+        assert_eq!(text, format!("{HEADER}\n[navigator]\nsort = \"name\"\n"));
+        update_vault_settings_at(&v, &[change("navigator.sort", Json::Null)]).unwrap();
+        let text = fs::read_to_string(file(t.path())).unwrap();
+        assert!(!text.contains('['), "{text}");
+        assert_eq!(load_vault_settings_at(t.path()).settings, Some(json!({})));
+
+        // A table with a comment of its own is kept, and so is a removed key's comment.
+        fs::write(file(t.path()), "# mine\n[files]\nnew_drawing_folder = \"A\"\n\n[navigator] # keep\nsort = \"x\"\n\n[x]\n# about y\ny = 1\n").unwrap();
+        update_vault_settings_at(&v, &[change("files.new_drawing_folder", Json::Null), change("navigator.sort", Json::Null), change("x.y", Json::Null)]).unwrap();
+        assert_eq!(fs::read_to_string(file(t.path())).unwrap(), "# mine\n[files]\n\n[navigator] # keep\n\n[x]\n# about y\n");
     }
 
     #[test]

@@ -357,13 +357,29 @@ fn json_to_toml(key: &str, v: &Json, nested: bool) -> Result<toml_edit::Value> {
 }
 
 /// Applies `changes` to `config.toml` text, preserving comments, order and formatting.
+/// Removing a key that took the place of a commented example from [`DEFAULT_CONFIG`]
+/// puts that example back, so setting and then removing a key restores the text.
 pub(crate) fn apply_changes(text: &str, changes: &[ConfigChange]) -> Result<String> {
-    apply_toml_changes(text, changes, CONFIG_FILE, MAX_CONFIG_BYTES)
+    edit_toml(text, changes, CONFIG_FILE, MAX_CONFIG_BYTES, Some(DEFAULT_CONFIG), false)
 }
 
-/// Applies `changes` to the TOML text of the file `name`, preserving comments, order
-/// and formatting. Everything is validated first, so a bad change applies nothing.
+/// Applies `changes` to the TOML text of the file `name` (a per-vault settings file),
+/// preserving comments, order and formatting. Everything is validated first, so a bad
+/// change applies nothing. A table left empty and uncommented by a removal is dropped.
 pub(crate) fn apply_toml_changes(text: &str, changes: &[ConfigChange], name: &str, max: u64) -> Result<String> {
+    edit_toml(text, changes, name, max, None, true)
+}
+
+/// `defaults` is the text whose commented examples a removal may restore; `prune` drops
+/// tables that a removal leaves without values or comments of their own.
+fn edit_toml(
+    text: &str,
+    changes: &[ConfigChange],
+    name: &str,
+    max: u64,
+    defaults: Option<&str>,
+    prune: bool,
+) -> Result<String> {
     if changes.len() > MAX_CHANGES {
         return Err(err("INVALID_ARGUMENT", "Too many config changes in one call"));
     }
@@ -398,9 +414,7 @@ pub(crate) fn apply_toml_changes(text: &str, changes: &[ConfigChange], name: &st
             }
         };
         match value {
-            None => {
-                target.remove(key);
-            }
+            None => remove_key(&mut doc, table, key, defaults, prune),
             Some(mut new) => match target.get_mut(key) {
                 Some(existing) if existing.is_value() => {
                     if let Some(old) = existing.as_value() {
@@ -449,12 +463,16 @@ fn is_commented_assignment(line: &str, key: &str) -> bool {
     name == key && after.trim_start().starts_with('=')
 }
 
-/// A key newly added to an explicit `[table]` is appended after the table's last value,
-/// i.e. *before* any comments that follow it (`toml_edit` stores those as the prefix of
-/// the next table, or as the document trailer). If those comments contain a commented
-/// default for the key (`# zoom = 1.0`), the new value takes that line's place and the
-/// comments above it become the key's own comments, so the documentation stays with it.
-fn adopt_commented_default(doc: &mut toml_edit::DocumentMut, table: &str, key: &str) {
+/// Where the comments that follow a table's last value live in `toml_edit`: the prefix
+/// of the next explicit table (as a path from the root), or the document trailer.
+enum Gap {
+    Table(Vec<String>),
+    Trailing,
+}
+
+/// The gap after `table` (`None`: the root table, whose values precede every table).
+/// `None` when the table is implicit or has no document position (created in this edit).
+fn gap_after(doc: &toml_edit::DocumentMut, table: Option<&str>) -> Option<Gap> {
     fn positions(t: &toml_edit::Table, path: &mut Vec<String>, out: &mut Vec<(isize, Vec<String>)>) {
         for (k, item) in t.iter() {
             if let Some(sub) = item.as_table() {
@@ -467,34 +485,155 @@ fn adopt_commented_default(doc: &mut toml_edit::DocumentMut, table: &str, key: &
             }
         }
     }
-    let Some(own) = doc.get(table).and_then(toml_edit::Item::as_table) else { return };
-    if own.is_implicit() {
-        return;
-    }
-    let Some(own_pos) = own.position() else { return };
+    let own_pos = match table {
+        None => isize::MIN,
+        Some(t) => {
+            let own = doc.get(t)?.as_table()?;
+            if own.is_implicit() {
+                return None;
+            }
+            own.position()?
+        }
+    };
     let mut all = Vec::new();
     positions(doc.as_table(), &mut Vec::new(), &mut all);
     let next = all.into_iter().filter(|(p, _)| *p > own_pos).min_by_key(|(p, _)| *p).map(|(_, path)| path);
-
-    let gap = match &next {
-        Some(path) => table_at(doc, path).and_then(|t| t.decor().prefix()).and_then(|r| r.as_str()),
-        None => doc.trailing().as_str(),
-    };
-    let Some(gap) = gap.map(str::to_owned) else { return };
-    let lines: Vec<&str> = gap.split_inclusive('\n').collect();
-    let Some(i) = lines.iter().position(|l| is_commented_assignment(l, key)) else { return };
-    let before: String = lines[..i].concat();
-    let after: String = lines[i + 1..].concat();
-    match &next {
-        Some(path) => {
+    Some(next.map_or(Gap::Trailing, Gap::Table))
+}
+fn gap_text(doc: &toml_edit::DocumentMut, gap: &Gap) -> Option<String> {
+    match gap {
+        Gap::Table(path) => table_at(doc, path)?.decor().prefix()?.as_str().map(str::to_owned),
+        Gap::Trailing => doc.trailing().as_str().map(str::to_owned),
+    }
+}
+fn set_gap_text(doc: &mut toml_edit::DocumentMut, gap: &Gap, text: String) {
+    match gap {
+        Gap::Table(path) => {
             if let Some(t) = table_at_mut(doc, path) {
-                t.decor_mut().set_prefix(after);
+                t.decor_mut().set_prefix(text);
             }
         }
-        None => doc.set_trailing(after),
+        Gap::Trailing => doc.set_trailing(text),
     }
+}
+
+/// Finds the commented example for `key` in the gap after `table`: the gap's lines
+/// before it, the example line itself and the lines after it.
+fn commented_example(doc: &toml_edit::DocumentMut, table: &str, key: &str) -> Option<(Gap, String, String, String)> {
+    let gap = gap_after(doc, Some(table))?;
+    let text = gap_text(doc, &gap)?;
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let i = lines.iter().position(|l| is_commented_assignment(l, key))?;
+    let (before, line, after) = (lines[..i].concat(), lines[i].to_owned(), lines[i + 1..].concat());
+    Some((gap, before, line, after))
+}
+
+/// A key newly added to an explicit `[table]` is appended after the table's last value,
+/// i.e. *before* any comments that follow it (`toml_edit` stores those as the prefix of
+/// the next table, or as the document trailer). If those comments contain a commented
+/// default for the key (`# zoom = 1.0`), the new value takes that line's place and the
+/// comments above it become the key's own comments, so the documentation stays with it.
+fn adopt_commented_default(doc: &mut toml_edit::DocumentMut, table: &str, key: &str) {
+    let Some((gap, before, _, after)) = commented_example(doc, table, key) else { return };
+    set_gap_text(doc, &gap, after);
     if let Some(mut k) = doc.get_mut(table).and_then(toml_edit::Item::as_table_mut).and_then(|t| t.key_mut(key)) {
         k.leaf_decor_mut().set_prefix(before);
+    }
+}
+
+/// Removes `key` from `table` without losing the comments above it: they move to the
+/// next value in the table, or (for the table's last value) into the gap after the table.
+/// When the key had taken the place of a commented example in `defaults` (see
+/// [`adopt_commented_default`]), that example line is restored below those comments, so
+/// set-then-remove gives back the original text. With `prune`, a table left without
+/// values or comments of its own is dropped.
+fn remove_key(doc: &mut toml_edit::DocumentMut, table: Option<&str>, key: &str, defaults: Option<&str>, prune: bool) {
+    let target: &mut dyn toml_edit::TableLike = match table {
+        None => doc.as_table_mut(),
+        Some(t) => match doc.get_mut(t).and_then(toml_edit::Item::as_table_like_mut) {
+            Some(target) => target,
+            None => return,
+        },
+    };
+    let Some(comments) = target.key(key).map(|k| k.leaf_decor().prefix().and_then(|r| r.as_str()).unwrap_or("").to_owned())
+    else {
+        return;
+    };
+    let next_key = target
+        .iter()
+        .skip_while(|(k, _)| *k != key)
+        .skip(1)
+        .find(|(_, item)| item.is_value())
+        .map(|(k, _)| k.to_owned());
+    target.remove(key);
+    let now_empty = target.is_empty();
+
+    // The example line to restore, if the key replaced one from `defaults`.
+    let example = match (defaults, table) {
+        (Some(d), Some(t)) => d
+            .parse::<toml_edit::DocumentMut>()
+            .ok()
+            .and_then(|d| commented_example(&d, t, key))
+            .filter(|(_, before, _, _)| !before.is_empty() && comments.ends_with(before.as_str()))
+            .map(|(_, _, line, _)| line),
+        _ => None,
+    };
+    let mut moved = comments.clone();
+
+    if let Some(next) = next_key {
+        if let Some(mut k) = target.key_mut(&next) {
+            let existing = k.leaf_decor().prefix().and_then(|r| r.as_str()).unwrap_or("").to_owned();
+            if let Some(line) = example.filter(|_| !existing.lines().any(|l| is_commented_assignment(l, key))) {
+                moved.push_str(&line);
+            }
+            if !moved.is_empty() {
+                k.leaf_decor_mut().set_prefix(moved + &existing);
+            }
+        }
+        return;
+    }
+    let Some(gap) = gap_after(doc, table) else {
+        // A table created in this same edit: nothing of the original text to keep.
+        if prune && now_empty {
+            if let Some(t) = table {
+                doc.as_table_mut().remove(t);
+            }
+        }
+        return;
+    };
+    let Some(existing) = gap_text(doc, &gap) else { return };
+    if let Some(line) = example.filter(|_| !existing.lines().any(|l| is_commented_assignment(l, key))) {
+        moved.push_str(&line);
+    }
+    if !moved.is_empty() {
+        set_gap_text(doc, &gap, moved.clone() + &existing);
+    }
+    if prune && now_empty && !comments.contains('#') {
+        if let Some(t) = table {
+            prune_table(doc, t, &gap, &(moved + &existing));
+        }
+    }
+}
+
+/// Drops the empty `[table]` unless a comment belongs to it: one on its header line, or
+/// one directly above the header. Comments above it that are separated by a blank line
+/// (e.g. a file header) move into `gap`, whose current text is `gap_now`.
+fn prune_table(doc: &mut toml_edit::DocumentMut, table: &str, gap: &Gap, gap_now: &str) {
+    let Some(t) = doc.get(table).and_then(toml_edit::Item::as_table) else { return };
+    if t.is_implicit() || !t.is_empty() {
+        return;
+    }
+    let decor = t.decor();
+    let suffix = decor.suffix().and_then(|r| r.as_str()).unwrap_or("");
+    let prefix = decor.prefix().and_then(|r| r.as_str()).unwrap_or("").to_owned();
+    let attached = prefix.split_inclusive('\n').last().is_some_and(|l| l.contains('#'));
+    if suffix.contains('#') || attached {
+        return;
+    }
+    doc.as_table_mut().remove(table);
+    if prefix.contains('#') {
+        let text = if gap_now.trim().is_empty() { prefix } else { prefix + gap_now };
+        set_gap_text(doc, gap, text);
     }
 }
 fn table_at<'a>(doc: &'a toml_edit::DocumentMut, path: &[String]) -> Option<&'a toml_edit::Table> {
@@ -851,6 +990,123 @@ mod tests {
         let out = apply_changes(DEFAULT_CONFIG, &[change("interface.show_hints", json!(false))]).unwrap();
         assert!(out.contains("[interface]\nshow_hints = false\n# Whole-app zoom"), "{out}");
         assert_eq!(parse_config(&out).unwrap()["interface"]["show_hints"], false);
+    }
+
+    /// Every setting documented in DEFAULT_CONFIG: `(table, key, default, line, commented)`.
+    /// Uncommented keys come from the parsed default; commented examples (`# key = value`)
+    /// from the text, under the `[table]` they appear in.
+    fn default_settings() -> Vec<(String, String, Json, String, bool)> {
+        let parsed = parse_config(DEFAULT_CONFIG).unwrap();
+        let mut table = String::new();
+        let mut found = Vec::new();
+        for line in DEFAULT_CONFIG.lines() {
+            if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                table = name.to_string();
+                continue;
+            }
+            let (body, commented) = match line.strip_prefix("# ") {
+                Some(rest) => (rest, true),
+                None => (line, false),
+            };
+            if table.is_empty() || body.is_empty() {
+                continue;
+            }
+            let Ok(Json::Object(kv)) = parse_config(body) else { continue };
+            let (key, value) = kv.into_iter().next().unwrap();
+            found.push((table.clone(), key, value, line.to_string(), commented));
+        }
+        // The text scan sees exactly the parsed default's values.
+        let mut uncommented: Vec<_> = found.iter().filter(|f| !f.4).map(|f| (f.0.clone(), f.1.clone(), f.2.clone())).collect();
+        let mut expected = Vec::new();
+        for (t, keys) in parsed.as_object().unwrap() {
+            for (k, v) in keys.as_object().unwrap() {
+                expected.push((t.clone(), k.clone(), v.clone()));
+            }
+        }
+        uncommented.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+        expected.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+        assert_eq!(uncommented, expected);
+        found
+    }
+    fn other_value(v: &Json) -> Json {
+        match v {
+            Json::String(s) => json!(format!("{s}x")),
+            Json::Number(n) => json!(n.as_i64().unwrap() + 1),
+            Json::Bool(b) => json!(!b),
+            Json::Array(_) => json!(["Mod+Shift+X"]),
+            other => panic!("unexpected default {other}"),
+        }
+    }
+    fn comment_lines(text: &str) -> Vec<&str> {
+        text.lines().filter(|l| l.trim_start().starts_with('#')).collect()
+    }
+
+    #[test]
+    fn set_then_remove_keeps_every_comment_of_the_default_config() {
+        let settings = default_settings();
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 4, "{settings:?}");
+        for (table, key, default, line, commented) in settings {
+            let k = format!("{table}.{key}");
+            let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
+            assert_eq!(parse_config(&set).unwrap()[&table][&key], other_value(&default), "{k}");
+            let removed = apply_changes(&set, &[change(&k, Json::Null)]).unwrap();
+            assert!(parse_config(&removed).unwrap()[&table].get(&key).is_none(), "{k}");
+            if commented {
+                // The example line was replaced by the value and comes back on removal.
+                assert!(!set.contains(&line), "{k}");
+                assert_eq!(removed, DEFAULT_CONFIG, "{k}");
+                // And the cycle repeats.
+                let again = apply_changes(&removed, &[change(&k, other_value(&default))]).unwrap();
+                assert_eq!(again, set, "{k}");
+            } else {
+                // The key's line is gone; its comments stay where they were.
+                assert_eq!(removed, DEFAULT_CONFIG.replacen(&format!("{line}\n"), "", 1), "{k}");
+                assert_eq!(comment_lines(&removed), comment_lines(DEFAULT_CONFIG), "{k}");
+            }
+        }
+    }
+
+    #[test]
+    fn hotkey_set_and_remove_round_trips_the_default_config() {
+        let t = tempdir().unwrap();
+        let d = dirs_in(t.path());
+        load_settings_in(&d).unwrap();
+        update_config_in(&d, &[change("hotkeys.vault.newDrawing", json!(["Mod+N"]))]).unwrap();
+        let path = d.config.join(CONFIG_FILE);
+        assert_ne!(fs::read_to_string(&path).unwrap(), DEFAULT_CONFIG);
+        update_config_in(&d, &[change("hotkeys.vault.newDrawing", Json::Null)]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), DEFAULT_CONFIG);
+
+        // Several keys at once, removed in a different order.
+        let set = apply_changes(
+            DEFAULT_CONFIG,
+            &[change("hotkeys.vault.newDrawing", json!(["Mod+N"])), change("hotkeys.file.save", json!([])), change("interface.zoom", json!(90))],
+        )
+        .unwrap();
+        let out = apply_changes(
+            &set,
+            &[change("hotkeys.file.save", Json::Null), change("interface.zoom", Json::Null), change("hotkeys.vault.newDrawing", Json::Null)],
+        )
+        .unwrap();
+        assert_eq!(out, DEFAULT_CONFIG);
+        let out = apply_changes(
+            &set,
+            &[change("hotkeys.vault.newDrawing", Json::Null), change("hotkeys.file.save", Json::Null), change("interface.zoom", Json::Null)],
+        )
+        .unwrap();
+        assert_eq!(out, DEFAULT_CONFIG);
+    }
+
+    #[test]
+    fn removal_moves_comments_to_the_next_key_or_the_gap_after_the_table() {
+        let src = "top = 1\n# about a\na = 1\n\n[t]\n# about x\nx = 1 # inline\n# about y\ny = 2\n# tail\n";
+        let out = apply_changes(src, &[change("t.x", Json::Null)]).unwrap();
+        assert_eq!(out, "top = 1\n# about a\na = 1\n\n[t]\n# about x\n# about y\ny = 2\n# tail\n");
+        let out = apply_changes(&out, &[change("t.y", Json::Null), change("a", Json::Null)]).unwrap();
+        assert_eq!(out, "top = 1\n# about a\n\n[t]\n# about x\n# about y\n# tail\n");
+        // Without a matching comment block, no example line is invented.
+        let out = apply_changes("[interface]\nzoom = 120\n", &[change("interface.zoom", Json::Null)]).unwrap();
+        assert_eq!(out, "[interface]\n");
     }
 
     #[test]
