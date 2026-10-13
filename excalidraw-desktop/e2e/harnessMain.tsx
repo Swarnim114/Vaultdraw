@@ -2,7 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
-import { SAMPLE_SCENE } from "../src/tests/fixtures";
+import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
+import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
 import { setAutosaveDelayMs } from "../src/vault/preferences";
 
 import "../src/desktop.css";
@@ -41,6 +42,10 @@ if (params.get("seed") !== "empty") {
     SAMPLE_SCENE,
   );
   repository.seedDrawing("DSA/Graphs.excalidraw", SAMPLE_SCENE);
+  if (params.get("seed") === "search") {
+    // Opt-in (?seed=search): keeps other specs' drawing counts unchanged.
+    repository.seedDrawing("DSA/Shortest Paths.excalidraw", SEARCH_SCENE);
+  }
 }
 
 (ownerWindow as any).__vaultRepo = repository;
@@ -52,6 +57,7 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         ownerDocument={ownerDocument}
         ownerWindow={ownerWindow}
         repository={repository}
+        search={new FakeVaultSearch(repository)}
       />
     </StrictMode>,
   );

@@ -1,0 +1,59 @@
+/** Vault search payloads (frozen contract, serde camelCase on the Rust side). */
+export type IndexState = "loading" | "building" | "ready";
+
+export type IndexStatus = {
+  handle: string;
+  state: IndexState;
+  /** Drawings with content indexed. */
+  indexed: number;
+  /** Drawings known (walk so far). */
+  total: number;
+};
+
+/** UTF-16 [start, end) offsets into the string they annotate. */
+export type HighlightRange = [number, number];
+
+export type ElementMatch = {
+  elementId: string;
+  /** Bound text: the shape/arrow it labels. */
+  containerId: string | null;
+  kind: "text" | "frame";
+  snippet: string;
+  highlights: HighlightRange[];
+};
+
+export type SearchHit = {
+  /** Vault-relative, forward slashes. */
+  path: string;
+  /** File name including ".excalidraw". */
+  name: string;
+  score: number;
+  nameHighlights: HighlightRange[];
+  /** At most 5 per drawing, best first. */
+  matches: ElementMatch[];
+  /** Total matching items in this drawing. */
+  matchCount: number;
+};
+
+export type SearchResponse = {
+  query: string;
+  results: SearchHit[];
+  /** Matching drawings before the limit. */
+  totalMatches: number;
+  status: IndexStatus;
+  tookMs: number;
+};
+
+export type SearchScope = "all" | "names" | "content";
+
+export type SearchOptions = { limit?: number; scope?: SearchScope };
+
+export interface VaultSearch {
+  search(
+    handle: string,
+    query: string,
+    opts?: SearchOptions,
+  ): Promise<SearchResponse>;
+  status(handle: string): Promise<IndexStatus>;
+  subscribe(listener: (status: IndexStatus) => void): Promise<() => void>;
+}

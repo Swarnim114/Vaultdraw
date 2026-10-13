@@ -2,11 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { getPreferences, updatePreferences } from "../vault/preferences";
-import {
-  checkTreeDrop,
-  getParentPath,
-  searchEntries,
-} from "../vault/treeStore";
+import { checkTreeDrop, getParentPath } from "../vault/treeStore";
 
 import {
   IconChevronDown,
@@ -28,6 +24,7 @@ import {
   IconSettings,
   IconTrash,
 } from "./Icons";
+import { SearchResults } from "./search/SearchResults";
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
@@ -38,6 +35,8 @@ import type { ReactNode } from "react";
 import type { TreeNode } from "../vault/treeStore";
 
 import type { DragSource } from "./tree/useTreeDrag";
+
+import type { ElementMatch, VaultSearch } from "../search/types";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
@@ -51,6 +50,14 @@ interface VaultNavigatorProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onOpenDrawing: (path: string) => void | Promise<void>;
+  /** Vault-wide search backend; null = name-only search over the loaded tree. */
+  search?: VaultSearch | null;
+  onOpenSearchResult?: (
+    path: string,
+    match?: ElementMatch,
+  ) => void | Promise<void>;
+  /** Bump to focus and select the search input (Cmd+Shift+F). */
+  searchFocusNonce?: number;
   onCreateDrawing: (parentPath: string, name: string) => void | Promise<void>;
   onCreateFolder: (parentPath: string, name: string) => void | Promise<void>;
   onRenameEntry: (path: string, newName: string) => void | Promise<void>;
@@ -79,6 +86,9 @@ export const VaultNavigator = ({
   collapsed,
   onToggleCollapse,
   onOpenDrawing,
+  search = null,
+  onOpenSearchResult,
+  searchFocusNonce = 0,
   onCreateDrawing,
   onCreateFolder,
   onRenameEntry,
@@ -194,13 +204,14 @@ export const VaultNavigator = ({
     ]),
   );
 
-  // Search filtering
-  const MAX_RENDERED_SEARCH_RESULTS = 100;
-  const rawSearchResults = searchQuery.trim()
-    ? searchEntries(allIndexedEntries, searchQuery)
-    : [];
-  const searchResults = rawSearchResults.slice(0, MAX_RENDERED_SEARCH_RESULTS);
-  const hasMoreResults = rawSearchResults.length > MAX_RENDERED_SEARCH_RESULTS;
+  const isSearching = searchQuery.trim() !== "";
+
+  useEffect(() => {
+    if (searchFocusNonce > 0) {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }
+  }, [searchFocusNonce]);
 
   // Flatten visible tree items for keyboard navigation
   const getVisibleItems = useCallback((): VaultEntry[] => {
@@ -416,12 +427,17 @@ export const VaultNavigator = ({
             ref={searchInputRef}
             type="text"
             className="vault-search__input"
-            placeholder="Search drawings..."
+            placeholder="Search drawings and text…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
-                setSearchQuery("");
+                // First Escape clears the query, the next one leaves the box.
+                if (searchQuery) {
+                  setSearchQuery("");
+                } else {
+                  e.currentTarget.blur();
+                }
               }
             }}
           />
@@ -447,71 +463,32 @@ export const VaultNavigator = ({
         className={`vault-tree-container ${
           drag?.targetFolder === "" ? "vault-tree-container--drop-root" : ""
         }`}
-        role="tree"
+        role={isSearching ? undefined : "tree"}
         id={treeId}
-        tabIndex={0}
-        onKeyDown={searchQuery.trim() ? undefined : handleTreeKeyDown}
+        tabIndex={isSearching ? undefined : 0}
+        onKeyDown={isSearching ? undefined : handleTreeKeyDown}
       >
-        {searchQuery.trim() ? (
-          <div>
-            <div
-              style={{
-                padding: "6px 10px",
-                fontSize: "0.75rem",
-                color: "var(--vault-text-muted)",
-              }}
-            >
-              {rawSearchResults.length} result
-              {rawSearchResults.length === 1 ? "" : "s"} found
-              {hasMoreResults &&
-                ` (showing first ${MAX_RENDERED_SEARCH_RESULTS}; please narrow search)`}
-              :
-            </div>
-            {searchResults.length === 0 ? (
-              <div className="vault-tree-empty">No matching files found.</div>
-            ) : (
-              searchResults.map((entry) => (
-                <div
-                  key={entry.path}
-                  className={`vault-tree-item ${
-                    entry.path === activePath ? "vault-tree-item--active" : ""
-                  }`}
-                  onClick={() => {
-                    if (entry.kind === "drawing") {
-                      void onOpenDrawing(entry.path);
-                    } else {
-                      onExpandFolder(entry.path);
-                      setSearchQuery("");
-                    }
-                  }}
-                  role="treeitem"
-                  aria-selected={entry.path === activePath}
-                >
-                  <div className="vault-tree-item__main">
-                    <span className="vault-tree-item__icon">
-                      {entry.kind === "folder" ? (
-                        <IconFolder />
-                      ) : (
-                        <IconDrawing />
-                      )}
-                    </span>
-                    <span className="vault-tree-item__name" title={entry.path}>
-                      {entry.name.replace(/\.excalidraw$/i, "")}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "0.7rem",
-                      color: "var(--vault-text-faint)",
-                      marginLeft: "4px",
-                    }}
-                  >
-                    {entry.kind}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
+        {isSearching ? (
+          <SearchResults
+            query={searchQuery.trim()}
+            inputRef={searchInputRef}
+            search={search}
+            handle={vault.handle}
+            allIndexedEntries={allIndexedEntries}
+            activePath={activePath}
+            onOpenDrawing={(path) =>
+              void (onOpenSearchResult ?? onOpenDrawing)(path)
+            }
+            onOpenMatch={(path, match) =>
+              void (onOpenSearchResult
+                ? onOpenSearchResult(path, match)
+                : onOpenDrawing(path))
+            }
+            onOpenFolder={(path) => {
+              onExpandFolder(path);
+              setSearchQuery("");
+            }}
+          />
         ) : (
           <div className="vault-tree-body">
             {treeNodes.length === 0 ? (

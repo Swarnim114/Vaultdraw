@@ -438,11 +438,11 @@ test("13. no drag from search results", async ({ page }) => {
   await seed(page, { folders: ["Archive"] });
   await page.getByPlaceholder(/search/i).fill("Graphs");
   const result = page
-    .locator(".vault-tree-container .vault-tree-item")
+    .locator('.vault-search-row[data-kind="drawing"]')
     .filter({ hasText: "Graphs" })
     .first();
   await expect(result).toBeVisible();
-  const from = await center(result.locator(".vault-tree-item__name"));
+  const from = await center(result.locator(".vault-search-row__name"));
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + 20, from.y + 60, { steps: 8 });

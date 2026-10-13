@@ -264,14 +264,14 @@ test("7. search finds a drawing and clicking opens it", async ({
   page,
 }, info) => {
   const errors = trackErrors(page);
-  const search = page.getByPlaceholder("Search drawings...");
+  const search = page.getByPlaceholder("Search drawings and text…");
   await search.fill("Graphs");
   const result = page
-    .locator(".vault-tree-container .vault-tree-item")
+    .locator('.vault-search-row[data-kind="drawing"]')
     .filter({ hasText: "Graphs" })
     .first();
   await expect(result).toBeVisible();
-  await expect(page.getByText(/1 result/)).toBeVisible();
+  await expect(page.getByText("1 drawing", { exact: true })).toBeVisible();
   await screenshot(page, {
     path: `${SHOTS}/${info.project.name}-crud-7a.png`,
   });

@@ -230,3 +230,80 @@ export function embeddedFiles(json: string): Record<string, string> {
   }
   return out;
 }
+
+const baseElement = {
+  angle: 0,
+  strokeColor: "#1e1e1e",
+  backgroundColor: "transparent",
+  fillStyle: "solid",
+  strokeWidth: 1,
+  strokeStyle: "solid",
+  roughness: 1,
+  opacity: 100,
+  groupIds: [] as string[],
+  roundness: null,
+  link: null,
+  locked: false,
+};
+
+/**
+ * Searchable scene: a rectangle labelled "Dijkstra shortest path" (bound text
+ * `algo-label` in container `algo-rect`) inside a frame named "Graph algorithms".
+ */
+export const SEARCH_SCENE = JSON.stringify(
+  {
+    type: "excalidraw",
+    version: 2,
+    source: "excalidraw-desktop-tests",
+    elements: [
+      {
+        ...baseElement,
+        id: "algo-frame",
+        type: "frame",
+        name: "Graph algorithms",
+        x: 0,
+        y: 0,
+        width: 520,
+        height: 320,
+        frameId: null,
+        boundElements: [],
+      },
+      {
+        ...baseElement,
+        id: "algo-rect",
+        type: "rectangle",
+        x: 100,
+        y: 100,
+        width: 260,
+        height: 120,
+        frameId: "algo-frame",
+        roundness: { type: 3 },
+        boundElements: [{ id: "algo-label", type: "text" }],
+      },
+      {
+        ...baseElement,
+        id: "algo-label",
+        type: "text",
+        x: 110,
+        y: 145,
+        width: 240,
+        height: 30,
+        frameId: "algo-frame",
+        boundElements: [],
+        text: "Dijkstra shortest path",
+        originalText: "Dijkstra shortest path",
+        fontSize: 20,
+        fontFamily: 1,
+        textAlign: "center",
+        verticalAlign: "middle",
+        containerId: "algo-rect",
+        lineHeight: 1.25,
+        autoResize: true,
+      },
+    ],
+    appState: { viewBackgroundColor: "#ffffff" },
+    files: {},
+  },
+  null,
+  2,
+);

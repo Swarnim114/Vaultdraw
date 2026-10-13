@@ -105,7 +105,7 @@ test("text tool via toolbar + editing existing text", async ({ page }) => {
 });
 
 test("inputs outside the canvas accept typing", async ({ page }) => {
-  const search = page.getByPlaceholder("Search drawings...");
+  const search = page.getByPlaceholder("Search drawings and text…");
   await search.click();
   await page.keyboard.type("Graphs");
   await expect(search).toHaveValue("Graphs");

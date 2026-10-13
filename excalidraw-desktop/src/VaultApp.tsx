@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { errorMessage } from "./vault/types";
-import { desktopRepository } from "./vault/DesktopVaultRepository";
+import {
+  desktopRepository,
+  isTauriAvailable,
+} from "./vault/DesktopVaultRepository";
+import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
 import {
   addRecentVault,
   getExpandedFolders,
@@ -42,6 +46,8 @@ import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 
 import "./components/VaultShell.css";
 
+import type { VaultSearch } from "./search/types";
+
 import type {
   VaultChange,
   VaultEntry,
@@ -53,6 +59,8 @@ export interface VaultAppProps {
   ownerDocument?: Document | null;
   ownerWindow?: Window | null;
   repository?: VaultRepository;
+  /** Vault-wide search; defaults to the native index under Tauri, else name-only. */
+  search?: VaultSearch | null;
   initialVault?: VaultInfo | null;
 }
 
@@ -60,6 +68,7 @@ export const VaultApp = ({
   ownerDocument: propDoc,
   ownerWindow: propWin,
   repository = desktopRepository,
+  search,
   initialVault = null,
 }: VaultAppProps) => {
   const [mountedDocument, setMountedDocument] = useState<Document | null>(null);
@@ -67,6 +76,11 @@ export const VaultApp = ({
   // Derive browser APIs from the mounted node, never from ambient globals.
   const doc = propDoc ?? mountedDocument;
   const win = propWin ?? doc?.defaultView ?? null;
+  const defaultSearch = useMemo(
+    () => (isTauriAvailable(win) ? new DesktopVaultSearch() : null),
+    [win],
+  );
+  const vaultSearch = search === undefined ? defaultSearch : search;
   const setRootNode = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       setMountedDocument(node.ownerDocument);
@@ -101,6 +115,14 @@ export const VaultApp = ({
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(() =>
     getNavigatorCollapsed(win),
   );
+  const [searchFocusNonce, setSearchFocusNonce] = useState(0);
+  const [focusRequest, setFocusRequest] = useState<{
+    path: string;
+    elementId: string;
+    containerId: string | null;
+    nonce: number;
+  } | null>(null);
+  const focusNonceRef = useRef(0);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -336,6 +358,40 @@ export const VaultApp = ({
     doc.addEventListener("keydown", onKeyDown);
     return () => doc.removeEventListener("keydown", onKeyDown);
   }, [doc, hasVault]);
+
+  // Cmd+Shift+F (Ctrl+Shift+F elsewhere) focuses the navigator search.
+  // Hard-wired until the command registry lands, like Cmd+,. Excalidraw does
+  // not bind it (its find is Cmd+F with a lowercase key), the capture phase
+  // just guarantees nothing else sees it.
+  useEffect(() => {
+    if (!doc || !hasVault) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        !(e.metaKey || e.ctrlKey) ||
+        !e.shiftKey ||
+        e.altKey ||
+        e.code !== "KeyF"
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (doc.querySelector(".vault-modal-backdrop")) {
+        return;
+      }
+      setNavigatorCollapsed((collapsed) => {
+        if (collapsed) {
+          saveNavigatorCollapsed(false, win);
+        }
+        return false;
+      });
+      setSearchFocusNonce((n) => n + 1);
+    };
+    doc.addEventListener("keydown", onKeyDown, true);
+    return () => doc.removeEventListener("keydown", onKeyDown, true);
+  }, [doc, hasVault, win]);
 
   // Load a directory's entries with generation check and error surfacing
   const loadDirectory = useCallback(
@@ -764,6 +820,24 @@ export const VaultApp = ({
       });
     } finally {
       setIsBusy(false);
+    }
+  };
+
+  // Search result: open the drawing (unless active), then focus the element.
+  const handleOpenSearchResult = async (
+    drawingPath: string,
+    match?: { elementId: string; containerId: string | null },
+  ) => {
+    if (drawingPath !== activeDoc?.path) {
+      await handleOpenDrawing(drawingPath);
+    }
+    if (match) {
+      setFocusRequest({
+        path: drawingPath,
+        elementId: match.elementId,
+        containerId: match.containerId,
+        nonce: ++focusNonceRef.current,
+      });
     }
   };
 
@@ -1222,6 +1296,9 @@ export const VaultApp = ({
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
                 onOpenSettings={() => setShowSettingsModal(true)}
+                focusRequest={
+                  focusRequest?.path === activeDoc.path ? focusRequest : null
+                }
               />
             </div>
           ) : (
@@ -1282,6 +1359,9 @@ export const VaultApp = ({
           onToggleCollapse={handleToggleNavigator}
           onOpenSettings={() => setShowSettingsModal(true)}
           onOpenDrawing={handleOpenDrawing}
+          search={vaultSearch}
+          onOpenSearchResult={handleOpenSearchResult}
+          searchFocusNonce={searchFocusNonce}
           onCreateDrawing={handleCreateDrawing}
           onCreateFolder={handleCreateFolder}
           onRenameEntry={handleRenameEntry}

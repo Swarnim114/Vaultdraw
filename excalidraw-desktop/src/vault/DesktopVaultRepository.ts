@@ -47,7 +47,45 @@ export function isTauriAvailable(win?: Window | null): boolean {
   return false;
 }
 
-function normalizeError(cause: unknown): Error {
+/** Resolves the Tauri `invoke` (or an injected one); shared with other desktop bridges. */
+export async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
+  if (custom) {
+    return custom;
+  }
+  try {
+    const core = await import("@tauri-apps/api/core");
+    if (typeof core.invoke === "function") {
+      return core.invoke as InvokeFn;
+    }
+  } catch {
+    // module not resolved or running outside desktop shell
+  }
+  throw new VaultError(
+    "TAURI_UNAVAILABLE",
+    "Excalidraw Vault desktop backend is not available. Browser preview cannot persist files to disk.",
+  );
+}
+
+/** Resolves the Tauri `listen` (or an injected one). */
+export async function resolveListen(custom?: ListenFn): Promise<ListenFn> {
+  if (custom) {
+    return custom;
+  }
+  try {
+    const event = await import("@tauri-apps/api/event");
+    if (typeof event.listen === "function") {
+      return event.listen as ListenFn;
+    }
+  } catch {
+    // module not resolved or running outside desktop shell
+  }
+  throw new VaultError(
+    "TAURI_UNAVAILABLE",
+    "Event listening is not available outside the Excalidraw Vault desktop app.",
+  );
+}
+
+export function normalizeError(cause: unknown): Error {
   if (cause instanceof VaultError) {
     return cause;
   }
@@ -92,40 +130,12 @@ export class DesktopVaultRepository implements VaultRepository {
     this.subscribe = this.subscribe.bind(this);
   }
 
-  private async getInvoke(): Promise<InvokeFn> {
-    if (this.customInvoke) {
-      return this.customInvoke;
-    }
-    try {
-      const core = await import("@tauri-apps/api/core");
-      if (typeof core.invoke === "function") {
-        return core.invoke as InvokeFn;
-      }
-    } catch {
-      // module not resolved or running outside desktop shell
-    }
-    throw new VaultError(
-      "TAURI_UNAVAILABLE",
-      "Excalidraw Vault desktop backend is not available. Browser preview cannot persist files to disk.",
-    );
+  private getInvoke(): Promise<InvokeFn> {
+    return resolveInvoke(this.customInvoke);
   }
 
-  private async getListen(): Promise<ListenFn> {
-    if (this.customListen) {
-      return this.customListen;
-    }
-    try {
-      const event = await import("@tauri-apps/api/event");
-      if (typeof event.listen === "function") {
-        return event.listen as ListenFn;
-      }
-    } catch {
-      // module not resolved or running outside desktop shell
-    }
-    throw new VaultError(
-      "TAURI_UNAVAILABLE",
-      "Event listening is not available outside the Excalidraw Vault desktop app.",
-    );
+  private getListen(): Promise<ListenFn> {
+    return resolveListen(this.customListen);
   }
 
   async chooseVault(create?: boolean): Promise<VaultInfo | null> {

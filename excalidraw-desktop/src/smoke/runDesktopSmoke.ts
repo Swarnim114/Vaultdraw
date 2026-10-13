@@ -860,7 +860,7 @@ export async function runDesktopSmoke(): Promise<void> {
             .vaultPath === activeVault.path,
       );
       const search = root.querySelector<HTMLInputElement>(
-        '[placeholder="Search drawings..."]',
+        '[placeholder^="Search drawings"]',
       );
       if (!search) {
         throw new Error("Tree search input missing");
@@ -872,12 +872,14 @@ export async function runDesktopSmoke(): Promise<void> {
       setter?.call(search, "ui-edited");
       search.dispatchEvent(new win.Event("input", { bubbles: true }));
       await waitFor("search result", () =>
-        Array.from(root.querySelectorAll(".vault-tree-item__name")).find(
+        Array.from(root.querySelectorAll(".vault-search-row__name")).find(
           (item) => item.textContent?.includes("ui-edited"),
         ),
       );
       const result = Array.from(
-        root.querySelectorAll<HTMLElement>(".vault-tree-item"),
+        root.querySelectorAll<HTMLElement>(
+          '.vault-search-row[data-kind="drawing"]',
+        ),
       ).find((item) => item.textContent?.includes("ui-edited"));
       if (!result) {
         throw new Error("Search result disappeared before click");

@@ -24,6 +24,7 @@ import type {
 
 import { registerCanvasRepaint, withStandardCanvasColors } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
+import { focusElement } from "./focusElement";
 
 import type { FlushOptions } from "./editorFlush";
 
@@ -40,6 +41,12 @@ type Props = {
   theme?: "light" | "dark";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
   onOpenSettings?: () => void;
+  /** Select + scroll to an element once the scene is loaded (search results). */
+  focusRequest?: {
+    elementId: string;
+    containerId: string | null;
+    nonce: number;
+  } | null;
 };
 
 type Snapshot = Parameters<
@@ -60,6 +67,7 @@ const VaultEditorComponent = ({
   theme,
   onThemeChange,
   onOpenSettings,
+  focusRequest = null,
 }: Props) => {
   const host = useRef<HTMLDivElement>(null);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -74,6 +82,8 @@ const VaultEditorComponent = ({
   const fileRefs = useRef<BinaryFiles>({});
   const [exporting, setExporting] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [apiReady, setApiReady] = useState(false);
+  const handledFocusNonce = useRef<number | null>(null);
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
@@ -249,7 +259,37 @@ const VaultEditorComponent = ({
     }|${latest.current[1].gridModeEnabled}`;
     fileRefs.current = latest.current[2];
     ready.current = true;
+    setApiReady(true);
   }, []);
+
+  // Search results: focus the requested element once per request, after the
+  // scene is loaded and laid out.
+  useEffect(() => {
+    if (!apiReady || !focusRequest) {
+      return;
+    }
+    if (handledFocusNonce.current === focusRequest.nonce) {
+      return;
+    }
+    handledFocusNonce.current = focusRequest.nonce;
+    const win = host.current?.ownerDocument.defaultView;
+    let ran = false;
+    const run = () => {
+      ran = true;
+      const api = apiRef.current;
+      if (api) {
+        focusElement(api, focusRequest);
+      }
+    };
+    const frame = win ? win.requestAnimationFrame(run) : null;
+    return () => {
+      if (frame !== null && !ran) {
+        win?.cancelAnimationFrame(frame);
+        // Cancelled before it ran (StrictMode remount): allow a retry.
+        handledFocusNonce.current = null;
+      }
+    };
+  }, [apiReady, focusRequest]);
 
   useEffect(
     () => () => {
