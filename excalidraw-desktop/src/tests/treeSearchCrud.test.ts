@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { joinPath, type VaultEntry } from "../vault/types";
+import { type VaultEntry } from "../vault/types";
 import {
   buildTree,
   duplicateName,

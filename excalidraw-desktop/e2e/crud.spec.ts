@@ -3,7 +3,6 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   canvasBox,
   clickMainMenuItem,
-  openDrawing,
   openVault,
   readScene,
   screenshot,
@@ -38,9 +37,6 @@ const rowAction = async (page: Page, name: string, label: string) => {
   await row.getByRole("button", { name: "More actions" }).click();
   return page.getByRole("menuitem", { name: label, exact: true });
 };
-
-const treeNames = (page: Page) =>
-  page.locator(".vault-tree-item__name").allTextContents();
 
 /** Expand a folder (by exact name) if it is currently collapsed. */
 const expandFolder = async (page: Page, name: string) => {

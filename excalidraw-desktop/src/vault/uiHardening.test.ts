@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { DesktopVaultRepository, isTauriAvailable } from "./DesktopVaultRepository";
+
+import {
+  DesktopVaultRepository,
+  isTauriAvailable,
+} from "./DesktopVaultRepository";
 import {
   addRecentVault,
   getExpandedFolders,
@@ -11,6 +15,7 @@ import {
   scanVaultMetadata,
   searchEntries,
 } from "./treeStore";
+
 import type { VaultEntry, VaultInfo, VaultRepository } from "./types";
 
 describe("DesktopVaultRepository hardening", () => {
@@ -19,7 +24,10 @@ describe("DesktopVaultRepository hardening", () => {
     const repo = new DesktopVaultRepository({ invoke: mockInvoke });
 
     const { exportFile } = repo;
-    const result = await exportFile("test.excalidraw", new Uint8Array([1, 2, 3]));
+    const result = await exportFile(
+      "test.excalidraw",
+      new Uint8Array([1, 2, 3]),
+    );
 
     expect(result).toBe(true);
     expect(mockInvoke).toHaveBeenCalledWith("export_file", {
@@ -90,7 +98,10 @@ describe("Preferences per-vault stable path keying", () => {
     const stableVaultPath = "/Users/artist/vault";
     setExpandedFolders(stableVaultPath, ["FolderA", "FolderB"], fakeWin);
 
-    expect(getExpandedFolders(stableVaultPath, fakeWin)).toEqual(["FolderA", "FolderB"]);
+    expect(getExpandedFolders(stableVaultPath, fakeWin)).toEqual([
+      "FolderA",
+      "FolderB",
+    ]);
     // Different path should return default
     expect(getExpandedFolders("/different/path", fakeWin)).toEqual([""]);
   });
@@ -124,12 +135,30 @@ describe("Tree store search and crawl hardening", () => {
       listDirectory: vi.fn().mockImplementation(async (_h, dir) => {
         if (dir === "") {
           return [
-            { path: "sub", name: "sub", kind: "folder", modifiedAt: 0, size: 0 },
-            { path: "a.excalidraw", name: "a.excalidraw", kind: "drawing", modifiedAt: 0, size: 0 },
+            {
+              path: "sub",
+              name: "sub",
+              kind: "folder",
+              modifiedAt: 0,
+              size: 0,
+            },
+            {
+              path: "a.excalidraw",
+              name: "a.excalidraw",
+              kind: "drawing",
+              modifiedAt: 0,
+              size: 0,
+            },
           ];
         }
         return [
-          { path: "sub/b.excalidraw", name: "b.excalidraw", kind: "drawing", modifiedAt: 0, size: 0 },
+          {
+            path: "sub/b.excalidraw",
+            name: "b.excalidraw",
+            kind: "drawing",
+            modifiedAt: 0,
+            size: 0,
+          },
         ];
       }),
     };
@@ -152,8 +181,20 @@ describe("Tree store search and crawl hardening", () => {
 
   it("filters entries case-insensitively for search", () => {
     const entries: VaultEntry[] = [
-      { path: "Projects/Alpha.excalidraw", name: "Alpha.excalidraw", kind: "drawing", modifiedAt: 0, size: 0 },
-      { path: "Personal/Beta.excalidraw", name: "Beta.excalidraw", kind: "drawing", modifiedAt: 0, size: 0 },
+      {
+        path: "Projects/Alpha.excalidraw",
+        name: "Alpha.excalidraw",
+        kind: "drawing",
+        modifiedAt: 0,
+        size: 0,
+      },
+      {
+        path: "Personal/Beta.excalidraw",
+        name: "Beta.excalidraw",
+        kind: "drawing",
+        modifiedAt: 0,
+        size: 0,
+      },
     ];
     const match = searchEntries(entries, "ALPHA");
     expect(match).toHaveLength(1);

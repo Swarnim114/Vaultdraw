@@ -80,9 +80,7 @@ describe("VaultApp Workspace with active vault", () => {
     const repo = new FakeVaultRepository();
     repo.seedDrawing("sample.excalidraw", SAMPLE_SCENE);
 
-    const { container } = render(
-      <VaultApp repository={repo} initialVault={repo.vault} />,
-    );
+    render(<VaultApp repository={repo} initialVault={repo.vault} />);
 
     // Vault name shown in breadcrumbs
     const header = screen.getByRole("banner");

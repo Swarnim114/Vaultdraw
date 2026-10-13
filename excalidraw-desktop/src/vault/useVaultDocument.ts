@@ -389,7 +389,7 @@ export const useVaultDocument = (
       revision: loaded.revision,
       deleted: false,
     });
-  }, [activate]);
+  }, [activate, setCurrentStatus]);
 
   const saveCopy = useCallback(
     async (path: string) => {
@@ -649,6 +649,8 @@ export const useVaultDocument = (
       disposed = true;
       unsubscribe?.();
     };
+    // `vault` is only null-checked; resubscribe on handle change, not on every new VaultInfo object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activate, repository, vault?.handle, setCurrentStatus]);
 
   useEffect(() => {
