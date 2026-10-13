@@ -1,0 +1,41 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "noEmit": true,
+    "jsx": "react-jsx",
+    // Desktop frontend emits through Vite; keep spec parity with the root.
+    "baseUrl": "..",
+    "paths": {
+      "@excalidraw/common": ["./packages/common/src/index.ts"],
+      "@excalidraw/common/*": ["./packages/common/src/*"],
+      "@excalidraw/excalidraw": ["./packages/excalidraw/index.tsx"],
+      "@excalidraw/excalidraw/*": ["./packages/excalidraw/*"],
+      "@excalidraw/element": ["./packages/element/src/index.ts"],
+      "@excalidraw/element/*": ["./packages/element/src/*"],
+      "@excalidraw/fractional-indexing": ["./packages/fractional-indexing/src/index.ts"],
+      "@excalidraw/fractional-indexing/*": ["./packages/fractional-indexing/src/*"],
+      "@excalidraw/laser-pointer": ["./packages/laser-pointer/src/index.ts"],
+      "@excalidraw/laser-pointer/*": ["./packages/laser-pointer/src/*"],
+      "@excalidraw/math": ["./packages/math/src/index.ts"],
+      "@excalidraw/math/*": ["./packages/math/src/*"],
+      "@excalidraw/utils": ["./packages/utils/src/index.ts"],
+      "@excalidraw/utils/*": ["./packages/utils/src/*"]
+    }
+  },
+  // Only this workspace's frontend. src-tauri belongs to the native worker;
+  // the UI/editor/QA workers' modules resolve once they land.
+  "include": [
+    "src",
+    "vite.config.mts",
+    "vitest.config.ts",
+    "../packages/excalidraw/global.d.ts",
+    "../packages/excalidraw/css.d.ts",
+    "../packages/excalidraw/vite-env.d.ts",
+    "../packages/common/global.d.ts",
+    "../packages/element/global.d.ts",
+    "../packages/math/global.d.ts",
+    "../packages/utils/global.d.ts"
+  ],
+  "exclude": ["dist", "node_modules", "src-tauri"]
+}

@@ -1,0 +1,80 @@
+/* Excalidraw Vault desktop shell styles.
+ *
+ * The editor itself ships its own scss via @excalidraw/excalidraw imports
+ * (pulled in by the editor worker's VaultEditor). This file only styles the
+ * surrounding vault shell: full-height layout, onboarding, tree pane, status
+ * bar, dialogs. It follows Excalidraw visual conventions (Assistant UI font,
+ * --island-bg / --text-primary variables) without inventing a new theme.
+ */
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Assistant", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--island-bg, #ffffff);
+  color: var(--text-primary, #1e1e1e);
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark body {
+  background: #121212;
+  color: #e9e9e9;
+}
+
+#root {
+  height: 100%;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.vault-shell {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+}
+
+.vault-shell__editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+/* Right-side collapsible navigator (UI worker owns the component; the shell
+ * only reserves layout + collapse behavior). */
+.vault-shell__navigator {
+  flex: 0 0 280px;
+  max-width: 320px;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--sidebar-border, #e0e0e0);
+}
+
+.vault-shell__navigator--collapsed {
+  flex-basis: 0;
+  max-width: 0;
+  overflow: hidden;
+  border-left: none;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap;
+  user-select: none;
+}

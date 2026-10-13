@@ -1,0 +1,69 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+
+import "./desktop.css";
+
+// Desktop-only bootstrap. No Sentry, Firebase, collaboration, service
+// worker, or web analytics — the vault shell starts fully offline and the
+// native side owns persistence. DOM APIs are derived from the mount node's
+// ownerDocument/defaultView per repo convention (no bare `document`/`window`
+// globals beyond the initial mount lookup fallback).
+const mountNode = document.getElementById("root");
+
+if (!mountNode) {
+  throw new Error("Excalidraw Vault: #root mount node not found");
+}
+
+const ownerDocument = mountNode.ownerDocument;
+const ownerWindow = ownerDocument.defaultView;
+if (!ownerWindow) {
+  throw new Error("Excalidraw Vault: mount window is unavailable");
+}
+
+ownerWindow.__EXCALIDRAW_DESKTOP__ = true;
+// Custom desktop protocols may have a opaque `location.origin`; preserve the
+// actual document URL rather than constructing an invalid "null/" asset base.
+ownerWindow.EXCALIDRAW_ASSET_PATH = new ownerWindow.URL(
+  "./",
+  ownerWindow.location.href,
+).href;
+ownerWindow.__EXCALIDRAW_SHA__ = import.meta.env.VITE_APP_GIT_SHA;
+if (ownerWindow.matchMedia("(prefers-color-scheme: dark)").matches) {
+  ownerDocument.documentElement.classList.add("dark");
+}
+
+// Establish the local asset policy before the editor's font modules initialize.
+// An external module script respects CSP without allowing inline scripts.
+void import("./VaultApp")
+  .then(({ default: VaultApp }) => {
+    const root = createRoot(mountNode);
+    root.render(
+      <StrictMode>
+        <VaultApp ownerDocument={ownerDocument} ownerWindow={ownerWindow} />
+      </StrictMode>,
+    );
+    if (import.meta.env.VITE_APP_SMOKE_TEST === "true") {
+      ownerWindow.setTimeout(() => {
+        void import("./smoke/runDesktopSmoke")
+          .then(({ runDesktopSmoke }) => runDesktopSmoke())
+          .catch(async (error: unknown) => {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("smoke_finish", {
+              status: 1,
+              details: { startupFailure: String(error) },
+            });
+          });
+      }, 100);
+    }
+  })
+  .catch((error: unknown) => {
+    mountNode.textContent = `Could not start Excalidraw Vault: ${String(
+      error,
+    )}`;
+  });
+
+declare global {
+  interface Window {
+    __EXCALIDRAW_DESKTOP__?: boolean;
+  }
+}

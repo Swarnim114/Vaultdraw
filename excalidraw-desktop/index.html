@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Excalidraw Vault</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <!--
+      Local-only CSP for the Tauri 2 WebView. No remote connections, frames,
+      or objects; images/fonts may come from bundled assets, the asset
+      protocol, blob workers, or data URLs (embedded scene images). Tauri IPC
+      needs `ipc:` / `http://ipc.localhost`. The native worker also enforces
+      this policy in tauri.conf.json capabilities — this meta tag is
+      defense-in-depth and documents intent. No analytics, Sentry, Firebase,
+      service worker, or hosted share scripts are loaded here.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost blob: data:; font-src 'self' asset: http://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      html.dark {
+        background-color: #121212;
+        color: #fff;
+      }
+      #root {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Excalidraw Vault (e2e)</title>
+    <!-- Dev-only Playwright harness: real VaultApp over an in-memory vault. Not part of the Tauri build. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/e2e/harnessMain.tsx"></script>
+  </body>
+</html>

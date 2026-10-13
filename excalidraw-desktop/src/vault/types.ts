@@ -1,0 +1,60 @@
+export type VaultInfo = {
+  handle: string;
+  path: string;
+  name: string;
+  readOnly: boolean;
+};
+
+export type VaultEntry = {
+  path: string;
+  name: string;
+  kind: "folder" | "drawing";
+  modifiedAt: number;
+  size: number;
+};
+
+export type DrawingFile = { json: string; revision: string };
+export type RecoveryEntry = {
+  id: string;
+  path: string;
+  modifiedAt: number;
+  json: string;
+};
+export type VaultChange = { handle: string; paths: string[]; rescan: boolean };
+export type SaveStatus = "saved" | "dirty" | "saving" | "conflict" | "error";
+
+export interface VaultRepository {
+  chooseVault(create?: boolean): Promise<VaultInfo | null>;
+  reopenVault(): Promise<VaultInfo | null>;
+  releaseVault(handle: string): Promise<void>;
+  listDirectory(handle: string, path: string): Promise<VaultEntry[]>;
+  readDrawing(handle: string, path: string): Promise<DrawingFile>;
+  writeDrawing(input: {
+    handle: string;
+    path: string;
+    json: string;
+    expectedRevision: string | null;
+    operationId: string;
+  }): Promise<{ revision: string }>;
+  createFolder(handle: string, path: string): Promise<void>;
+  move(handle: string, from: string, to: string): Promise<void>;
+  trash(handle: string, path: string): Promise<void>;
+  reveal(handle: string, path: string): Promise<void>;
+  exportFile(name: string, bytes: Uint8Array): Promise<boolean>;
+  listRecovery(handle: string): Promise<RecoveryEntry[]>;
+  discardRecovery(handle: string, id: string): Promise<void>;
+  subscribe(listener: (event: VaultChange) => void): Promise<() => void>;
+}
+
+export const joinPath = (parent: string, name: string) =>
+  parent ? `${parent}/${name}` : name;
+
+export const errorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "object" && error && "message" in error) {
+    return String(error.message);
+  }
+  return String(error);
+};
