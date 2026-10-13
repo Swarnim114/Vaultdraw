@@ -1,17 +1,22 @@
 import clsx from "clsx";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
-import { muteFSAbortError } from "@excalidraw/common";
+import { muteFSAbortError, randomId } from "@excalidraw/common";
 
 import { useUIAppState } from "../context/ui-appState";
 import { fileOpen } from "../data/filesystem";
+import { loadLibraryFromBlob } from "../data/blob";
 import { saveLibraryAsJSON } from "../data/json";
-import { libraryItemsAtom } from "../data/library";
+import {
+  getUniqueLibraryItems,
+  libraryItemsAtom,
+  resolveLibrarySectionId,
+} from "../data/library";
 import { useAtom } from "../editor-jotai";
 import { useLibraryCache } from "../hooks/useLibraryItemSvg";
 import { t } from "../i18n";
 
-import { useApp, useExcalidrawSetAppState } from "./App";
+import { useApp, useAppProps, useExcalidrawSetAppState } from "./App";
 import ConfirmDialog from "./ConfirmDialog";
 import { Dialog } from "./Dialog";
 import { isLibraryMenuOpenAtom } from "./LibraryMenu";
@@ -23,12 +28,19 @@ import {
   DotsIcon,
   ExportIcon,
   LoadIcon,
+  copyIcon,
+  ArrowRightIcon,
   publishIcon,
   TrashIcon,
 } from "./icons";
 
 import type Library from "../data/library";
-import type { LibraryItem, LibraryItems, UIAppState } from "../types";
+import type {
+  LibraryItem,
+  LibraryItems,
+  LibraryUIOptions,
+  UIAppState,
+} from "../types";
 
 const getSelectedItems = (
   libraryItems: LibraryItems,
@@ -43,6 +55,7 @@ export const LibraryDropdownMenuButton: React.FC<{
   resetLibrary: () => void;
   onSelectItems: (items: LibraryItem["id"][]) => void;
   appState: UIAppState;
+  libraryUIOptions?: LibraryUIOptions;
   className?: string;
 }> = ({
   setAppState,
@@ -52,8 +65,13 @@ export const LibraryDropdownMenuButton: React.FC<{
   resetLibrary,
   onSelectItems,
   appState,
+  libraryUIOptions,
   className,
 }) => {
+  const { deleteItemsFromLibraryCache } = useLibraryCache();
+  const sections = libraryUIOptions?.sections;
+  const online = libraryUIOptions?.online !== false;
+  const [clearSectionId, setClearSectionId] = useState<string | null>(null);
   const [libraryItemsData] = useAtom(libraryItemsAtom);
   const [isLibraryMenuOpen, setIsLibraryMenuOpen] = useAtom(
     isLibraryMenuOpenAtom,
@@ -155,6 +173,18 @@ export const LibraryDropdownMenuButton: React.FC<{
     library.setLibrary(nextLibItems);
   };
 
+  const pickFile = (): Promise<Blob | null> =>
+    libraryUIOptions?.pickLibraryFile
+      ? libraryUIOptions.pickLibraryFile()
+      : fileOpen({
+          description: "Excalidraw library files",
+        });
+
+  const saveFile = (items: LibraryItems, suggestedName: string) =>
+    libraryUIOptions?.saveLibraryFile
+      ? libraryUIOptions.saveLibraryFile(items, suggestedName)
+      : saveLibraryAsJSON(items);
+
   const onLibraryImport = async () => {
     try {
       await library.updateLibrary({
@@ -182,12 +212,216 @@ export const LibraryDropdownMenuButton: React.FC<{
     const libraryItems = itemsSelected
       ? items
       : await library.getLatestLibrary();
-    saveLibraryAsJSON(libraryItems)
+    saveFile(libraryItems, itemsSelected ? "library-selection" : "library")
       .catch(muteFSAbortError)
       .catch((error) => {
         setAppState({ errorMessage: error.message });
       });
   };
+
+  // ---- sections (only used when the host provides `sections`) -------------
+
+  const sectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (sections) {
+      for (const item of libraryItemsData.libraryItems) {
+        const id = resolveLibrarySectionId(sections, item.id);
+        counts.set(id, (counts.get(id) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [sections, libraryItemsData.libraryItems]);
+
+  const addableSections = sections
+    ? sections.list.filter((section) => section.canAdd !== false)
+    : [];
+
+  // targets that differ from the section of at least one selected item
+  const selectedSectionIds = new Set<string>();
+  if (sections && itemsSelected) {
+    for (const item of items) {
+      selectedSectionIds.add(resolveLibrarySectionId(sections, item.id));
+    }
+  }
+  const transferTargets = addableSections.filter(
+    (section) =>
+      selectedSectionIds.size > 1 || !selectedSectionIds.has(section.id),
+  );
+
+  const reportError = (error: any) => {
+    if (error?.name === "AbortError") {
+      console.warn(error);
+      return;
+    }
+    setAppState({
+      errorMessage: error?.message || t("errors.importLibraryError"),
+    });
+  };
+
+  const sanitizeName = (label: string) =>
+    label.replace(/[^\p{L}\p{N}_ -]+/gu, "").trim() || "library";
+
+  const onMoveToSection = (sectionId: string) => {
+    sections!.assign(selectedItems, sectionId);
+    // new array identity so the sidebar re-renders even if the host's
+    // `sections` object stays the same
+    library.setLibrary((latest) => latest.slice());
+    onSelectItems([]);
+  };
+
+  const onCopyToSection = (sectionId: string) => {
+    const ids = new Set(selectedItems);
+    library
+      .setLibrary((latest) => {
+        const copies = latest
+          .filter((item) => ids.has(item.id))
+          .map((item) => ({
+            ...item,
+            id: randomId(),
+            created: Date.now(),
+          }));
+        sections!.assign(
+          copies.map((item) => item.id),
+          sectionId,
+        );
+        return [...copies, ...latest];
+      })
+      .catch(reportError);
+    onSelectItems([]);
+  };
+
+  const onImportIntoSection = async (sectionId: string) => {
+    try {
+      const blob = await pickFile();
+      if (!blob) {
+        return;
+      }
+      const loaded = await loadLibraryFromBlob(blob, "unpublished");
+      await library.setLibrary((latest) => {
+        const unique = getUniqueLibraryItems(latest, loaded);
+        sections!.assign(
+          unique.map((item) => item.id),
+          sectionId,
+        );
+        return [...unique, ...latest];
+      });
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        console.warn(error);
+        return;
+      }
+      setAppState({ errorMessage: t("errors.importLibraryError") });
+    }
+  };
+
+  const onExportSection = async (sectionId: string, label: string) => {
+    const latest = await library.getLatestLibrary();
+    saveFile(
+      latest.filter(
+        (item) => resolveLibrarySectionId(sections!, item.id) === sectionId,
+      ),
+      sanitizeName(label),
+    )
+      .catch(muteFSAbortError)
+      .catch(reportError);
+  };
+
+  const onClearSection = (sectionId: string) => {
+    const removed: LibraryItem["id"][] = [];
+    library
+      .setLibrary((latest) =>
+        latest.filter((item) => {
+          if (resolveLibrarySectionId(sections!, item.id) === sectionId) {
+            removed.push(item.id);
+            return false;
+          }
+          return true;
+        }),
+      )
+      .then(() => deleteItemsFromLibraryCache(removed))
+      .catch(() => {
+        setAppState({ errorMessage: t("alerts.errorRemovingFromLibrary") });
+      });
+  };
+
+  const renderSectionItems = () => {
+    if (!sections) {
+      return null;
+    }
+    if (itemsSelected) {
+      return (
+        <>
+          {transferTargets.map((section) => (
+            <DropdownMenu.Item
+              key={`move-${section.id}`}
+              onSelect={() => onMoveToSection(section.id)}
+              icon={ArrowRightIcon}
+              data-testid={`lib-dropdown--move-${section.id}`}
+            >
+              {t("library.moveTo", { label: section.label })}
+            </DropdownMenu.Item>
+          ))}
+          {transferTargets.map((section) => (
+            <DropdownMenu.Item
+              key={`copy-${section.id}`}
+              onSelect={() => onCopyToSection(section.id)}
+              icon={copyIcon}
+              data-testid={`lib-dropdown--copy-${section.id}`}
+            >
+              {t("library.copyTo", { label: section.label })}
+            </DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Item
+            onSelect={onLibraryExport}
+            icon={ExportIcon}
+            data-testid="lib-dropdown--export"
+          >
+            {t("library.exportSelected")}
+          </DropdownMenu.Item>
+        </>
+      );
+    }
+    return (
+      <>
+        {addableSections.map((section) => (
+          <DropdownMenu.Item
+            key={`import-${section.id}`}
+            onSelect={() => onImportIntoSection(section.id)}
+            icon={LoadIcon}
+            data-testid={`lib-dropdown--import-${section.id}`}
+          >
+            {t("library.importInto", { label: section.label })}
+          </DropdownMenu.Item>
+        ))}
+        {sections.list
+          .filter((section) => sectionCounts.get(section.id))
+          .map((section) => (
+            <DropdownMenu.Item
+              key={`export-${section.id}`}
+              onSelect={() => onExportSection(section.id, section.label)}
+              icon={ExportIcon}
+              data-testid={`lib-dropdown--export-${section.id}`}
+            >
+              {t("library.exportSection", { label: section.label })}
+            </DropdownMenu.Item>
+          ))}
+        {sections.list
+          .filter((section) => sectionCounts.get(section.id))
+          .map((section) => (
+            <DropdownMenu.Item
+              key={`clear-${section.id}`}
+              onSelect={() => setClearSectionId(section.id)}
+              icon={TrashIcon}
+              data-testid={`lib-dropdown--clear-${section.id}`}
+            >
+              {t("library.clearSection", { label: section.label })}
+            </DropdownMenu.Item>
+          ))}
+      </>
+    );
+  };
+
+  const clearSection = sections?.list.find((s) => s.id === clearSectionId);
 
   const renderLibraryMenu = () => {
     return (
@@ -202,7 +436,8 @@ export const LibraryDropdownMenuButton: React.FC<{
           onSelect={() => setIsLibraryMenuOpen(false)}
           className="library-menu"
         >
-          {!itemsSelected && (
+          {sections && renderSectionItems()}
+          {!sections && !itemsSelected && (
             <DropdownMenu.Item
               onSelect={onLibraryImport}
               icon={LoadIcon}
@@ -211,7 +446,7 @@ export const LibraryDropdownMenuButton: React.FC<{
               {t("buttons.load")}
             </DropdownMenu.Item>
           )}
-          {!!items.length && (
+          {!sections && !!items.length && (
             <DropdownMenu.Item
               onSelect={onLibraryExport}
               icon={ExportIcon}
@@ -220,7 +455,7 @@ export const LibraryDropdownMenuButton: React.FC<{
               {t("buttons.export")}
             </DropdownMenu.Item>
           )}
-          {itemsSelected && (
+          {online && itemsSelected && (
             <DropdownMenu.Item
               icon={publishIcon}
               onSelect={() => setShowPublishLibraryDialog(true)}
@@ -229,7 +464,7 @@ export const LibraryDropdownMenuButton: React.FC<{
               {t("buttons.publishLibrary")}
             </DropdownMenu.Item>
           )}
-          {!!items.length && (
+          {(!sections || itemsSelected) && !!items.length && (
             <DropdownMenu.Item
               onSelect={() => setShowRemoveLibAlert(true)}
               icon={TrashIcon}
@@ -249,6 +484,23 @@ export const LibraryDropdownMenuButton: React.FC<{
         <div className="library-actions-counter">{selectedItems.length}</div>
       )}
       {showRemoveLibAlert && renderRemoveLibAlert()}
+      {clearSection && (
+        <ConfirmDialog
+          onConfirm={() => {
+            onClearSection(clearSection.id);
+            setClearSectionId(null);
+          }}
+          onCancel={() => setClearSectionId(null)}
+          title={t("library.clearSection", { label: clearSection.label })}
+        >
+          <p>
+            {t("library.confirmClearSection", {
+              label: clearSection.label,
+              count: sectionCounts.get(clearSection.id) || 0,
+            })}
+          </p>
+        </ConfirmDialog>
+      )}
       {showPublishLibraryDialog && (
         <PublishLibrary
           onClose={() => setShowPublishLibraryDialog(false)}
@@ -284,6 +536,7 @@ export const LibraryDropdownMenu = ({
   className?: string;
 }) => {
   const { library } = useApp();
+  const libraryUIOptions = useAppProps().libraryUIOptions;
   const { clearLibraryCache, deleteItemsFromLibraryCache } = useLibraryCache();
   const appState = useUIAppState();
   const setAppState = useExcalidrawSetAppState();
@@ -319,6 +572,7 @@ export const LibraryDropdownMenu = ({
         removeFromLibrary(libraryItemsData.libraryItems)
       }
       resetLibrary={resetLibrary}
+      libraryUIOptions={libraryUIOptions}
       className={className}
     />
   );

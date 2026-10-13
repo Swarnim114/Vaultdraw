@@ -662,6 +662,36 @@ export type LibraryItem = {
   name?: string;
   error?: string;
 };
+export type LibrarySection = {
+  id: string;
+  label: string;
+  /** false: no add tile / not a move/copy/import target. Default true. */
+  canAdd?: boolean;
+  /** Shown in the section when it has no items. */
+  emptyHint?: string;
+};
+
+export type LibraryUIOptions = {
+  /** Online actions: "Browse libraries" link and "Publish". Default true. */
+  online?: boolean;
+  sections?: {
+    list: readonly LibrarySection[];
+    /** Section of an item; unknown ids render in the first section. */
+    sectionOf: (itemId: string) => string;
+    /** Assigns items to a section. Called BEFORE new items (add tile, import
+     *  into section, copy) are added to the library, and for moves of
+     *  existing items. */
+    assign: (itemIds: readonly string[], sectionId: string) => void;
+  };
+  /** Host file picker for import. null = cancelled. Default: browser file input. */
+  pickLibraryFile?: () => Promise<Blob | null>;
+  /** Host save for export. Default: browser download. */
+  saveLibraryFile?: (
+    items: LibraryItems,
+    suggestedName: string,
+  ) => Promise<void>;
+};
+
 export type LibraryItems = readonly LibraryItem[];
 export type LibraryItems_anyVersion = LibraryItems | LibraryItems_v1;
 
@@ -1000,6 +1030,8 @@ export interface ExcalidrawProps {
   gridModeEnabled?: boolean;
   objectsSnapModeEnabled?: boolean;
   libraryReturnUrl?: string;
+  /** Customizes the library sidebar (sections, offline mode, host file IO) */
+  libraryUIOptions?: LibraryUIOptions;
   theme?: Theme;
   // @TODO come with better API before v0.18.0
   name?: string;

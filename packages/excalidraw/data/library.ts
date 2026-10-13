@@ -42,6 +42,7 @@ import type {
   ExcalidrawImperativeAPI,
   LibraryItemsSource,
   LibraryItems_anyVersion,
+  LibraryUIOptions,
 } from "../types";
 
 /**
@@ -142,7 +143,7 @@ const isUniqueItem = (
 
 /** Merges otherItems into localItems. Unique items in otherItems array are
     sorted first. */
-export const mergeLibraryItems = (
+export const getUniqueLibraryItems = (
   localItems: LibraryItems,
   otherItems: LibraryItems,
 ): LibraryItems => {
@@ -152,8 +153,25 @@ export const mergeLibraryItems = (
       newItems.push(item);
     }
   }
+  return newItems;
+};
 
-  return [...newItems, ...localItems];
+/** Section id of an item; unknown ids resolve to the first section. */
+export const resolveLibrarySectionId = (
+  sections: NonNullable<LibraryUIOptions["sections"]>,
+  itemId: string,
+): string => {
+  const id = sections.sectionOf(itemId);
+  return sections.list.some((section) => section.id === id)
+    ? id
+    : sections.list[0]?.id;
+};
+
+export const mergeLibraryItems = (
+  localItems: LibraryItems,
+  otherItems: LibraryItems,
+): LibraryItems => {
+  return [...getUniqueLibraryItems(localItems, otherItems), ...localItems];
 };
 
 /**

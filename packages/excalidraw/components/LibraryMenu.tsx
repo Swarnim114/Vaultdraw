@@ -68,6 +68,7 @@ const LibraryMenuContent = memo(
     onAddToLibrary,
     setAppState,
     libraryReturnUrl,
+    libraryUIOptions,
     library,
     id,
     theme,
@@ -77,6 +78,7 @@ const LibraryMenuContent = memo(
     pendingElements: LibraryItem["elements"];
     onInsertLibraryItems: (libraryItems: LibraryItems) => void;
     onAddToLibrary: () => void;
+    libraryUIOptions: ExcalidrawProps["libraryUIOptions"];
     setAppState: React.Component<any, UIAppState>["setState"];
     libraryReturnUrl: ExcalidrawProps["libraryReturnUrl"];
     library: Library;
@@ -87,37 +89,36 @@ const LibraryMenuContent = memo(
   }) => {
     const [libraryItemsData] = useAtom(libraryItemsAtom);
 
+    const sections = libraryUIOptions?.sections;
+
     const _onAddToLibrary = useCallback(
-      (elements: LibraryItem["elements"]) => {
-        const addToLibrary = async (
-          processedElements: LibraryItem["elements"],
-          libraryItems: LibraryItems,
-        ) => {
-          trackEvent("element", "addToLibrary", "ui");
-          for (const type of LIBRARY_DISABLED_TYPES) {
-            if (processedElements.some((element) => element.type === type)) {
-              return setAppState({
-                errorMessage: t(`errors.libraryElementTypeError.${type}`),
-              });
-            }
+      (elements: LibraryItem["elements"], sectionId?: string) => {
+        trackEvent("element", "addToLibrary", "ui");
+        for (const type of LIBRARY_DISABLED_TYPES) {
+          if (elements.some((element) => element.type === type)) {
+            return setAppState({
+              errorMessage: t(`errors.libraryElementTypeError.${type}`),
+            });
           }
-          const nextItems: LibraryItems = [
-            {
-              status: "unpublished",
-              elements: processedElements,
-              id: randomId(),
-              created: Date.now(),
-            },
-            ...libraryItems,
-          ];
-          onAddToLibrary();
-          library.setLibrary(nextItems).catch(() => {
+        }
+        const newItem: LibraryItem = {
+          status: "unpublished",
+          elements,
+          id: randomId(),
+          created: Date.now(),
+        };
+        if (sections && sectionId) {
+          // the host must know the section before the item shows up
+          sections.assign([newItem.id], sectionId);
+        }
+        onAddToLibrary();
+        library
+          .setLibrary((latestItems) => [newItem, ...latestItems])
+          .catch(() => {
             setAppState({ errorMessage: t("alerts.errorAddingToLibrary") });
           });
-        };
-        addToLibrary(elements, libraryItemsData.libraryItems);
       },
-      [onAddToLibrary, library, setAppState, libraryItemsData.libraryItems],
+      [onAddToLibrary, library, setAppState, sections],
     );
 
     const libraryItems = useMemo(
@@ -154,6 +155,7 @@ const LibraryMenuContent = memo(
           pendingElements={pendingElements}
           id={id}
           libraryReturnUrl={libraryReturnUrl}
+          libraryUIOptions={libraryUIOptions}
           theme={theme}
           onSelectItems={onSelectItems}
           selectedItems={selectedItems}
@@ -164,6 +166,7 @@ const LibraryMenuContent = memo(
             style={{ padding: "16px 12px 0 12px" }}
             id={id}
             libraryReturnUrl={libraryReturnUrl}
+            online={libraryUIOptions?.online !== false}
             theme={theme}
           />
         )}
@@ -339,6 +342,7 @@ export const LibraryMenu = memo(() => {
       onAddToLibrary={deselectItems}
       setAppState={setAppState}
       libraryReturnUrl={appProps.libraryReturnUrl}
+      libraryUIOptions={appProps.libraryUIOptions}
       library={memoizedLibrary}
       id={app.id}
       theme={appState.theme}

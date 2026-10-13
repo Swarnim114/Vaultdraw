@@ -93,6 +93,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     zenModeEnabled,
     gridModeEnabled,
     libraryReturnUrl,
+    libraryUIOptions,
     theme,
     name,
     renderCustomStats,
@@ -236,6 +237,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           zenModeEnabled={zenModeEnabled}
           gridModeEnabled={gridModeEnabled}
           libraryReturnUrl={libraryReturnUrl}
+          libraryUIOptions={libraryUIOptions}
           theme={theme}
           name={name}
           renderCustomStats={renderCustomStats}
@@ -502,6 +504,8 @@ export type {
   ElementRenderOverrides,
   ImageExportRequest,
   ImageExportType,
+  LibrarySection,
+  LibraryUIOptions,
 } from "./types";
 
 export { zoomToFitBounds, DEFAULT_OVERSCROLL } from "./viewport";

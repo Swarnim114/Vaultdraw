@@ -17,6 +17,7 @@ import { duplicateElements } from "@excalidraw/element";
 
 import clsx from "clsx";
 
+import { resolveLibrarySectionId } from "../data/library";
 import { deburr } from "../deburr";
 
 import { useLibraryCache } from "../hooks/useLibraryItemSvg";
@@ -66,6 +67,7 @@ export default function LibraryMenuItems({
   theme,
   id,
   libraryReturnUrl,
+  libraryUIOptions,
   onSelectItems,
   selectedItems,
 }: {
@@ -73,14 +75,20 @@ export default function LibraryMenuItems({
   libraryItems: LibraryItems;
   pendingElements: LibraryItem["elements"];
   onInsertLibraryItems: (libraryItems: LibraryItems) => void;
-  onAddToLibrary: (elements: LibraryItem["elements"]) => void;
+  onAddToLibrary: (
+    elements: LibraryItem["elements"],
+    sectionId?: string,
+  ) => void;
   libraryReturnUrl: ExcalidrawProps["libraryReturnUrl"];
+  libraryUIOptions?: ExcalidrawProps["libraryUIOptions"];
   theme: UIAppState["theme"];
   id: string;
   selectedItems: LibraryItem["id"][];
   onSelectItems: (id: LibraryItem["id"][]) => void;
 }) {
   const editorInterface = useEditorInterface();
+  const sections = libraryUIOptions?.sections;
+  const online = libraryUIOptions?.online !== false;
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const scrollPosition = useScrollPosition<HTMLDivElement>(libraryContainerRef);
 
@@ -126,10 +134,29 @@ export default function LibraryMenuItems({
     [libraryItems],
   );
 
+  // one bucket per section, in `list` order (single pass, no per-item lookups)
+  const sectionedItems = useMemo(() => {
+    if (!sections) {
+      return null;
+    }
+    const buckets = new Map<string, LibraryItem[]>(
+      sections.list.map((section) => [section.id, []]),
+    );
+    for (const item of libraryItems) {
+      buckets.get(resolveLibrarySectionId(sections, item.id))?.push(item);
+    }
+    return sections.list.map((section) => ({
+      section,
+      items: buckets.get(section.id)!,
+    }));
+  }, [libraryItems, sections]);
+
   const onItemSelectToggle = useCallback(
     (id: LibraryItem["id"], event: React.MouseEvent) => {
       const shouldSelect = !selectedItems.includes(id);
-      const orderedItems = [...unpublishedItems, ...publishedItems];
+      const orderedItems = sectionedItems
+        ? sectionedItems.flatMap((bucket) => bucket.items)
+        : [...unpublishedItems, ...publishedItems];
       if (shouldSelect) {
         if (event.shiftKey && lastSelectedItem) {
           const rangeStart = orderedItems.findIndex(
@@ -172,6 +199,7 @@ export default function LibraryMenuItems({
       lastSelectedItem,
       onSelectItems,
       publishedItems,
+      sectionedItems,
       selectedItems,
       unpublishedItems,
     ],
@@ -264,7 +292,54 @@ export default function LibraryMenuItems({
     });
   }, []);
 
-  const JSX_whenNotSearching = !IS_SEARCHING && (
+  const JSX_whenSectioned = !IS_SEARCHING && sectionedItems && (
+    <>
+      {sectionedItems.map(({ section, items }, index) => (
+        <React.Fragment key={section.id}>
+          <div
+            className="library-menu-items-container__header"
+            style={index > 0 ? { marginTop: "0.75rem" } : undefined}
+            data-testid={`library-section-${section.id}`}
+          >
+            {section.label}
+          </div>
+          {!items.length &&
+          !(pendingElements.length > 0 && section.canAdd !== false) ? (
+            <div className="library-menu-items__no-items">
+              <div className="library-menu-items__no-items__hint">
+                {section.emptyHint ?? t("library.emptySection")}
+              </div>
+            </div>
+          ) : (
+            <LibraryMenuSectionGrid>
+              {pendingElements.length > 0 && section.canAdd !== false && (
+                <LibraryMenuSection
+                  itemsRenderedPerBatch={itemsRenderedPerBatch}
+                  items={[{ id: null, elements: pendingElements }]}
+                  onItemSelectToggle={onItemSelectToggle}
+                  onItemDrag={onItemDrag}
+                  onClick={() => onAddToLibrary(pendingElements, section.id)}
+                  isItemSelected={isItemSelected}
+                  svgCache={svgCache}
+                />
+              )}
+              <LibraryMenuSection
+                itemsRenderedPerBatch={itemsRenderedPerBatch}
+                items={items}
+                onItemSelectToggle={onItemSelectToggle}
+                onItemDrag={onItemDrag}
+                onClick={onItemClick}
+                isItemSelected={isItemSelected}
+                svgCache={svgCache}
+              />
+            </LibraryMenuSectionGrid>
+          )}
+        </React.Fragment>
+      ))}
+    </>
+  );
+
+  const JSX_whenNotSearching = !IS_SEARCHING && !sectionedItems && (
     <>
       {!IS_LIBRARY_EMPTY && (
         <div className="library-menu-items-container__header">
@@ -426,7 +501,7 @@ export default function LibraryMenuItems({
         align="start"
         gap={1}
         style={{
-          flex: publishedItems.length > 0 ? 1 : "0 1 auto",
+          flex: publishedItems.length > 0 || sectionedItems ? 1 : "0 1 auto",
           margin: IS_LIBRARY_EMPTY ? "auto" : 0,
         }}
         ref={libraryContainerRef}
@@ -444,6 +519,7 @@ export default function LibraryMenuItems({
           </div>
         )}
 
+        {JSX_whenSectioned}
         {JSX_whenNotSearching}
         {JSX_whenSearching}
 
@@ -452,6 +528,7 @@ export default function LibraryMenuItems({
             style={{ padding: "16px 0", width: "100%" }}
             id={id}
             libraryReturnUrl={libraryReturnUrl}
+            online={online}
             theme={theme}
           />
         )}
