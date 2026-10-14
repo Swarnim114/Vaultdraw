@@ -116,7 +116,8 @@ describe("VaultEditor component and bridge tests", () => {
     });
     await openMainMenu();
     expect(await screen.findByText("Export image...")).toBeInTheDocument();
-    expect(screen.getByText("Insert Mermaid diagram…")).toBeInTheDocument();
+    // Mermaid lives in the toolbar's "More tools" and the command palette only.
+    expect(screen.queryByText("Insert Mermaid diagram…")).toBeNull();
     expect(screen.getByText("Save a copy…")).toBeInTheDocument();
   });
 

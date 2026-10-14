@@ -10,11 +10,7 @@ import {
 } from "@excalidraw/excalidraw";
 import { DEFAULT_SIDEBAR } from "@excalidraw/common";
 
-import {
-  mermaidLogoIcon,
-  saveAs,
-  settingsIcon,
-} from "@excalidraw/excalidraw/components/icons";
+import { saveAs, settingsIcon } from "@excalidraw/excalidraw/components/icons";
 
 import type {
   BinaryFiles,
@@ -466,17 +462,6 @@ const VaultEditorComponent = ({
             disabled={exporting || !onExport}
           >
             Save a copy…
-          </MainMenu.Item>
-          <MainMenu.Item
-            icon={mermaidLogoIcon}
-            onSelect={() =>
-              apiRef.current?.updateScene({
-                appState: { openDialog: { name: "ttd", tab: "mermaid" } },
-              })
-            }
-            disabled={readOnly}
-          >
-            Insert Mermaid diagram…
           </MainMenu.Item>
           <MainMenu.DefaultItems.SearchMenu />
           <MainMenu.DefaultItems.Help />

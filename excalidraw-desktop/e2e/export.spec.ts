@@ -29,7 +29,13 @@ test.beforeEach(async ({ page }) => {
   await openDrawing(page, "Graphs");
 });
 
-test("1. main menu offers Export image, Save a copy and Insert Mermaid", async ({
+/** Mermaid opens from the toolbar's "More tools" menu (not the main menu). */
+const openMermaidFromToolbar = async (page: Page) => {
+  await page.locator(".App-toolbar__extra-tools-trigger").click();
+  await page.getByRole("menuitem", { name: "Mermaid to Excalidraw" }).click();
+};
+
+test("1. main menu offers Export image and Save a copy; Mermaid is in the toolbar only", async ({
   page,
 }) => {
   const errors = trackErrors(page);
@@ -38,7 +44,7 @@ test("1. main menu offers Export image, Save a copy and Insert Mermaid", async (
   const labels = items.map((t) => t.trim());
   expect(labels.some((l) => l.startsWith("Export image"))).toBe(true);
   expect(labels).toContain("Save a copy…");
-  expect(labels).toContain("Insert Mermaid diagram…");
+  expect(labels).not.toContain("Insert Mermaid diagram…");
   expect(labels.some((l) => /^Export as (PNG|SVG)/.test(l))).toBe(false);
   expect(errors).toEqual([]);
 });
@@ -222,8 +228,7 @@ test("7. Insert Mermaid diagram converts and adds elements, no AI tab", async ({
 }) => {
   const errors = trackErrors(page);
   const before = await liveCount(page, GRAPHS);
-  await page.getByTestId("main-menu-trigger").click();
-  await page.getByRole("menuitem", { name: "Insert Mermaid diagram…" }).click();
+  await openMermaidFromToolbar(page);
   const ttd = page.locator(".ttd-dialog");
   await expect(ttd).toBeVisible();
   await expect(ttd.getByRole("tab")).toHaveCount(0);
@@ -251,8 +256,7 @@ test("8. Mermaid conversion of 200 nodes under 4x CPU throttling (Chromium)", as
     const p = Math.floor((i - 1) / 2);
     lines.push(`  N${p}[Node ${p}] --> N${i}[Node ${i}]`);
   }
-  await page.getByTestId("main-menu-trigger").click();
-  await page.getByRole("menuitem", { name: "Insert Mermaid diagram…" }).click();
+  await openMermaidFromToolbar(page);
   const ttd = page.locator(".ttd-dialog");
   const canvasSel = ".ttd-dialog-output-canvas-content canvas";
   await expect(ttd.locator(canvasSel)).toBeVisible({ timeout: 40000 });

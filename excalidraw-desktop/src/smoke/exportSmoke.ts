@@ -67,11 +67,10 @@ const menuItem = async (
   ctx: ExportSmokeContext,
   label: string,
   match: (el: HTMLElement) => boolean,
+  triggerSelector = '.vault-editor [data-testid="main-menu-trigger"]',
 ) => {
-  const trigger = await ctx.waitFor("main menu trigger", () =>
-    ctx.root.querySelector<HTMLElement>(
-      '.vault-editor [data-testid="main-menu-trigger"]',
-    ),
+  const trigger = await ctx.waitFor("menu trigger", () =>
+    ctx.root.querySelector<HTMLElement>(triggerSelector),
   );
   trigger.click();
   const item = await ctx.waitFor(`${label} menu item`, () =>
@@ -446,11 +445,7 @@ const countLive = async (ctx: ExportSmokeContext) => {
 /** a. options in the dialog: scale, background, embed scene, remembered. */
 export const exportDialogOptionsStep = async (ctx: ExportSmokeContext) => {
   const menu = await menuLabels(ctx);
-  for (const wanted of [
-    "Export image...",
-    "Save a copy…",
-    "Insert Mermaid diagram…",
-  ]) {
+  for (const wanted of ["Export image...", "Save a copy…"]) {
     const alt = wanted.replace("...", "…");
     if (!menu.some((l) => l.startsWith(wanted) || l.startsWith(alt))) {
       throw new Error(`Main menu lacks "${wanted}": ${JSON.stringify(menu)}`);
@@ -690,10 +685,12 @@ export const mermaidOfflineStep = async (ctx: ExportSmokeContext) => {
   try {
     const before = await countLive(ctx);
     const opened = ctx.win.performance.now();
+    // Mermaid lives in the toolbar's "More tools" menu (not the main menu).
     const item = await menuItem(
       ctx,
-      "Insert Mermaid diagram",
-      (el) => !!el.textContent?.includes("Insert Mermaid diagram"),
+      "Mermaid to Excalidraw",
+      (el) => !!el.textContent?.includes("Mermaid to Excalidraw"),
+      ".vault-editor .App-toolbar__extra-tools-trigger",
     );
     item.click();
     const dialog = await ctx.waitFor("Mermaid dialog", () =>
@@ -947,10 +944,12 @@ export const perfExportMermaidStep = async (ctx: ExportSmokeContext) => {
   const restoreMermaidText = snapshotMermaidText(ctx.win);
   const dialogResult: Record<string, unknown> = {};
   try {
+    // Mermaid lives in the toolbar's "More tools" menu (not the main menu).
     const item = await menuItem(
       ctx,
-      "Insert Mermaid diagram",
-      (el) => !!el.textContent?.includes("Insert Mermaid diagram"),
+      "Mermaid to Excalidraw",
+      (el) => !!el.textContent?.includes("Mermaid to Excalidraw"),
+      ".vault-editor .App-toolbar__extra-tools-trigger",
     );
     item.click();
     const dialog = await ctx.waitFor("Mermaid dialog", () =>
