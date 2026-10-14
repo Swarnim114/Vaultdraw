@@ -33,6 +33,8 @@ import {
   updatePreferences,
 } from "./vault/preferences";
 import { getDefaultBackgroundPattern } from "./vault/paperDefaults";
+import { getNewDrawingPageSetup } from "./vault/pageDefaults";
+import { getPageSetupPatch } from "./page/pageSetupChange";
 import {
   getSettingsStatus,
   PREFERENCES_CHANGED_EVENT,
@@ -926,11 +928,19 @@ export const VaultApp = ({
     setGlobalAlert(null);
     try {
       const prefs = getPreferences(win);
-      const initialAppState = {
-        theme: appTheme,
+      const paper = {
         viewBackgroundColor:
           prefs.defaultCanvasBackground ||
           (appTheme === "dark" ? "#121212" : "#ffffff"),
+        viewBackgroundPattern: getDefaultBackgroundPattern(win),
+        pageSetup: null,
+      };
+      // Page mode default: the paper theme stamps the page colours
+      const pageSetup = getNewDrawingPageSetup(win);
+      const initialAppState = {
+        theme: appTheme,
+        ...paper,
+        ...(pageSetup && getPageSetupPatch(paper, pageSetup)),
         currentItemFontFamily: prefs.defaultFontFamily,
         currentItemFontSize: prefs.defaultFontSize,
         currentItemStrokeColor: prefs.defaultStrokeColor,
@@ -938,7 +948,6 @@ export const VaultApp = ({
         currentItemFillStyle: prefs.defaultFillStyle,
         currentItemStrokeWidth: prefs.defaultStrokeWidth,
         currentItemRoughness: prefs.defaultRoughness,
-        viewBackgroundPattern: getDefaultBackgroundPattern(win),
       };
       await createDoc(parentPath, name, initialAppState);
       await loadDirectory(parentPath);
