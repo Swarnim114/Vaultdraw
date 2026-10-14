@@ -4,6 +4,7 @@ import {
   CaptureUpdateAction,
   DefaultSidebar,
   Excalidraw,
+  loadFromBlob,
   MainMenu,
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
@@ -22,7 +23,6 @@ import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
 import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
-import { loadSceneFromJson } from "../vault/loadScene";
 
 import { PenBar } from "../pens/PenBar";
 
@@ -157,9 +157,15 @@ const VaultEditorComponent = ({
   const canOpenSettings = !!onOpenSettings;
 
   const initialData = useCallback(async () => {
+    const doc = host.current?.ownerDocument;
+    if (!doc) {
+      throw new Error("Editor document is not mounted");
+    }
     try {
-      // Parse + restore straight from the string (no Blob round trip).
-      const scene = loadSceneFromJson(initialJson);
+      const blob = new doc.defaultView!.Blob([initialJson], {
+        type: "application/json",
+      });
+      const scene = await loadFromBlob(blob, null, null, null);
       // Never inherit a file handle or scene from a previously mounted editor.
       scene.appState = {
         ...scene.appState,
