@@ -4,6 +4,8 @@
  * combining marks stripped, lowercase, every term must occur in name or
  * content) with a plain scan; never a production fallback.
  */
+import { findTags, keyUnder, tagKey } from "../tags/grammar";
+
 import type {
   ElementMatch,
   HighlightRange,
@@ -13,6 +15,8 @@ import type {
   SearchResponse,
   VaultSearch,
 } from "../search/types";
+
+import type { TagsResponse } from "../tags/types";
 import type { VaultRepository } from "../vault/types";
 
 const MAX_SNIPPET = 120;
@@ -142,6 +146,47 @@ function extractItems(json: string): Item[] {
   return items;
 }
 
+/** `tag:#x` tokens (case-insensitive prefix) split from the free text. */
+function splitTagFilters(q: string): { text: string; filters: string[] } {
+  const text: string[] = [];
+  const filters: string[] = [];
+  for (const tok of q.split(/\s+/).filter(Boolean)) {
+    if (!/^tag:/i.test(tok)) {
+      text.push(tok);
+      continue;
+    }
+    const key = tagKey(tok.slice(4).replace(/^#+/, "")).replace(/[/-]+$/, "");
+    if (key && !filters.includes(key)) {
+      filters.push(key);
+    }
+  }
+  return { text: text.join(" "), filters };
+}
+
+/** Distinct tags of a drawing (first spelling per key wins). */
+function docTags(items: Item[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const item of items) {
+    for (const m of findTags(item.text)) {
+      const key = tagKey(m.display);
+      if (!out.has(key)) {
+        out.set(key, m.display);
+      }
+    }
+  }
+  return out;
+}
+
+/** The tag plus every ancestor, as [key, display] (display cut by segments). */
+function withAncestors(key: string, display: string): [string, string][] {
+  const keys = key.split("/");
+  const shown = display.split("/");
+  return keys.map((_, i): [string, string] => [
+    keys.slice(0, i + 1).join("/"),
+    shown.slice(0, i + 1).join("/"),
+  ]);
+}
+
 export class FakeVaultSearch implements VaultSearch {
   private listeners = new Set<(s: IndexStatus) => void>();
   private override: Partial<Pick<IndexStatus, "state" | "indexed">> | null =
@@ -177,6 +222,44 @@ export class FakeVaultSearch implements VaultSearch {
     return out;
   }
 
+  private async items(handle: string, path: string): Promise<Item[]> {
+    return extractItems((await this.repository.readDrawing(handle, path)).json);
+  }
+
+  async tags(handle: string): Promise<TagsResponse> {
+    const started = Date.now();
+    const counts = new Map<string, number>();
+    const displays = new Map<string, string>();
+    const byPath: Record<string, string[]> = {};
+    for (const path of await this.drawings(handle)) {
+      const tags = docTags(await this.items(handle, path));
+      if (tags.size === 0) {
+        continue;
+      }
+      byPath[path] = [...tags.values()];
+      const keys = new Set<string>();
+      for (const [key, display] of tags) {
+        for (const [k, d] of withAncestors(key, display)) {
+          keys.add(k);
+          const seen = displays.get(k);
+          if (seen === undefined || d < seen) {
+            displays.set(k, d);
+          }
+        }
+      }
+      keys.forEach((k) => counts.set(k, (counts.get(k) ?? 0) + 1));
+    }
+    const tags = [...counts]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([tag, count]) => ({ tag, display: displays.get(tag)!, count }));
+    return {
+      tags,
+      byPath,
+      status: await this.status(handle),
+      tookMs: Date.now() - started,
+    };
+  }
+
   async status(handle: string): Promise<IndexStatus> {
     const total = (await this.drawings(handle)).length;
     const state = this.override?.state ?? "ready";
@@ -202,20 +285,21 @@ export class FakeVaultSearch implements VaultSearch {
   ): Promise<SearchResponse> {
     const started = Date.now();
     const status = await this.status(handle);
-    const terms = normalizeQuery(query).split(/\s+/).filter(Boolean);
+    const { text, filters } = splitTagFilters(query);
+    const terms = normalizeQuery(text).split(/\s+/).filter(Boolean);
     const scope = opts?.scope ?? "all";
     const limit = Math.min(opts?.limit ?? 50, 200);
     const hits: SearchHit[] = [];
-    if (terms.length > 0) {
+    if (terms.length > 0 || filters.length > 0) {
       for (const path of await this.drawings(handle)) {
         const name = path.slice(path.lastIndexOf("/") + 1);
         const nameN = normalizeWithMap(name);
-        const items =
-          scope === "names"
-            ? []
-            : extractItems(
-                (await this.repository.readDrawing(handle, path)).json,
-              );
+        const all = await this.items(handle, path);
+        const items = scope === "names" ? [] : all;
+        const tagKeys = [...docTags(all).keys()];
+        if (!filters.every((f) => tagKeys.some((k) => keyUnder(k, f)))) {
+          continue;
+        }
         const itemNs = items.map((i) => normalizeWithMap(i.text));
         const nameText = scope === "content" ? "" : nameN.text;
         const ok = terms.every(
@@ -229,7 +313,14 @@ export class FakeVaultSearch implements VaultSearch {
         const matches: ElementMatch[] = [];
         let matchCount = 0;
         items.forEach((item, i) => {
-          const ranges = findRanges(itemNs[i], terms);
+          const ranges =
+            terms.length > 0
+              ? findRanges(itemNs[i], terms)
+              : findTags(item.text)
+                  .filter((m) =>
+                    filters.some((f) => keyUnder(tagKey(m.display), f)),
+                  )
+                  .map((m): HighlightRange => [m.start, m.end]);
           if (ranges.length === 0) {
             return;
           }

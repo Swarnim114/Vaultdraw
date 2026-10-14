@@ -19,6 +19,7 @@ import { FakeVaultSearch } from "./fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "./fixtures";
 
 import type { IndexStatus, SearchResponse, VaultSearch } from "../search/types";
+import type { TagsResponse } from "../tags/types";
 import type { VaultEntry } from "../vault/types";
 
 const status = (over: Partial<IndexStatus> = {}): IndexStatus => ({
@@ -28,6 +29,13 @@ const status = (over: Partial<IndexStatus> = {}): IndexStatus => ({
   total: 1,
   ...over,
 });
+
+const NO_TAGS: TagsResponse = {
+  tags: [],
+  byPath: {},
+  status: status(),
+  tookMs: 0,
+};
 
 const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   query: "dijk",
@@ -88,6 +96,7 @@ function stubSearch(
     search: vi.fn(async () => (typeof res === "function" ? res() : res)),
     status: vi.fn(async () => status()),
     subscribe: vi.fn(async () => () => {}),
+    tags: async () => NO_TAGS,
   };
 }
 
@@ -268,6 +277,7 @@ describe("useVaultSearch", () => {
           }),
       ),
       status: async () => status(),
+      tags: async () => NO_TAGS,
       subscribe: async () => () => {},
     };
     const { result, rerender } = renderHook(
@@ -306,6 +316,7 @@ describe("useVaultSearch", () => {
     const search: VaultSearch = {
       search: vi.fn(async () => response()),
       status: async () => status({ state: "building", indexed: 0, total: 3 }),
+      tags: async () => NO_TAGS,
       subscribe: async (l) => {
         emit = l;
         return () => {};

@@ -69,6 +69,8 @@ export interface SettingsContextValue {
 
   confirmDelete: boolean;
   setConfirmDelete: (next: boolean) => void;
+  showTagChips: boolean;
+  setShowTagChips: (next: boolean) => void;
 
   /** Read-only view of the per-vault store (overrides, effective values). */
   vaultSettings: UseVaultSettings;
@@ -146,6 +148,9 @@ export const useSettingsController = ({
   const [confirmDelete, setConfirmDeleteState] = useState(
     () => getPreferences(win).confirmDelete,
   );
+  const [showTagChips, setShowTagChipsState] = useState(
+    () => getPreferences(win).showTagChips,
+  );
   const vaultSettings = useVaultSettingsView(win);
   const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
 
@@ -164,6 +169,7 @@ export const useSettingsController = ({
       setAccentColorState(prefs.accentColor);
       setZoomState(prefs.zoom);
       setConfirmDeleteState(prefs.confirmDelete);
+      setShowTagChipsState(prefs.showTagChips);
     };
     const handleStatus = () => setSettingsStatus(getSettingsStatus());
     win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
@@ -219,6 +225,11 @@ export const useSettingsController = ({
     updatePreferences({ confirmDelete: next }, win);
   };
 
+  const setShowTagChips = (next: boolean) => {
+    setShowTagChipsState(next);
+    updatePreferences({ showTagChips: next }, win);
+  };
+
   const setPerVaultValue = <F extends VaultField>(
     field: F,
     value: VaultPreferences[F],
@@ -264,6 +275,8 @@ export const useSettingsController = ({
     setZoom,
     confirmDelete,
     setConfirmDelete,
+    showTagChips,
+    setShowTagChips,
     vaultSettings,
     setPerVaultValue,
     setPerVaultStored,

@@ -5,6 +5,10 @@ import { getPreferences, updatePreferences } from "../vault/preferences";
 import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 import { checkTreeDrop, getParentPath } from "../vault/treeStore";
 
+import { useVaultTags } from "../tags/useVaultTags";
+
+import { tagQuery } from "../tags/types";
+
 import {
   IconChevronDown,
   IconChevronRight,
@@ -28,6 +32,9 @@ import {
   IconTrash,
 } from "./Icons";
 import { SearchResults } from "./search/SearchResults";
+import { TagChips } from "./tags/TagChips";
+import { TagsPanel } from "./tags/TagsPanel";
+
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
@@ -84,6 +91,8 @@ interface VaultNavigatorProps {
   onSortChange: (order: SortOrder) => void;
   /** False: "Move to Trash" acts immediately, without the dialog. */
   confirmDelete: boolean;
+  /** Show tag chips after drawing names (default on). */
+  showTagChips?: boolean;
   ownerDocument?: Document | null;
 }
 
@@ -115,6 +124,7 @@ export const VaultNavigator = ({
   sortOrder,
   onSortChange,
   confirmDelete,
+  showTagChips = true,
   ownerDocument,
 }: VaultNavigatorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -227,6 +237,8 @@ export const VaultNavigator = ({
   );
 
   const isSearching = searchQuery.trim() !== "";
+  const { tags, byPath: tagsByPath } = useVaultTags(search, vault.handle);
+  const filterByTag = (key: string) => setSearchQuery(tagQuery(key));
 
   useEffect(() => {
     if (searchFocusNonce > 0) {
@@ -462,7 +474,7 @@ export const VaultNavigator = ({
             ref={searchInputRef}
             type="text"
             className="vault-search__input"
-            placeholder="Search drawings and text…"
+            placeholder="Search drawings and text… (tag:#name)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -491,6 +503,14 @@ export const VaultNavigator = ({
           )}
         </div>
       </div>
+
+      {!isSearching && (
+        <TagsPanel
+          tags={tags}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+        />
+      )}
 
       {/* Search Results or Tree View */}
       <div
@@ -557,6 +577,8 @@ export const VaultNavigator = ({
                 onRowPointerDown={onRowPointerDown}
                 dropTarget={drag?.allowed ? drag.targetFolder : null}
                 dragSourcePath={drag?.source.path ?? null}
+                tagsByPath={showTagChips ? tagsByPath : undefined}
+                onFilterTag={filterByTag}
               />
             )}
             {/* Empty space below the rows: dropping here moves to the root. */}
@@ -824,6 +846,9 @@ interface TreeRendererProps {
   /** Folder highlighted as the drop target (only while a drop is allowed). */
   dropTarget: string | null;
   dragSourcePath: string | null;
+  /** Tags per drawing path; undefined hides the chips. */
+  tagsByPath?: Record<string, string[]>;
+  onFilterTag: (key: string) => void;
 }
 
 const TreeRenderer = ({
@@ -840,6 +865,8 @@ const TreeRenderer = ({
   onRowPointerDown,
   dropTarget,
   dragSourcePath,
+  tagsByPath,
+  onFilterTag,
 }: TreeRendererProps) => {
   return (
     <>
@@ -897,6 +924,12 @@ const TreeRenderer = ({
                     ? entry.name
                     : entry.name.replace(/\.excalidraw$/i, "")}
                 </span>
+                {!isFolder && tagsByPath?.[entry.path] && (
+                  <TagChips
+                    tags={tagsByPath[entry.path]}
+                    onFilter={onFilterTag}
+                  />
+                )}
               </div>
 
               <div
@@ -945,6 +978,8 @@ const TreeRenderer = ({
                 onRowPointerDown={onRowPointerDown}
                 dropTarget={dropTarget}
                 dragSourcePath={dragSourcePath}
+                tagsByPath={tagsByPath}
+                onFilterTag={onFilterTag}
               />
             )}
           </div>

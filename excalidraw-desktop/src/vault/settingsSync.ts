@@ -113,6 +113,7 @@ type ConfigField =
   | "accentColor"
   | "zoom"
   | "confirmDelete"
+  | "showTagChips"
   | "navigatorSort"
   | "newDrawingFolder";
 
@@ -176,6 +177,12 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
   {
     field: "syncCanvas",
     key: "appearance.sync_canvas",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "showTagChips",
+    key: "interface.show_tag_chips",
     expected: "true or false",
     valid: (v) => typeof v === "boolean",
   },

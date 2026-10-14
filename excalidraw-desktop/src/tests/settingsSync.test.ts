@@ -188,6 +188,24 @@ describe("settingsSync mapping", () => {
       navigator: { sort: "modified_desc" },
       files: { confirm_delete: false, new_drawing_folder: "Inbox/Deep" },
     });
+    expect(
+      configToPreferences({ interface: { show_tag_chips: false } }),
+    ).toMatchObject({
+      values: { showTagChips: false },
+      problems: [],
+    });
+    expect(configToPreferences({}).values.showTagChips).toBe(true);
+    expect(
+      configToPreferences({
+        interface: { show_tag_chips: "yes" },
+      }).problems.map((p) => p.key),
+    ).toEqual(["interface.show_tag_chips"]);
+    expect(
+      preferencesToConfigChanges(DEFAULT_PREFERENCES, {
+        ...DEFAULT_PREFERENCES,
+        showTagChips: false,
+      }),
+    ).toEqual([{ key: "interface.show_tag_chips", value: false }]);
     expect(problems).toEqual([]);
     expect(values).toMatchObject({
       accentColor: "#336699",

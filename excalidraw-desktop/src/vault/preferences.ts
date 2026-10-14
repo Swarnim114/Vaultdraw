@@ -58,6 +58,8 @@ export interface VaultPreferences {
   zoom: number;
   /** Ask before moving a file or folder to the OS Trash. */
   confirmDelete: boolean;
+  /** Show small tag chips after drawing names in the file tree. */
+  showTagChips: boolean;
   /** Global navigator sort order; a vault's settings.toml may override it. */
   navigatorSort: SortOrder;
   /** Folder for new drawings, relative to the vault root ("" = unset). A vault's settings.toml may override it. */
@@ -91,6 +93,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   accentColor: "",
   zoom: 100,
   confirmDelete: true,
+  showTagChips: true,
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
 };
@@ -203,6 +206,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       d.zoom,
     ),
     confirmDelete: pick(parsed.confirmDelete, isBoolean, d.confirmDelete),
+    showTagChips: pick(parsed.showTagChips, isBoolean, d.showTagChips),
     navigatorSort: pick(parsed.navigatorSort, isSortOrder, d.navigatorSort),
     newDrawingFolder: pick(
       parsed.newDrawingFolder,

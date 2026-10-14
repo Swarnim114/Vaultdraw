@@ -134,6 +134,14 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "interface.zoom",
   },
   {
+    id: "show-tag-chips",
+    page: "interface",
+    label: "Show tag chips in the file tree",
+    description: "Show a drawing's #tags as small chips after its name.",
+    keywords: ["tag", "tags", "chip", "label", "navigator", "tree", "hashtag"],
+    configKey: "interface.show_tag_chips",
+  },
+  {
     id: "sort-order",
     page: "interface",
     label: "Navigator Sort Order",

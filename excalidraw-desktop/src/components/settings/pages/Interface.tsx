@@ -8,6 +8,7 @@ import {
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
+import { Switch } from "./controls";
 import { PerVaultRow } from "./perVault";
 
 const isMac = () =>
@@ -41,6 +42,19 @@ const ZoomSetting = () => {
   );
 };
 
+const ShowTagChipsSetting = () => {
+  const { showTagChips, setShowTagChips } = useSettings();
+  return (
+    <SettingRow id="show-tag-chips" htmlFor="vault-show-tag-chips">
+      <Switch
+        id="vault-show-tag-chips"
+        checked={showTagChips}
+        onChange={setShowTagChips}
+      />
+    </SettingRow>
+  );
+};
+
 const SortOrderSetting = () => (
   <PerVaultRow id="sort-order" field="navigatorSort">
     {(value, onChange) => (
@@ -62,5 +76,6 @@ const SortOrderSetting = () => (
 
 export const interfaceControls: SettingControls = {
   "interface-zoom": { Component: ZoomSetting },
+  "show-tag-chips": { Component: ShowTagChipsSetting },
   "sort-order": { Component: SortOrderSetting },
 };

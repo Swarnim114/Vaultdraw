@@ -1,3 +1,5 @@
+import type { TagsResponse } from "../tags/types";
+
 /** Vault search payloads (frozen contract, serde camelCase on the Rust side). */
 export type IndexState = "loading" | "building" | "ready";
 
@@ -55,5 +57,6 @@ export interface VaultSearch {
     opts?: SearchOptions,
   ): Promise<SearchResponse>;
   status(handle: string): Promise<IndexStatus>;
+  tags(handle: string): Promise<TagsResponse>;
   subscribe(listener: (status: IndexStatus) => void): Promise<() => void>;
 }

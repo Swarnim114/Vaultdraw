@@ -12,6 +12,7 @@ import type {
   SearchResponse,
   VaultSearch,
 } from "./types";
+import type { TagsResponse } from "../tags/types";
 
 export interface DesktopVaultSearchOptions {
   invoke?: InvokeFn;
@@ -44,6 +45,15 @@ export class DesktopVaultSearch implements VaultSearch {
     const invoke = await resolveInvoke(this.options.invoke);
     try {
       return await invoke<IndexStatus>("search_index_status", { handle });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
+  async tags(handle: string): Promise<TagsResponse> {
+    const invoke = await resolveInvoke(this.options.invoke);
+    try {
+      return await invoke<TagsResponse>("vault_tags", { handle });
     } catch (err) {
       throw normalizeError(err);
     }

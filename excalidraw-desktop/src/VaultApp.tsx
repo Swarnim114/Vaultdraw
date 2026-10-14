@@ -155,7 +155,7 @@ export const VaultApp = ({
   // Per-vault settings.toml overrides merged over config.toml (vault > global).
   const vaultSettings = useVaultSettings(win, vault);
   const { navigatorSort, newDrawingFolder } = vaultSettings.effective;
-  const confirmDelete = getPreferences(win).confirmDelete;
+  const { confirmDelete, showTagChips } = getPreferences(win);
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
@@ -1442,6 +1442,7 @@ export const VaultApp = ({
             }
           }}
           confirmDelete={confirmDelete}
+          showTagChips={showTagChips}
           treeNodes={treeNodes}
           expandedFolders={expandedFolders}
           onToggleFolder={handleToggleFolder}
