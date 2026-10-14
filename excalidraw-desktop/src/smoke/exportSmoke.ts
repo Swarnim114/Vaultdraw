@@ -103,9 +103,21 @@ export const openExportDialog = async (ctx: ExportSmokeContext) => {
     (el) => el.getAttribute("data-testid") === "image-export-button",
   );
   item.click();
-  return ctx.waitFor("export dialog", () =>
+  const modal = await ctx.waitFor("export dialog", () =>
     ctx.doc.querySelector<HTMLElement>(".ImageExportModal"),
   );
+  // With a selection (e.g. the image left by the file-drop step) the dialog
+  // defaults to "Only selected"; these steps check whole-scene exports.
+  const onlySelected = modal.querySelector<HTMLInputElement>(
+    'input[name="exportOnlySelected"]',
+  );
+  if (onlySelected?.checked) {
+    onlySelected.click();
+    await ctx.waitFor("only selected off", () =>
+      onlySelected.checked ? null : true,
+    );
+  }
+  return modal;
 };
 
 /** Closes the top dialog via its backdrop (large dialogs have no close button). */
@@ -950,17 +962,9 @@ export const perfExportMermaidStep = async (ctx: ExportSmokeContext) => {
         ".cm-content, textarea.ttd-dialog-input",
       ),
     );
+    const { EditorView } = await import("@codemirror/view");
     const setText = (text: string) => {
-      const view = (
-        editor as unknown as {
-          cmView?: {
-            view?: {
-              state: { doc: { length: number } };
-              dispatch: (spec: unknown) => void;
-            };
-          };
-        }
-      ).cmView?.view;
+      const view = EditorView.findFromDOM(editor);
       if (view) {
         view.dispatch({
           changes: { from: 0, to: view.state.doc.length, insert: text },
