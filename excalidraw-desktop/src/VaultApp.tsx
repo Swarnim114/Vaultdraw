@@ -37,6 +37,8 @@ import { useVaultDocument } from "./vault/useVaultDocument";
 import { useAppearance } from "./vault/useAppearance";
 import { useInterfaceZoom } from "./vault/useInterfaceZoom";
 import { useVaultSettings } from "./vault/useVaultSettings";
+import { useTemplates } from "./templates/useTemplates";
+import { isInTemplatesFolder } from "./templates/listTemplates";
 import {
   ensureFolder,
   folderChain,
@@ -154,7 +156,8 @@ export const VaultApp = ({
   useInterfaceZoom(doc, win);
   // Per-vault settings.toml overrides merged over config.toml (vault > global).
   const vaultSettings = useVaultSettings(win, vault);
-  const { navigatorSort, newDrawingFolder } = vaultSettings.effective;
+  const { navigatorSort, newDrawingFolder, templatesFolder } =
+    vaultSettings.effective;
   const { confirmDelete, showTagChips } = getPreferences(win);
 
   const handleCanvasThemeChange = useCallback(
@@ -909,15 +912,16 @@ export const VaultApp = ({
 
   // New drawing from the header / empty state: honours the default folder
   // setting (created when missing); otherwise next to the open drawing.
-  const handleNewDrawing = async () => {
+  // Resolves the parent folder for a new drawing (creating the default
+  // folder when missing). null = aborted (error already shown).
+  const prepareNewDrawingParent = async (): Promise<string | null> => {
     if (!vault) {
-      return;
+      return null;
     }
     const parent = resolveNewDrawingParent(
       newDrawingFolder,
       activeDoc?.path ?? null,
     );
-    const name = `Drawing-${Date.now().toString().slice(-4)}.excalidraw`;
     if (newDrawingFolder && !vault.readOnly) {
       try {
         const created = await ensureFolder(repository, vault.handle, parent);
@@ -937,11 +941,81 @@ export const VaultApp = ({
           )}`,
           type: "error",
         });
-        return;
+        return null;
       }
     }
-    await handleCreateDrawing(parent, name);
+    return parent;
   };
+
+  const handleNewDrawing = async () => {
+    const parent = await prepareNewDrawingParent();
+    if (parent !== null) {
+      await handleCreateDrawing(
+        parent,
+        `Drawing-${Date.now().toString().slice(-4)}.excalidraw`,
+      );
+    }
+  };
+
+  // Create a drawing from a ready scene JSON (templates).
+  const handleCreateFromJson = async (
+    parentPath: string,
+    name: string,
+    json: string,
+  ) => {
+    setIsBusy(true);
+    setGlobalAlert(null);
+    try {
+      await createDoc(parentPath, name, undefined, json);
+      await loadDirectory(parentPath);
+      handleExpandFolder(parentPath);
+      startIndexing();
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const templates = useTemplates({
+    repository,
+    vault,
+    folder: templatesFolder,
+    doc,
+    theme: appTheme,
+    activePath: activeDoc?.path ?? null,
+    flushActive: () => flushDoc({ commitText: false }),
+    prepareParent: prepareNewDrawingParent,
+    createFromJson: handleCreateFromJson,
+    newBlank: () => void handleNewDrawing(),
+    onError: (message) => setGlobalAlert({ message, type: "error" }),
+  });
+  const { openPicker: openTemplatePicker } = templates;
+
+  // Cmd+Option+N (Ctrl+Alt+N): new drawing from a template. Hard-wired until
+  // the command registry lands; matched by code because Option+N types a
+  // dead key on macOS. Excalidraw has no Alt+N binding.
+  useEffect(() => {
+    if (!doc || !hasVault) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        !(e.metaKey || e.ctrlKey) ||
+        !e.altKey ||
+        e.shiftKey ||
+        e.code !== "KeyN"
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (doc.querySelector(".vault-modal-backdrop")) {
+        return;
+      }
+      void openTemplatePicker();
+    };
+    doc.addEventListener("keydown", onKeyDown, true);
+    return () => doc.removeEventListener("keydown", onKeyDown, true);
+  }, [doc, hasVault, openTemplatePicker]);
 
   // Create folder
   const handleCreateFolder = async (parentPath: string, name: string) => {
@@ -1255,7 +1329,11 @@ export const VaultApp = ({
   }
 
   const recentDrawings = allIndexedEntries
-    .filter((entry) => entry.kind === "drawing")
+    .filter(
+      (entry) =>
+        entry.kind === "drawing" &&
+        !isInTemplatesFolder(entry.path, templatesFolder),
+    )
     .sort((a, b) => b.modifiedAt - a.modifiedAt)
     .slice(0, 6);
 
@@ -1330,6 +1408,7 @@ export const VaultApp = ({
         navigatorCollapsed={navigatorCollapsed}
         onToggleNavigator={handleToggleNavigator}
         onNewDrawing={() => void handleNewDrawing()}
+        onNewFromTemplate={() => void openTemplatePicker()}
         onOpenConflict={() => setShowConflictDialog(true)}
         onOpenRecovery={() => setShowRecoveryDialog(true)}
         onSave={handleExplicitSave}
@@ -1387,6 +1466,15 @@ export const VaultApp = ({
                   <span>Create Drawing</span>
                 </button>
               )}
+              {!vault.readOnly && (
+                <button
+                  type="button"
+                  className="vault-btn"
+                  onClick={() => void openTemplatePicker()}
+                >
+                  <span>New from template…</span>
+                </button>
+              )}
               {recentDrawings.length > 0 && (
                 <section className="vault-recent" aria-label="Recent drawings">
                   <h3 className="vault-recent__title">Recent</h3>
@@ -1413,6 +1501,7 @@ export const VaultApp = ({
           )}
         </div>
 
+        {templates.dialogs}
         <VaultNavigator
           vault={vault}
           activePath={activeDoc?.path ?? null}
@@ -1428,6 +1517,7 @@ export const VaultApp = ({
           onRenameEntry={handleRenameEntry}
           onMoveEntry={handleMoveEntry}
           onDuplicateDrawing={handleDuplicateDrawing}
+          onSaveAsTemplate={templates.requestSave}
           onTrashEntry={handleTrashEntry}
           onRevealEntry={handleRevealEntry}
           onSwitchVault={handleSwitchVault}

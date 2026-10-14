@@ -76,6 +76,7 @@ interface VaultNavigatorProps {
     destinationParentPath: string,
   ) => void | Promise<void>;
   onDuplicateDrawing: (path: string) => void | Promise<void>;
+  onSaveAsTemplate?: (path: string) => void;
   onTrashEntry: (path: string) => void | Promise<void>;
   onRevealEntry: (path: string) => void | Promise<void>;
   onSwitchVault: () => void | Promise<void>;
@@ -110,6 +111,7 @@ export const VaultNavigator = ({
   onRenameEntry,
   onMoveEntry,
   onDuplicateDrawing,
+  onSaveAsTemplate,
   onTrashEntry,
   onRevealEntry,
   onSwitchVault,
@@ -687,6 +689,9 @@ export const VaultNavigator = ({
             setCreateError(null);
           }}
           onDuplicate={(entry) => void onDuplicateDrawing(entry.path)}
+          onSaveAsTemplate={
+            onSaveAsTemplate && ((entry) => onSaveAsTemplate(entry.path))
+          }
           onRename={(entry) => setRenameTarget(entry)}
           onMove={(entry) => setMoveTarget(entry)}
           onReveal={(entry) => void onRevealEntry(entry.path)}
@@ -1004,6 +1009,7 @@ interface RowMenuProps {
   onClose: () => void;
   onNewInside: (folderPath: string) => void;
   onDuplicate: (entry: VaultEntry) => void;
+  onSaveAsTemplate?: (entry: VaultEntry) => void;
   onRename: (entry: VaultEntry) => void;
   onMove: (entry: VaultEntry) => void;
   onReveal: (entry: VaultEntry) => void;
@@ -1132,6 +1138,7 @@ const RowMenu = ({
   onClose,
   onNewInside,
   onDuplicate,
+  onSaveAsTemplate,
   onRename,
   onMove,
   onReveal,
@@ -1173,6 +1180,9 @@ const RowMenu = ({
       {!isFolder &&
         !readOnly &&
         item("Duplicate", <IconCopy />, () => onDuplicate(entry))}
+      {!isFolder &&
+        onSaveAsTemplate &&
+        item("Save as template…", <IconCopy />, () => onSaveAsTemplate(entry))}
       {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
       {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
       {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}

@@ -1,4 +1,4 @@
-import { IconAlert, IconCheck, IconPlus, IconSidebar } from "./Icons";
+import { IconAlert, IconCheck, IconCopy, IconPlus, IconSidebar } from "./Icons";
 
 import type { SaveStatus, VaultInfo } from "../vault/types";
 
@@ -11,6 +11,7 @@ interface VaultHeaderProps {
   navigatorCollapsed: boolean;
   onToggleNavigator: () => void;
   onNewDrawing: () => void;
+  onNewFromTemplate?: () => void;
   onOpenConflict: () => void;
   onOpenRecovery: () => void;
   onSave?: () => void;
@@ -25,6 +26,7 @@ export const VaultHeader = ({
   navigatorCollapsed,
   onToggleNavigator,
   onNewDrawing,
+  onNewFromTemplate,
   onOpenConflict,
   onOpenRecovery,
   onSave,
@@ -184,6 +186,17 @@ export const VaultHeader = ({
             aria-label="New Drawing"
           >
             <IconPlus />
+          </button>
+        )}
+        {!vault.readOnly && onNewFromTemplate && (
+          <button
+            type="button"
+            className="vault-btn vault-btn--ghost vault-btn--icon"
+            onClick={onNewFromTemplate}
+            title="New drawing from a template (Cmd+Option+N)"
+            aria-label="New from Template"
+          >
+            <IconCopy />
           </button>
         )}
 
