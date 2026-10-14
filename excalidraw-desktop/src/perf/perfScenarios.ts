@@ -196,6 +196,10 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     }
     el.click();
   };
+  // App shortcuts match exact chords: Cmd on macOS, Ctrl elsewhere (never both).
+  const MOD: KeyboardEventInit = /Mac/.test(win.navigator.platform)
+    ? { metaKey: true }
+    : { ctrlKey: true };
   const key = (target: EventTarget, k: string, extra: KeyboardEventInit = {}) =>
     target.dispatchEvent(
       new win.KeyboardEvent("keydown", {
@@ -530,14 +534,14 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     );
     await sleep(900);
     key(doc, "Escape");
-    key(canvas, "a", { metaKey: true, ctrlKey: true });
+    key(canvas, "a", MOD);
     await afterPaint();
     key(canvas, "ArrowRight");
     await afterPaint();
     // Explicit save straight after the edit, so it is the write being measured.
     const t0 = now();
     const first = writes.length;
-    key(doc, "s", { metaKey: true, ctrlKey: true });
+    key(doc, "s", MOD);
     let record: WriteRecord | undefined;
     await waitUntil(
       `writeDrawing for ${path}`,
