@@ -120,8 +120,10 @@ if (!o["skip-browser"]) {
       const { runBrowser } = await import(pathToFileURL(bf).href);
       const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
       const { vaultDir } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
-      const r = await runBrowser({ mode, runs: runs + warmup, vaultDir, config, log });
-      rawBrowser = (r.samples ?? []).slice(warmup).map((run) =>
+      // runBrowser discards its own warmup runs and returns only measured ones.
+      const r = await runBrowser({ mode, runs, warmup, vaultDir, config, build: !o["no-build"], log });
+      for (const e of r.errors ?? []) errors.push(`browser mode: ${e}`);
+      rawBrowser = (r.samplesPerRun ?? []).map((run) =>
         Object.fromEntries(Object.entries(run).map(([k, v]) => [k.startsWith("browser.") ? k : `browser.${k}`, v])));
       if (r.info) notes.push(`browser info: ${JSON.stringify(r.info)}`);
     } catch (e) {
