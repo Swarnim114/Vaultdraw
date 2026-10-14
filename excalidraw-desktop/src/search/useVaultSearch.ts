@@ -62,18 +62,28 @@ export function useVaultSearch(
       // renders instead of painting them inside a typing frame.
       startTransition(() => setRefreshTick((t) => t + 1));
     };
-    const onStatus = (next: IndexStatus) => {
+    const onStatus = (next: IndexStatus, initial = false) => {
       if (cancelled || next.handle !== handle) {
         return;
       }
       const prev = previous;
       previous = next.state;
-      startTransition(() => setStatus(next));
+      // The first answer on mount is applied plainly (it lands in the same
+      // pass as the mount's own updates); live events yield to keystrokes.
+      if (initial) {
+        setStatus(next);
+      } else {
+        startTransition(() => setStatus(next));
+      }
       // Entering "building" means the crawl has made every name searchable (it
       // parses contents afterwards), so a query typed during the walk is
-      // answered right away instead of after the throttle.
+      // answered right away instead of after the throttle. The initial answer
+      // is not a transition: the query effect that mounted alongside it
+      // searches the index as it is now, so re-running would only double the
+      // work of the first keystroke (tree -> search mode switch).
       const entered =
         prev !== next.state &&
+        !initial &&
         (next.state === "building" ||
           (next.state === "ready" && prev !== null));
       if (entered) {
@@ -105,7 +115,7 @@ export function useVaultSearch(
       .then((s) => {
         // A live event may already have arrived; do not regress it.
         if (!cancelled && previous === null) {
-          onStatus(s);
+          onStatus(s, true);
         }
       })
       .catch(() => {});

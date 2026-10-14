@@ -373,6 +373,31 @@ describe("useVaultSearch", () => {
     expect(search.search).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["ready", "building"] as const)(
+    "mounting on a %s index (first keystroke) renders 3 times and searches once",
+    async (state) => {
+      vi.useFakeTimers();
+      const search: VaultSearch = {
+        search: vi.fn(async () => response()),
+        listNames: async () => ({ paths: [], status: status() }),
+        status: async () => status({ state }),
+        tags: async () => NO_TAGS,
+        subscribe: async () => () => {},
+      };
+      let renders = 0;
+      renderHook(() => {
+        renders += 1;
+        return useVaultSearch(search, "h", "m");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      // The initial status is not a transition: no extra commit, no re-run.
+      expect(search.search).toHaveBeenCalledTimes(1);
+      expect(renders).toBe(3);
+    },
+  );
+
   it("an index re-run while typing waits for the typing debounce and is cancelled by the next keystroke", async () => {
     vi.useFakeTimers();
     let emit: (s: IndexStatus) => void = () => {};
