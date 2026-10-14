@@ -4,7 +4,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync } f
 import { rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
-  snapshotWebKitPids, discoverWebKitHelpers, listProcesses, sampleProcs,
+  snapshotWebKitPids, discoverWebKitHelpers, listProcesses, sampleProcs, sampleFootprint,
   applyBackgroundPolicy, trackChild, startMemoryPressure,
 } from "./procs.mjs";
 
@@ -16,6 +16,14 @@ const sh = (cmd, args, opts) =>
   new Promise((resolve, reject) => {
     execFile(cmd, args, opts, (err, stdout, stderr) => (err ? reject(Object.assign(err, { stderr })) : resolve(String(stdout))));
   });
+
+/** True when the macOS session's screen is locked (WKWebView then throttles rAF/timers). */
+export function isScreenLocked() {
+  try {
+    const out = execFileSync("ioreg", ["-n", "Root", "-d1", "-a"], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+    return /CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(out);
+  } catch { return false; }
+}
 
 export const perfCacheDir = (wtRoot) => path.join(wtRoot, ".cache", "perf");
 export const perfAppPath = (wtRoot) => path.join(perfCacheDir(wtRoot), "app", "Excalidraw Vault.app");
@@ -104,13 +112,23 @@ export async function runAppOnce({
   const notes = [];
   const marks = [];
   const before = await snapshotWebKitPids();
-  const env = { ...process.env, ...extraEnv, EXCALIDRAW_VAULT_SMOKE_DIR: vault, VAULTDRAW_CONFIG_DIR: cfg, VAULTDRAW_STATE_DIR: state };
+  const env = { ...process.env, VAULTDRAW_PERF: "1", ...extraEnv, EXCALIDRAW_VAULT_SMOKE_DIR: vault, VAULTDRAW_CONFIG_DIR: cfg, VAULTDRAW_STATE_DIR: state };
   const [cmd, args] = lowEnd ? ["taskpolicy", ["-c", "background", bin]] : [bin, []];
 
   const mp = memoryPressure ? startMemoryPressure({ seconds: Math.ceil(timeoutMs / 1000), log }) : null;
   const spawnWallMs = Date.now();
   const child = trackChild(spawn(cmd, args, { env, stdio: ["ignore", "pipe", "pipe"] }));
   const appPid = child.pid;
+  // Display on and no idle sleep for the lifetime of the app (it exits on its own).
+  try {
+    const caf = trackChild(spawn("caffeinate", ["-dimsu", "-w", String(appPid)], { stdio: "ignore" }));
+    caf.on("error", () => {});
+  } catch { /* best effort */ }
+  const screenLocked = isScreenLocked();
+  if (screenLocked) {
+    log("WARNING: screen is locked; numbers taken with a locked screen are less representative (window may be occluded)");
+    notes.push("screen locked during run: numbers are less representative");
+  }
   let appPidResolved = false;
   const helpers = new Set();
   let exactPids = false;
@@ -119,6 +137,10 @@ export async function runAppOnce({
   let interactiveSeen = false;
   let coldToInteractive;
   let idleBegin, idleEnd;
+  let footprintAtEnd = null;
+  let lastPhase = null;
+  let lastHeartbeat = null;
+  const pendingSlow = new Map();
   let stdoutTail = "";
   let stderrTail = "";
   let closed = false;
@@ -171,6 +193,10 @@ export async function runAppOnce({
     const name = entry?.details?.name;
     if (entry.step !== "perf-mark" || typeof name !== "string") return;
     marks.push({ name, wallMs: entry.details.wallMs, nodeMs: Date.now() });
+    if (name.startsWith("phase:")) lastPhase = name;
+    if (name === "heartbeat") lastHeartbeat = entry.details;
+    if (name === "slow-ipc") pendingSlow.set(entry.details.id, entry.details);
+    if (name === "slow-ipc-done") pendingSlow.delete(entry.details.id);
     if (name === "pids") {
       const p = entry.details.pids;
       const ids = p ? [p.webContent, p.network, p.gpu].filter((n) => Number.isInteger(n) && n > 0) : [];
@@ -203,6 +229,7 @@ export async function runAppOnce({
       await rediscover();
     } else if (name === "idle-end") {
       idleEnd = await sampleWithTime();
+      footprintAtEnd = await sampleFootprint(livePids());
     }
   }
 
@@ -222,7 +249,20 @@ export async function runAppOnce({
   child.stderr.on("data", (d) => { stderrTail = (stderrTail + d).slice(-4000); });
 
   let timedOut = false;
-  const killTimer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch { /* gone */ } }, timeoutMs);
+  let stallSampleFile = null;
+  const killTimer = setTimeout(async () => {
+    timedOut = true;
+    // Where is the native side stuck? Sample the app for 3 s before killing it.
+    try {
+      const logDir = path.join(path.dirname(runsDir), "logs");
+      mkdirSync(logDir, { recursive: true });
+      stallSampleFile = path.join(logDir, `stall-sample-${path.basename(runDir)}.txt`);
+      await sh("sample", [String(appPid), "3", "-file", stallSampleFile], { timeout: 20_000 });
+    } catch (e) {
+      stallSampleFile = stallSampleFile ? `${stallSampleFile} (sample failed: ${e.message})` : null;
+    }
+    try { child.kill("SIGKILL"); } catch { /* gone */ }
+  }, timeoutMs);
   const exit = await new Promise((resolve) => {
     child.on("error", (e) => { errors.push(`spawn failed: ${e.message}`); resolve({ code: -1 }); });
     child.on("close", (code, signal) => resolve({ code, signal }));
@@ -234,7 +274,10 @@ export async function runAppOnce({
   mp?.stop();
   if (mp) notes.push(mp.note());
 
-  if (timedOut) errors.push(`timeout after ${timeoutMs / 1000} s (app killed)`);
+  if (timedOut) {
+    const pend = [...pendingSlow.values()].map((d) => `${d.method}(${d.args}) pending ${d.pendingMs} ms`).join("; ");
+    errors.push(`timeout after ${timeoutMs / 1000} s (app killed); last phase: ${lastPhase ?? "none"}; last heartbeat: ${lastHeartbeat ? `visibility=${lastHeartbeat.visibility} hasFocus=${lastHeartbeat.hasFocus} msSinceRaf=${lastHeartbeat.msSinceRaf}` : "none"}; pending slow IPC: ${pend || "none"}${stallSampleFile ? `; native sample: ${stallSampleFile}` : ""}`);
+  }
   else if (exit.code !== 0) errors.push(`app exited with ${exit.signal ?? exit.code}`);
 
   const samples = {};
@@ -261,6 +304,17 @@ export async function runAppOnce({
   if (coldToInteractive !== undefined) samples["startup.coldToInteractive"] = [coldToInteractive];
   else if (!timedOut) errors.push("no `interactive` mark seen");
   if (peakRssKB > 0) samples["memory.peakRssMB"] = [peakRssKB / 1024];
+  if (footprintAtEnd?.size) {
+    let peak = 0, current = 0, complete = true;
+    for (const v of footprintAtEnd.values()) {
+      if (Number.isFinite(v.peak)) peak += v.peak; else complete = false;
+      current += v.footprint;
+    }
+    const MB = 1024 * 1024;
+    if (complete) samples["memory.peakFootprintMB"] = [peak / MB];
+    samples["memory.idleFootprintMB"] = [current / MB];
+    notes.push(`footprint over ${footprintAtEnd.size}/${livePids().length} pids at idle-end (peak = sum of per-process lifetime peaks, an upper bound on the simultaneous peak)`);
+  } else notes.push("footprint unavailable; memory.peakFootprintMB not measured");
   if (idleBegin && idleEnd) {
     const wallS = (idleEnd.t - idleBegin.t) / 1000;
     let cpu = 0;
@@ -272,6 +326,26 @@ export async function runAppOnce({
   } else {
     notes.push("idle marks missing; idle.cpuPercent not measured");
   }
+  // Per-process breakdown (app / webContent / network / gpu) so a budget breach points at its owner.
+  const roleOf = (pid) => {
+    if (pid === appPid) return "app";
+    for (const [role, id] of Object.entries(pidsInfo ?? {})) if (id === pid && role !== "app") return role;
+    return `pid${pid}`;
+  };
+  const breakdown = {};
+  for (const [pid, v] of footprintAtEnd ?? []) {
+    breakdown[roleOf(pid)] = { peakFootprintMB: Math.round(v.peak / 1048576), footprintMB: Math.round(v.footprint / 1048576) };
+  }
+  if (idleBegin && idleEnd) {
+    const wallS = (idleEnd.t - idleBegin.t) / 1000;
+    for (const [pid, a] of idleBegin.m) {
+      const b = idleEnd.m.get(pid);
+      if (!b || !(wallS > 0)) continue;
+      (breakdown[roleOf(pid)] ??= {}).idleCpuPercent = Math.round(((b.cpuSec - a.cpuSec) / wallS) * 1000) / 10;
+    }
+  }
+  info.processBreakdown = breakdown;
+  if (Object.keys(breakdown).length) notes.push(`per process: ${JSON.stringify(breakdown)}`);
   if (exactPids) notes.push(`WebKit helpers from perf_process_ids (exact): ${helpers.size}`);
   else if (helpers.size) notes.push(`perf_process_ids unavailable; WebKit helpers attributed by pid-diff (${helpers.size}; may include other apps' helpers)`);
   else notes.push("no WebKit helper processes discovered (RSS/CPU cover the app process only)");
@@ -280,5 +354,5 @@ export async function runAppOnce({
     notes.push(`app output tail: ${(stderrTail || stdoutTail).trim().split("\n").slice(-6).join(" | ")}`);
   }
   if (!keepRuns) await rm(runDir, { recursive: true, force: true });
-  return { samples, info, errors, notes, marks, spawnWallMs, appPid, helperPids: [...helpers], runDir: keepRuns ? runDir : undefined };
+  return { samples, info, errors, notes, marks, spawnWallMs, appPid, screenLocked, helperPids: [...helpers], runDir: keepRuns ? runDir : undefined };
 }

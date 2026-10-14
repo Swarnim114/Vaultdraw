@@ -1,5 +1,8 @@
 // Process discovery + RSS / CPU-time sampling via ps. macOS only.
 import { execFile, spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const run = (cmd, args) =>
   new Promise((resolve) => {
@@ -64,6 +67,37 @@ export async function sampleProcs(pids) {
   if (!pids.length) return new Map();
   const { stdout } = await run("ps", ["-o", "pid=,rss=,time=", "-p", pids.join(",")]);
   return parsePsSample(stdout);
+}
+
+/** Parse `footprint -j` JSON into Map<pid, {footprint, peak}> (bytes). Entries without `auxiliary` counters are skipped. */
+export function parseFootprintJson(text) {
+  const out = new Map();
+  let j;
+  try { j = JSON.parse(text); } catch { return out; }
+  const scale = Number(j["bytes per unit"]) || 1;
+  for (const p of j.processes ?? []) {
+    const a = p.auxiliary ?? {};
+    const footprint = Number(a.phys_footprint ?? p.footprint);
+    const peak = Number(a.phys_footprint_peak);
+    if (!Number.isInteger(p.pid) || !Number.isFinite(footprint)) continue;
+    out.set(p.pid, { footprint: footprint * scale, peak: Number.isFinite(peak) ? peak * scale : NaN });
+  }
+  return out;
+}
+
+/** phys_footprint and lifetime phys_footprint_peak (what Activity Monitor's Memory column is based on). ~50 ms, no root. */
+export async function sampleFootprint(pids) {
+  if (!pids.length) return new Map();
+  const dir = await mkdtemp(path.join(tmpdir(), "perf-footprint-"));
+  const file = path.join(dir, "fp.json");
+  try {
+    await run("/usr/bin/footprint", [...pids.flatMap((p) => ["-p", String(p)]), "-j", file]);
+    return parseFootprintJson(await readFile(file, "utf8"));
+  } catch {
+    return new Map();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 export async function applyBackgroundPolicy(pid) {

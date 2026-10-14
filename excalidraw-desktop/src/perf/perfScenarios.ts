@@ -62,18 +62,39 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => win.setTimeout(resolve, ms));
 
-  /** rAF, then a macrotask: resolves once the frame that followed the DOM change was produced. */
-  const afterPaint = () =>
-    new Promise<void>((resolve) => {
+  /** rAF with a watchdog: a hidden/occluded window stops rAF, so fail fast instead of hanging. */
+  const raf = () =>
+    new Promise<void>((resolve, reject) => {
+      let fired = false;
       win.requestAnimationFrame(() => {
-        const channel = new win.MessageChannel();
-        channel.port1.onmessage = () => {
-          channel.port1.close();
-          resolve();
-        };
-        channel.port2.postMessage(0);
+        fired = true;
+        resolve();
       });
+      win.setTimeout(() => {
+        if (fired) {
+          return;
+        }
+        // Grace period: a long main-thread block delays timer and frame alike.
+        win.setTimeout(() => {
+          if (!fired) {
+            reject(new Error("rAF stalled (window hidden/occluded?)"));
+          }
+        }, 500);
+      }, 2000);
     });
+
+  /** rAF, then a macrotask: resolves once the frame that followed the DOM change was produced. */
+  const afterPaint = async () => {
+    await raf();
+    await new Promise<void>((resolve) => {
+      const channel = new win.MessageChannel();
+      channel.port1.onmessage = () => {
+        channel.port1.close();
+        resolve();
+      };
+      channel.port2.postMessage(0);
+    });
+  };
 
   /** Resolves as soon as `cond` holds: checked on every DOM mutation (before paint) plus a 25ms poll. */
   const waitUntil = (
@@ -600,9 +621,7 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
           ...makeEvent(phase),
         }),
       );
-      await new Promise<void>((resolve) =>
-        win.requestAnimationFrame(() => resolve()),
-      );
+      await raf();
     }
     const intervals = frames.stop();
     await afterPaint();

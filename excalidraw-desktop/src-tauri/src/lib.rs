@@ -1114,7 +1114,11 @@ pub fn run() {
                         .ok_or("window setup must run on the main thread")?;
                     builder.with_webview_configuration(webview_configuration(mtm))
                 };
-                builder.build()?;
+                let main_window = builder.build()?;
+                #[cfg(feature = "smoke-test")]
+                smoke::perf_harden_webview(&main_window);
+                #[cfg(not(feature = "smoke-test"))]
+                let _ = main_window;
                 // Live-reload of the config folder; a failure only disables live reload.
                 match config::start_watcher(app.handle()) {
                     Ok(watcher) => {

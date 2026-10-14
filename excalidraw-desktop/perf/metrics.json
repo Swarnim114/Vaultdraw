@@ -62,10 +62,22 @@
     },
     "memory.peakRssMB": {
       "unit": "MB",
-      "desc": "peak sum of RSS (app + WebKit helpers)",
+      "desc": "peak sum of RSS (app + WebKit helpers); overcounts shared/framework pages, see memory.peakFootprintMB",
+      "gate": ["median"],
+      "slack": 5
+    },
+    "memory.peakFootprintMB": {
+      "unit": "MB",
+      "desc": "sum of lifetime phys_footprint_peak over app + WebKit helpers (Activity Monitor basis), read at idle-end",
       "gate": ["median"],
       "slack": 5,
       "budgets": [{ "stat": "median", "max": 400, "why": "DECISIONS: peak memory < 400 MB with a large vault" }]
+    },
+    "memory.idleFootprintMB": {
+      "unit": "MB",
+      "desc": "sum of current phys_footprint over app + WebKit helpers at idle-end",
+      "gate": ["median"],
+      "slack": 5
     },
     "browser.memory.jsHeapPeakMB": { "unit": "MB", "gate": ["median"], "slack": 5 },
     "browser.longTasks.count": { "unit": "count", "gate": ["median"], "slack": 1 },

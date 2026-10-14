@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePsTime, parsePsSample, parsePsList, isWebKitHelper, sampleProcs } from "./procs.mjs";
+import { parsePsTime, parsePsSample, parsePsList, isWebKitHelper, sampleProcs, parseFootprintJson, sampleFootprint } from "./procs.mjs";
 import { parseSmokeLine } from "./app.mjs";
 
 test("ps time formats", () => {
@@ -33,4 +33,27 @@ test("mark line parsing", () => {
   assert.equal(parseSmokeLine("some other log"), null);
   assert.equal(parseSmokeLine("VAULTDRAW_SMOKE_LOG {broken"), null);
   assert.equal(parseSmokeLine("2026 INFO " + line).details.wallMs, 5);
+});
+
+test("footprint json parsing (real `footprint -j` shape)", () => {
+  const text = JSON.stringify({
+    unit: "byte", "bytes per unit": 1,
+    processes: [
+      { name: "excalidraw-vault", pid: 92516, "page size": 16384, footprint: 72074512,
+        categories: {}, auxiliary: { phys_footprint_peak: 221152552, phys_footprint: 72107280 } },
+      { name: "com.apple.WebKit.WebContent", pid: 92600, footprint: 1000, auxiliary: { phys_footprint_peak: 3000 } },
+      { name: "broken", footprint: 5 },
+    ],
+  });
+  const m = parseFootprintJson(text);
+  assert.equal(m.size, 2);
+  assert.deepEqual(m.get(92516), { footprint: 72107280, peak: 221152552 });
+  assert.deepEqual(m.get(92600), { footprint: 1000, peak: 3000 });
+  assert.equal(parseFootprintJson("not json").size, 0);
+});
+
+test("sampleFootprint on this process", async () => {
+  const m = await sampleFootprint([process.pid]);
+  assert.ok(m.get(process.pid).footprint > 0);
+  assert.ok(m.get(process.pid).peak >= m.get(process.pid).footprint * 0.5);
 });

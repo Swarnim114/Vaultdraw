@@ -9,7 +9,12 @@ export function machineInfo() {
   const memBytes = Number(sysctl("hw.memsize")) || 0;
   let os = "";
   try { os = execFileSync("sw_vers", [], { encoding: "utf8" }).trim().split("\n").map((l) => l.split(":").pop().trim()).join(" "); } catch { /* ignore */ }
+  let screenLocked = false;
+  try {
+    screenLocked = /CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(execFileSync("ioreg", ["-n", "Root", "-d1", "-a"], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }));
+  } catch { /* ignore */ }
   return {
+    screenLocked,
     brand: sysctl("machdep.cpu.brand_string"),
     memBytes,
     memGB: Math.round(memBytes / 2 ** 30),

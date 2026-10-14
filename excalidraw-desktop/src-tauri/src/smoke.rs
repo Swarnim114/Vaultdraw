@@ -143,3 +143,57 @@ pub async fn perf_process_ids(window: tauri::WebviewWindow) -> Result<Value, Str
         .unwrap_or((None, None, None));
     Ok(json!({ "app": std::process::id(), "webContent": web, "network": network, "gpu": gpu }))
 }
+
+/// Perf runs only (VAULTDRAW_PERF=1): keep the WebView rendering while the window is occluded or the
+/// screen is locked, and keep the process out of App Nap. Every private selector is guarded.
+pub fn perf_harden_webview(window: &tauri::WebviewWindow) {
+    if env::var("VAULTDRAW_PERF").ok().as_deref() != Some("1") {
+        return;
+    }
+    let _ = window.set_focus();
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window.with_webview(|webview| unsafe {
+            use objc2::runtime::{AnyObject, Bool, Sel};
+            use objc2::{msg_send, sel};
+            let ptr = webview.inner();
+            if !ptr.is_null() {
+                let view: &AnyObject = &*(ptr as *mut AnyObject);
+                let responds = |obj: &AnyObject, sel: Sel| -> bool {
+                    msg_send![obj, respondsToSelector: sel]
+                };
+                if responds(view, sel!(_setWindowOcclusionDetectionEnabled:)) {
+                    let _: () = msg_send![view, _setWindowOcclusionDetectionEnabled: Bool::NO];
+                }
+                let config: *mut AnyObject = msg_send![view, configuration];
+                if !config.is_null() {
+                    let prefs: *mut AnyObject = msg_send![&*config, preferences];
+                    if !prefs.is_null() {
+                        let prefs: &AnyObject = &*prefs;
+                        if responds(prefs, sel!(_setHiddenPageDOMTimerThrottlingEnabled:)) {
+                            let _: () = msg_send![prefs, _setHiddenPageDOMTimerThrottlingEnabled: Bool::NO];
+                        }
+                        if responds(prefs, sel!(_setPageVisibilityBasedProcessSuppressionEnabled:)) {
+                            let _: () = msg_send![prefs, _setPageVisibilityBasedProcessSuppressionEnabled: Bool::NO];
+                        }
+                    }
+                }
+            }
+            // Hold an activity token for the life of the process: no App Nap. Not latency-critical:
+            // that flag disables timer coalescing and would inflate the idle CPU measurement.
+            let info: *mut AnyObject = msg_send![objc2::class!(NSProcessInfo), processInfo];
+            if !info.is_null() {
+                let reason = objc2_foundation::NSString::from_str("perf run");
+                const USER_INITIATED: u64 = 0x00FF_FFFF;
+                let token: *mut AnyObject = msg_send![
+                    &*info,
+                    beginActivityWithOptions: USER_INITIATED,
+                    reason: &*reason
+                ];
+                if !token.is_null() {
+                    let _: *mut AnyObject = msg_send![&*token, retain];
+                }
+            }
+        });
+    }
+}

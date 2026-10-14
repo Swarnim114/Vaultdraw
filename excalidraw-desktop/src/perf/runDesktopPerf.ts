@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import fixturesConfig from "../../perf/fixtures.config.json";
 import { desktopRepository } from "../vault/DesktopVaultRepository";
 
+import { installIpcTrace } from "./ipcTrace";
 import { runPerfScenarios } from "./perfScenarios";
 
 const IDLE_MS = 10_000;
@@ -84,6 +85,34 @@ export async function runDesktopPerf(): Promise<void> {
     await mark("interactive");
     await markPids();
 
+    // Heartbeat: tells a stalled run apart (hidden/occluded WebView stops rAF, JS hang, IPC hang).
+    // Stall diagnostics stop before the idle window. No rAF loop here: one would keep the WebView
+    // rendering every frame and perturb the measurements (the scenarios' rAF watchdog reports stalls).
+    const heartbeat = win.setInterval(() => {
+      void invoke("smoke_log", {
+        step: "perf-mark",
+        ok: true,
+        details: {
+          name: "heartbeat",
+          wallMs: Date.now(),
+          perfMs: win.performance.now(),
+          visibility: doc.visibilityState,
+          hasFocus: doc.hasFocus(),
+        },
+      }).catch(() => undefined);
+    }, 5000);
+    const trace = installIpcTrace(desktopRepository, win, (name, details) => {
+      void invoke("smoke_log", {
+        step: "perf-mark",
+        ok: true,
+        details: {
+          name,
+          wallMs: Date.now(),
+          perfMs: win.performance.now(),
+          ...details,
+        },
+      }).catch(() => undefined);
+    });
     const { samples, info, errors } = await runPerfScenarios({
       root,
       doc,
@@ -117,9 +146,14 @@ export async function runDesktopPerf(): Promise<void> {
     desktopRepository.writeDrawing = originalWrite;
     await markPids();
 
+    Object.assign(info, trace.finish());
+    trace.uninstall();
+    win.clearInterval(heartbeat);
     await mark("idle-begin");
     await sleep(IDLE_MS);
     await mark("idle-end");
+    // Keep the process alive while the runner reads footprint / cpu for the idle-end sample.
+    await sleep(2000);
 
     await invoke("smoke_finish", {
       status: errors.length ? 1 : 0,
