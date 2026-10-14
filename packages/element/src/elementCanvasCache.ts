@@ -5,7 +5,7 @@
 // to free their backing store. For large scenes that dominates WebContent
 // memory. This keeps the same get/set/delete/has shape, but:
 //  - bounds the total bytes held by entries that are NOT used in the current
-//    frame (the visible set is never evicted, so panning/zooming never
+//    frame or the previous one (the visible set is never evicted, so panning/zooming never
 //    re-rasterises what is on screen every frame),
 //  - zeroes canvas width/height on eviction/replacement so WebKit frees the
 //    backing store immediately.
@@ -103,9 +103,13 @@ export class ElementCanvasCache<K extends object, V extends CanvasHolder> {
       if (this.totalBytes <= this.budget) {
         break;
       }
-      // LRU order: everything after the first current-frame entry was used
-      // in the current frame too, so nothing evictable remains.
-      if (entry.frame === this.frame) {
+      // Entries drawn in the previous frame are protected too: `beginFrame`
+      // runs before the new frame touches anything, so protecting only the
+      // current frame evicted the on-screen set whenever it exceeded the
+      // budget, and every visible element was re-rasterised every frame.
+      // LRU order: everything after the first protected entry is protected
+      // too, so nothing evictable remains.
+      if (entry.frame >= this.frame - 1) {
         break;
       }
       this.delete(key);

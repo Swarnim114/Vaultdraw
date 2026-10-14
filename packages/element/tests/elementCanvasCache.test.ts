@@ -21,6 +21,7 @@ describe("ElementCanvasCache", () => {
     cache.set(a, ea);
     cache.set(b, entry());
     cache.beginFrame();
+    cache.beginFrame();
     cache.set(c, entry());
     expect(cache.has(a)).toBe(false);
     expect(ea.canvas.width).toBe(0);
@@ -34,8 +35,24 @@ describe("ElementCanvasCache", () => {
     keys.forEach((k) => cache.set(k, entry()));
     expect(cache.size).toBe(3);
     cache.beginFrame();
-    // next frame: none used, trimmed down to the budget
+    // the previous frame's entries are kept: they are what is on screen
+    expect(cache.size).toBe(3);
+    cache.beginFrame();
+    // a frame later, none used: trimmed down to the budget
     expect(cache.size).toBe(1);
+  });
+
+  it("keeps an on-screen set larger than the budget across frames", () => {
+    const cache = new ElementCanvasCache<object, any>(B);
+    const keys = [{}, {}, {}];
+    const values = keys.map(() => entry());
+    keys.forEach((k, i) => cache.set(k, values[i]));
+    for (let frame = 0; frame < 3; frame++) {
+      cache.beginFrame();
+      // the same three elements are drawn every frame: none re-created
+      keys.forEach((k, i) => expect(cache.get(k)).toBe(values[i]));
+    }
+    expect(values.every((v) => v.canvas.width === 100)).toBe(true);
   });
 
   it("re-get marks entry most-recently-used", () => {
