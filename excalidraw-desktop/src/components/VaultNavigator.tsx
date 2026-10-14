@@ -439,7 +439,11 @@ export const VaultNavigator = ({
       }`}
       style={collapsed ? undefined : { width, flexBasis: width }}
       aria-label="Vault File Navigator"
-      aria-hidden={collapsed}
+      // Its dialogs render inside: keep them visible to assistive tech when
+      // the palette opens one with the navigator collapsed.
+      aria-hidden={
+        collapsed && !createKind && !renameTarget && !moveTarget && !trashTarget
+      }
       data-vault-path={vault.path}
     >
       {!collapsed && (
