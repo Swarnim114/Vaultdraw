@@ -65,7 +65,11 @@ export const useVaultLibrary = (
     }
     return store.subscribe((kind) => {
       if (kind === "external") {
-        void api.updateLibrary({ libraryItems: store.union(), merge: false });
+        void api.updateLibrary({
+          libraryItems: store.union(),
+          merge: false,
+          skipRestore: true, // the store only holds restored items
+        });
       }
     });
   }, [api, store]);

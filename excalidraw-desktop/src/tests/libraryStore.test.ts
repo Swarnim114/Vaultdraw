@@ -212,4 +212,22 @@ describe("LibraryStore", () => {
     await vi.advanceTimersByTimeAsync(2500);
     expect(repo.writes).toHaveLength(0);
   });
+
+  it("hands restored items to the editor and writes a valid one-item-per-line file", async () => {
+    repo.setFile("personal", json("a", "b"));
+    await load();
+    const res = (await store.adapter.load({ source: "save" }))!;
+    expect((res as { restored?: boolean }).restored).toBe(true);
+    save([item("c"), ...(res.libraryItems as LibraryItem[])]);
+    await store.flush();
+    const written = repo.writes[0].json;
+    const parsed = JSON.parse(written);
+    expect(parsed.type).toBe("excalidrawlib");
+    expect(ids(parsed.libraryItems)).toEqual(["c", "a", "b"]);
+    expect(written.split("\n").length).toBeLessThan(12);
+    // an empty library still serializes to a valid file
+    save([]);
+    await store.flush();
+    expect(JSON.parse(repo.writes[1].json).libraryItems).toEqual([]);
+  });
 });

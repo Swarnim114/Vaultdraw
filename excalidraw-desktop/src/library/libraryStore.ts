@@ -89,7 +89,54 @@ const label = (src: Source) =>
     ? "This vault's library.excalidrawlib"
     : "Your personal library (library.excalidrawlib)";
 
-const parseLibrary = (json: string): LibraryItem[] => {
+const SLICE_BUDGET_MS = 12;
+const SLICE_ITEMS = 25;
+
+const yieldToMain = (): Promise<void> => {
+  const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } })
+    .scheduler;
+  return sched?.yield
+    ? sched.yield()
+    : new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+/**
+ * Maps `items` in slices, yielding to the event loop whenever a slice used up
+ * its time budget so a 20 MB library never blocks the UI thread in one task.
+ * Small inputs finish synchronously within a single slice (no yield).
+ */
+async function inSlices<T, R>(
+  items: readonly T[],
+  fn: (slice: T[]) => R[],
+): Promise<R[]> {
+  const out: R[] = [];
+  let sliceStart = performance.now();
+  for (let i = 0; i < items.length; i += SLICE_ITEMS) {
+    out.push(...fn(items.slice(i, i + SLICE_ITEMS)));
+    if (performance.now() - sliceStart > SLICE_BUDGET_MS) {
+      await yieldToMain();
+      sliceStart = performance.now();
+    }
+  }
+  return out;
+}
+
+/** One item per line, so the file stays diff-friendly without 2-space indent. */
+const serializeLibrary = async (items: readonly LibraryItem[]) => {
+  const lines = await inSlices(items, (slice) =>
+    slice.map((item) => JSON.stringify(item)),
+  );
+  // header (type/version/source) comes from the package serializer
+  const empty = serializeLibraryAsJSON([]);
+  const at = empty.indexOf('"libraryItems": []');
+  return lines.length
+    ? `${empty.slice(0, at)}"libraryItems": [\n${lines.join(
+        ",\n",
+      )}\n  ]${empty.slice(at + '"libraryItems": []'.length)}`
+    : empty;
+};
+
+const parseLibrary = async (json: string): Promise<LibraryItem[]> => {
   const data = JSON.parse(json) as {
     type?: unknown;
     libraryItems?: unknown;
@@ -102,7 +149,9 @@ const parseLibrary = (json: string): LibraryItem[] => {
   if (!Array.isArray(raw)) {
     throw new Error("missing libraryItems");
   }
-  return restoreLibraryItems(raw, "unpublished");
+  return inSlices(raw as never[], (slice) =>
+    restoreLibraryItems(slice, "unpublished"),
+  );
 };
 
 type Delta = { upserts: Map<string, LibraryItem>; deleted: Set<string> };
@@ -218,7 +267,8 @@ export class LibraryStore {
         await this.ready();
         await this.loadAll();
       }
-      return { libraryItems: this.union() };
+      // everything held here is restored already (parseLibrary / the editor)
+      return { libraryItems: this.union(), restored: true };
     },
     save: ({ libraryItems }: { libraryItems: LibraryItems }) => {
       const personal: LibraryItem[] = [];
@@ -446,7 +496,7 @@ export class LibraryStore {
     let disk: LibraryItem[] = [];
     if (result.json !== null) {
       try {
-        disk = parseLibrary(result.json);
+        disk = await parseLibrary(result.json);
       } catch (err) {
         if (retryTorn) {
           // Sync tools can expose half-written files: look once more.
@@ -555,7 +605,7 @@ export class LibraryStore {
         const { revision } = await this.repo.writeLibrary(
           src.scope,
           src.handle,
-          serializeLibraryAsJSON(items),
+          await serializeLibrary(items),
           src.existed ? src.revision : null,
         );
         src.revision = revision;

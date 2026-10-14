@@ -90,7 +90,15 @@ export interface LibraryPersistenceAdapter {
      * purposes, in which case host app can implement more aggressive caching.
      */
     source: LibraryAdatapterSource;
-  }): MaybePromise<{ libraryItems: LibraryItems_anyVersion } | null>;
+  }): MaybePromise<{
+    libraryItems: LibraryItems_anyVersion;
+    /**
+     * Set when `libraryItems` are already restored (normalized) library items
+     * that the adapter will not mutate. They are then used as is instead of
+     * being restored (copied) again, which matters for large libraries.
+     */
+    restored?: boolean;
+  } | null>;
   /** Should persist to the database as is (do no change the data structure). */
   save(libraryData: LibraryPersistedData): MaybePromise<void>;
 }
@@ -216,8 +224,11 @@ class Library {
   /** latest libraryItems */
   private currLibraryItems: LibraryItems = [];
 
-  /** snapshot of library items since last onLibraryChange call */
-  private prevLibraryItems = cloneLibraryItems(this.currLibraryItems);
+  /**
+   * Library items as of the last onLibraryChange call. Held by reference:
+   * `currLibraryItems` is only ever replaced, never mutated in place.
+   */
+  private prevLibraryItems: LibraryItems = this.currLibraryItems;
 
   private app: App;
 
@@ -246,11 +257,17 @@ class Library {
       });
       try {
         const prevLibraryItems = this.prevLibraryItems;
-        this.prevLibraryItems = cloneLibraryItems(this.currLibraryItems);
+        this.prevLibraryItems = this.currLibraryItems;
 
-        const nextLibraryItems = cloneLibraryItems(this.currLibraryItems);
+        // host apps get a defensive copy; without an `onLibraryChange`
+        // consumer the (immutable) current items are used as is, which
+        // avoids deep-cloning the whole library on every update
+        const onLibraryChange = this.app.props.onLibraryChange;
+        const nextLibraryItems = onLibraryChange
+          ? cloneLibraryItems(this.currLibraryItems)
+          : this.currLibraryItems;
 
-        this.app.props.onLibraryChange?.(nextLibraryItems);
+        onLibraryChange?.(nextLibraryItems);
 
         // for internal use in `useHandleLibrary` hook
         onLibraryUpdateEmitter.trigger(
@@ -308,8 +325,15 @@ class Library {
     merge = false,
     openLibraryMenu = false,
     defaultStatus = "unpublished",
+    skipRestore = false,
   }: {
     libraryItems: LibraryItemsSource;
+    /**
+     * The items are already restored library items (array, not a Blob) that
+     * the caller will not mutate afterwards: adopt them without restoring and
+     * deep-copying them again (large libraries).
+     */
+    skipRestore?: boolean;
     merge?: boolean;
     prompt?: boolean;
     openLibraryMenu?: boolean;
@@ -321,7 +345,7 @@ class Library {
       });
     }
 
-    return this.setLibrary(() => {
+    return this._setLibrary(!skipRestore, () => {
       return new Promise<LibraryItems>(async (resolve, reject) => {
         try {
           const source = await (typeof libraryItems === "function" &&
@@ -333,6 +357,8 @@ class Library {
 
           if (source instanceof Blob) {
             nextItems = await loadLibraryFromBlob(source, defaultStatus);
+          } else if (skipRestore) {
+            nextItems = source as LibraryItems;
           } else {
             nextItems = restoreLibraryItems(source, defaultStatus);
           }
@@ -367,6 +393,17 @@ class Library {
   };
 
   setLibrary = (
+    libraryItems:
+      | LibraryItems
+      | Promise<LibraryItems>
+      | ((
+          latestLibraryItems: LibraryItems,
+        ) => LibraryItems | Promise<LibraryItems>),
+  ): Promise<LibraryItems> => this._setLibrary(true, libraryItems);
+
+  private _setLibrary = (
+    /** deep-copy the supplied items (false: adopt them as is) */
+    cloneInput: boolean,
     /**
      * LibraryItems that will replace current items. Can be a function which
      * will be invoked after all previous tasks are resolved
@@ -392,7 +429,10 @@ class Library {
           libraryItems = libraryItems(this.currLibraryItems);
         }
 
-        this.currLibraryItems = cloneLibraryItems(await libraryItems);
+        const nextItems = await libraryItems;
+        this.currLibraryItems = cloneInput
+          ? cloneLibraryItems(nextItems)
+          : nextItems;
 
         resolve(this.currLibraryItems);
       } catch (error: any) {
@@ -572,7 +612,11 @@ class AdapterTransaction {
       new Promise<LibraryItems>(async (resolve, reject) => {
         try {
           const data = await adapter.load({ source });
-          resolve(restoreLibraryItems(data?.libraryItems || [], "published"));
+          resolve(
+            data?.restored
+              ? (data.libraryItems as LibraryItems)
+              : restoreLibraryItems(data?.libraryItems || [], "published"),
+          );
         } catch (error: any) {
           reject(error);
         }
@@ -930,6 +974,9 @@ export const useHandleLibrary = (
           // populated it (e.g. by installing 3rd party library which can
           // happen before the DB data is loaded)
           merge: true,
+          // everything coming out of the adapter paths above is restored
+          // already (AdapterTransaction/restoreLibraryItems)
+          skipRestore: true,
         })
         .finally(() => {
           isLibraryLoadedRef.current = true;
