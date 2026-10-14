@@ -2012,6 +2012,123 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // ---- Hotkeys (Settings phase 3) ----
+    // Synthetic keydowns reach the window dispatcher like real keys; native
+    // menu key equivalents are not exercised (operator check: press Cmd+P).
+    const pressKey = (init: KeyboardEventInit, target: EventTarget = doc) => {
+      const event = new win.KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const navigatorWidth = () =>
+      doc
+        .querySelector('[aria-label="Vault File Navigator"]')
+        ?.getBoundingClientRect().width ?? 0;
+
+    await step("hotkeys-config-hand-edit-live", async () => {
+      const key = "hotkeys.view.toggleNavigator";
+      const chord = { key: "b", code: "KeyB", metaKey: true, altKey: true };
+      const startedAt = win.performance.now();
+      await call("update_config", {
+        changes: [{ key, value: ["Mod+Alt+B"] }],
+      });
+      await waitFor(
+        "[hotkeys] edit applied to preferences",
+        () =>
+          getPreferences(win).hotkeys["view.toggleNavigator"]?.[0] ===
+          "Mod+Alt+B"
+            ? true
+            : null,
+        4000,
+      );
+      const reloadMs = Math.round(win.performance.now() - startedAt);
+      const before = navigatorWidth();
+      try {
+        const event = pressKey(chord);
+        await waitFor(
+          "navigator hidden by the new chord",
+          () => (navigatorWidth() < 2 ? true : null),
+          3000,
+        );
+        pressKey(chord);
+        await waitFor(
+          "navigator shown again",
+          () => (navigatorWidth() > 100 ? true : null),
+          3000,
+        );
+        return {
+          reloadMs,
+          widthBefore: before,
+          claimed: event.defaultPrevented,
+        };
+      } finally {
+        await call("update_config", { changes: [{ key, value: null }] });
+        await waitFor(
+          "[hotkeys] override removed",
+          () =>
+            getPreferences(win).hotkeys["view.toggleNavigator"] ? null : true,
+          4000,
+        );
+      }
+    });
+
+    await step("hotkeys-cmd-p-quick-switcher", async () => {
+      const dialog = () =>
+        doc.querySelector<HTMLElement>(
+          '[role="dialog"][aria-label="Quick switcher"]',
+        );
+      if (dialog()) {
+        throw new Error("Quick switcher already open");
+      }
+      const startedAt = win.performance.now();
+      const event = pressKey({ key: "p", code: "KeyP", metaKey: true });
+      const input = await waitFor("quick switcher input", () =>
+        dialog()?.querySelector<HTMLInputElement>(".vault-quick__input"),
+      );
+      await waitFor(
+        "first quick switcher row",
+        () => dialog()?.querySelector(".vault-quick__row"),
+        3000,
+      );
+      const openMs = Math.round(win.performance.now() - startedAt);
+      const inputFocused = doc.activeElement === input;
+      // Type a query the way the input sees it and time the commit.
+      const setter = Object.getOwnPropertyDescriptor(
+        win.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      const keystrokeMs: number[] = [];
+      for (const text of [">", ">s", ">se", ">set"]) {
+        setter.call(input, text);
+        const t0 = win.performance.now();
+        input.dispatchEvent(new win.Event("input", { bubbles: true }));
+        keystrokeMs.push(+(win.performance.now() - t0).toFixed(2));
+      }
+      const firstRow = await waitFor("command row for >set", () => {
+        const row = dialog()?.querySelector(".vault-quick__row");
+        return row?.textContent?.includes("Open settings")
+          ? row.textContent
+          : null;
+      });
+      const toast = !!doc.querySelector(".Toast");
+      pressKey({ key: "Escape", code: "Escape" }, input);
+      await waitFor("quick switcher closed", () => (dialog() ? null : true));
+      if (!event.defaultPrevented) {
+        throw new Error("Cmd+P was not claimed (the webview would print)");
+      }
+      if (!inputFocused) {
+        throw new Error("Quick switcher input not focused after Cmd+P");
+      }
+      if (toast) {
+        throw new Error("Excalidraw's command palette toast appeared");
+      }
+      return { openMs, keystrokeMs, firstRow };
+    });
+
     // ---- Settings phase 2 (accent, zoom, per-vault settings, default folder) ----
     // The webview cannot write config.toml / settings.toml directly, so "hand
     // edits" go through update_config / update_vault_settings: both rewrite the
