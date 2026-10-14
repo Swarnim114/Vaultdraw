@@ -541,11 +541,15 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
       folder.click();
       await waitUntil(
         "big folder children",
-        () => childRows(bigFolder.path).length >= bigFolder.drawings,
+        // The tree is windowed: wait for the first visible child rows, not all of them.
+        () =>
+          row(bigFolder.path)?.getAttribute("aria-expanded") === "true" &&
+          childRows(bigFolder.path).length > 0,
       );
       await afterPaint();
       push("tree.expandBigFolder", now() - t0);
-      info.bigFolderRows = childRows(bigFolder.path).length;
+      info.bigFolderRows = bigFolder.drawings;
+      info.bigFolderMountedRows = childRows(bigFolder.path).length;
       row(bigFolder.path)?.click();
       await waitUntil(
         "big folder collapsed",

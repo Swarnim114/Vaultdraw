@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import { getPreferences, updatePreferences } from "../vault/preferences";
@@ -39,11 +47,14 @@ import { TagsPanel } from "./tags/TagsPanel";
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
+import { flattenTree } from "./tree/flattenTree";
+import { TREE_ROW_HEIGHT, useTreeWindow } from "./tree/useTreeWindow";
 import { ghostTransform, useTreeDrag } from "./tree/useTreeDrag";
 
 import type { ReactNode } from "react";
 
 import type { TreeNode } from "../vault/treeStore";
+import type { TreeRow as TreeRowData } from "./tree/flattenTree";
 
 import type { DragSource } from "./tree/useTreeDrag";
 
@@ -308,24 +319,52 @@ export const VaultNavigator = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.nonce]);
 
-  // Flatten visible tree items for keyboard navigation
-  const getVisibleItems = useCallback((): VaultEntry[] => {
-    const list: VaultEntry[] = [];
-    const traverse = (nodes: TreeNode[]) => {
-      for (const node of nodes) {
-        list.push(node.entry);
-        if (
-          node.entry.kind === "folder" &&
-          expandedFolders.has(node.entry.path) &&
-          node.children
-        ) {
-          traverse(node.children);
-        }
+  // Visible rows in display order: keyboard navigation and windowing.
+  const rows = useMemo(
+    () => flattenTree(treeNodes, expandedFolders),
+    [treeNodes, expandedFolders],
+  );
+  const getVisibleItems = (): VaultEntry[] => rows.map((r) => r.entry);
+  const treeWindow = useTreeWindow(treeContainerRef, rows.length, !isSearching);
+  const { scrollToRow } = treeWindow;
+  // Keyboard focus moves between rows that may be outside the mounted window.
+  useEffect(() => {
+    if (focusedPath) {
+      scrollToRow(rows.findIndex((r) => r.entry.path === focusedPath));
+    }
+  }, [focusedPath, rows, scrollToRow]);
+
+  // Row handlers keep one identity so memoised rows skip unrelated renders.
+  const live = useRef({ onOpenDrawing, onToggleFolder });
+  live.current = { onOpenDrawing, onToggleFolder };
+  const onRowSelect = useCallback(
+    (path: string, kind: "folder" | "drawing") => {
+      setFocusedPath(path);
+      if (kind === "drawing") {
+        void live.current.onOpenDrawing(path);
+      } else {
+        live.current.onToggleFolder(path);
       }
-    };
-    traverse(treeNodes);
-    return list;
-  }, [expandedFolders, treeNodes]);
+    },
+    [],
+  );
+  const onRowToggle = useCallback(
+    (path: string) => live.current.onToggleFolder(path),
+    [],
+  );
+  const onRowNewInside = useCallback(
+    (folderPath: string, kind: "folder" | "drawing") => {
+      setCreateParent(folderPath);
+      setCreateKind(kind);
+      setCreateName("");
+      setCreateError(null);
+    },
+    [],
+  );
+  const onRowMenu = useCallback(
+    (entry: VaultEntry, x: number, y: number) => setMenu({ entry, x, y }),
+    [],
+  );
 
   // Keyboard navigation within tree
   const handleTreeKeyDown = (e: React.KeyboardEvent) => {
@@ -616,29 +655,17 @@ export const VaultNavigator = ({
                 Vault is empty. Create your first drawing!
               </div>
             ) : (
-              <TreeRenderer
-                nodes={treeNodes}
-                depth={0}
+              <TreeRows
+                rows={rows}
+                start={treeWindow.start}
+                end={treeWindow.end}
                 activePath={activePath}
                 focusedPath={focusedPath}
-                expandedFolders={expandedFolders}
                 readOnly={vault.readOnly}
-                onSelect={(path, kind) => {
-                  setFocusedPath(path);
-                  if (kind === "drawing") {
-                    void onOpenDrawing(path);
-                  } else {
-                    onToggleFolder(path);
-                  }
-                }}
-                onToggleFolder={onToggleFolder}
-                onNewInside={(folderPath, kind) => {
-                  setCreateParent(folderPath);
-                  setCreateKind(kind);
-                  setCreateName("");
-                  setCreateError(null);
-                }}
-                onOpenMenu={(entry, x, y) => setMenu({ entry, x, y })}
+                onSelect={onRowSelect}
+                onToggleFolder={onRowToggle}
+                onNewInside={onRowNewInside}
+                onOpenMenu={onRowMenu}
                 onRowPointerDown={onRowPointerDown}
                 dropTarget={drag?.allowed ? drag.targetFolder : null}
                 dragSourcePath={drag?.source.path ?? null}
@@ -900,12 +927,13 @@ export const VaultNavigator = ({
   );
 };
 
-interface TreeRendererProps {
-  nodes: TreeNode[];
-  depth: number;
+interface TreeRowsProps {
+  rows: TreeRowData[];
+  /** Rows [start, end) are mounted; spacers stand in for the rest. */
+  start: number;
+  end: number;
   activePath: string | null;
   focusedPath: string | null;
-  expandedFolders: Set<string>;
   readOnly: boolean;
   onSelect: (path: string, kind: "folder" | "drawing") => void;
   onToggleFolder: (path: string) => void;
@@ -923,143 +951,169 @@ interface TreeRendererProps {
   onFilterTag: (key: string) => void;
 }
 
-const TreeRenderer = ({
-  nodes,
-  depth,
+const TreeRows = ({
+  rows,
+  start,
+  end,
   activePath,
   focusedPath,
-  expandedFolders,
-  readOnly,
-  onSelect,
-  onToggleFolder,
-  onNewInside,
-  onOpenMenu,
-  onRowPointerDown,
   dropTarget,
   dragSourcePath,
   tagsByPath,
-  onFilterTag,
-}: TreeRendererProps) => {
-  return (
-    <>
-      {nodes.map((node) => {
-        const entry = node.entry;
-        const isFolder = entry.kind === "folder";
-        const isExpanded = expandedFolders.has(entry.path);
-        const isActive = entry.path === activePath;
-        const isFocused = entry.path === focusedPath;
-        const isDropTarget = isFolder && dropTarget === entry.path;
-        const isDragSource = dragSourcePath === entry.path;
+  ...handlers
+}: TreeRowsProps) => (
+  <>
+    {start > 0 && (
+      <div
+        aria-hidden="true"
+        style={{ height: start * TREE_ROW_HEIGHT, flexShrink: 0 }}
+      />
+    )}
+    {rows.slice(start, end).map((row) => {
+      const path = row.entry.path;
+      const isFolder = row.entry.kind === "folder";
+      return (
+        <TreeRow
+          key={path}
+          entry={row.entry}
+          depth={row.depth}
+          expanded={row.expanded}
+          active={path === activePath}
+          focused={path === focusedPath}
+          dropTarget={isFolder && dropTarget === path}
+          dragSource={dragSourcePath === path}
+          tags={isFolder ? undefined : tagsByPath?.[path]}
+          {...handlers}
+        />
+      );
+    })}
+    {end < rows.length && (
+      <div
+        aria-hidden="true"
+        style={{ height: (rows.length - end) * TREE_ROW_HEIGHT, flexShrink: 0 }}
+      />
+    )}
+  </>
+);
 
-        return (
-          <div key={entry.path} style={{ display: "contents" }}>
-            <div
-              className={`vault-tree-item ${
-                isActive ? "vault-tree-item--active" : ""
-              } ${isFocused ? "vault-tree-item--focused" : ""} ${
-                isDropTarget ? "vault-tree-item--drop-target" : ""
-              } ${isDragSource ? "vault-tree-item--drag-source" : ""}`}
-              style={{ "--depth": depth } as React.CSSProperties}
-              data-tree-path={entry.path}
-              data-tree-kind={entry.kind}
-              onPointerDown={(e) => onRowPointerDown(e, entry)}
-              role="treeitem"
-              aria-expanded={isFolder ? isExpanded : undefined}
-              aria-selected={isActive}
-              tabIndex={isFocused ? 0 : -1}
-              onClick={() => onSelect(entry.path, entry.kind)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onOpenMenu(entry, e.clientX, e.clientY);
+interface TreeRowProps
+  extends Pick<
+    TreeRowsProps,
+    | "readOnly"
+    | "onSelect"
+    | "onToggleFolder"
+    | "onNewInside"
+    | "onOpenMenu"
+    | "onRowPointerDown"
+    | "onFilterTag"
+  > {
+  entry: VaultEntry;
+  depth: number;
+  expanded: boolean;
+  active: boolean;
+  focused: boolean;
+  dropTarget: boolean;
+  dragSource: boolean;
+  tags?: string[];
+}
+
+const TreeRow = memo(
+  ({
+    entry,
+    depth,
+    expanded: isExpanded,
+    active: isActive,
+    focused: isFocused,
+    dropTarget: isDropTarget,
+    dragSource: isDragSource,
+    tags,
+    readOnly,
+    onSelect,
+    onToggleFolder,
+    onNewInside,
+    onOpenMenu,
+    onRowPointerDown,
+    onFilterTag,
+  }: TreeRowProps) => {
+    const isFolder = entry.kind === "folder";
+    return (
+      <div
+        className={`vault-tree-item ${
+          isActive ? "vault-tree-item--active" : ""
+        } ${isFocused ? "vault-tree-item--focused" : ""} ${
+          isDropTarget ? "vault-tree-item--drop-target" : ""
+        } ${isDragSource ? "vault-tree-item--drag-source" : ""}`}
+        style={{ "--depth": depth } as React.CSSProperties}
+        data-tree-path={entry.path}
+        data-tree-kind={entry.kind}
+        onPointerDown={(e) => onRowPointerDown(e, entry)}
+        role="treeitem"
+        aria-expanded={isFolder ? isExpanded : undefined}
+        aria-selected={isActive}
+        tabIndex={isFocused ? 0 : -1}
+        onClick={() => onSelect(entry.path, entry.kind)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onOpenMenu(entry, e.clientX, e.clientY);
+        }}
+      >
+        <div className="vault-tree-item__main">
+          {isFolder ? (
+            <span
+              className="vault-tree-item__toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFolder(entry.path);
               }}
+              aria-label={isExpanded ? "Collapse" : "Expand"}
             >
-              <div className="vault-tree-item__main">
-                {isFolder ? (
-                  <span
-                    className="vault-tree-item__toggle"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleFolder(entry.path);
-                    }}
-                    aria-label={isExpanded ? "Collapse" : "Expand"}
-                  >
-                    {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
-                  </span>
-                ) : (
-                  <span className="vault-tree-item__icon">
-                    <IconDrawing />
-                  </span>
-                )}
+              {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
+            </span>
+          ) : (
+            <span className="vault-tree-item__icon">
+              <IconDrawing />
+            </span>
+          )}
 
-                <span className="vault-tree-item__name" title={entry.path}>
-                  {isFolder
-                    ? entry.name
-                    : entry.name.replace(/\.excalidraw$/i, "")}
-                </span>
-                {!isFolder && tagsByPath?.[entry.path] && (
-                  <TagChips
-                    tags={tagsByPath[entry.path]}
-                    onFilter={onFilterTag}
-                  />
-                )}
-              </div>
+          <span className="vault-tree-item__name" title={entry.path}>
+            {isFolder ? entry.name : entry.name.replace(/\.excalidraw$/i, "")}
+          </span>
+          {tags && <TagChips tags={tags} onFilter={onFilterTag} />}
+        </div>
 
-              <div
-                className="vault-tree-item__actions"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {isFolder && !readOnly && (
-                  <button
-                    type="button"
-                    className="vault-tree-action-btn"
-                    title="New drawing in this folder"
-                    onClick={() => onNewInside(entry.path, "drawing")}
-                    aria-label="New drawing in folder"
-                  >
-                    <IconPlus />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="vault-tree-action-btn"
-                  title="More actions"
-                  aria-label="More actions"
-                  aria-haspopup="menu"
-                  onClick={(e) => {
-                    const box = e.currentTarget.getBoundingClientRect();
-                    onOpenMenu(entry, box.right, box.bottom + 4);
-                  }}
-                >
-                  <IconMore />
-                </button>
-              </div>
-            </div>
-
-            {isFolder && isExpanded && node.children && (
-              <TreeRenderer
-                nodes={node.children}
-                depth={depth + 1}
-                activePath={activePath}
-                focusedPath={focusedPath}
-                expandedFolders={expandedFolders}
-                readOnly={readOnly}
-                onSelect={onSelect}
-                onToggleFolder={onToggleFolder}
-                onNewInside={onNewInside}
-                onOpenMenu={onOpenMenu}
-                onRowPointerDown={onRowPointerDown}
-                dropTarget={dropTarget}
-                dragSourcePath={dragSourcePath}
-                tagsByPath={tagsByPath}
-                onFilterTag={onFilterTag}
-              />
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-};
+        <div
+          className="vault-tree-item__actions"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isFolder && !readOnly && (
+            <button
+              type="button"
+              className="vault-tree-action-btn"
+              title="New drawing in this folder"
+              onClick={() => onNewInside(entry.path, "drawing")}
+              aria-label="New drawing in folder"
+            >
+              <IconPlus />
+            </button>
+          )}
+          <button
+            type="button"
+            className="vault-tree-action-btn"
+            title="More actions"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            onClick={(e) => {
+              const box = e.currentTarget.getBoundingClientRect();
+              onOpenMenu(entry, box.right, box.bottom + 4);
+            }}
+          >
+            <IconMore />
+          </button>
+        </div>
+      </div>
+    );
+  },
+);
 
 interface RowMenuState {
   entry: VaultEntry;

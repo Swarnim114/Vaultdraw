@@ -62,6 +62,21 @@ if (params.get("seed") !== "empty") {
     // Opt-in (?seed=search): keeps other specs' drawing counts unchanged.
     repository.seedDrawing("DSA/Shortest Paths.excalidraw", SEARCH_SCENE);
   }
+  if (params.get("seed") === "bigfolder") {
+    // Opt-in (?seed=bigfolder): one folder of 500 drawings (tree windowing).
+    for (let i = 0; i < 500; i++) {
+      repository.seedDrawing(
+        `Zbig/note ${String(i).padStart(3, "0")}.excalidraw`,
+        JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          elements: [],
+          appState: {},
+          files: {},
+        }),
+      );
+    }
+  }
   if (params.get("seed") === "names5k") {
     // Opt-in (?seed=names5k): 5,000 small drawings in nested folders, for the
     // quick switcher's per-keystroke latency measurement.
