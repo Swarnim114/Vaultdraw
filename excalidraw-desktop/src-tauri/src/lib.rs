@@ -17,6 +17,7 @@ mod clipboard;
 mod config;
 mod search;
 mod library;
+mod templates;
 mod themes;
 mod vault_settings;
 #[cfg(feature = "smoke-test")]
@@ -1158,6 +1159,8 @@ pub fn run() {
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags,
                 library::read_library, library::write_library, library::pick_library_file,
+                templates::list_global_templates, templates::read_global_template,
+                templates::write_global_template, templates::open_global_templates_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 clipboard::smoke_read_clipboard
             ])
@@ -1170,7 +1173,9 @@ pub fn run() {
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags,
-                library::read_library, library::write_library, library::pick_library_file
+                library::read_library, library::write_library, library::pick_library_file,
+                templates::list_global_templates, templates::read_global_template,
+                templates::write_global_template, templates::open_global_templates_dir
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1182,7 +1187,9 @@ pub fn run() {
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
             search::search_vault, search::search_index_status, search::vault_tags,
-            library::read_library, library::write_library, library::pick_library_file
+            library::read_library, library::write_library, library::pick_library_file,
+            templates::list_global_templates, templates::read_global_template,
+            templates::write_global_template, templates::open_global_templates_dir
         ]);
         let app = builder
             .build(tauri::generate_context!())
