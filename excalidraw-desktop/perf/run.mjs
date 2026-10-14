@@ -107,7 +107,14 @@ async function collectApp(count, label) {
       return;
     }
     log(`app ${label} run ${i + 1}/${count} (${mode})`);
-    const r = await appTarget.runOne(rawApp.length + i + (label === "warmup" ? 1000 : 0));
+    let r = await appTarget.runOne(rawApp.length + i + (label === "warmup" ? 1000 : 0));
+    if (r.errors.length) {
+      // One retry: other sessions launch apps with the same bundle id and can quit ours from outside.
+      const why = r.errors.join("; ");
+      log(`app run failed (${why}); retrying once`);
+      notes.push(`app ${label} run retried after: ${why}`);
+      r = await appTarget.runOne(rawApp.length + i + 2000);
+    }
     if (label === "warmup") continue;
     if (r.errors.length) errors.push(...r.errors.map((e) => `app run: ${e}`));
     if (Object.keys(r.samples).length) rawApp.push(r.samples);
