@@ -1,8 +1,9 @@
 #!/bin/sh
-# Runs the packaged smoke app (built with --features smoke-test) twice against the
-# same config + vault dirs to prove the library persists across a restart, then a
-# third time under taskpolicy -c background (low-end; milestones only, SMOKE_LOWEND=1). Prints each report summary.
-# Usage: [SMOKE_LOWEND=1] scripts/library-smoke.sh   (run from anywhere; holds the shared build lock)
+# Runs the packaged smoke app (built with --features smoke-test) once. At milestones
+# (SMOKE_MILESTONE=1) it runs a second time against the same config + vault dirs to
+# prove the library persists across a restart, then a third time under
+# taskpolicy -c background (low-end). Prints each report summary.
+# Usage: [SMOKE_MILESTONE=1] scripts/library-smoke.sh   (run from anywhere; holds the shared build lock)
 set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 WT=$(cd "$HERE/.." && pwd)
@@ -31,7 +32,9 @@ for(const s of a.records||r.steps){if(!s.ok||/^library/.test(s.step))console.log
 const f=(a.records||[]).filter(s=>!s.ok);console.log("failed steps:",f.length,"pageErrors:",(a.pageErrors||[]).length)' "$D/smoke-report-$label.json"
 }
 run run1 env
-run run2 env
-[ "${SMOKE_LOWEND:-0}" = 1 ] && run run3-lowend taskpolicy -c background
+if [ "${SMOKE_MILESTONE:-0}" = 1 ]; then
+  run run2 env
+  run run3-lowend taskpolicy -c background
+fi
 ls -la "$C/config/library.excalidrawlib" "$D/library.excalidrawlib"
 kill $CAF 2>/dev/null

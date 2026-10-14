@@ -17,7 +17,10 @@ import { machineInfo, resultTable, comparisonTable, updateBaseline } from "./lib
 const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
 
   --low-end              packaged app under taskpolicy -c background (+ WebKit helpers clamped), memory_pressure -S on
-  --runs N               measured runs (default 4), after --warmup (default 1) discarded run
+  Default (between milestones): Chromium mode only (headless, no windows), 2 runs, no warmup, no extra noise runs.
+  --app                  also measure the packaged app (opens app windows; 2 runs)
+  --milestone            full gate: packaged app + Chromium, 4 runs + 1 warmup, up to 2 extra runs when noisy
+  --runs N               measured runs (default 2; 4 with --milestone), after --warmup (default 0; 1 with --milestone)
   --warmup N             warmup runs to discard
   --compare <file>       gate against a baseline (single result or combined {modes:{normal,"low-end"}}); exit 1 on regression
   --out <file>           result JSON (default <wt>/.cache/perf/results/<timestamp>-<mode>.json)
@@ -39,7 +42,7 @@ const { values: o } = parseArgs({
     "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
     out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
     "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
-    "keep-runs": { type: "boolean" }, quick: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "keep-runs": { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help) { console.log(HELP); process.exit(0); }
@@ -48,8 +51,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const wtRoot = path.resolve(here, "..", "..");
 const cacheDir = perfCacheDir(wtRoot);
 const mode = o["low-end"] ? "low-end" : "normal";
-const runs = o.quick ? 1 : Number(o.runs ?? 4);
-const warmup = o.quick ? 0 : Number(o.warmup ?? 1);
+const runs = o.quick ? 1 : Number(o.runs ?? (o.milestone ? 4 : 2));
+const warmup = o.quick ? 0 : Number(o.warmup ?? (o.milestone ? 1 : 0));
+// Packaged-app runs open windows on the user's screen: only on request or at milestones.
+const skipApp = !!o["skip-app"] || !(o.app || o.milestone);
 const log = (m) => console.error(`[perf] ${m}`);
 const t0 = Date.now();
 const elapsedMin = () => (Date.now() - t0) / 60000;
@@ -74,10 +79,10 @@ const gatedNoisy = (metrics) => Object.entries(metrics).some(([id, m]) => m.nois
 
 // ---- app mode ----
 let appTarget = null;
-if (!o["skip-app"] && isScreenLocked()) {
+if (!skipApp && isScreenLocked()) {
   errors.push(`app mode: ${LOCKED_MSG}`);
   log(`app mode skipped: ${LOCKED_MSG}`);
-} else if (!o["skip-app"]) {
+} else if (!skipApp) {
   try {
     const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
     const { vaultDir, manifest } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
@@ -127,7 +132,7 @@ if (appTarget) {
   await collectApp(warmup, "warmup");
   await collectApp(runs, "measured");
   let extra = 0;
-  while (!o.quick && extra < 2 && rawApp.length && elapsedMin() < 5.5 && gatedNoisy(aggregate(rawApp, unitOf(catalogue)))) {
+  while (o.milestone && !o.quick && extra < 2 && rawApp.length && elapsedMin() < 5.5 && gatedNoisy(aggregate(rawApp, unitOf(catalogue)))) {
     extra++;
     log(`noisy gated metric(s); extra run ${extra}/2 (${elapsedMin().toFixed(1)} min elapsed)`);
     await collectApp(1, "measured");
