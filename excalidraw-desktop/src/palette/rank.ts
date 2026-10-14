@@ -33,7 +33,8 @@ export const modeOf = (query: string): PaletteMode =>
 
 export interface RankDrawing {
   path: string;
-  prepared: Prepared;
+  /** Computed on first use (the empty query never needs it). */
+  readonly prepared: Prepared;
 }
 export interface DrawingIndex {
   list: RankDrawing[];
@@ -59,9 +60,50 @@ export type RankedRow =
     }
   | { kind: "item"; key: string; entry: RankItem; positions: number[] };
 
-export function prepareDrawings(paths: readonly string[]): DrawingIndex {
-  const list = paths.map((path) => ({ path, prepared: prepare(path) }));
+class LazyDrawing implements RankDrawing {
+  private cached: Prepared | null = null;
+  constructor(readonly path: string) {}
+  get prepared(): Prepared {
+    return (this.cached ??= prepare(this.path));
+  }
+}
+
+/**
+ * Index the drawing paths. Entries of `previous` (same path) are reused, so a
+ * re-listing of an unchanged vault costs a Map lookup per path, not a
+ * re-normalisation.
+ */
+export function prepareDrawings(
+  paths: readonly string[],
+  previous?: DrawingIndex | null,
+): DrawingIndex {
+  const old = previous?.byPath;
+  const list: RankDrawing[] = paths.map(
+    (path) => old?.get(path) ?? new LazyDrawing(path),
+  );
   return { list, byPath: new Map(list.map((d) => [d.path, d])) };
+}
+
+/**
+ * Prepare every drawing in small slices between tasks, so the first ranked
+ * keystroke finds the index ready. Returns a cancel function.
+ */
+export function warmDrawings(index: DrawingIndex, slice = 250): () => void {
+  let at = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const step = () => {
+    const end = Math.min(index.list.length, at + slice);
+    for (; at < end; at++) {
+      void index.list[at].prepared;
+    }
+    timer = at < index.list.length ? setTimeout(step, 0) : null;
+  };
+  timer = setTimeout(step, 0);
+  return () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+  };
 }
 
 export function prepareItems(items: readonly PaletteItem[]): ItemIndex {

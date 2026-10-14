@@ -77,6 +77,54 @@ if (params.get("seed") !== "empty") {
       );
     }
   }
+  if (params.get("seed") === "searchheavy") {
+    // Opt-in (?seed=searchheavy): 300 drawings with 6 text elements each that
+    // all contain "note", so a short query returns the full 50 drawings x 5
+    // snippets (search results rendering latency).
+    for (let i = 0; i < 300; i++) {
+      const elements = [0, 1, 2, 3, 4, 5].map((k) => ({
+        id: `t-${i}-${k}`,
+        type: "text",
+        angle: 0,
+        strokeColor: "#1e1e1e",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 1,
+        opacity: 100,
+        groupIds: [],
+        roundness: null,
+        link: null,
+        locked: false,
+        frameId: null,
+        boundElements: [],
+        x: 0,
+        y: k * 30,
+        width: 200,
+        height: 25,
+        text: `Meeting note ${i} item ${k}: remember the roadmap`,
+        originalText: `Meeting note ${i} item ${k}: remember the roadmap`,
+        fontSize: 20,
+        fontFamily: 1,
+        textAlign: "left",
+        verticalAlign: "top",
+        containerId: null,
+        lineHeight: 1.25,
+        autoResize: true,
+      }));
+      repository.seedDrawing(
+        `Notes ${i % 10}/Note ${i}.excalidraw`,
+        JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          elements,
+          appState: {},
+          files: {},
+        }),
+      );
+    }
+  }
   if (params.get("seed") === "names5k") {
     // Opt-in (?seed=names5k): 5,000 small drawings in nested folders, for the
     // quick switcher's per-keystroke latency measurement.

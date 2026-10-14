@@ -1,11 +1,16 @@
-.vault-quick-backdrop {
+.vault-modal-backdrop.vault-quick-backdrop {
   align-items: flex-start;
   padding-top: 12vh;
+  /* A full-window blur over the editor is re-rasterised while the dialog
+     animates, which dominates the open time on a low-end Mac. */
+  backdrop-filter: none;
 }
 
-.vault-quick {
+.vault-modal.vault-quick {
   position: relative;
   max-width: 620px;
+  /* Shown at once: the palette is opened with a key and used immediately. */
+  animation: none;
 }
 
 /* Commands mode with nothing typed after ">": the mode's placeholder. */

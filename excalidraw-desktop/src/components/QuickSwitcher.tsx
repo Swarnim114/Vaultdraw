@@ -10,6 +10,7 @@
  */
 import {
   memo,
+  startTransition,
   useCallback,
   useEffect,
   useId,
@@ -33,7 +34,9 @@ import {
   prepareDrawings,
   prepareItems,
   rankRows,
+  warmDrawings,
 } from "../palette/rank";
+import { namesCache } from "../palette/namesCache";
 import { getRecent, recordRecent } from "../palette/recent";
 import { errorMessage } from "../vault/types";
 
@@ -41,10 +44,11 @@ import { IconDrawing } from "./Icons";
 
 import "./QuickSwitcher.css";
 
-import type { PaletteMode, RankedRow } from "../palette/rank";
+import type { Names } from "../palette/namesCache";
+import type { DrawingIndex, PaletteMode, RankedRow } from "../palette/rank";
 import type { PaletteItem } from "../palette/types";
 import type { Platform } from "../commands/types";
-import type { IndexStatus, VaultSearch } from "../search/types";
+import type { VaultSearch } from "../search/types";
 
 const MODE_COMMANDS: Record<PaletteMode, string> = {
   files: PALETTE_FILES_ID,
@@ -68,6 +72,8 @@ const MODE_TEXT: Record<
 const NO_ITEMS: readonly PaletteItem[] = [];
 const EXTENSION = /\.excalidraw$/i;
 const DRILL_SEPARATOR = ": ";
+/** Rows painted before the rest of the (capped) result list is added. */
+const FIRST_ROWS = 24;
 
 export interface QuickSwitcherProps {
   /** Source of the drawing names; null = use `fallbackPaths`. */
@@ -188,22 +194,22 @@ const RowView = memo(
 );
 RowView.displayName = "RowView";
 
-interface Names {
-  paths: readonly string[];
-  status: IndexStatus | null;
-  error: string | null;
-}
+/** Last drawing index, so unchanged paths keep their prepared form. */
+let lastIndex: DrawingIndex | null = null;
 
 function useDrawingNames(
   search: QuickSwitcherProps["search"],
   handle: string,
   fallbackPaths: readonly string[] | undefined,
 ): Names {
-  const [names, setNames] = useState<Names>({
-    paths: fallbackPaths ?? [],
-    status: null,
-    error: null,
-  });
+  const [names, setNames] = useState<Names>(
+    () =>
+      (search && namesCache.get(handle)) || {
+        paths: fallbackPaths ?? [],
+        status: null,
+        error: null,
+      },
+  );
   useEffect(() => {
     if (!search) {
       setNames({ paths: fallbackPaths ?? [], status: null, error: null });
@@ -221,11 +227,13 @@ function useDrawingNames(
             return;
           }
           knownTotal = listing.status.total;
-          setNames({
+          const next = {
             paths: listing.paths,
             status: listing.status,
             error: null,
-          });
+          };
+          namesCache.set(handle, next);
+          setNames(next);
         })
         .catch((err) => {
           if (!disposed && mine === generation) {
@@ -317,13 +325,30 @@ export const QuickSwitcher = ({
     };
   }, []);
 
-  const drawings = useMemo(() => prepareDrawings(names.paths), [names.paths]);
+  const drawings = useMemo(() => {
+    lastIndex = prepareDrawings(names.paths, lastIndex);
+    return lastIndex;
+  }, [names.paths]);
+  useEffect(() => warmDrawings(drawings), [drawings]);
   const prepared = useMemo(() => prepareItems(items ?? NO_ITEMS), [items]);
   const rows = useMemo(
     () => rankRows(drawings, prepared, query, recent),
     [drawings, prepared, query, recent],
   );
   const selected = Math.min(active, Math.max(0, rows.length - 1));
+  // First paint shows FIRST_ROWS rows; the rest follows in a transition.
+  const [shown, setShown] = useState(FIRST_ROWS);
+  const rendered = Math.min(rows.length, Math.max(shown, selected + 1));
+  useEffect(() => {
+    if (rendered >= rows.length) {
+      return;
+    }
+    const timer = setTimeout(
+      () => startTransition(() => setShown(rows.length)),
+      0,
+    );
+    return () => clearTimeout(timer);
+  }, [rendered, rows]);
 
   useEffect(() => {
     const el = listRef.current?.querySelector(`[aria-selected="true"]`);
@@ -356,6 +381,7 @@ export const QuickSwitcher = ({
   const changeQuery = (next: string) => {
     setQuery(next);
     setActive(0);
+    setShown(FIRST_ROWS);
     if (items === null && modeOf(next) === "commands") {
       setItems(collectItems());
     }
@@ -387,6 +413,10 @@ export const QuickSwitcher = ({
       }, 0);
     }
   };
+
+  const pickRef = useRef(pick);
+  pickRef.current = pick;
+  const onPick = useCallback((index: number) => pickRef.current(index), []);
 
   const drill = () => {
     const row = rows[selected];
@@ -523,7 +553,7 @@ export const QuickSwitcher = ({
           role="listbox"
           aria-label="Results"
         >
-          {rows.map((row, i) => (
+          {rows.slice(0, rendered).map((row, i) => (
             <RowView
               key={row.key}
               id={optionId(i)}
@@ -531,7 +561,7 @@ export const QuickSwitcher = ({
               index={i}
               active={i === selected}
               onHover={setActive}
-              onPick={pick}
+              onPick={onPick}
             />
           ))}
         </div>

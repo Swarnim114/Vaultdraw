@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { modeOf, prepareDrawings, prepareItems, rankRows } from "./rank";
+import {
+  modeOf,
+  prepareDrawings,
+  prepareItems,
+  rankRows,
+  warmDrawings,
+} from "./rank";
 
 import type { PaletteItem } from "./types";
 
@@ -117,5 +123,25 @@ describe("rankRows", () => {
   it("returns title positions for items", () => {
     const [row] = rank(">dracula");
     expect(row.kind === "item" && row.positions.length).toBe(7);
+  });
+});
+
+describe("drawing index reuse", () => {
+  it("keeps the prepared form of unchanged paths and prepares lazily", () => {
+    const first = prepareDrawings(PATHS);
+    const prepared = first.list[0].prepared;
+    const second = prepareDrawings([...PATHS, "new.excalidraw"], first);
+    expect(second.list[0]).toBe(first.list[0]);
+    expect(second.list[0].prepared).toBe(prepared);
+    expect(second.list).toHaveLength(PATHS.length + 1);
+  });
+
+  it("warms every entry in slices and can be cancelled", async () => {
+    const index = prepareDrawings(PATHS);
+    warmDrawings(index, 1);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(index.list.every((d) => d.prepared.norm.length > 0)).toBe(true);
+    const cancel = warmDrawings(prepareDrawings(PATHS), 1);
+    cancel();
   });
 });
