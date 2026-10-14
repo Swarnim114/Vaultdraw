@@ -72,6 +72,8 @@ export interface VaultPreferences {
    * settings.toml may override it.
    */
   templatesFolder: string;
+  /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
+  hotkeys: Record<string, string[]>;
 }
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
@@ -105,6 +107,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
   templatesFolder: DEFAULT_TEMPLATES_FOLDER,
+  hotkeys: {},
 };
 
 export const MIN_ZOOM = 50;
@@ -123,6 +126,19 @@ export const isExpandedFolders = (
   typeof value === "object" &&
   !Array.isArray(value) &&
   Object.values(value as Record<string, unknown>).every(isStringArray);
+
+/** Keep only entries whose value is an array of strings. */
+export const normalizeHotkeys = (value: unknown): Record<string, string[]> => {
+  const result: Record<string, string[]> = {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [id, keys] of Object.entries(value)) {
+      if (isStringArray(keys)) {
+        result[id] = [...keys];
+      }
+    }
+  }
+  return result;
+};
 
 const pick = <T>(
   value: unknown,
@@ -227,6 +243,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       (v) => isString(v) && (v as string).trim() !== "",
       d.templatesFolder,
     ),
+    hotkeys: normalizeHotkeys(parsed.hotkeys),
   };
 }
 
@@ -234,6 +251,7 @@ const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
   ...prefs,
   recentVaults: [...prefs.recentVaults],
   expandedFolders: { ...prefs.expandedFolders },
+  hotkeys: { ...prefs.hotkeys },
 });
 
 // ---------------------------------------------------------------------------

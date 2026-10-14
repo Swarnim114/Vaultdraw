@@ -9,6 +9,9 @@
  * harness, Vitest without injected deps) nothing here touches Tauri and
  * preferences.ts keeps its localStorage behaviour.
  */
+import { isCommandId } from "../commands/commands";
+import { parseChord } from "../commands/keys";
+
 import { isSortOrder, SORT_ORDERS } from "./sortOrder";
 import { isTauriAvailable } from "./DesktopVaultRepository";
 import {
@@ -314,13 +317,75 @@ export const readDotted = (
     : { present: false, value: undefined };
 };
 
+const hotkeyProblem = (key: string, message: string): SettingsProblem => ({
+  kind: "invalid",
+  key,
+  message,
+});
+
+/**
+ * The dynamic `[hotkeys]` table (one entry per command id, so it is not a
+ * CONFIG_MAPPING row). Valid chords are kept in canonical form; an entry that
+ * is not a list, or whose chords are all invalid, is left out so the command
+ * keeps its defaults; unknown ids are kept (a newer config is never lost).
+ */
+export function parseHotkeysTable(table: unknown): {
+  hotkeys: Record<string, string[]>;
+  problems: SettingsProblem[];
+} {
+  const hotkeys: Record<string, string[]> = {};
+  const problems: SettingsProblem[] = [];
+  if (table === undefined) {
+    return { hotkeys, problems };
+  }
+  if (!table || typeof table !== "object" || Array.isArray(table)) {
+    problems.push(
+      hotkeyProblem("hotkeys", "hotkeys: expected a table; using the defaults"),
+    );
+    return { hotkeys, problems };
+  }
+  for (const [id, value] of Object.entries(table)) {
+    const key = `hotkeys.${id}`;
+    if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) {
+      problems.push(
+        hotkeyProblem(
+          key,
+          `${key} = ${show(
+            value,
+          )} is not valid (expected a list like ["Mod+S"]); using the default`,
+        ),
+      );
+      continue;
+    }
+    const chords: string[] = [];
+    for (const text of value as string[]) {
+      const chord = parseChord(text);
+      if (!chord) {
+        problems.push(
+          hotkeyProblem(key, `${key}: "${text}" is not a valid key; ignored`),
+        );
+      } else if (!chords.includes(chord)) {
+        chords.push(chord);
+      }
+    }
+    if (chords.length === 0 && value.length > 0) {
+      continue;
+    }
+    if (!isCommandId(id)) {
+      problems.push(hotkeyProblem(key, `hotkeys: unknown command ${id}`));
+    }
+    hotkeys[id] = chords;
+  }
+  return { hotkeys, problems };
+}
+
 /**
  * Parsed config.toml (as JSON) -> config-mapped preference fields. Missing
  * keys take their default; invalid values take their default and produce a
  * problem.
  */
 export function configToPreferences(config: Record<string, unknown>): {
-  values: Pick<VaultPreferences, ConfigField>;
+  values: Pick<VaultPreferences, ConfigField | "hotkeys">;
   problems: SettingsProblem[];
 } {
   const values = {} as Record<ConfigField, unknown>;
@@ -345,8 +410,13 @@ export function configToPreferences(config: Record<string, unknown>): {
       });
     }
   }
+  const table = parseHotkeysTable(config.hotkeys);
+  problems.push(...table.problems);
   return {
-    values: values as Pick<VaultPreferences, ConfigField>,
+    values: {
+      ...(values as Pick<VaultPreferences, ConfigField>),
+      hotkeys: table.hotkeys,
+    },
     problems,
   };
 }
@@ -361,6 +431,17 @@ export function preferencesToConfigChanges(
     if (!sameValue(prev[field], next[field])) {
       const value = next[field];
       changes.push({ key, value: value === undefined ? null : value });
+    }
+  }
+  // [hotkeys]: one change per command id; null deletes the line (= defaults).
+  for (const id of new Set([
+    ...Object.keys(prev.hotkeys),
+    ...Object.keys(next.hotkeys),
+  ])) {
+    const was = prev.hotkeys[id];
+    const now = next.hotkeys[id];
+    if (!sameValue(was, now)) {
+      changes.push({ key: `hotkeys.${id}`, value: now ?? null });
     }
   }
   return changes;
@@ -409,8 +490,13 @@ export function preferencesToState(prefs: VaultPreferences): PersistedState {
 const sameValue = (a: unknown, b: unknown) =>
   a === b || JSON.stringify(a) === JSON.stringify(b);
 
-const configSlice = (prefs: VaultPreferences) =>
-  Object.fromEntries(CONFIG_MAPPING.map(({ field }) => [field, prefs[field]]));
+const configSlice = (prefs: VaultPreferences) => ({
+  ...Object.fromEntries(
+    CONFIG_MAPPING.map(({ field }) => [field, prefs[field]]),
+  ),
+  // sorted: the table's order in the file must not count as a change
+  hotkeys: Object.entries(prefs.hotkeys).sort(([a], [b]) => (a < b ? -1 : 1)),
+});
 
 export function formatConfigError(error: ConfigErrorPayload): string {
   return error.line != null
