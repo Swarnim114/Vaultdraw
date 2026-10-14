@@ -3,10 +3,16 @@ import React from "react";
 import { vi } from "vitest";
 
 import { isLibraryMenuOpenAtom } from "../components/LibraryMenu";
-import { withLibraryItemName } from "../components/LibraryMenuItems";
+import { actionAddToLibrary } from "../actions/actionAddToLibrary";
+import {
+  getLibraryItemSearchText,
+  withLibraryItemName,
+} from "../components/LibraryMenuItems";
 import {
   LIBRARY_ITEM_NAME_MAX_LENGTH,
   getHoverPreviewPosition,
+  libraryAddNamingAtom,
+  libraryItemRenamingAtom,
 } from "../components/LibraryUnit";
 import { useHandleLibrary } from "../data/library";
 import { editorJotaiStore } from "../editor-jotai";
@@ -102,6 +108,8 @@ const search = async (container: Element, query: string) => {
 describe("library item names", () => {
   beforeEach(() => {
     editorJotaiStore.set(isLibraryMenuOpenAtom, false);
+    editorJotaiStore.set(libraryAddNamingAtom, null);
+    editorJotaiStore.set(libraryItemRenamingAtom, null);
   });
 
   describe("display", () => {
@@ -191,18 +199,17 @@ describe("library item names", () => {
       expect(nameEls(container)[0].textContent).toBe("Keep");
     });
 
-    it("an empty name removes the name key", async () => {
-      const container = await openLibrary(NAMED, [makeItem("a", "Gone")]);
+    it("an empty name keeps the old name (Enter does nothing, blur cancels)", async () => {
+      const container = await openLibrary(NAMED, [makeItem("a", "Keep")]);
       const input = await startRename(container);
       type(input, "   ");
       fireEvent.keyDown(input, { key: "Enter" });
-      await waitFor(async () => {
-        expect(await latest()).toHaveLength(1);
-        expect("name" in (await latest())[0]).toBe(false);
-      });
-      await waitFor(() =>
-        expect(nameEls(container)[0].textContent).toBe("Untitled"),
-      );
+      // Enter on an empty field does nothing: still editing
+      expect(nameInput(container)).not.toBeNull();
+      fireEvent.blur(input);
+      await waitFor(() => expect(nameInput(container)).toBeNull());
+      expect((await latest())[0].name).toBe("Keep");
+      expect(nameEls(container)[0].textContent).toBe("Keep");
     });
 
     it("limits the input length", async () => {
@@ -354,58 +361,199 @@ describe("library item names", () => {
   });
 
   describe("adding from the pending tile", () => {
-    it("opens the name input and names the new item", async () => {
+    const sectionOptions = (assignments: Record<string, string>) => {
+      const assign = vi.fn((ids: readonly string[], sectionId: string) => {
+        ids.forEach((id) => (assignments[id] = sectionId));
+      });
+      const options: LibraryUIOptions = {
+        online: false,
+        namedItems: true,
+        sections: {
+          list: [
+            { id: "personal", label: "Personal" },
+            { id: "vault", label: "This vault" },
+          ],
+          sectionOf: (id) => assignments[id] ?? "personal",
+          assign,
+        },
+      };
+      return { options, assign };
+    };
+
+    const adders = (container: Element) =>
+      Array.from(container.querySelectorAll(".library-unit__adder")).map(
+        (el) =>
+          el.closest(".library-unit")!.querySelector(".library-unit__dragger")!,
+      );
+
+    const clickAdder = async (container: Element, index = 0) => {
+      const found = await waitFor(() => {
+        const all = adders(container);
+        expect(all.length).toBeGreaterThan(index);
+        return all;
+      });
+      fireEvent.click(found[index]);
+    };
+
+    const waitForInput = (container: Element) =>
+      waitFor(() => {
+        const el = nameInput(container);
+        expect(el).not.toBeNull();
+        return el!;
+      });
+
+    it("clicking the tile asks for a name instead of adding", async () => {
       const container = await openLibrary(NAMED, [makeItem("a", "Existing")]);
       await addPending();
-      const adder = await waitFor(() => {
-        const el = container.querySelector(".library-unit__adder");
-        expect(el).not.toBeNull();
-        return el!;
-      });
-      expect(nameInput(container)).toBeNull();
-      fireEvent.click(
-        adder
-          .closest(".library-unit")!
-          .querySelector(".library-unit__dragger")!,
-      );
-      const input = await waitFor(() => {
-        const el = nameInput(container);
-        expect(el).not.toBeNull();
-        return el!;
-      });
+      await clickAdder(container);
+      const input = await waitForInput(container);
       await waitFor(() => expect(document.activeElement).toBe(input));
-      type(input, "Fresh");
-      fireEvent.keyDown(input, { key: "Enter" });
-      await waitFor(async () => {
-        const items = await latest();
-        expect(items).toHaveLength(2);
-        expect(items.map((i) => i.name).sort()).toEqual(["Existing", "Fresh"]);
-      });
-      // the newly added item is the one that got the name
-      expect((await latest())[0].name).toBe("Fresh");
+      expect(await latest()).toHaveLength(1);
     });
 
-    it("leaving the new item's name empty keeps it unnamed", async () => {
-      const container = await openLibrary(NAMED, []);
+    it("Enter with a name adds the item with that name, first", async () => {
+      const container = await openLibrary(NAMED, [makeItem("a", "Existing")]);
       await addPending();
-      const adder = await waitFor(() => {
-        const el = container.querySelector(".library-unit__adder");
-        expect(el).not.toBeNull();
-        return el!;
-      });
-      fireEvent.click(
-        adder
-          .closest(".library-unit")!
-          .querySelector(".library-unit__dragger")!,
-      );
-      const input = await waitFor(() => {
-        const el = nameInput(container);
-        expect(el).not.toBeNull();
-        return el!;
-      });
+      await clickAdder(container);
+      const input = await waitForInput(container);
+      type(input, "  Fresh ");
       fireEvent.keyDown(input, { key: "Enter" });
-      await waitFor(async () => expect(await latest()).toHaveLength(1));
-      expect("name" in (await latest())[0]).toBe(false);
+      await waitFor(async () => expect(await latest()).toHaveLength(2));
+      const items = await latest();
+      expect(items[0].name).toBe("Fresh");
+      expect(items[1].name).toBe("Existing");
+      await waitFor(() => expect(nameInput(container)).toBeNull());
+    });
+
+    it("Escape adds nothing", async () => {
+      const container = await openLibrary(NAMED, [makeItem("a", "Existing")]);
+      await addPending();
+      await clickAdder(container);
+      const input = await waitForInput(container);
+      type(input, "Nope");
+      fireEvent.keyDown(input, { key: "Escape" });
+      await waitFor(() => expect(nameInput(container)).toBeNull());
+      expect(await latest()).toHaveLength(1);
+    });
+
+    it("Enter on an empty field adds nothing and keeps asking", async () => {
+      const container = await openLibrary(NAMED, [makeItem("a", "Existing")]);
+      await addPending();
+      await clickAdder(container);
+      const input = await waitForInput(container);
+      fireEvent.keyDown(input, { key: "Enter" });
+      type(input, "   ");
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(nameInput(container)).not.toBeNull();
+      expect(await latest()).toHaveLength(1);
+    });
+
+    it("blur with an empty field cancels the add", async () => {
+      const container = await openLibrary(NAMED, [makeItem("a", "Existing")]);
+      await addPending();
+      await clickAdder(container);
+      const input = await waitForInput(container);
+      fireEvent.blur(input);
+      await waitFor(() => expect(nameInput(container)).toBeNull());
+      expect(await latest()).toHaveLength(1);
+    });
+
+    it("adds into the section of the tile that was named", async () => {
+      const assignments: Record<string, string> = {};
+      const { options, assign } = sectionOptions(assignments);
+      const container = await openLibrary(options, [makeItem("a", "Existing")]);
+      await addPending();
+      await clickAdder(container, 1);
+      const input = await waitForInput(container);
+      // only the vault tile asks
+      expect(
+        container.querySelectorAll(".library-unit__name-input"),
+      ).toHaveLength(1);
+      expect(assign).not.toHaveBeenCalled();
+      type(input, "In vault");
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+      const [ids, sectionId] = assign.mock.calls[0];
+      expect(sectionId).toBe("vault");
+      await waitFor(async () => {
+        const items = await latest();
+        expect(items[0].id).toBe(ids[0]);
+        expect(items[0].name).toBe("In vault");
+      });
+    });
+
+    it("without namedItems clicking the tile still adds directly", async () => {
+      const container = await openLibrary({ online: false }, [makeItem("a")]);
+      await addPending();
+      await clickAdder(container);
+      await waitFor(async () => expect(await latest()).toHaveLength(2));
+      expect(nameInput(container)).toBeNull();
+    });
+
+    describe("canvas action (context menu)", () => {
+      const run = () =>
+        act(async () => {
+          await h.app.actionManager.executeAction(actionAddToLibrary);
+        });
+
+      it("opens the sidebar and the naming field instead of adding", async () => {
+        const { container } = await render(
+          <Excalidraw libraryUIOptions={NAMED} />,
+        );
+        const rect = API.createElement({ type: "rectangle", id: "sel" });
+        await act(() => {
+          h.elements = [rect];
+          API.setSelectedElements([rect]);
+        });
+        await run();
+        expect(editorJotaiStore.get(libraryAddNamingAtom)).toBe("");
+        expect(h.state.openSidebar).toEqual({
+          name: "default",
+          tab: "library",
+        });
+        expect(await latest()).toHaveLength(0);
+        const input = await waitFor(() => {
+          const el = nameInput(container);
+          expect(el).not.toBeNull();
+          return el!;
+        });
+        type(input, "From canvas");
+        fireEvent.keyDown(input, { key: "Enter" });
+        await waitFor(async () => {
+          const items = await latest();
+          expect(items).toHaveLength(1);
+          expect(items[0].name).toBe("From canvas");
+        });
+      });
+
+      it("targets the first section that allows adding", async () => {
+        const { options } = sectionOptions({});
+        options.sections!.list = [
+          { id: "ro", label: "Read only", canAdd: false },
+          ...options.sections!.list,
+        ];
+        await render(<Excalidraw libraryUIOptions={options} />);
+        const rect = API.createElement({ type: "rectangle", id: "sel" });
+        await act(() => {
+          h.elements = [rect];
+          API.setSelectedElements([rect]);
+        });
+        await run();
+        expect(editorJotaiStore.get(libraryAddNamingAtom)).toBe("personal");
+        expect(await latest()).toHaveLength(0);
+      });
+
+      it("without namedItems the item is added directly", async () => {
+        await render(<Excalidraw />);
+        const rect = API.createElement({ type: "rectangle", id: "sel" });
+        await act(() => {
+          h.elements = [rect];
+          API.setSelectedElements([rect]);
+        });
+        await run();
+        await waitFor(async () => expect(await latest()).toHaveLength(1));
+        expect(editorJotaiStore.get(libraryAddNamingAtom)).toBeNull();
+      });
     });
   });
 
@@ -440,6 +588,52 @@ describe("library item names", () => {
       await waitFor(() =>
         expect(visibleIds(container)).toEqual(["library-unit-d"]),
       );
+    });
+
+    it("matches a label bound to a shape and a frame name", async () => {
+      const shape = API.createElement({
+        type: "rectangle",
+        id: "shape",
+        boundElements: [{ type: "text", id: "label" }],
+      });
+      const label = API.createElement({
+        type: "text",
+        id: "label",
+        text: "Gateway label",
+        containerId: "shape",
+      });
+      // the helper doesn't take a frame name
+      const frame = {
+        ...API.createElement({ type: "frame", id: "frame" }),
+        name: "Onboarding flow",
+      };
+      const container = await openLibrary(NAMED, [
+        { ...makeItem("shapeItem"), elements: [shape, label] },
+        { ...makeItem("frameItem"), elements: [frame] },
+        makeItem("plain"),
+      ]);
+      await search(container, "gateway");
+      await waitFor(() =>
+        expect(visibleIds(container)).toEqual(["library-unit-shapeItem"]),
+      );
+      await search(container, "ONBOARDING");
+      await waitFor(() =>
+        expect(visibleIds(container)).toEqual(["library-unit-frameItem"]),
+      );
+    });
+
+    it("filters 2000 items quickly once the search text is cached", () => {
+      const many = Array.from({ length: 2000 }, (_, i) =>
+        makeItem(`i${i}`, i % 7 ? `Item ${i}` : undefined, `text ${i}`),
+      );
+      const filter = (query: string) =>
+        many.filter((item) => getLibraryItemSearchText(item).includes(query));
+      expect(filter("text 1999")).toHaveLength(1); // warms the cache
+      const start = performance.now();
+      const found = filter("item 19");
+      const elapsed = performance.now() - start;
+      expect(found.length).toBeGreaterThan(0);
+      expect(elapsed).toBeLessThan(50);
     });
 
     it("does not match unnamed items without text", async () => {

@@ -82,4 +82,32 @@ describe("LibraryStore item names", () => {
     expect(reloaded.sectionOf("v")).toBe("vault");
     reloaded.dispose();
   });
+
+  it("listItems gives id, name (null when unnamed) and scope", async () => {
+    await rename("v", "  Flowchart ");
+    store.assign(["p"], "personal");
+    expect(store.listItems()).toEqual([
+      { id: "p", name: null, scope: "personal" },
+      { id: "v", name: "Flowchart", scope: "vault" },
+    ]);
+    await rename("p", "Logo");
+    await rename("v", undefined);
+    expect(store.listItems()).toEqual([
+      { id: "p", name: "Logo", scope: "personal" },
+      { id: "v", name: null, scope: "vault" },
+    ]);
+  });
+
+  it("listItems treats a blank name as unnamed", async () => {
+    await rename("p", "   ");
+    expect(store.listItems().find((i) => i.id === "p")?.name).toBeNull();
+  });
+
+  it("getItem finds items of both libraries, undefined otherwise", async () => {
+    await rename("v", "Flowchart");
+    expect(store.getItem("v")?.name).toBe("Flowchart");
+    expect(store.getItem("v")?.elements).toHaveLength(1);
+    expect(store.getItem("p")?.id).toBe("p");
+    expect(store.getItem("nope")).toBeUndefined();
+  });
 });

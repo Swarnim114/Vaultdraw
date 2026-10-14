@@ -166,6 +166,24 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
     });
     const before = tiles(id);
     tile.click();
+    // A name is required: the add tile asks for it, Enter adds the item.
+    const nameInput = await waitFor(`${id} name field`, () =>
+      gridOf(id)?.querySelector<HTMLInputElement>(
+        "[data-testid=library-item-name-input]",
+      ),
+    );
+    Object.getOwnPropertyDescriptor(
+      win.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(nameInput, `Smoke ${id}`);
+    nameInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    nameInput.dispatchEvent(
+      new win.KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
     await waitFor(
       `${id} tile count to grow`,
       () => (tiles(id) > before ? true : null),

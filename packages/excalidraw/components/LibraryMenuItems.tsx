@@ -43,6 +43,7 @@ import { useApp, useEditorInterface } from "./App";
 import { isLibraryMenuOpenAtom } from "./LibraryMenu";
 import {
   LIBRARY_ITEM_NAME_MAX_LENGTH,
+  libraryAddNamingAtom,
   libraryItemRenamingAtom,
 } from "./LibraryUnit";
 
@@ -65,14 +66,24 @@ const ITEMS_RENDERED_PER_BATCH = 17;
 const CACHED_ITEMS_RENDERED_PER_BATCH = 64;
 
 const searchTextCache = new WeakMap<LibraryItem, string>();
-/** What library search matches: the item's name and the text it contains. */
-const getLibraryItemSearchText = (item: LibraryItem) => {
+/**
+ * What library search matches: the item's name and its content (text
+ * elements, incl. labels bound to shapes/arrows, and frame names), case and
+ * accent folded. Computed once per item object (items are immutable, a
+ * changed item is a new object).
+ */
+export const getLibraryItemSearchText = (item: LibraryItem) => {
   let text = searchTextCache.get(item);
   if (text === undefined) {
     const parts = [item.name ?? ""];
     for (const element of item.elements) {
       if (element.type === "text") {
         parts.push(element.originalText || element.text);
+      } else if (
+        (element.type === "frame" || element.type === "magicframe") &&
+        element.name
+      ) {
+        parts.push(element.name);
       }
     }
     text = deburr(parts.join("\n").toLowerCase());
@@ -111,6 +122,7 @@ export default function LibraryMenuItems({
   onAddToLibrary: (
     elements: LibraryItem["elements"],
     sectionId?: string,
+    name?: string,
   ) => void;
   libraryReturnUrl: ExcalidrawProps["libraryReturnUrl"];
   libraryUIOptions?: ExcalidrawProps["libraryUIOptions"];
@@ -125,6 +137,7 @@ export default function LibraryMenuItems({
   const namedItems = !!libraryUIOptions?.namedItems;
   const { library } = useApp();
   const [renamingId, setRenamingId] = useAtom(libraryItemRenamingAtom);
+  const [namingSection, setNamingSection] = useAtom(libraryAddNamingAtom);
   const setLibraryMenuOpen = useSetAtom(isLibraryMenuOpenAtom);
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const scrollPosition = useScrollPosition<HTMLDivElement>(libraryContainerRef);
@@ -303,6 +316,40 @@ export default function LibraryMenuItems({
     onAddToLibrary(pendingElements);
   }, [pendingElements, onAddToLibrary]);
 
+  // nothing left to add (selection cleared): drop the name field
+  const hasPending = pendingElements.length > 0;
+  useEffect(() => {
+    if (!hasPending) {
+      setNamingSection(null);
+    }
+  }, [hasPending, setNamingSection]);
+
+  /** The add tile: with named items it asks for the name first. */
+  const getPendingProps = (sectionId?: string) => {
+    const key = sectionId ?? "";
+    if (!namedItems) {
+      return {
+        theme,
+        showNames: false,
+        onClick: sectionId
+          ? () => onAddToLibrary(pendingElements, sectionId)
+          : onAddToLibraryClick,
+      };
+    }
+    return {
+      theme,
+      showNames: true,
+      onClick: () => setNamingSection(key),
+      pendingNaming: namingSection === key,
+      onRenameEnd: (_id: LibraryItem["id"] | null, name: string | null) => {
+        setNamingSection(null);
+        if (name) {
+          onAddToLibrary(pendingElements, sectionId, name);
+        }
+      },
+    };
+  };
+
   const onItemClick = useCallback(
     (id: LibraryItem["id"] | null) => {
       if (id) {
@@ -318,11 +365,12 @@ export default function LibraryMenuItems({
   );
 
   const onRenameEnd = useCallback(
-    (id: LibraryItem["id"], name: string | null) => {
+    (id: LibraryItem["id"] | null, name: string | null) => {
       setRenamingId(null);
-      const item = libraryItems.find((item) => item.id === id);
+      const item = id && libraryItems.find((item) => item.id === id);
       if (
-        name === null ||
+        // a name is required: clearing it is the same as cancelling
+        !name ||
         !item ||
         withLibraryItemName(item, name).name === item.name
       ) {
@@ -360,7 +408,6 @@ export default function LibraryMenuItems({
       onItemContextMenu,
     }),
   };
-  const pendingProps = { theme, showNames: namedItems };
 
   const itemsRenderedPerBatch =
     svgCache.size >=
@@ -372,7 +419,10 @@ export default function LibraryMenuItems({
   useEffect(() => {
     // focus could be stolen by tab trigger button
     nextAnimationFrame(() => {
-      searchInputRef.current?.focus();
+      // unless a library item's name field took it (e.g. "Add to library")
+      if (!document.activeElement?.closest(".library-unit")) {
+        searchInputRef.current?.focus();
+      }
     });
   }, []);
 
@@ -402,10 +452,9 @@ export default function LibraryMenuItems({
                   items={[{ id: null, elements: pendingElements }]}
                   onItemSelectToggle={onItemSelectToggle}
                   onItemDrag={onItemDrag}
-                  onClick={() => onAddToLibrary(pendingElements, section.id)}
                   isItemSelected={isItemSelected}
                   svgCache={svgCache}
-                  {...pendingProps}
+                  {...getPendingProps(section.id)}
                 />
               )}
               <LibraryMenuSection
@@ -453,10 +502,9 @@ export default function LibraryMenuItems({
               items={[{ id: null, elements: pendingElements }]}
               onItemSelectToggle={onItemSelectToggle}
               onItemDrag={onItemDrag}
-              onClick={onAddToLibraryClick}
               isItemSelected={isItemSelected}
               svgCache={svgCache}
-              {...pendingProps}
+              {...getPendingProps()}
             />
           )}
           <LibraryMenuSection

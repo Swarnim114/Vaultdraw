@@ -195,6 +195,12 @@ const applyDelta = (disk: LibraryItem[], delta: Delta): LibraryItem[] => {
   return added.length ? [...added, ...kept] : kept;
 };
 
+export type LibraryItemSummary = {
+  id: string;
+  name: string | null;
+  scope: LibraryScope;
+};
+
 export interface LibraryStoreOptions {
   /** Schedules the lazy first load. Default: requestIdleCallback or a timeout. */
   scheduleIdle?: (run: () => void) => void;
@@ -289,6 +295,26 @@ export class LibraryStore {
     return this.vault
       ? [...this.personal.items, ...this.vault.items]
       : [...this.personal.items];
+  }
+
+  /**
+   * Items for pickers (e.g. a command palette that inserts library items by
+   * name): id, name (null when unnamed) and which library holds it. The
+   * elements come from `getItem(id)`; inserting goes through the editor.
+   */
+  listItems(): LibraryItemSummary[] {
+    return this.union().map((item) => ({
+      id: item.id,
+      name: item.name?.trim() || null,
+      scope: this.sectionOf(item.id),
+    }));
+  }
+
+  getItem(id: string): LibraryItem | undefined {
+    return (
+      this.personal.items.find((item) => item.id === id) ??
+      this.vault?.items.find((item) => item.id === id)
+    );
   }
 
   sectionOf = (id: string): LibraryScope =>

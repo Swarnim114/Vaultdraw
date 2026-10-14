@@ -44,9 +44,14 @@ const header = (page: Page, id: string) =>
   page.getByTestId(`library-section-${id}`);
 const grid = (page: Page, id: string) =>
   header(page, id).locator("xpath=following-sibling::*[1]");
-/** The add tile pulses forever (CSS animation), so it is never "stable". */
-const addTo = async (page: Page, id: string) =>
-  grid(page, id).locator(".library-unit__adder").click({ force: true });
+/** The add tile pulses forever (CSS animation), so it is never "stable".
+ *  Adding asks for a name (required); Enter adds the item. */
+const addTo = async (page: Page, id: string, name = `Item in ${id}`) => {
+  await grid(page, id).locator(".library-unit__adder").click({ force: true });
+  const input = grid(page, id).getByTestId("library-item-name-input");
+  await input.fill(name);
+  await input.press("Enter");
+};
 const itemsIn = (page: Page, id: string) =>
   grid(page, id).locator(
     ".library-unit:not(:has(.library-unit__adder)) .library-unit__dragger",

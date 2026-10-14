@@ -77,7 +77,14 @@ export const thickenPreviewStrokes = (
     return;
   }
   const { width, height } = svg.getBoundingClientRect();
-  const scale = Math.min(width / viewBox.width, height / viewBox.height);
+  applyMinStroke(
+    svg,
+    Math.min(width / viewBox.width, height / viewBox.height),
+    minPx,
+  );
+};
+
+const applyMinStroke = (svg: SVGSVGElement, scale: number, minPx: number) => {
   if (!scale || scale * 2 >= minPx) {
     // not rendered (yet), or default strokes are visible anyway
     return;
@@ -88,6 +95,36 @@ export const thickenPreviewStrokes = (
       el.setAttribute("stroke-width", `${minWidth}`);
     }
   }
+};
+
+// Tiles insert their previews in the same frame: measure all of them, then
+// write, so there's a single layout per frame (not one per tile).
+const pendingThicken = new Set<HTMLElement>();
+const flushThicken = () => {
+  const measured = [...pendingThicken].map((node) => {
+    const svg = node.querySelector("svg");
+    const viewBox = svg?.viewBox?.baseVal;
+    const rect = svg?.getBoundingClientRect();
+    return {
+      svg,
+      scale:
+        svg && rect && viewBox?.width && viewBox.height
+          ? Math.min(rect.width / viewBox.width, rect.height / viewBox.height)
+          : 0,
+    };
+  });
+  pendingThicken.clear();
+  for (const { svg, scale } of measured) {
+    if (svg) {
+      applyMinStroke(svg, scale, PREVIEW_MIN_STROKE_PX);
+    }
+  }
+};
+const scheduleThicken = (node: HTMLElement) => {
+  if (!pendingThicken.size) {
+    requestAnimationFrame(flushThicken);
+  }
+  pendingThicken.add(node);
 };
 
 export const useLibraryItemSvg = (
@@ -146,10 +183,11 @@ export const useLibraryItemSvg = (
 
     if (svg) {
       node.innerHTML = svg.outerHTML;
-      thickenPreviewStrokes(node);
+      scheduleThicken(node);
     }
 
     return () => {
+      pendingThicken.delete(node);
       node.innerHTML = "";
     };
   }, [svg, ref]);

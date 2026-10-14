@@ -1,8 +1,15 @@
-import { LIBRARY_DISABLED_TYPES, randomId } from "@excalidraw/common";
+import {
+  DEFAULT_SIDEBAR,
+  LIBRARY_DISABLED_TYPES,
+  LIBRARY_SIDEBAR_TAB,
+  randomId,
+} from "@excalidraw/common";
 import { deepCopyElement } from "@excalidraw/element";
 
 import { CaptureUpdateAction } from "@excalidraw/element";
 
+import { libraryAddNamingAtom } from "../components/LibraryUnit";
+import { editorJotaiStore } from "../editor-jotai";
 import { t } from "../i18n";
 
 import { register } from "./register";
@@ -27,6 +34,23 @@ export const actionAddToLibrary = register({
           },
         };
       }
+    }
+
+    const libraryUIOptions = app.props.libraryUIOptions;
+    if (libraryUIOptions?.namedItems) {
+      // items need a name: open the library with the add tile's name field
+      // (default target: the first section that takes new items)
+      const section = libraryUIOptions.sections?.list.find(
+        (section) => section.canAdd !== false,
+      );
+      editorJotaiStore.set(libraryAddNamingAtom, section?.id ?? "");
+      return {
+        captureUpdate: CaptureUpdateAction.EVENTUALLY,
+        appState: {
+          ...appState,
+          openSidebar: { name: DEFAULT_SIDEBAR.name, tab: LIBRARY_SIDEBAR_TAB },
+        },
+      };
     }
 
     return app.library

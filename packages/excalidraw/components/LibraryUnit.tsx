@@ -33,6 +33,12 @@ import type { SvgCache } from "../hooks/useLibraryItemSvg";
 /** Id of the library item whose name is being edited (named items only). */
 export const libraryItemRenamingAtom = atom<LibraryItem["id"] | null>(null);
 
+/**
+ * Adding to the library asks for a name first (named items only): the
+ * section whose add tile shows the name field ("" without sections).
+ */
+export const libraryAddNamingAtom = atom<string | null>(null);
+
 export const LIBRARY_ITEM_NAME_MAX_LENGTH = 200;
 const HOVER_PREVIEW_DELAY = 500;
 const HOVER_PREVIEW_SIZE = 240;
@@ -110,24 +116,55 @@ const LibraryUnitHoverPreview = ({
   );
 };
 
+/** Inline name field. A name is required: empty is the same as cancel. */
 const LibraryUnitNameInput = ({
   name,
   onCommit,
 }: {
   name: string;
-  /** null: cancelled */
+  /** trimmed, non-empty name; null: cancelled */
   onCommit: (name: string | null) => void;
 }) => {
   const [value, setValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
   const done = useRef(false);
   const finish = (next: string | null) => {
     if (!done.current) {
       done.current = true;
-      onCommit(next);
+      onCommit(next?.trim() || null);
     }
   };
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
+
+  // Native listener on the input itself: the editor handles keys on its
+  // container (Escape deselects, the sidebar closes), which runs before
+  // React's root listener could stop the event.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      event.stopPropagation();
+      if (event.key === KEYS.ENTER) {
+        event.preventDefault();
+        // required: Enter on an empty field does nothing
+        if (input.value.trim()) {
+          finishRef.current(input.value);
+        }
+      } else if (event.key === KEYS.ESCAPE) {
+        event.preventDefault();
+        finishRef.current(null);
+      }
+    };
+    input.addEventListener("keydown", onKeyDown);
+    return () => input.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <input
+      ref={inputRef}
       className="library-unit__name-input"
       data-testid="library-item-name-input"
       aria-label={t("library.itemName")}
@@ -138,17 +175,6 @@ const LibraryUnitNameInput = ({
       onFocus={(event) => event.currentTarget.select()}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => finish(value)}
-      onKeyDown={(event) => {
-        // keep keys away from the editor and the sidebar (Esc closes it)
-        event.stopPropagation();
-        if (event.key === KEYS.ENTER) {
-          event.preventDefault();
-          finish(value);
-        } else if (event.key === KEYS.ESCAPE) {
-          event.preventDefault();
-          finish(null);
-        }
-      }}
     />
   );
 };
@@ -188,8 +214,8 @@ export const LibraryUnit = memo(
     /** set (with onRenameEnd): names are editable and tiles get a hover
      *  preview */
     onRenameStart?: (id: LibraryItem["id"]) => void;
-    /** name null: cancelled */
-    onRenameEnd?: (id: LibraryItem["id"], name: string | null) => void;
+    /** name null: cancelled. id null: the pending (add) tile was named. */
+    onRenameEnd?: (id: LibraryItem["id"] | null, name: string | null) => void;
     onContextMenu?: (id: LibraryItem["id"]) => void;
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
@@ -314,10 +340,10 @@ export const LibraryUnit = memo(
           )}
         </div>
         {showName &&
-          (renaming && editable ? (
+          (renaming && onRenameEnd && (editable || isPending) ? (
             <LibraryUnitNameInput
               name={name ?? ""}
-              onCommit={(next) => onRenameEnd!(id!, next)}
+              onCommit={(next) => onRenameEnd(id, next)}
             />
           ) : (
             <div

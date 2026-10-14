@@ -29,7 +29,7 @@ import {
   distributeLibraryItemsOnSquareGrid,
   libraryItemsAtom,
 } from "../data/library";
-import { atom, useAtom, useSetAtom } from "../editor-jotai";
+import { atom, useAtom } from "../editor-jotai";
 import { t } from "../i18n";
 
 import { getSelectedElements } from "../scene";
@@ -42,7 +42,6 @@ import {
 } from "./App";
 import { LibraryMenuControlButtons } from "./LibraryMenuControlButtons";
 import LibraryMenuItems from "./LibraryMenuItems";
-import { libraryItemRenamingAtom } from "./LibraryUnit";
 import Spinner from "./Spinner";
 
 import "./LibraryMenu.scss";
@@ -89,12 +88,15 @@ const LibraryMenuContent = memo(
     onSelectItems: (id: LibraryItem["id"][]) => void;
   }) => {
     const [libraryItemsData] = useAtom(libraryItemsAtom);
-    const setRenamingId = useSetAtom(libraryItemRenamingAtom);
 
     const sections = libraryUIOptions?.sections;
 
     const _onAddToLibrary = useCallback(
-      (elements: LibraryItem["elements"], sectionId?: string) => {
+      (
+        elements: LibraryItem["elements"],
+        sectionId?: string,
+        name?: string,
+      ) => {
         trackEvent("element", "addToLibrary", "ui");
         for (const type of LIBRARY_DISABLED_TYPES) {
           if (elements.some((element) => element.type === type)) {
@@ -108,14 +110,11 @@ const LibraryMenuContent = memo(
           elements,
           id: randomId(),
           created: Date.now(),
+          ...(name && { name }),
         };
         if (sections && sectionId) {
           // the host must know the section before the item shows up
           sections.assign([newItem.id], sectionId);
-        }
-        if (libraryUIOptions?.namedItems) {
-          // name field right away (optional: leaving it empty is fine)
-          setRenamingId(newItem.id);
         }
         onAddToLibrary();
         library
@@ -124,14 +123,7 @@ const LibraryMenuContent = memo(
             setAppState({ errorMessage: t("alerts.errorAddingToLibrary") });
           });
       },
-      [
-        onAddToLibrary,
-        library,
-        setAppState,
-        sections,
-        libraryUIOptions?.namedItems,
-        setRenamingId,
-      ],
+      [onAddToLibrary, library, setAppState, sections],
     );
 
     const libraryItems = useMemo(
@@ -299,7 +291,11 @@ export const LibraryMenu = memo(() => {
           event.target instanceof ownerWindow.HTMLElement
         ) {
           const target = event.target;
-          if (target.closest(`.${CLASSES.SIDEBAR}`)) {
+          if (
+            target.closest(`.${CLASSES.SIDEBAR}`) &&
+            // an item's name field handles its own Escape (cancel)
+            !target.closest(".library-unit")
+          ) {
             // stop propagation so that we don't prevent it downstream
             // (default browser behavior is to clear search input on ESC)
             if (selectedItems.length > 0) {

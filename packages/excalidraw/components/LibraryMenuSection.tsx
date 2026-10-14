@@ -38,7 +38,9 @@ interface Props {
   renamingId?: LibraryItem["id"] | null;
   /** set: names are editable (see LibraryUnit) */
   onRenameStart?: (id: LibraryItem["id"]) => void;
-  onRenameEnd?: (id: LibraryItem["id"], name: string | null) => void;
+  onRenameEnd?: (id: LibraryItem["id"] | null, name: string | null) => void;
+  /** the pending (add) tile shows its name field */
+  pendingNaming?: boolean;
   onItemContextMenu?: (id: LibraryItem["id"]) => void;
 }
 
@@ -76,6 +78,7 @@ export const LibraryMenuSection = memo(
     onRenameStart,
     onRenameEnd,
     onItemContextMenu,
+    pendingNaming,
   }: Props) => {
     const [, startTransition] = useTransition();
     const [index, setIndex] = useState(0);
@@ -101,7 +104,7 @@ export const LibraryMenuSection = memo(
               name={"name" in item ? item.name : undefined}
               showName={showNames}
               theme={theme}
-              renaming={!!item.id && item.id === renamingId}
+              renaming={item.id ? item.id === renamingId : !!pendingNaming}
               onRenameStart={onRenameStart}
               onRenameEnd={onRenameEnd}
               onContextMenu={onItemContextMenu}

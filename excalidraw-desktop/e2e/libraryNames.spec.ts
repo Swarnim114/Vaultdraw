@@ -297,12 +297,14 @@ test.describe("library item names", () => {
     // ...and doesn't close the sidebar
     await expect(page.getByTestId("library-section-personal")).toBeVisible();
 
-    // Clearing the name removes it (neutral label again)
+    // A name is required: clearing it keeps the old name
     await tileName(page, "v1").dblclick();
     await page.getByTestId("library-item-name-input").fill("");
     await page.getByTestId("library-item-name-input").press("Enter");
-    await expect(tileName(page, "v1")).toHaveText("Untitled");
-    await expect.poll(() => nameIn(page, "vault", "v1")).toBeUndefined();
+    await expect(page.getByTestId("library-item-name-input")).toBeFocused();
+    await page.getByTestId("library-item-name-input").press("Escape");
+    await expect(tileName(page, "v1")).toHaveText("Green box");
+    expect(await nameIn(page, "vault", "v1")).toBe("Green box");
     expect(errors).toEqual([]);
   });
 
@@ -319,12 +321,14 @@ test.describe("library item names", () => {
     expect(errors).toEqual([]);
   });
 
-  test("adding an item offers a name field; leaving it empty keeps it unnamed", async ({
+  test("adding asks for a name first: Esc cancels, empty Enter waits, Enter adds", async ({
     page,
   }) => {
     const errors = await setup(page);
     const before = (await fileItems(page, "personal")).length;
-    // Select everything on the canvas (sidebar open: the add tile appears)
+    const writes = () =>
+      page.evaluate(() => (window as any).__libraryRepo.writes.length);
+    // Select everything on the canvas, then open the library: the add tile
     await page
       .locator(".default-sidebar")
       .getByRole("button", { name: "Close" })
@@ -334,21 +338,66 @@ test.describe("library item names", () => {
     await page.keyboard.press("Control+a");
     await page.keyboard.press("Meta+a");
     await openLibrary(page);
-    await page
+    const personal = page
       .getByTestId("library-section-personal")
-      .locator("xpath=following-sibling::*[1]")
-      .locator(".library-unit__adder")
-      .click({ force: true });
+      .locator("xpath=following-sibling::*[1]");
+    const adder = personal.locator(".library-unit__adder");
     const input = page.getByTestId("library-item-name-input");
+
+    // Esc cancels the add
+    await adder.click({ force: true });
+    await expect(input).toBeFocused();
+    await input.press("Escape");
+    await expect(input).toHaveCount(0);
+    const writesAfterCancel = await writes();
+    await page.waitForTimeout(800);
+    expect(await writes()).toBe(writesAfterCancel);
+    expect((await fileItems(page, "personal")).length).toBe(before);
+
+    // Empty Enter does nothing; a name adds it
+    await adder.click({ force: true });
+    await input.press("Enter");
     await expect(input).toBeFocused();
     await input.fill("Graph");
     await input.press("Enter");
     await expect
       .poll(async () => (await fileItems(page, "personal")).length)
       .toBe(before + 1);
+    expect((await fileItems(page, "personal"))[0].name).toBe("Graph");
+    expect(errors).toEqual([]);
+  });
+
+  test("canvas context menu Add to library asks for the name in the sidebar", async ({
+    page,
+  }) => {
+    const errors = await setup(page);
+    const before = (await fileItems(page, "personal")).length;
+    await page
+      .locator(".default-sidebar")
+      .getByRole("button", { name: "Close" })
+      .click();
+    await expect(page.getByTestId("library-section-personal")).toBeHidden();
+    // draw a rectangle (it stays selected), right-click inside it
+    const box = await canvasBox(page);
+    await page
+      .locator(".vault-editor [data-testid='toolbar-rectangle']")
+      .click();
+    const x0 = box.x + box.width * 0.3;
+    const y0 = box.y + box.height * 0.6;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 140, y0 + 90, { steps: 5 });
+    await page.mouse.up();
+    await page.mouse.click(x0 + 70, y0 + 45, { button: "right" });
+    await page.getByText("Add to library", { exact: true }).click();
+    const input = page.getByTestId("library-item-name-input");
+    await expect(input).toBeFocused();
+    expect((await fileItems(page, "personal")).length).toBe(before);
+    await input.fill("From menu");
+    await input.press("Enter");
     await expect
-      .poll(async () => (await fileItems(page, "personal"))[0].name)
-      .toBe("Graph");
+      .poll(async () => (await fileItems(page, "personal"))[0]?.name)
+      .toBe("From menu");
     expect(errors).toEqual([]);
   });
 
