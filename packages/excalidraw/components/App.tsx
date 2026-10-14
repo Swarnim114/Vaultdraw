@@ -229,6 +229,8 @@ import {
   isNonDeletedElement,
 } from "@excalidraw/element";
 
+import { clearElementCanvasCache } from "@excalidraw/element";
+
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import type {
@@ -3918,6 +3920,8 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   public componentWillUnmount() {
+    // Vaultdraw: free this scene's element bitmaps promptly
+    clearElementCanvasCache();
     // we're recreating the api object reference so that the
     // <ExcalidrawAPIContext.Provider/> picks up on it
     this.api = { ...this.api, isDestroyed: true };

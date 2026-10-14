@@ -1,0 +1,79 @@
+import {
+  ElementCanvasCache,
+  ELEMENT_CANVAS_CACHE_BUDGET_BYTES,
+} from "../src/elementCanvasCache";
+
+// 100x100 canvas = 40,000 bytes
+const entry = () => ({
+  canvas: { width: 100, height: 100 } as HTMLCanvasElement,
+});
+const B = 40_000;
+
+describe("ElementCanvasCache", () => {
+  it("has a sane default budget", () => {
+    expect(ELEMENT_CANVAS_CACHE_BUDGET_BYTES).toBe(64 * 1024 * 1024);
+  });
+
+  it("evicts off-screen entries beyond budget, releasing canvases", () => {
+    const cache = new ElementCanvasCache<object, any>(B * 2);
+    const [a, b, c] = [{}, {}, {}];
+    const ea = entry();
+    cache.set(a, ea);
+    cache.set(b, entry());
+    cache.beginFrame();
+    cache.set(c, entry());
+    expect(cache.has(a)).toBe(false);
+    expect(ea.canvas.width).toBe(0);
+    expect(ea.canvas.height).toBe(0);
+    expect(cache.bytes).toBe(B * 2);
+  });
+
+  it("never evicts current-frame entries (soft budget)", () => {
+    const cache = new ElementCanvasCache<object, any>(B);
+    const keys = [{}, {}, {}];
+    keys.forEach((k) => cache.set(k, entry()));
+    expect(cache.size).toBe(3);
+    cache.beginFrame();
+    // next frame: none used, trimmed down to the budget
+    expect(cache.size).toBe(1);
+  });
+
+  it("re-get marks entry most-recently-used", () => {
+    const cache = new ElementCanvasCache<object, any>(B * 2);
+    const [a, b, c] = [{}, {}, {}];
+    cache.set(a, entry());
+    cache.set(b, entry());
+    cache.beginFrame();
+    cache.get(a);
+    cache.beginFrame();
+    cache.set(c, entry());
+    expect(cache.has(a)).toBe(true);
+    expect(cache.has(b)).toBe(false);
+  });
+
+  it("zeroes replaced canvases and tracks bytes", () => {
+    const cache = new ElementCanvasCache<object, any>();
+    const k = {};
+    const e1 = entry();
+    cache.set(k, e1);
+    cache.set(k, entry());
+    expect(e1.canvas.width).toBe(0);
+    expect(cache.size).toBe(1);
+    expect(cache.bytes).toBe(B);
+  });
+
+  it("delete and clear release everything", () => {
+    const cache = new ElementCanvasCache<object, any>();
+    const [a, b] = [{}, {}];
+    const ea = entry();
+    const eb = entry();
+    cache.set(a, ea);
+    cache.set(b, eb);
+    expect(cache.delete(a)).toBe(true);
+    expect(ea.canvas.width).toBe(0);
+    cache.clear();
+    expect(eb.canvas.height).toBe(0);
+    expect(cache.size).toBe(0);
+    expect(cache.bytes).toBe(0);
+  });
+});

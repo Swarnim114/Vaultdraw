@@ -5,7 +5,7 @@ import {
   THEME,
   throttleRAF,
 } from "@excalidraw/common";
-import { isElementLink } from "@excalidraw/element";
+import { isElementLink, beginElementCanvasFrame } from "@excalidraw/element";
 import { createPlaceholderEmbeddableLabel } from "@excalidraw/element";
 import { getBoundTextElement } from "@excalidraw/element";
 import {
@@ -288,6 +288,10 @@ const _renderStaticScene = ({
   }
 
   const { renderGrid = true, isExporting } = renderConfig;
+  if (!isExporting) {
+    // Vaultdraw: new frame for the element bitmap LRU
+    beginElementCanvasFrame();
+  }
   // export draws vectors, not cached bitmaps — nothing to keep on the grid
   const appState = isExporting
     ? unsnappedAppState

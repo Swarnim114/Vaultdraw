@@ -73,6 +73,7 @@ import { getContainingFrame } from "./frame";
 import { getCornerRadius } from "./utils";
 
 import { ShapeCache } from "./shape";
+import { ElementCanvasCache } from "./elementCanvasCache";
 import {
   getStickyNoteFooter,
   getStickyNotePathCommands,
@@ -682,10 +683,18 @@ const drawElementOnCanvas = (
   }
 };
 
-export const elementWithCanvasCache = new WeakMap<
+// Vaultdraw: byte-budgeted LRU instead of a WeakMap (see elementCanvasCache.ts)
+export const elementWithCanvasCache = new ElementCanvasCache<
   ExcalidrawElement,
   ExcalidrawElementWithCanvas
 >();
+
+/** call at the start of each static scene render */
+export const beginElementCanvasFrame = () =>
+  elementWithCanvasCache.beginFrame();
+
+/** release all cached bitmaps (e.g. when the editor unmounts) */
+export const clearElementCanvasCache = () => elementWithCanvasCache.clear();
 
 const generateElementWithCanvas = (
   element: NonDeletedExcalidrawElement,
