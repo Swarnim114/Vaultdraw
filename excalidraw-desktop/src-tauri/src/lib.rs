@@ -1039,6 +1039,33 @@ mod tests {
     fn vault(root: &Path) -> Vault {
         Vault { root: root.canonicalize().unwrap(), handle: "test".into(), read_only: false, _lock: None, _watcher: None, mutation: Mutex::new(()) }
     }
+    /// Save/open cost breakdown on a real fixture: `PERF_FIXTURE=/path/to/x.excalidraw cargo test --release
+    /// bench_write_breakdown -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bench_write_breakdown() {
+        use std::time::Instant;
+        let Ok(src) = std::env::var("PERF_FIXTURE") else { return };
+        let json = fs::read_to_string(src).unwrap();
+        let t = tempdir().unwrap();
+        let v = vault(t.path());
+        let ms = |s: Instant| s.elapsed().as_secs_f64() * 1000.0;
+        let first = write_drawing_file(&v, "a.excalidraw", &json, None, "bench-0").unwrap();
+        let mut rev = first["revision"].as_str().unwrap().to_string();
+        let p = safe_path(&v.root, "a.excalidraw", true).unwrap();
+        for i in 0..5 {
+            let s = Instant::now(); ensure_json(&json).unwrap(); let t_json = ms(s);
+            let s = Instant::now(); let _ = current_revision(&p).unwrap(); let t_rev = ms(s);
+            let s = Instant::now(); let snap = create_recovery(&v, "a.excalidraw", Some(&rev), "bench-r", &json).unwrap(); let t_rec = ms(s);
+            remove_recovery(&snap);
+            let s = Instant::now(); write_atomic(&p, json.as_bytes()).unwrap(); let t_wr = ms(s);
+            let s = Instant::now(); let _ = revision(json.as_bytes()); let t_hash = ms(s);
+            let s = Instant::now(); let out = write_drawing_file(&v, "a.excalidraw", &json, Some(&rev), &format!("bench-{i}")).unwrap(); let t_all = ms(s);
+            rev = out["revision"].as_str().unwrap().to_string();
+            let s = Instant::now(); let framed = read_drawing_file(&v.root, "a.excalidraw").unwrap(); let t_read = ms(s);
+            println!("run{i} bytes={} ensure_json={t_json:.1} current_revision={t_rev:.1} create_recovery={t_rec:.1} write_atomic={t_wr:.1} hash={t_hash:.1} TOTAL_write={t_all:.1} read_drawing_file={t_read:.1} ({})", json.len(), framed.len());
+        }
+    }
     #[test]
     fn rejects_traversal_reserved_metadata_and_windows_names() {
         for p in ["../outside", "/tmp/x", "a/../b", "a\\b", ".excalidraw-vault/x", "a//b", "CON", "nul.txt", "a:b", "bad?.excalidraw"] { assert!(validate_relative(p).is_err(), "{p}"); }
