@@ -52,9 +52,6 @@ const itemsIn = (page: Page, id: string) =>
     ".library-unit:not(:has(.library-unit__adder)) .library-unit__dragger",
   );
 
-const handleOf = (page: Page) =>
-  page.evaluate(() => (window as any).__vaultRepo.handle as string);
-
 const fileJson = async (
   page: Page,
   scope: "personal" | "vault",
@@ -219,6 +216,7 @@ test.describe("persisted library", () => {
     await page.evaluate(
       ([code]) => {
         const lib = (window as any).__libraryRepo;
+        // eslint-disable-next-line no-eval
         const ext = JSON.parse((0, eval)(code));
         const cur = JSON.parse(lib.getJson("personal"));
         cur.libraryItems.push(...ext.libraryItems);
@@ -276,6 +274,7 @@ test.describe("persisted library", () => {
       ([code]) => {
         (window as any).__libraryRepo.pickResult = {
           name: "x.excalidrawlib",
+          // eslint-disable-next-line no-eval
           json: (0, eval)(code),
         };
       },
