@@ -125,7 +125,7 @@ if (appTarget) {
   await collectApp(warmup, "warmup");
   await collectApp(runs, "measured");
   let extra = 0;
-  while (!o.quick && extra < 2 && rawApp.length && elapsedMin() < 7 && gatedNoisy(aggregate(rawApp, unitOf(catalogue)))) {
+  while (!o.quick && extra < 2 && rawApp.length && elapsedMin() < 5.5 && gatedNoisy(aggregate(rawApp, unitOf(catalogue)))) {
     extra++;
     log(`noisy gated metric(s); extra run ${extra}/2 (${elapsedMin().toFixed(1)} min elapsed)`);
     await collectApp(1, "measured");
