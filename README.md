@@ -51,6 +51,14 @@ fill_style = "solid"         # solid | hachure | cross-hatch
 stroke_width = 2
 roughness = 1                # 0 architect, 1 artist, 2 cartoonist
 
+[paper]
+style = "plain"             # plain | grid | lines | dots | graph | isometric
+spacing = 0                 # 5 to 200 (0 = the style's own)
+color = ""                  # "#rrggbb"; "" = automatic
+opacity = 1                 # 0.1 to 1
+major_every = 0             # grid and graph: a stronger line every N, 1 to 20 (0 = the style's own)
+margin_line = true          # ruled lines: draw the margin line
+
 [saving]
 autosave_delay_ms = 500      # idle time before an edit is written to disk
 
@@ -237,6 +245,15 @@ Mistakes never break the app. They show as a warning banner in Settings and the 
 **Cmd/Ctrl+P** opens a list of drawings and commands. Type a few letters of a drawing name, in order and not necessarily next to each other (`vdg` finds `vault-design`), or of a command. Start with `>` to see commands only. Use Up and Down to move, Enter to open or run, and Esc to close.
 
 Excalidraw's own command palette is still on Cmd/Ctrl+/ and Cmd/Ctrl+Shift+P.
+
+## Notebook backgrounds
+
+A drawing can sit on paper: plain, grid, ruled lines (optionally with a margin line), dots, graph paper (minor and major lines) or isometric dots. The pattern is saved with the drawing and is anchored to it, so it zooms and scrolls with the content. Lines that would be too close together to read are hidden.
+
+- **Default for new drawings.** **Settings → Appearance → Background Pattern** sets the style and its tuning (spacing, colour, opacity, major lines, margin line), with a live preview. The style can be stored per vault. In `config.toml` the same settings are the `[paper]` table (see Configuration).
+- **Per drawing.** Choose **Paper** in the canvas main menu to change the open drawing's style, or **Paper settings…** to tune it. **Use app default** returns the drawing to the app default. **Make app default** uses the drawing's pattern for new drawings. Changing the default does not change existing drawings.
+- **In the file.** The pattern is stored as `appState.viewBackgroundPattern`. Drawings without it, such as older files, open plain. excalidraw.com opens these files with a plain background, and saving there drops the pattern.
+- **Display and export.** On screen the pattern follows dark mode and **Sync canvas with theme**. Exports use Excalidraw's standard colours. The export dialog has a **Background pattern** switch, shown only for drawings with a pattern; it needs **Background** on.
 
 ## Search
 
