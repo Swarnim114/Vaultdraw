@@ -25,6 +25,11 @@ import {
   paperDefaultStampedStep,
   paperDrawingPngExportStep,
 } from "./paperSmoke";
+import {
+  pageDefaultStampedStep,
+  pageModeSwitchStep,
+  pagePdfExportStep,
+} from "./pageModeSmoke";
 import { runPensSmoke } from "./pensSmoke";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
@@ -3715,6 +3720,14 @@ export async function runDesktopSmoke(): Promise<void> {
     );
     await exportStep("paper-drawing-png-export", () =>
       paperDrawingPngExportStep(exportCtx),
+    );
+
+    // Page mode. The drawing steps leave it off; the default step writes
+    // [page] to config.toml (reset afterwards), so it runs last.
+    await exportStep("page-mode-switch", () => pageModeSwitchStep(exportCtx));
+    await exportStep("page-pdf-export", () => pagePdfExportStep(exportCtx));
+    await exportStep("page-default-stamped", () =>
+      pageDefaultStampedStep(exportCtx),
     );
 
     const failed = records.filter((record) => !record.ok);
