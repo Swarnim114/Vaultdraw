@@ -1,4 +1,5 @@
 import {
+  applyCanvasBackgroundFilter,
   applyDarkModeFilter,
   COLOR_WHITE,
   FRAME_STYLE,
@@ -42,7 +43,10 @@ import {
   getLinkHandleFromCoords,
 } from "../components/hyperlink/helpers";
 
+import { isPageModeOn } from "../data/pageSetup";
+
 import { renderBackgroundPattern } from "./backgroundPattern";
+import { renderPageFrame, withPageClip } from "./pageFrame";
 
 import {
   bootstrapCanvas,
@@ -331,6 +335,26 @@ const _renderStaticScene = ({
     viewBackgroundColor: appState.viewBackgroundColor,
   });
 
+  const patternView = {
+    scrollX: appState.scrollX,
+    scrollY: appState.scrollY,
+    zoom: appState.zoom.value,
+    scale,
+    width: canvas.width,
+    height: canvas.height,
+    isDarkMode: renderConfig.theme === THEME.DARK,
+  };
+  // Page mode (on screen): surround + pages; the pattern is clipped to them
+  const pageClip =
+    !isExporting && isPageModeOn(appState.pageSetup)
+      ? renderPageFrame(context, appState.pageSetup, patternView, {
+          paper: applyCanvasBackgroundFilter(
+            appState.viewBackgroundColor ?? COLOR_WHITE,
+            patternView.isDarkMode,
+          ),
+        })
+      : null;
+
   // Notebook paper: the snap grid replaces it; exports need the background
   if (
     appState.viewBackgroundPattern &&
@@ -339,15 +363,10 @@ const _renderStaticScene = ({
       (appState.exportBackgroundPattern !== false &&
         appState.viewBackgroundColor !== null))
   ) {
-    renderBackgroundPattern(context, appState.viewBackgroundPattern, {
-      scrollX: appState.scrollX,
-      scrollY: appState.scrollY,
-      zoom: appState.zoom.value,
-      scale,
-      width: canvas.width,
-      height: canvas.height,
-      isDarkMode: renderConfig.theme === THEME.DARK,
-    });
+    const pattern = appState.viewBackgroundPattern;
+    withPageClip(context, pageClip, () =>
+      renderBackgroundPattern(context, pattern, patternView),
+    );
   }
 
   // Apply zoom
