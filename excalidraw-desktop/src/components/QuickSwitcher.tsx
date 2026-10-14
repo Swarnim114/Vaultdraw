@@ -1,10 +1,12 @@
 /**
- * The unified command palette (Cmd+P): drawings and provider items (commands,
- * editor actions, themes, pens, ...) in one ranked list, one search. A leading
- * ">" restricts it to items; Tab drills into an item's family ("Theme: ").
- * Items are collected once when the palette opens (and again after a
- * Mod+Enter run); everything is prepared once and ranked synchronously per
- * keystroke (see palette/rank.ts).
+ * The palette, one component with two modes (VS Code style). Files mode
+ * (Cmd+P) lists drawings by name; commands mode (Cmd+Shift+P, shown as a
+ * leading ">") lists provider items (commands, editor actions, themes, pens,
+ * library items...). Typing ">" switches to commands, deleting it switches
+ * back; the same mode's shortcut closes, the other mode's switches. Tab
+ * drills into an item's family ("Theme: "). Items are collected the first
+ * time commands mode shows (and again after a Mod+Enter run); everything is
+ * prepared once and ranked synchronously per keystroke (see palette/rank.ts).
  */
 import {
   memo,
@@ -17,11 +19,21 @@ import {
 } from "react";
 
 import { chordFromEvent } from "../commands/keys";
-import { getCommand } from "../commands/commands";
+import {
+  getCommand,
+  PALETTE_COMMANDS_ID,
+  PALETTE_FILES_ID,
+} from "../commands/commands";
 import { effectiveKeys } from "../commands/keymap";
 import { useHotkeyOverrides } from "../commands/useCommands";
 import { focusCanvasIfIdle } from "../palette/focus";
-import { prepareDrawings, prepareItems, rankRows } from "../palette/rank";
+import {
+  COMMANDS_PREFIX,
+  modeOf,
+  prepareDrawings,
+  prepareItems,
+  rankRows,
+} from "../palette/rank";
 import { getRecent, recordRecent } from "../palette/recent";
 import { errorMessage } from "../vault/types";
 
@@ -29,12 +41,31 @@ import { IconDrawing } from "./Icons";
 
 import "./QuickSwitcher.css";
 
-import type { RankedRow } from "../palette/rank";
+import type { PaletteMode, RankedRow } from "../palette/rank";
 import type { PaletteItem } from "../palette/types";
 import type { Platform } from "../commands/types";
 import type { IndexStatus, VaultSearch } from "../search/types";
 
-const SWITCHER_ID = "palette.quickSwitcher";
+const MODE_COMMANDS: Record<PaletteMode, string> = {
+  files: PALETTE_FILES_ID,
+  commands: PALETTE_COMMANDS_ID,
+};
+const MODE_TEXT: Record<
+  PaletteMode,
+  { label: string; placeholder: string; hint: string }
+> = {
+  files: {
+    label: "Go to drawing",
+    placeholder: "Search drawings by name  (> for commands)",
+    hint: "",
+  },
+  commands: {
+    label: "Run a command",
+    placeholder: "",
+    hint: " Search commands  (delete > for drawings)",
+  },
+};
+const NO_ITEMS: readonly PaletteItem[] = [];
 const EXTENSION = /\.excalidraw$/i;
 const DRILL_SEPARATOR = ": ";
 
@@ -42,15 +73,17 @@ export interface QuickSwitcherProps {
   /** Source of the drawing names; null = use `fallbackPaths`. */
   search: Pick<VaultSearch, "listNames" | "subscribe"> | null;
   handle: string;
+  /** Mode to open in (default files); the palette switches itself after. */
+  initialMode?: PaletteMode;
   /** Used when there is no search backend. */
   fallbackPaths?: readonly string[];
-  /** Entries from the palette providers (collectPaletteItems); called on open and again after a Mod+Enter run. */
+  /** Entries from the palette providers (collectPaletteItems); called when commands mode first shows and again after a Mod+Enter run. */
   collectItems(): readonly PaletteItem[];
   platform: Platform;
   onOpenDrawing(path: string): void;
   /** Enter: the shell closes the palette, then runs it. Mod+Enter (keepOpen): the shell runs it in place. */
   onRunItem(item: PaletteItem, keepOpen: boolean): void;
-  /** Esc, backdrop click, or the palette's own shortcut. */
+  /** Esc, backdrop click, or the current mode's own shortcut. */
   onClose(): void;
   ownerDocument?: Document | null;
 }
@@ -240,12 +273,13 @@ function drillQuery(item: PaletteItem): string | null {
           item.title.indexOf(DRILL_SEPARATOR) + DRILL_SEPARATOR.length,
         )
       : null);
-  return drill ? `>${drill}` : null;
+  return drill ? `${COMMANDS_PREFIX}${drill}` : null;
 }
 
 export const QuickSwitcher = ({
   search,
   handle,
+  initialMode = "files",
   fallbackPaths,
   collectItems,
   platform,
@@ -255,10 +289,16 @@ export const QuickSwitcher = ({
   ownerDocument,
 }: QuickSwitcherProps) => {
   const win = ownerDocument?.defaultView ?? null;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(
+    initialMode === "commands" ? COMMANDS_PREFIX : "",
+  );
+  const mode = modeOf(query);
   const [active, setActive] = useState(0);
-  const [items, setItems] = useState(() => collectItems());
-  const [recent] = useState(() => getRecent(win));
+  // null until commands mode first shows: files mode never pays for it.
+  const [items, setItems] = useState<readonly PaletteItem[] | null>(() =>
+    initialMode === "commands" ? collectItems() : null,
+  );
+  const recent = useMemo(() => getRecent(mode, win), [mode, win]);
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -278,7 +318,7 @@ export const QuickSwitcher = ({
   }, []);
 
   const drawings = useMemo(() => prepareDrawings(names.paths), [names.paths]);
-  const prepared = useMemo(() => prepareItems(items), [items]);
+  const prepared = useMemo(() => prepareItems(items ?? NO_ITEMS), [items]);
   const rows = useMemo(
     () => rankRows(drawings, prepared, query, recent),
     [drawings, prepared, query, recent],
@@ -313,6 +353,14 @@ export const QuickSwitcher = ({
     onClose();
   }, [onClose, ownerDocument]);
 
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setActive(0);
+    if (items === null && modeOf(next) === "commands") {
+      setItems(collectItems());
+    }
+  };
+
   const pick = (index: number, keepOpen = false) => {
     const row = rows[index];
     if (!row) {
@@ -344,9 +392,22 @@ export const QuickSwitcher = ({
     const row = rows[selected];
     const next = row?.kind === "item" ? drillQuery(row.entry.item) : null;
     if (next !== null) {
-      setQuery(next);
-      setActive(0);
+      changeQuery(next);
     }
+  };
+
+  /** The mode whose palette shortcut `chord` is (files wins a tie). */
+  const shortcutMode = (chord: string): PaletteMode | null => {
+    for (const target of ["files", "commands"] as const) {
+      const command = getCommand(MODE_COMMANDS[target]);
+      if (
+        command &&
+        effectiveKeys(command, overrides, platform).includes(chord)
+      ) {
+        return target;
+      }
+    }
+    return null;
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -398,15 +459,14 @@ export const QuickSwitcher = ({
       swallow();
       drill();
     } else {
-      const self = getCommand(SWITCHER_ID);
       const chord = chordFromEvent(e.nativeEvent, platform);
-      if (
-        self &&
-        chord &&
-        effectiveKeys(self, overrides, platform).includes(chord)
-      ) {
+      const target = chord ? shortcutMode(chord) : null;
+      if (target === mode) {
         swallow();
         dismiss();
+      } else if (target) {
+        swallow();
+        changeQuery(target === "commands" ? COMMANDS_PREFIX : "");
       }
     }
   };
@@ -433,6 +493,12 @@ export const QuickSwitcher = ({
         aria-modal="true"
         aria-label="Command palette"
       >
+        {query === COMMANDS_PREFIX && (
+          <span className="vault-quick__hint" aria-hidden="true">
+            <span className="vault-quick__hint-prefix">{COMMANDS_PREFIX}</span>
+            {MODE_TEXT.commands.hint}
+          </span>
+        )}
         <input
           ref={inputRef}
           className="vault-quick__input"
@@ -441,17 +507,14 @@ export const QuickSwitcher = ({
           aria-expanded="true"
           aria-controls={listId}
           aria-activedescendant={rows.length ? optionId(selected) : undefined}
-          aria-label="Search drawings and commands"
-          placeholder="Search drawings and commands  (> commands only)"
+          aria-label={MODE_TEXT[mode].label}
+          placeholder={MODE_TEXT[mode].placeholder}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           spellCheck={false}
           autoComplete="off"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setActive(0);
-          }}
+          onChange={(e) => changeQuery(e.target.value)}
         />
         <div
           id={listId}

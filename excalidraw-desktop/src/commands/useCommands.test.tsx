@@ -26,6 +26,16 @@ describe("useCommands", () => {
     expect(result.current).toEqual({});
   });
 
+  it("setting or resetting a command drops its legacy-id entry", () => {
+    const { result } = renderHook(() => useHotkeyOverrides(window));
+    act(() => setHotkeyOverride("palette.quickSwitcher", ["Mod+K"], window));
+    act(() => setHotkeyOverride("palette.files", null, window));
+    expect(result.current).toEqual({});
+    act(() => setHotkeyOverride("palette.quickSwitcher", ["Mod+K"], window));
+    act(() => setHotkeyOverride("palette.files", ["Mod+J"], window));
+    expect(result.current).toEqual({ "palette.files": ["Mod+J"] });
+  });
+
   it("dispatches keys through live handlers and honours rebinding", () => {
     const first = vi.fn();
     const second = vi.fn();

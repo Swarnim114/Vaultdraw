@@ -70,7 +70,8 @@ describe("findConflicts", () => {
       },
     ]);
     // Mod+P and Mod+Shift+= are defaults that overlap Excalidraw on purpose
-    expect(result.get("palette.quickSwitcher")).toBeUndefined();
+    expect(result.get("palette.files")).toBeUndefined();
+    expect(result.get("palette.commands")).toBeUndefined();
   });
 
   it("flags reserved keys", () => {

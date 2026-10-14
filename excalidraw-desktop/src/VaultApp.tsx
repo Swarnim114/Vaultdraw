@@ -83,6 +83,7 @@ import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 import "./components/VaultShell.css";
 
 import type { SettingsPageId } from "./components/settings/schema";
+import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
@@ -179,8 +180,9 @@ export const VaultApp = ({
   const [settingsPage, setSettingsPage] = useState<SettingsPageId | undefined>(
     undefined,
   );
-  // Cmd+P command palette (providers are asked when it opens).
-  const [switcher, setSwitcher] = useState(false);
+  // The palette and the mode it opened in (Cmd+P files, Cmd+Shift+P
+  // commands); providers are asked when commands mode is first shown.
+  const [switcher, setSwitcher] = useState<PaletteMode | null>(null);
   // One-shot navigator actions triggered from the palette.
   const [navigatorRequest, setNavigatorRequest] =
     useState<NavigatorRequest | null>(null);
@@ -1259,11 +1261,13 @@ export const VaultApp = ({
     },
     toggleMode: () =>
       handleCanvasThemeChange(appTheme === "dark" ? "light" : "dark"),
-    toggleQuickSwitcher: () => {
+    togglePalette: (mode) => {
       if (!switcher) {
         commitCanvasTextEdit(doc);
       }
-      setSwitcher((open) => !open);
+      // While it is open the palette handles its own keys (same mode closes,
+      // the other switches); this path only sees it open via Mod+Enter.
+      setSwitcher((open) => (open ? null : mode));
     },
     openSettingsPage: openSettings,
     setMode: handleCanvasThemeChange,
@@ -1378,7 +1382,7 @@ export const VaultApp = ({
     return () => stops.forEach((stop) => stop());
   }, [win]);
 
-  const closeSwitcher = () => setSwitcher(false);
+  const closeSwitcher = () => setSwitcher(null);
   const runPaletteItem = (item: PaletteItem, keepOpen: boolean) => {
     const execute = async () => {
       try {
@@ -1391,7 +1395,7 @@ export const VaultApp = ({
       void execute();
       return;
     }
-    setSwitcher(false);
+    setSwitcher(null);
     // After the palette's backdrop has unmounted, so `!modalOpen` holds.
     const timers = win ?? window;
     timers.setTimeout(() => {
@@ -1752,10 +1756,11 @@ export const VaultApp = ({
             .filter((e) => e.kind === "drawing")
             .map((e) => e.path)
             .sort()}
+          initialMode={switcher}
           collectItems={collectPaletteItems}
           platform={commandRunner.platform}
           onOpenDrawing={(path) => {
-            setSwitcher(false);
+            setSwitcher(null);
             void handleOpenDrawing(path);
           }}
           onRunItem={runPaletteItem}

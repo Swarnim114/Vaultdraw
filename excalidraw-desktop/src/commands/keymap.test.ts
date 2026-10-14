@@ -56,6 +56,46 @@ describe("commands registry", () => {
   });
 });
 
+describe("palette modes and the legacy palette.quickSwitcher id", () => {
+  const files = () => cmd("palette.files");
+  const commands = () => cmd("palette.commands");
+
+  it("splits the palette: Mod+P files, Mod+Shift+P and Mod+/ commands", () => {
+    expect(effectiveKeys(files(), {}, "mac")).toEqual(["Mod+P"]);
+    expect(effectiveKeys(commands(), {}, "mac")).toEqual([
+      "Mod+Shift+P",
+      "Mod+Slash",
+    ]);
+    expect(isCommandId("palette.quickSwitcher")).toBe(true);
+    expect(getCommand("palette.quickSwitcher")).toBeUndefined();
+  });
+
+  it("applies a legacy override to files mode, minus the commands keys", () => {
+    const legacy = { "palette.quickSwitcher": ["Mod+K"] };
+    expect(effectiveKeys(files(), legacy, "mac")).toEqual(["Mod+K"]);
+    expect(effectiveKeys(commands(), legacy, "mac")).toEqual([
+      "Mod+Shift+P",
+      "Mod+Slash",
+    ]);
+    // F41's defaults plus an extra key, as the Hotkeys page wrote them.
+    const extended = {
+      "palette.quickSwitcher": ["Mod+P", "Mod+Slash", "Mod+Shift+P", "Mod+K"],
+    };
+    expect(effectiveKeys(files(), extended, "mac")).toEqual(["Mod+P", "Mod+K"]);
+    expect(
+      effectiveKeys(files(), { "palette.quickSwitcher": [] }, "mac"),
+    ).toEqual([]);
+  });
+
+  it("the new id wins over the legacy one", () => {
+    const both = {
+      "palette.quickSwitcher": ["Mod+K"],
+      "palette.files": ["Mod+J"],
+    };
+    expect(effectiveKeys(files(), both, "mac")).toEqual(["Mod+J"]);
+  });
+});
+
 describe("keymap", () => {
   it("uses defaults without overrides and the override list with one", () => {
     expect(effectiveKeys(cmd("vault.newDrawing"), {}, "mac")).toEqual([

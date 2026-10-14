@@ -11,6 +11,10 @@ import { EDITOR_COMMANDS } from "./editorCommands";
 
 import type { Chord, CommandDefinition, Platform } from "./types";
 
+/** The palette's two modes (VS Code style): Cmd+P files, Cmd+Shift+P commands. */
+export const PALETTE_FILES_ID = "palette.files";
+export const PALETTE_COMMANDS_ID = "palette.commands";
+
 /** "pen.select1" .. "pen.select9": pick a saved pen (and the freedraw tool). */
 export const penCommandId = (index: number) => `pen.select${index + 1}`;
 
@@ -100,12 +104,28 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: { default: ["Mod+Shift+0", "Mod+Shift+Numpad0"] },
   },
   {
-    id: "palette.quickSwitcher",
-    title: "Command palette",
+    id: PALETTE_FILES_ID,
+    title: "Go to drawing",
     category: "Palette",
-    // Excalidraw's own palette keys (Mod+/, Mod+Shift+P) open ours.
-    keys: { default: ["Mod+P", "Mod+Slash", "Mod+Shift+P"] },
+    keys: { default: ["Mod+P"] },
     when: ["vaultOpen", "!modalOpen"],
+    // F41's single palette id: an existing `[hotkeys]` entry keeps working
+    // (it was the Cmd+P key); the chords that now belong to the commands
+    // mode by default are dropped from it.
+    legacy: {
+      id: "palette.quickSwitcher",
+      except: ["Mod+Slash", "Mod+Shift+P"],
+    },
+  },
+  {
+    id: PALETTE_COMMANDS_ID,
+    title: "Show all commands",
+    category: "Palette",
+    // VS Code's Mod+Shift+P, and Excalidraw's own palette key (Mod+/).
+    keys: { default: ["Mod+Shift+P", "Mod+Slash"] },
+    when: ["vaultOpen", "!modalOpen"],
+    // Already in commands mode; "Go to drawing" is listed to switch.
+    palette: false,
   },
   {
     id: "vault.newDrawing",
@@ -290,7 +310,13 @@ const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(
 export const getCommand = (id: string): CommandDefinition | undefined =>
   BY_ID.get(id);
 
-export const isCommandId = (id: string): boolean => BY_ID.has(id);
+/** Older ids still accepted in `[hotkeys]` (see CommandDefinition.legacy). */
+const LEGACY_IDS: ReadonlySet<string> = new Set(
+  COMMANDS.flatMap((command) => (command.legacy ? [command.legacy.id] : [])),
+);
+
+export const isCommandId = (id: string): boolean =>
+  BY_ID.has(id) || LEGACY_IDS.has(id);
 
 /** Default chords on a platform ([] = unassigned). */
 export const defaultKeys = (

@@ -6,8 +6,6 @@ import type { CommandRunner } from "../../commands/useCommands";
 import type { HotkeyOverrides } from "../../commands/types";
 import type { PaletteItem, PaletteProvider } from "../types";
 
-const PALETTE_ID = "palette.quickSwitcher";
-
 export interface CommandsProviderDeps {
   runner: Pick<CommandRunner, "run" | "isAvailable" | "platform">;
   /** Live `[hotkeys]` overrides (shortcut labels follow rebinds). */
@@ -29,7 +27,6 @@ export function createCommandsProvider({
       for (const command of COMMANDS) {
         if (
           command.palette === false ||
-          command.id === PALETTE_ID ||
           !runner.isAvailable(command.id, { fromPalette: true })
         ) {
           continue;

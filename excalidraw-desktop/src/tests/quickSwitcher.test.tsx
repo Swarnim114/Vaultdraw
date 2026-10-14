@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { recordRecent } from "../palette/recent";
+import { updatePreferences } from "../vault/preferences";
 import { QuickSwitcher } from "../components/QuickSwitcher";
 
 import type { QuickSwitcherProps } from "../components/QuickSwitcher";
@@ -93,21 +94,80 @@ afterEach(() => {
 });
 
 describe("QuickSwitcher", () => {
-  it("focuses the input and lists drawings then items when empty", async () => {
-    await setup();
+  it("files mode: focuses the input and lists drawings only", async () => {
+    const h = await setup();
     expect(input()).toHaveFocus();
-    expect(options()).toHaveLength(PATHS.length + makeItems().length);
+    expect(input()).toHaveValue("");
+    expect(input()).toHaveAccessibleName("Go to drawing");
+    expect(input()).toHaveAttribute(
+      "placeholder",
+      expect.stringContaining("drawings"),
+    );
+    expect(options()).toHaveLength(PATHS.length);
     expect(options()[0]).toHaveTextContent("old-notes");
-    expect(screen.getByText("Open settings")).toBeInTheDocument();
-    expect(screen.getByText("⌘,")).toBeInTheDocument();
+    expect(screen.queryByText("Open settings")).toBeNull();
     expect(screen.getByRole("dialog")).toHaveAccessibleName("Command palette");
+    // Files mode never asks the providers.
+    type("open");
+    expect(h.collectItems).not.toHaveBeenCalled();
   });
 
-  it("collects items once, on open", async () => {
-    const h = await setup();
-    type("a");
-    type("ab");
+  it("commands mode: opens with '>' and lists items only", async () => {
+    const h = await setup({ initialMode: "commands" });
+    expect(input()).toHaveValue(">");
+    expect(input()).toHaveAccessibleName("Run a command");
+    expect(screen.getByText(/Search commands/)).toBeInTheDocument();
+    expect(options()).toHaveLength(makeItems().length);
+    expect(screen.getByText("⌘,")).toBeInTheDocument();
     expect(h.collectItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("typing '>' switches to commands, deleting it switches back", async () => {
+    const h = await setup();
+    type(">");
+    expect(input()).toHaveAccessibleName("Run a command");
+    expect(options()).toHaveLength(makeItems().length);
+    type(">op");
+    expect(options()[0]).toHaveTextContent("Open settings");
+    type("op");
+    expect(input()).toHaveAccessibleName("Go to drawing");
+    expect(screen.queryByText("Open settings")).toBeNull();
+    type(">");
+    // Collected once, the first time commands mode showed.
+    expect(h.collectItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("the same mode's shortcut closes, the other mode's switches", async () => {
+    const h = await setup();
+    const cmdShiftP = { code: "KeyP", metaKey: true, shiftKey: true };
+    const cmdP = { code: "KeyP", metaKey: true };
+    type("road");
+    key("P", cmdShiftP);
+    expect(input()).toHaveValue(">");
+    expect(h.onClose).not.toHaveBeenCalled();
+    key("p", cmdP);
+    expect(input()).toHaveValue("");
+    expect(h.onClose).not.toHaveBeenCalled();
+    key("/", { code: "Slash", metaKey: true });
+    expect(input()).toHaveValue(">");
+    key("/", { code: "Slash", metaKey: true });
+    expect(h.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows rebinds of both mode shortcuts, including the legacy id", async () => {
+    updatePreferences(
+      { hotkeys: { "palette.quickSwitcher": ["Mod+K"] } },
+      window,
+    );
+    const h = await setup();
+    key("p", { code: "KeyP", metaKey: true });
+    expect(h.onClose).not.toHaveBeenCalled();
+    key("P", { code: "KeyP", metaKey: true, shiftKey: true });
+    expect(input()).toHaveValue(">");
+    key("k", { code: "KeyK", metaKey: true });
+    expect(input()).toHaveValue("");
+    key("k", { code: "KeyK", metaKey: true });
+    expect(h.onClose).toHaveBeenCalledTimes(1);
   });
 
   it("ranks the fuzzy match first and Enter opens it", async () => {
@@ -121,16 +181,18 @@ describe("QuickSwitcher", () => {
     );
   });
 
-  it("merges drawings and items: a prefix item beats a fuzzy drawing", async () => {
+  it("files mode lists no commands for the same query", async () => {
     await setup({
       search: fakeSearch(["Notes/open-roadmap-settings.excalidraw", ...PATHS]),
     });
     type("open");
+    expect(options()).toHaveLength(1);
+    expect(options()[0]).toHaveTextContent("open-roadmap");
+    type(">open");
     expect(options()[0]).toHaveTextContent("Open settings");
     expect(options().some((o) => o.textContent?.includes("open-roadmap"))).toBe(
-      true,
+      false,
     );
-    expect(screen.queryByText("Drawings")).toBeNull();
   });
 
   it('">" lists items only and Enter runs one (keepOpen false)', async () => {
@@ -149,7 +211,7 @@ describe("QuickSwitcher", () => {
 
   it("Tab drills into the family and swallows Tab otherwise", async () => {
     await setup();
-    type("dracula");
+    type(">dracula");
     key("Tab");
     expect(input()).toHaveValue(">Theme: ");
     expect(options()).toHaveLength(2);
@@ -160,11 +222,11 @@ describe("QuickSwitcher", () => {
 
   it("ArrowRight drills only with the caret at the end", async () => {
     await setup();
-    type("dracula");
+    type(">dracula");
     (input() as HTMLInputElement).setSelectionRange(2, 2);
     key("ArrowRight");
-    expect(input()).toHaveValue("dracula");
-    (input() as HTMLInputElement).setSelectionRange(7, 7);
+    expect(input()).toHaveValue(">dracula");
+    (input() as HTMLInputElement).setSelectionRange(8, 8);
     key("ArrowRight");
     expect(input()).toHaveValue(">Theme: ");
   });
@@ -223,27 +285,35 @@ describe("QuickSwitcher", () => {
     expect(h.onRunItem).not.toHaveBeenCalled();
   });
 
-  it("lists recents first on an empty query", async () => {
+  it("lists each mode's recents first on an empty query", async () => {
     recordRecent("drawing:sketch.excalidraw", window);
     recordRecent("theme:Nord", window);
     await setup();
+    expect(options()[0]).toHaveTextContent("sketch");
+    type(">");
     expect(options()[0]).toHaveTextContent("Theme: Nord");
-    expect(options()[1]).toHaveTextContent("sketch");
-    key("Enter");
+    expect(options().some((o) => o.textContent?.includes("sketch"))).toBe(
+      false,
+    );
   });
 
-  it("records what was run as a recent", async () => {
+  it("records what was run as a recent of its mode", async () => {
     await setup();
     type(">new");
     key("Enter");
+    type("roadmap");
+    key("Enter");
+    cleanup();
+    await setup({ initialMode: "commands" });
+    expect(options()[0]).toHaveTextContent("New drawing");
     cleanup();
     await setup();
-    expect(options()[0]).toHaveTextContent("New drawing");
+    expect(options()[0]).toHaveTextContent("roadmap");
   });
 
   it("matches keywords without showing them", async () => {
     await setup();
-    type("sidebar");
+    type(">sidebar");
     expect(options()).toHaveLength(1);
     expect(options()[0]).toHaveTextContent("Toggle navigator");
     expect(options()[0]).not.toHaveTextContent("sidebar");
@@ -268,7 +338,7 @@ describe("QuickSwitcher", () => {
     expect(active()).toBe(0);
   });
 
-  it("closes on Escape and on the switcher chord", async () => {
+  it("closes on Escape and on the files chord in files mode", async () => {
     const h = await setup();
     key("Escape");
     expect(h.onClose).toHaveBeenCalledTimes(1);
@@ -347,6 +417,8 @@ describe("QuickSwitcher keystroke latency (5,000 drawings, jsdom)", () => {
       "f1 dr 12",
       "zq",
       ">",
+      ">dr",
+      "",
     ]) {
       const t0 = performance.now();
       type(q);

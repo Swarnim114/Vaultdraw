@@ -4,7 +4,24 @@
 }
 
 .vault-quick {
+  position: relative;
   max-width: 620px;
+}
+
+/* Commands mode with nothing typed after ">": the mode's placeholder. */
+.vault-quick__hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 14px 18px;
+  font-size: 1rem;
+  white-space: pre;
+  color: var(--vault-text-faint);
+  pointer-events: none;
+}
+
+.vault-quick__hint-prefix {
+  visibility: hidden;
 }
 
 .vault-quick__input {

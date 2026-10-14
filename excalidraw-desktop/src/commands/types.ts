@@ -71,8 +71,14 @@ export interface CommandDefinition {
    * Default false: a held key is still claimed but runs once.
    */
   repeat?: boolean;
-  /** Listed in the Cmd+P quick switcher (default true). */
+  /** Listed in the palette's commands mode (default true). */
   palette?: boolean;
+  /**
+   * A former id of this command: its `[hotkeys]` entry applies while this id
+   * has none, minus `except` (chords that moved to another command), so
+   * existing configs keep working after a rename or split.
+   */
+  legacy?: { id: string; except?: Chord[] };
 }
 
 /** Live context snapshot the dispatcher evaluates `when` against. */

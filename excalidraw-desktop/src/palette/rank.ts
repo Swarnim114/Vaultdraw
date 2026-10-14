@@ -1,13 +1,13 @@
 /**
- * Ranking for the unified palette: drawings and provider items in one list.
- * Pure; reuses the one fuzzy scorer. Rules (best first):
- *  - item title equals the query (+EXACT_TIER) or starts with it (+PREFIX_TIER),
- *    which beats any fuzzy drawing score;
+ * Ranking for the palette's two modes (VS Code style): a query starting with
+ * ">" is commands mode (provider items only), anything else is files mode
+ * (drawings only). Pure; reuses the one fuzzy scorer. Rules (best first):
+ *  - item title equals the query (+EXACT_TIER) or starts with it (+PREFIX_TIER);
  *  - then fuzzy score (drawings keep fuzzy.ts's basename bonuses);
  *  - recent entries get a boost that decays with their MRU position;
  *  - items matching only via keywords (title + keywords haystack) count half.
- * "> text" restricts to items. An empty query lists recents (MRU), then the
- * first drawings, then the remaining items. Output is capped at `maxRows`.
+ * An empty query lists the mode's recents (MRU), then the rest of the mode's
+ * entries. Output is capped at `maxRows`.
  */
 import { filter, parseQuery, prepare } from "../commands/fuzzy";
 
@@ -15,7 +15,6 @@ import type { Prepared } from "../commands/fuzzy";
 import type { PaletteItem } from "./types";
 
 export const MAX_ROWS = 80;
-const EMPTY_QUERY_DRAWINGS = 50;
 const EXACT_TIER = 5000;
 const PREFIX_TIER = 2000;
 const RECENT_BOOST = 80;
@@ -23,6 +22,14 @@ const RECENT_DECAY = 2;
 const KEYWORD_WEIGHT = 0.5;
 
 export const drawingKey = (path: string) => `drawing:${path}`;
+
+export type PaletteMode = "files" | "commands";
+
+/** The prefix that puts the palette in commands mode. */
+export const COMMANDS_PREFIX = ">";
+
+export const modeOf = (query: string): PaletteMode =>
+  query.startsWith(COMMANDS_PREFIX) ? "commands" : "files";
 
 export interface RankDrawing {
   path: string;
@@ -85,17 +92,22 @@ function emptyQueryRows(
   drawings: DrawingIndex,
   items: ItemIndex,
   recent: readonly string[],
-  itemsOnly: boolean,
+  mode: PaletteMode,
   maxRows: number,
 ): RankedRow[] {
   const out: RankedRow[] = [];
   const seen = new Set<string>();
   for (const key of recent) {
-    const entry = items.byKey.get(key);
-    if (entry) {
-      out.push(itemRow(entry, []));
-      seen.add(key);
-    } else if (!itemsOnly && key.startsWith("drawing:")) {
+    if (out.length >= maxRows) {
+      break;
+    }
+    if (mode === "commands") {
+      const entry = items.byKey.get(key);
+      if (entry) {
+        out.push(itemRow(entry, []));
+        seen.add(key);
+      }
+    } else if (key.startsWith("drawing:")) {
       const drawing = drawings.byPath.get(key.slice("drawing:".length));
       if (drawing) {
         out.push(drawingRow(drawing, []));
@@ -103,27 +115,26 @@ function emptyQueryRows(
       }
     }
   }
-  if (!itemsOnly) {
-    let shown = 0;
+  if (mode === "commands") {
+    for (const entry of items.list) {
+      if (out.length >= maxRows) {
+        break;
+      }
+      if (!seen.has(entry.item.key)) {
+        out.push(itemRow(entry, []));
+      }
+    }
+  } else {
     for (const d of drawings.list) {
-      if (shown === EMPTY_QUERY_DRAWINGS || out.length >= maxRows) {
+      if (out.length >= maxRows) {
         break;
       }
       if (!seen.has(drawingKey(d.path))) {
         out.push(drawingRow(d, []));
-        shown++;
       }
     }
   }
-  for (const entry of items.list) {
-    if (out.length >= maxRows) {
-      break;
-    }
-    if (!seen.has(entry.item.key)) {
-      out.push(itemRow(entry, []));
-    }
-  }
-  return out.slice(0, maxRows);
+  return out;
 }
 
 export function rankRows(
@@ -133,18 +144,30 @@ export function rankRows(
   recent: readonly string[],
   maxRows: number = MAX_ROWS,
 ): RankedRow[] {
-  const itemsOnly = query.startsWith(">");
-  const text = itemsOnly ? query.slice(1) : query;
+  const mode = modeOf(query);
+  const text =
+    mode === "commands" ? query.slice(COMMANDS_PREFIX.length) : query;
   const pieces = parseQuery(text);
   if (pieces.length === 0) {
-    return emptyQueryRows(drawings, items, recent, itemsOnly, maxRows);
+    return emptyQueryRows(drawings, items, recent, mode, maxRows);
   }
-  const needle = pieces.join(" ");
   const boost = new Map<string, number>();
   recent.forEach((key, i) =>
     boost.set(key, Math.max(0, RECENT_BOOST - i * RECENT_DECAY)),
   );
 
+  if (mode === "files") {
+    return filter(drawings.list, text, (d) => d.prepared, maxRows)
+      .map((hit) => ({
+        score: hit.score + (boost.get(drawingKey(hit.item.path)) ?? 0),
+        row: drawingRow(hit.item, hit.positions),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxRows)
+      .map((s) => s.row);
+  }
+
+  const needle = pieces.join(" ");
   const scored: { score: number; row: RankedRow }[] = [];
   const matched = new Set<string>();
 
@@ -183,14 +206,6 @@ export function rankRows(
         hit.positions.filter((p) => p < titleLength),
       ),
     });
-  }
-  if (!itemsOnly) {
-    for (const hit of filter(drawings.list, text, (d) => d.prepared, maxRows)) {
-      scored.push({
-        score: hit.score + (boost.get(drawingKey(hit.item.path)) ?? 0),
-        row: drawingRow(hit.item, hit.positions),
-      });
-    }
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, maxRows).map((s) => s.row);

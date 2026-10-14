@@ -233,7 +233,7 @@ describe("Hotkeys settings page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record keys" }));
     expect(isDispatcherPaused()).toBe(true);
     press({ code: "KeyP", key: "p", ...MOD });
-    expect(screen.getByText("Command palette")).toBeInTheDocument();
+    expect(screen.getByText("Go to drawing")).toBeInTheDocument();
     expect(screen.queryByText("New drawing")).toBeNull();
     expect(isDispatcherPaused()).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Clear key filter" }));

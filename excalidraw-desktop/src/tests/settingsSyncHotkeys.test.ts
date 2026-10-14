@@ -113,6 +113,14 @@ describe("[hotkeys] -> preferences", () => {
     ]);
   });
 
+  it("accepts the legacy palette.quickSwitcher id without a warning", () => {
+    const { values, problems } = configToPreferences({
+      hotkeys: { "palette.quickSwitcher": ["Mod+K"] },
+    });
+    expect(values.hotkeys).toEqual({ "palette.quickSwitcher": ["Mod+K"] });
+    expect(problems).toEqual([]);
+  });
+
   it("reports a non-table [hotkeys]", () => {
     const { values, problems } = configToPreferences({ hotkeys: ["x"] });
     expect(values.hotkeys).toEqual({});

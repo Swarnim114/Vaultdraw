@@ -12,7 +12,7 @@ const runnerWith = (available: (id: string) => boolean) => ({
 });
 
 describe("commands provider", () => {
-  it("lists available registry commands with shortcuts, never the palette itself or hidden ones", () => {
+  it("lists available registry commands with shortcuts, never the commands mode itself or hidden ones", () => {
     const runner = runnerWith(() => true);
     const items = createCommandsProvider({
       runner,
@@ -20,7 +20,8 @@ describe("commands provider", () => {
     }).items();
     const keys = items.map((i) => i.key);
     expect(keys).toContain("command:file.save");
-    expect(keys).not.toContain("command:palette.quickSwitcher");
+    expect(keys).not.toContain("command:palette.commands");
+    expect(keys).toContain("command:palette.files");
     expect(keys.some((k) => k.startsWith("command:pen.select"))).toBe(false);
     expect(items.find((i) => i.key === "command:file.save")).toMatchObject({
       title: "Save drawing",

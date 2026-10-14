@@ -43,13 +43,20 @@ export function useHotkeyOverrides(win: Window | null): HotkeyOverrides {
   return overrides;
 }
 
-/** Set the override for `id`; null removes it (back to the defaults). */
+/**
+ * Set the override for `id`; null removes it (back to the defaults). Either
+ * way the command's legacy-id entry is dropped, so it can't come back.
+ */
 export function setHotkeyOverride(
   id: string,
   keys: readonly Chord[] | null,
   win?: Window | null,
 ): void {
   const next = { ...getPreferences(win).hotkeys };
+  const legacy = getCommand(id)?.legacy;
+  if (legacy) {
+    delete next[legacy.id];
+  }
   if (keys === null) {
     delete next[id];
   } else {

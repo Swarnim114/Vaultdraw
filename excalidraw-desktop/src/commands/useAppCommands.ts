@@ -11,6 +11,7 @@ import { SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
 import { settingsPageCommandId, sortCommandId } from "./commands";
 
+import type { PaletteMode } from "../palette/rank";
 import type { CommandHandlers } from "./types";
 
 export interface AppCommandActions {
@@ -26,7 +27,8 @@ export interface AppCommandActions {
   revealActive(): void | Promise<void>;
   duplicateActive(): void | Promise<void>;
   toggleMode(): void;
-  toggleQuickSwitcher(): void;
+  /** Open the palette in `mode`; the same mode again closes it. */
+  togglePalette(mode: PaletteMode): void;
   openSettingsPage(page: SettingsPageId): void;
   setMode(mode: "light" | "dark" | "system"): void;
   setSyncCanvas(on: boolean): void;
@@ -63,7 +65,8 @@ export function appCommandHandlers(
     "file.revealInFinder": actions.revealActive,
     "file.duplicate": actions.duplicateActive,
     "appearance.toggleMode": actions.toggleMode,
-    "palette.quickSwitcher": actions.toggleQuickSwitcher,
+    "palette.files": () => actions.togglePalette("files"),
+    "palette.commands": () => actions.togglePalette("commands"),
     "appearance.mode.light": () => actions.setMode("light"),
     "appearance.mode.dark": () => actions.setMode("dark"),
     "appearance.mode.system": () => actions.setMode("system"),
