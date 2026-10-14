@@ -2,11 +2,13 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   CaptureUpdateAction,
+  DefaultSidebar,
   Excalidraw,
   loadFromBlob,
   MainMenu,
   serializeAsJSON,
 } from "@excalidraw/excalidraw";
+import { DEFAULT_SIDEBAR } from "@excalidraw/common";
 
 import {
   mermaidLogoIcon,
@@ -20,6 +22,7 @@ import type {
   ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
+import { IconLibrary } from "../components/Icons";
 import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
 import { useVaultLibrary } from "../library/useVaultLibrary";
@@ -437,6 +440,12 @@ const VaultEditorComponent = ({
           },
         }}
       >
+        {/* A book, not Excalidraw's "panel" glyph, which reads as a sidebar toggle. */}
+        <DefaultSidebar.Trigger
+          icon={<IconLibrary />}
+          title="Library"
+          tab={DEFAULT_SIDEBAR.defaultTab}
+        />
         {/* Mirrors excalidraw.com's menu, with vault-safe export actions
             instead of open/save-as (the vault file is always the source). */}
         <MainMenu>

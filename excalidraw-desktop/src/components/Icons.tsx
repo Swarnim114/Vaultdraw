@@ -394,3 +394,22 @@ export const IconExport = (props: SVGProps<SVGSVGElement>) => (
     <line x1="12" y1="15" x2="12" y2="3" />
   </svg>
 );
+
+/** Open book (tabler "book"), the same icon as the library tab in the sidebar. */
+export const IconLibrary = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    aria-hidden="true"
+    focusable="false"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.25"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
+    <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
+    <path d="M3 6v13M12 6v13M21 6v13" />
+  </svg>
+);
