@@ -1,5 +1,4 @@
 import { useRef } from "react";
-import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { isFiniteNumber } from "@excalidraw/math";
 
 import { useAtom } from "../../../editor-jotai";
@@ -191,6 +190,10 @@ export const useTextGeneration = ({
       }
 
       try {
+        // Loaded on demand: keeps the Mermaid converter out of the boot graph.
+        const { parseMermaidToExcalidraw } = await import(
+          "@excalidraw/mermaid-to-excalidraw"
+        );
         await parseMermaidToExcalidraw(generatedResponse ?? "");
         trackEvent("ai", "mermaid parse success", "ttd");
       } catch (error: any) {

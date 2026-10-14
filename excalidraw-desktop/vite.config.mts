@@ -2,6 +2,43 @@ import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+import type { Plugin } from "vite";
+
+// main.tsx loads VaultApp (editor and the whole shell, ~1.7 MB) only after the
+// settings round trip to Rust, so without a hint the fetch and compile start
+// late. Preloading the chunk (and its static imports) from index.html lets
+// the engine fetch and compile it in parallel with settings hydration;
+// evaluation order is unchanged.
+const preloadVaultApp = (): Plugin => ({
+  name: "vault-preload-app-chunk",
+  apply: "build",
+  transformIndexHtml: {
+    order: "post",
+    handler(_html, ctx) {
+      const bundle = ctx.bundle;
+      const app = bundle
+        ? Object.values(bundle).find(
+            (chunk) =>
+              chunk.type === "chunk" &&
+              chunk.facadeModuleId?.endsWith("/src/VaultApp.tsx"),
+          )
+        : undefined;
+      if (!app || app.type !== "chunk") {
+        return [];
+      }
+      return [app.fileName, ...app.imports].map((fileName) => ({
+        tag: "link",
+        attrs: {
+          rel: "modulepreload",
+          crossorigin: true,
+          href: `/${fileName}`,
+        },
+        injectTo: "head" as const,
+      }));
+    },
+  },
+});
+
 // Offline desktop frontend for Excalidraw Vault (Tauri 2 WebView shell).
 //
 // - Dev server is pinned to port 1420 with strictPort: `tauri dev` waits on
@@ -134,9 +171,10 @@ export default defineConfig({
             return `locales/${id.substring(index + 8)}`;
           }
 
-          if (id.includes("@excalidraw/mermaid-to-excalidraw")) {
-            return "mermaid-to-excalidraw";
-          }
+          // Mermaid is deliberately NOT a manual chunk: forcing one put
+          // shared helpers in it, so the entry statically imported and
+          // modulepreloaded ~580 KB at boot. Rollup splits it from the
+          // dynamic import() sites on its own.
 
           if (id.includes("@codemirror/") || id.includes("@lezer/")) {
             return "codemirror.chunk";
@@ -154,5 +192,5 @@ export default defineConfig({
   // (service-worker.js, web icons) that must never ship in the desktop app.
   // Installer icons live in src-tauri (native worker scope).
   publicDir: false,
-  plugins: [react()],
+  plugins: [react(), preloadVaultApp()],
 });
