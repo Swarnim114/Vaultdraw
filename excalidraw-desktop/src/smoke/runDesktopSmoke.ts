@@ -19,6 +19,10 @@ import {
   perfExportMermaidStep,
 } from "./exportSmoke";
 import { runLibrarySmoke } from "./librarySmoke";
+import {
+  paperDefaultStampedStep,
+  paperDrawingPngExportStep,
+} from "./paperSmoke";
 import { runPensSmoke } from "./pensSmoke";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
@@ -136,6 +140,7 @@ const DEFAULT_CONFIG_JSON = {
   interface: {},
   navigator: {},
   files: {},
+  paper: {},
   hotkeys: {},
 };
 
@@ -3586,6 +3591,15 @@ export async function runDesktopSmoke(): Promise<void> {
         canvasSync: doc.documentElement.dataset.vaultCanvasSync,
       };
     });
+
+    // Notebook backgrounds (F20). Last: they write [paper] to config.toml
+    // (reset afterwards) and change the open drawing.
+    await exportStep("paper-default-stamped", () =>
+      paperDefaultStampedStep(exportCtx),
+    );
+    await exportStep("paper-drawing-png-export", () =>
+      paperDrawingPngExportStep(exportCtx),
+    );
 
     const failed = records.filter((record) => !record.ok);
     if (failed.length) {

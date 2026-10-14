@@ -131,7 +131,7 @@ export const closeDialog = async (ctx: ExportSmokeContext) => {
   }
 };
 
-const dialogButton = (modal: HTMLElement, label: string) => {
+export const dialogButton = (modal: HTMLElement, label: string) => {
   const found = Array.from(modal.querySelectorAll("button")).find(
     (b) => b.textContent?.trim() === label,
   );
