@@ -1298,13 +1298,25 @@ fn webview_configuration(
     config
 }
 
+/// Env-gated startup timing (`VAULTDRAW_STARTUP_TRACE=1`): prints ms since `run()` began.
+pub(crate) fn startup_trace(label: &str) {
+    use std::sync::OnceLock;
+    static T0: OnceLock<(Instant, bool)> = OnceLock::new();
+    let (t0, on) = T0.get_or_init(|| (Instant::now(), std::env::var_os("VAULTDRAW_STARTUP_TRACE").is_some()));
+    if *on {
+        eprintln!("[startup] {:>7.1} ms  {label}", t0.elapsed().as_secs_f64() * 1000.0);
+    }
+}
+
 pub fn run() {
+    startup_trace("run");
     #[cfg(not(test))]
     {
         let builder = tauri::Builder::default()
             .manage(Service::default())
             .manage(search::SearchService::default())
             .setup(|app| {
+                startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
                 // and built here so macOS can use a custom webview configuration.
                 let window_config = app
@@ -1325,17 +1337,27 @@ pub fn run() {
                         .ok_or("window setup must run on the main thread")?;
                     builder.with_webview_configuration(webview_configuration(mtm))
                 };
+                startup_trace("window config ready");
                 let main_window = builder.build()?;
+                startup_trace("window built");
                 #[cfg(feature = "smoke-test")]
                 smoke::harden_test_webview(&main_window);
                 #[cfg(not(feature = "smoke-test"))]
                 let _ = main_window;
-                // Live-reload of the config folder; a failure only disables live reload.
-                match config::start_watcher(app.handle()) {
-                    Ok(watcher) => {
-                        app.manage(watcher);
+                // Live-reload of the config folder, started off the setup path (it creates the
+                // config files and registers an FSEvents stream); a failure only disables live reload.
+                let handle = app.handle().clone();
+                let spawned = thread::Builder::new().name("config-watcher-init".into()).spawn(move || {
+                    match config::start_watcher(&handle) {
+                        Ok(watcher) => {
+                            handle.manage(watcher);
+                        }
+                        Err(e) => eprintln!("vaultdraw: config watcher not started: {} ({})", e.message, e.code),
                     }
-                    Err(e) => eprintln!("vaultdraw: config watcher not started: {} ({})", e.message, e.code),
+                    startup_trace("watcher started");
+                });
+                if let Err(e) = spawned {
+                    eprintln!("vaultdraw: config watcher not started: {e}");
                 }
                 Ok(())
             });
@@ -1387,9 +1409,11 @@ pub fn run() {
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir
         ]);
+        startup_trace("builder configured");
         let app = builder
             .build(tauri::generate_context!())
             .expect("error while building Excalidraw Vault");
+        startup_trace("app built");
         app.run(|handle, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // The test runner intentionally exits after writing its report.
