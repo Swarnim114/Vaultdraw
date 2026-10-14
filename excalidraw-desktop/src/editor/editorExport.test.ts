@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { loadBuiltinThemes } from "../theme";
 import { copyWithWebClipboard } from "../vault/clipboard";
-import { normalizeExportOptions } from "../vault/preferences";
+import {
+  DEFAULT_EXPORT_OPTIONS,
+  getPreferences,
+  normalizeExportOptions,
+} from "../vault/preferences";
 
 import {
   registerCanvasRepaint,
@@ -13,6 +17,8 @@ import {
 import {
   appStateToExportOptions,
   exportOptionsToAppState,
+  loadExportOptions,
+  rememberExportOptions,
 } from "./exportOptions";
 import { exportFileName, renderImageExport } from "./imageExport";
 
@@ -154,7 +160,12 @@ describe("renderImageExport", () => {
 
 describe("export options", () => {
   it("round-trips", () => {
-    const opts = { scale: 2, background: false, embedScene: true } as const;
+    const opts = {
+      scale: 2,
+      background: false,
+      embedScene: true,
+      pattern: false,
+    } as const;
     expect(
       appStateToExportOptions(exportOptionsToAppState(opts) as never),
     ).toEqual(opts);
@@ -167,7 +178,17 @@ describe("export options", () => {
       scale: expect.any(Number),
       background: true,
       embedScene: true,
+      pattern: true,
     });
+  });
+
+  it("remembers the pattern toggle", () => {
+    const base = exportOptionsToAppState(DEFAULT_EXPORT_OPTIONS);
+    loadExportOptions();
+    rememberExportOptions({ ...base, exportBackgroundPattern: false });
+    expect(getPreferences().exportOptions.pattern).toBe(false);
+    rememberExportOptions({ ...base, exportBackgroundPattern: true });
+    expect(getPreferences().exportOptions.pattern).toBe(true);
   });
 });
 

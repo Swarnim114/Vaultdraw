@@ -79,6 +79,9 @@ describe("settings schema", () => {
     expect(ids("ATOMICALLY")).toEqual(["autosave"]); // description
     expect(ids("sloppiness")).toEqual(["roughness"]); // keyword
     expect(ids("saving.autosave_delay_ms")).toEqual(["autosave"]); // key
+    expect(ids("ruled")).toEqual(["paper"]);
+    expect(ids("dots")).toEqual(["paper"]);
+    expect(ids("paper.style")).toEqual(["paper"]);
     expect(ids("   ")).toEqual([]);
     expect(ids("nothing-matches-this")).toEqual([]);
     const groups = groupByPage(searchSettings("colour"));

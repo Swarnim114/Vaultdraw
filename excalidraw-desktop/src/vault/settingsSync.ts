@@ -9,6 +9,11 @@
  * harness, Vitest without injected deps) nothing here touches Tauri and
  * preferences.ts keeps its localStorage behaviour.
  */
+import {
+  BACKGROUND_PATTERN_LIMITS,
+  BACKGROUND_PATTERN_TYPES,
+} from "@excalidraw/excalidraw/data/backgroundPattern";
+
 import { isCommandId } from "../commands/commands";
 import { parseChord } from "../commands/keys";
 import { inRange, LASER_LIMITS } from "../pens/laserSettings";
@@ -29,6 +34,11 @@ import {
   detachPreferencesStore,
   getPreferences,
   isExpandedFolders,
+  isPaperColor,
+  isPaperMajorEvery,
+  isPaperOpacity,
+  isPaperSpacing,
+  isPaperStyle,
   normalizeExportOptions,
   isVaultTheme,
   readLocalStoragePreferences,
@@ -112,6 +122,12 @@ type ConfigField =
   | "theme"
   | "syncCanvas"
   | "defaultCanvasBackground"
+  | "paperStyle"
+  | "paperSpacing"
+  | "paperColor"
+  | "paperOpacity"
+  | "paperMajorEvery"
+  | "paperMarginLine"
   | "defaultFontFamily"
   | "defaultFontSize"
   | "defaultStrokeColor"
@@ -209,6 +225,44 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
     key: "appearance.canvas_background",
     expected: 'a colour like "#ffffff"',
     valid: isColor,
+  },
+  {
+    field: "paperStyle",
+    key: "paper.style",
+    expected: `"plain", ${BACKGROUND_PATTERN_TYPES.map((t) => `"${t}"`).join(
+      ", ",
+    )}`,
+    valid: isPaperStyle,
+  },
+  {
+    field: "paperSpacing",
+    key: "paper.spacing",
+    expected: `0 (the style's preset) or a number between ${BACKGROUND_PATTERN_LIMITS.spacing.min} and ${BACKGROUND_PATTERN_LIMITS.spacing.max}`,
+    valid: isPaperSpacing,
+  },
+  {
+    field: "paperColor",
+    key: "paper.color",
+    expected: 'a colour like "#8899aa", or "" for automatic',
+    valid: isPaperColor,
+  },
+  {
+    field: "paperOpacity",
+    key: "paper.opacity",
+    expected: `a number between ${BACKGROUND_PATTERN_LIMITS.opacity.min} and ${BACKGROUND_PATTERN_LIMITS.opacity.max}`,
+    valid: isPaperOpacity,
+  },
+  {
+    field: "paperMajorEvery",
+    key: "paper.major_every",
+    expected: `0 (the style's preset) or a whole number between ${BACKGROUND_PATTERN_LIMITS.majorEvery.min} and ${BACKGROUND_PATTERN_LIMITS.majorEvery.max}`,
+    valid: isPaperMajorEvery,
+  },
+  {
+    field: "paperMarginLine",
+    key: "paper.margin_line",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
   },
   {
     field: "defaultFontFamily",

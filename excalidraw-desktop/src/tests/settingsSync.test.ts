@@ -298,6 +298,71 @@ describe("settingsSync mapping", () => {
     });
   });
 
+  it("maps the paper keys from config.toml and back", () => {
+    const paper = {
+      style: "graph",
+      spacing: 12,
+      color: "#336699",
+      opacity: 0.5,
+      major_every: 4,
+      margin_line: false,
+    };
+    const { values, problems } = configToPreferences({ paper });
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      paperStyle: "graph",
+      paperSpacing: 12,
+      paperColor: "#336699",
+      paperOpacity: 0.5,
+      paperMajorEvery: 4,
+      paperMarginLine: false,
+    });
+    const changes = preferencesToConfigChanges(DEFAULT_PREFERENCES, {
+      ...DEFAULT_PREFERENCES,
+      ...values,
+    });
+    expect(Object.fromEntries(changes.map((c) => [c.key, c.value]))).toEqual(
+      Object.fromEntries(
+        Object.entries(paper).map(([k, v]) => [`paper.${k}`, v]),
+      ),
+    );
+  });
+
+  it("defaults the paper keys when absent", () => {
+    const { values, problems } = configToPreferences({});
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      paperStyle: "plain",
+      paperSpacing: 0,
+      paperColor: "",
+      paperOpacity: 1,
+      paperMajorEvery: 0,
+      paperMarginLine: true,
+    });
+  });
+
+  it.each([
+    ["style", "wavy", "paperStyle"],
+    ["spacing", 4, "paperSpacing"],
+    ["spacing", 201, "paperSpacing"],
+    ["color", "blue", "paperColor"],
+    ["color", "#fff", "paperColor"],
+    ["opacity", 0.05, "paperOpacity"],
+    ["opacity", 2, "paperOpacity"],
+    ["major_every", 21, "paperMajorEvery"],
+    ["major_every", 2.5, "paperMajorEvery"],
+    ["margin_line", "yes", "paperMarginLine"],
+  ] as const)(
+    "invalid paper.%s = %j reports a problem and uses the default",
+    (name, bad, field) => {
+      const { values, problems } = configToPreferences({
+        paper: { [name]: bad },
+      });
+      expect(problems.map((p) => p.key)).toEqual([`paper.${name}`]);
+      expect(values[field]).toBe(DEFAULT_PREFERENCES[field]);
+    },
+  );
+
   it("validates state.json fields", () => {
     expect(
       stateToPreferences({
@@ -317,6 +382,7 @@ describe("settingsSync mapping", () => {
         scale: expect.any(Number),
         background: true,
         embedScene: false,
+        pattern: true,
       },
     });
   });
@@ -425,6 +491,7 @@ describe("settingsSync runtime", () => {
         scale: expect.any(Number),
         background: true,
         embedScene: false,
+        pattern: true,
       },
     });
     // state fields never go to update_config

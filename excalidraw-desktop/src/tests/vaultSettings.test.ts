@@ -117,10 +117,14 @@ describe("parse and merge", () => {
       navigatorSort: "name_desc",
       newDrawingFolder: "A",
       templatesFolder: "Templates",
+      paperStyle: "plain",
     });
     expect(resolveSettings({ templatesFolder: "T/x" }, prefs)).toMatchObject({
       templatesFolder: "T/x",
     });
+    expect(resolveSettings({ paperStyle: "graph" }, prefs).paperStyle).toBe(
+      "graph",
+    );
   });
 
   it("parses a templates folder override and rejects an empty one", () => {
@@ -132,6 +136,15 @@ describe("parse and merge", () => {
     });
     expect(overrides).toEqual({});
     expect(problems).toHaveLength(1);
+  });
+
+  it("parses a per-vault paper style and ignores an invalid one", () => {
+    expect(parseVaultSettings({ paper: { style: "dots" } }).overrides).toEqual({
+      paperStyle: "dots",
+    });
+    const bad = parseVaultSettings({ paper: { style: "wavy" } });
+    expect(bad.overrides).toEqual({});
+    expect(bad.problems.map((p) => p.key)).toEqual(["paper.style"]);
   });
 });
 

@@ -56,6 +56,21 @@ stroke_width = 2
 # 0 architect, 1 artist, 2 cartoonist
 roughness = 1
 
+[paper]
+# Paper for new drawings (each drawing can change it from the canvas menu)
+# plain | grid | lines | dots | graph | isometric
+# style = "plain"
+# Distance between lines or dots, 5 to 200 (0 = the style's own)
+# spacing = 0
+# Pattern colour like "#8899aa" ("" = automatic)
+# color = ""
+# 0.1 to 1
+# opacity = 1
+# Grid and graph: a stronger line every N lines, 1 to 20 (0 = the style's own)
+# major_every = 0
+# Ruled lines: draw the margin line
+# margin_line = true
+
 [saving]
 # Milliseconds of idle time before an edit is written to disk
 autosave_delay_ms = 500
@@ -1081,11 +1096,11 @@ mod tests {
 
     #[test]
     fn default_config_documents_upcoming_tables_without_values() {
-        for section in ["[interface]\n# Whole-app zoom", "# zoom = 100", "[navigator]\n", "# sort = \"name_asc\"", "[files]\n", "# new_drawing_folder = \"\"", "# templates_folder = \"Templates\"", "[hotkeys]\n", "# \"vault.newDrawing\" = [\"Mod+N\"]"] {
+        for section in ["[interface]\n# Whole-app zoom", "# zoom = 100", "[navigator]\n", "# sort = \"name_asc\"", "[files]\n", "# new_drawing_folder = \"\"", "# templates_folder = \"Templates\"", "[paper]\n# Paper for new drawings", "# style = \"plain\"", "# major_every = 0", "[hotkeys]\n", "# \"vault.newDrawing\" = [\"Mod+N\"]"] {
             assert!(DEFAULT_CONFIG.contains(section), "{section}");
         }
         let v = parse_config(DEFAULT_CONFIG).unwrap();
-        for table in ["interface", "navigator", "files", "hotkeys"] {
+        for table in ["paper", "interface", "navigator", "files", "hotkeys"] {
             assert_eq!(v[table], json!({}), "{table}");
         }
     }
@@ -1094,9 +1109,10 @@ mod tests {
     fn new_keys_land_in_their_commented_tables() {
         let out = apply_changes(
             DEFAULT_CONFIG,
-            &[change("interface.zoom", json!(125)), change("navigator.sort", json!("modified_desc")), change("files.new_drawing_folder", json!("Inbox"))],
+            &[change("interface.zoom", json!(125)), change("navigator.sort", json!("modified_desc")), change("files.new_drawing_folder", json!("Inbox")), change("paper.style", json!("grid"))],
         )
         .unwrap();
+        assert!(out.contains("[paper]\n# Paper for new drawings (each drawing can change it from the canvas menu)\n# plain | grid | lines | dots | graph | isometric\nstyle = \"grid\"\n"), "{out}");
         assert!(
             out.contains("[interface]\n# Whole-app zoom in percent (Cmd+Shift +/-/0)\nzoom = 125\n\n[navigator]\n# name_asc | name_desc | modified_desc | modified_asc\nsort = \"modified_desc\"\n\n[files]\n# Folder for new drawings, relative to the vault root (empty = next to the open drawing)\nnew_drawing_folder = \"Inbox\"\n# Vault folder holding your templates, relative to the vault root (empty falls back to \"Templates\")\n# templates_folder = \"Templates\"\n\n[hotkeys]\n"),
             "{out}"
@@ -1106,7 +1122,7 @@ mod tests {
         assert_eq!(v["interface"]["zoom"], 125);
         assert_eq!(v["navigator"]["sort"], "modified_desc");
         // Everything before the new tables is untouched.
-        let head = &DEFAULT_CONFIG[..DEFAULT_CONFIG.find("[interface]").unwrap()];
+        let head = &DEFAULT_CONFIG[..DEFAULT_CONFIG.find("[paper]").unwrap()];
         assert!(out.starts_with(head));
         // A key that isn't documented by a comment is simply appended to its table.
         let out = apply_changes(DEFAULT_CONFIG, &[change("interface.show_hints", json!(false))]).unwrap();
@@ -1166,7 +1182,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 10, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 16, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();

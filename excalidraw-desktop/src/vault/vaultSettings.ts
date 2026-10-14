@@ -25,6 +25,7 @@ export const PER_VAULT_FIELDS = [
   "navigatorSort",
   "newDrawingFolder",
   "templatesFolder",
+  "paperStyle",
 ] as const;
 export type VaultField = typeof PER_VAULT_FIELDS[number];
 export type VaultOverrides = Partial<Pick<VaultPreferences, VaultField>>;
@@ -88,6 +89,7 @@ export const resolveSettings = (
   navigatorSort: resolveSetting("navigatorSort", overrides, prefs),
   newDrawingFolder: resolveSetting("newDrawingFolder", overrides, prefs),
   templatesFolder: resolveSetting("templatesFolder", overrides, prefs),
+  paperStyle: resolveSetting("paperStyle", overrides, prefs),
 });
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
+
 import { useVaultDocument } from "../vault/useVaultDocument";
 
 import { FakeVaultRepository } from "./fakeVaultRepository";
@@ -72,6 +74,30 @@ describe("useVaultDocument open/create/change/flush", () => {
         await result.current.create("DSA", "1D DP.excalidraw");
       }),
     ).rejects.toThrow();
+  });
+
+  it("create() saves the initial paper pattern into the new file", async () => {
+    const repo = new FakeVaultRepository();
+    const { result } = renderHook(() => useVaultDocument(repo, vaultOf(repo)));
+    const pattern = createBackgroundPattern("lines");
+    await act(async () => {
+      await result.current.create("", "Ruled.excalidraw", {
+        viewBackgroundPattern: pattern,
+      });
+    });
+    const saved = JSON.parse(
+      (await repo.readDrawing(repo.handle, "Ruled.excalidraw")).json,
+    );
+    expect(saved.appState.viewBackgroundPattern).toEqual(pattern);
+    await act(async () => {
+      await result.current.create("", "Plain.excalidraw", {
+        viewBackgroundPattern: null,
+      });
+    });
+    const plain = JSON.parse(
+      (await repo.readDrawing(repo.handle, "Plain.excalidraw")).json,
+    );
+    expect(plain.appState.viewBackgroundPattern).toBeNull();
   });
 
   it("throws a readable error when no vault is chosen", async () => {

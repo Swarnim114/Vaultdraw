@@ -10,13 +10,17 @@ import {
 
 type ExportFields = Pick<
   AppState,
-  "exportScale" | "exportBackground" | "exportEmbedScene"
+  | "exportScale"
+  | "exportBackground"
+  | "exportEmbedScene"
+  | "exportBackgroundPattern"
 >;
 
 export const exportOptionsToAppState = (opts: ExportOptions): ExportFields => ({
   exportScale: opts.scale,
   exportBackground: opts.background,
   exportEmbedScene: opts.embedScene,
+  exportBackgroundPattern: opts.pattern,
 });
 
 export const appStateToExportOptions = (
@@ -25,6 +29,7 @@ export const appStateToExportOptions = (
   scale: appState.exportScale as ExportOptions["scale"],
   background: appState.exportBackground,
   embedScene: appState.exportEmbedScene,
+  pattern: appState.exportBackgroundPattern,
 });
 
 let known: ExportOptions | null = null;
@@ -37,14 +42,15 @@ export const loadExportOptions = (): ExportOptions => {
 
 /**
  * Persists the options only when they differ from the last known ones; the
- * common case is four comparisons and no allocation (runs on every change).
+ * common case is five comparisons and no allocation (runs on every change).
  */
 export const rememberExportOptions = (appState: ExportFields): void => {
   const stored = known ?? loadExportOptions();
   if (
     stored.scale === appState.exportScale &&
     stored.background === appState.exportBackground &&
-    stored.embedScene === appState.exportEmbedScene
+    stored.embedScene === appState.exportEmbedScene &&
+    stored.pattern === appState.exportBackgroundPattern
   ) {
     return;
   }

@@ -1,3 +1,9 @@
+import {
+  BACKGROUND_PATTERN_LIMITS,
+  isBackgroundPatternType,
+  type BackgroundPatternType,
+} from "@excalidraw/excalidraw/data/backgroundPattern";
+
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
   DEFAULT_LASER,
@@ -21,6 +27,8 @@ export interface ExportOptions {
   scale: 1 | 2 | 3;
   background: boolean;
   embedScene: boolean;
+  /** Draw the paper pattern in exports that include the background. */
+  pattern: boolean;
 }
 
 const dpr = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
@@ -30,6 +38,7 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   scale: dpr === 2 || dpr === 3 ? dpr : 1,
   background: true,
   embedScene: false,
+  pattern: true,
 };
 
 export function normalizeExportOptions(input: unknown): ExportOptions {
@@ -42,8 +51,12 @@ export function normalizeExportOptions(input: unknown): ExportOptions {
     scale: o.scale === 1 || o.scale === 2 || o.scale === 3 ? o.scale : d.scale,
     background: typeof o.background === "boolean" ? o.background : d.background,
     embedScene: typeof o.embedScene === "boolean" ? o.embedScene : d.embedScene,
+    pattern: typeof o.pattern === "boolean" ? o.pattern : d.pattern,
   };
 }
+
+/** Paper style of new drawings; "plain" = no pattern. */
+export type PaperStyle = "plain" | BackgroundPatternType;
 
 export interface VaultPreferences {
   recentVaults: string[];
@@ -66,6 +79,17 @@ export interface VaultPreferences {
   defaultRoughness: number;
   autosaveDelayMs: number;
   defaultCanvasBackground?: string;
+  /** Paper pattern of new drawings. A vault's settings.toml may override the style. */
+  paperStyle: PaperStyle;
+  /** Distance between lines or dots in scene units; 0 = the style's preset. */
+  paperSpacing: number;
+  /** Pattern colour "#rrggbb"; "" = automatic. */
+  paperColor: string;
+  paperOpacity: number;
+  /** Grid and graph: a major line every N; 0 = the style's preset. */
+  paperMajorEvery: number;
+  /** Ruled lines only. */
+  paperMarginLine: boolean;
   /** Replaces the theme's primary colour ("#rrggbb"); "" = the theme's own. */
   accentColor: string;
   /** Whole-window zoom in percent (webview zoom), 50 to 200. */
@@ -118,6 +142,12 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   defaultRoughness: 1,
   autosaveDelayMs: 500,
   defaultCanvasBackground: "#ffffff",
+  paperStyle: "plain",
+  paperSpacing: 0,
+  paperColor: "",
+  paperOpacity: 1,
+  paperMajorEvery: 0,
+  paperMarginLine: true,
   accentColor: "",
   zoom: 100,
   confirmDelete: true,
@@ -140,6 +170,24 @@ export const getLaserSettings = (prefs: VaultPreferences): LaserSettings => ({
   decayMs: prefs.laserDecayMs,
   length: prefs.laserLength,
 });
+
+const PAPER_LIMITS = BACKGROUND_PATTERN_LIMITS;
+
+export const isPaperStyle = (value: unknown): value is PaperStyle =>
+  value === "plain" || isBackgroundPatternType(value);
+
+/** "" = automatic colour. */
+export const isPaperColor = (value: unknown): value is string =>
+  value === "" || (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value));
+
+/** 0 = the style's preset. */
+export const isPaperSpacing = (value: unknown) =>
+  value === 0 || inRange(value, PAPER_LIMITS.spacing);
+export const isPaperOpacity = (value: unknown) =>
+  inRange(value, PAPER_LIMITS.opacity);
+export const isPaperMajorEvery = (value: unknown) =>
+  value === 0 ||
+  (Number.isInteger(value) && inRange(value, PAPER_LIMITS.majorEvery));
 
 export const MIN_ZOOM = 50;
 export const MAX_ZOOM = 200;
@@ -260,6 +308,16 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       isString,
       d.defaultCanvasBackground,
     ),
+    paperStyle: pick(parsed.paperStyle, isPaperStyle, d.paperStyle),
+    paperSpacing: pick(parsed.paperSpacing, isPaperSpacing, d.paperSpacing),
+    paperColor: pick(parsed.paperColor, isPaperColor, d.paperColor),
+    paperOpacity: pick(parsed.paperOpacity, isPaperOpacity, d.paperOpacity),
+    paperMajorEvery: pick(
+      parsed.paperMajorEvery,
+      isPaperMajorEvery,
+      d.paperMajorEvery,
+    ),
+    paperMarginLine: pick(parsed.paperMarginLine, isBoolean, d.paperMarginLine),
     accentColor: pick(parsed.accentColor, isString, d.accentColor),
     zoom: pick(
       parsed.zoom,

@@ -19,6 +19,7 @@ import {
   setTheme,
   updatePreferences,
 } from "./vault/preferences";
+import { getDefaultBackgroundPattern } from "./vault/paperDefaults";
 import {
   getSettingsStatus,
   PREFERENCES_CHANGED_EVENT,
@@ -838,6 +839,7 @@ export const VaultApp = ({
         currentItemFillStyle: prefs.defaultFillStyle,
         currentItemStrokeWidth: prefs.defaultStrokeWidth,
         currentItemRoughness: prefs.defaultRoughness,
+        viewBackgroundPattern: getDefaultBackgroundPattern(win),
       };
       await createDoc(parentPath, name, initialAppState);
       await loadDirectory(parentPath);

@@ -108,6 +108,27 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "appearance.canvas_background",
   },
   {
+    id: "paper",
+    page: "appearance",
+    label: "Background Pattern",
+    description:
+      "Paper for new drawings: grid, ruled lines, dots, graph or isometric. Each drawing can change it from the canvas menu.",
+    keywords: [
+      "paper",
+      "grid",
+      "lines",
+      "ruled",
+      "dots",
+      "graph",
+      "isometric",
+      "notebook",
+      "background",
+      "pattern",
+    ],
+    configKey: "paper.style",
+    perVault: true,
+  },
+  {
     id: "themes-folder",
     page: "appearance",
     label: "Themes Folder",

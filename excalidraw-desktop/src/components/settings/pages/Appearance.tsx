@@ -9,6 +9,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { ColorSwatches, Segmented, Switch } from "./controls";
+import { PaperSetting } from "./PaperSetting";
 
 import type { VaultTheme } from "../../../vault/preferences";
 
@@ -226,6 +227,7 @@ export const appearanceControls: SettingControls = {
   "sync-canvas": { Component: SyncCanvasSetting },
   "accent-colour": { Component: AccentSetting },
   "canvas-background": { Component: CanvasBackgroundSetting },
+  paper: { Component: PaperSetting },
   "themes-folder": {
     Component: ThemesFolderSetting,
     available: (ctx) => ctx.registry.mode === "tauri",
