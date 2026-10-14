@@ -67,7 +67,22 @@ const GridLineColor = {
   },
 } as const;
 
-const strokeGrid = (
+/**
+ * Vaultdraw: `lineDashOffset` that anchors a dashed grid line's pattern to
+ * scene coordinate 0 rather than to wherever the line happens to start (which
+ * depends on the scroll). `sceneStart` is the scene coordinate the line starts
+ * at.
+ */
+const dashPhase = (dash: number[], sceneStart: number) => {
+  const period = dash[0] + dash[1];
+  return ((sceneStart % period) + period) % period;
+};
+
+/** Vaultdraw: a line exactly on a half device pixel snaps the same way every
+ * time (float noise would otherwise tip it either way) */
+const SNAP_TIE_BIAS = 1e-6;
+
+export const strokeGrid = (
   context: CanvasRenderingContext2D,
   /** grid cell pixel size */
   gridSize: number,
@@ -111,7 +126,9 @@ const strokeGrid = (
     const center = wholeWidth % 2 ? 0.5 : 0;
     return {
       position:
-        (Math.round(position * devicePixels - center) + center) / devicePixels,
+        (Math.round(position * devicePixels - center + SNAP_TIE_BIAS) +
+          center) /
+        devicePixels,
       lineWidth: wholeWidth / devicePixels,
     };
   };
@@ -133,6 +150,7 @@ const strokeGrid = (
 
     context.beginPath();
     context.setLineDash(isBold ? [] : lineDash);
+    context.lineDashOffset = dashPhase(lineDash, offsetY - gridSize - scrollY);
     context.strokeStyle = isBold
       ? GridLineColor[theme].bold
       : GridLineColor[theme].regular;
@@ -154,6 +172,7 @@ const strokeGrid = (
 
     context.beginPath();
     context.setLineDash(isBold ? [] : lineDash);
+    context.lineDashOffset = dashPhase(lineDash, offsetX - gridSize - scrollX);
     context.strokeStyle = isBold
       ? GridLineColor[theme].bold
       : GridLineColor[theme].regular;
