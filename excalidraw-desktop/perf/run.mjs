@@ -27,6 +27,7 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
   --skip-app             skip the packaged-app mode
   --memory-pressure      run 'memory_pressure -S' (simulated; needs root, else noted and ignored) in normal mode too
   --keep-runs            keep per-run vault clones under .cache/perf/runs
+  PERF_MEM_TIMELINE=1    (env) note per-process footprint at every phase boundary
   --quick                1 run, no warmup, no extra noise runs (harness smoke test)
 
 The runner does not take the build lock. Wrap the whole command:
@@ -118,6 +119,7 @@ async function collectApp(count, label) {
     if (label === "warmup") continue;
     if (r.errors.length) errors.push(...r.errors.map((e) => `app run: ${e}`));
     if (Object.keys(r.samples).length) rawApp.push(r.samples);
+    if (r.info?.memoryTimeline) notes.push(`memory timeline (MB, now/peak per process): ${r.info.memoryTimeline.map((t) => `${t.mark} ${Object.entries(t.procs).map(([k, v]) => `${k}=${v.now}/${v.peak}`).join(" ")}`).join(" | ")}`);
   }
 }
 

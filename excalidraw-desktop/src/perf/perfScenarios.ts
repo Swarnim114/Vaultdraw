@@ -167,7 +167,7 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     });
   const searchInput = () => {
     const input = root.querySelector<HTMLInputElement>(
-      '[placeholder="Search drawings..."]',
+      "input.vault-search__input",
     );
     if (!input) {
       throw new Error("Search input not found");
@@ -186,7 +186,8 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
   const searchRows = () =>
     Array.from(
       root.querySelectorAll<HTMLElement>(
-        ".vault-tree-container .vault-tree-item:not([data-tree-path])",
+        // F1 search results (`.vault-search-row`); filtered tree rows in older builds.
+        ".vault-search-row, .vault-tree-container .vault-tree-item:not([data-tree-path])",
       ),
     );
   const click = (el: HTMLElement | null, label: string) => {

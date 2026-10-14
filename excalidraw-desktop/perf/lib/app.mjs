@@ -1,6 +1,6 @@
 // Build the perf .app, run it once against a cloned vault, collect live marks + node-side metrics.
 import { spawn, execFile, execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -146,6 +146,31 @@ export async function runAppOnce({
   let closed = false;
 
   const livePids = () => [appPid, ...helpers];
+  // Opt-in (PERF_MEM_TIMELINE=1): footprint per process at each phase boundary, to attribute the peak.
+  const memTimeline = process.env.PERF_MEM_TIMELINE === "1";
+  const timeline = [];
+  const footprintMB = (m) => Object.fromEntries([...m].map(([pid, v]) => [roleOf(pid), { now: Math.round(v.footprint / 1048576), peak: Math.round(v.peak / 1048576) }]));
+  async function recordTimeline(mark) {
+    if (!memTimeline) return;
+    timeline.push({ mark, procs: footprintMB(await sampleFootprint(livePids())) });
+    await dumpFootprints(mark);
+  }
+  // Diagnosis only (PERF_MEM_DUMP_DIR=<dir>): categorised `footprint` (MALLOC_*, IOSurface, WebKit malloc, ...) per process.
+  async function dumpFootprints(mark) {
+    const dir = process.env.PERF_MEM_DUMP_DIR;
+    if (!dir) return;
+    mkdirSync(dir, { recursive: true });
+    for (const pid of livePids()) {
+      const out = await sh("/usr/bin/footprint", ["-p", String(pid)], { timeout: 20_000, maxBuffer: 16 << 20 }).catch((e) => `footprint failed: ${e.message}`);
+      const base = path.join(dir, `${runIndex}-${String(timeline.length).padStart(2, "0")}-${mark.replace(/\W+/g, "_")}-${roleOf(pid)}`);
+      writeFileSync(`${base}.txt`, out);
+      // Live allocations by stack (launch with MallocStackLogging=lite in the environment).
+      if (process.env.MallocStackLogging && pid === appPid) {
+        const stacks = await sh("/usr/bin/malloc_history", [String(pid), "-allBySize"], { timeout: 60_000, maxBuffer: 256 << 20 }).catch((e) => `malloc_history failed: ${e.message}`);
+        writeFileSync(`${base}-stacks.txt`, stacks.slice(0, 400_000));
+      }
+    }
+  }
   async function rediscover() {
     if (exactPids) return;
     const found = await discoverWebKitHelpers(before);
@@ -167,6 +192,11 @@ export async function runAppOnce({
       const kid = procs.find((p) => p.ppid === appPid);
       if (kid) { helpers.delete(kid.pid); notes.push(`taskpolicy did not exec; app pid is child ${kid.pid}`); }
     }
+  }
+  function roleOf(pid) {
+    if (pid === appPid) return "app";
+    for (const [role, id] of Object.entries(pidsInfo ?? {})) if (id === pid && role !== "app") return role;
+    return `pid${pid}`;
   }
   async function sampleWithTime() {
     const t0 = performance.now();
@@ -224,12 +254,16 @@ export async function runAppOnce({
       await tick();
     } else if (name.startsWith("phase:")) {
       await rediscover();
+      await recordTimeline(name);
     } else if (name === "idle-begin") {
       idleBegin = await sampleWithTime(); // sample first: the mark is the window boundary
       await rediscover();
+      await recordTimeline(name);
     } else if (name === "idle-end") {
       idleEnd = await sampleWithTime();
       footprintAtEnd = await sampleFootprint(livePids());
+      if (memTimeline) timeline.push({ mark: name, procs: footprintMB(footprintAtEnd) });
+      await dumpFootprints(name);
     }
   }
 
@@ -327,12 +361,8 @@ export async function runAppOnce({
     notes.push("idle marks missing; idle.cpuPercent not measured");
   }
   // Per-process breakdown (app / webContent / network / gpu) so a budget breach points at its owner.
-  const roleOf = (pid) => {
-    if (pid === appPid) return "app";
-    for (const [role, id] of Object.entries(pidsInfo ?? {})) if (id === pid && role !== "app") return role;
-    return `pid${pid}`;
-  };
   const breakdown = {};
+  if (memTimeline) info.memoryTimeline = timeline;
   for (const [pid, v] of footprintAtEnd ?? []) {
     breakdown[roleOf(pid)] = { peakFootprintMB: Math.round(v.peak / 1048576), footprintMB: Math.round(v.footprint / 1048576) };
   }
