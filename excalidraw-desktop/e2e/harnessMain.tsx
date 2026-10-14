@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
@@ -181,6 +182,9 @@ const libraryRepository = new FakeLibraryRepository();
   createBackgroundPattern,
   renderBackgroundPattern,
 };
+// Paper zoom perf spec: commits one zoom step (React update + static canvas
+// render) synchronously so its cost can be timed.
+(ownerWindow as any).__flushSync = flushSync;
 (ownerWindow as any).__libraryRepo = libraryRepository;
 
 void import("../src/VaultApp").then(({ default: VaultApp }) => {
