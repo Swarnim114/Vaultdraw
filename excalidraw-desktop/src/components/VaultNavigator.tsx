@@ -1127,7 +1127,11 @@ const TreeRow = memo(
     onRowPointerDown,
     onFilterTag,
   }: TreeRowProps) => {
+    const [hovered, setHovered] = useState(false);
+    const [focusWithin, setFocusWithin] = useState(false);
     const isFolder = entry.kind === "folder";
+    // Row actions mount only while hovered, focused or active (CSS still reveals them).
+    const showActions = hovered || focusWithin || isFocused || isActive;
     return (
       <div
         className={`vault-tree-item ${
@@ -1139,6 +1143,14 @@ const TreeRow = memo(
         data-tree-path={entry.path}
         data-tree-kind={entry.kind}
         onPointerDown={(e) => onRowPointerDown(e, entry)}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+        onFocus={() => setFocusWithin(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setFocusWithin(false);
+          }
+        }}
         role="treeitem"
         aria-expanded={isFolder ? isExpanded : undefined}
         aria-selected={isActive}
@@ -1173,35 +1185,37 @@ const TreeRow = memo(
           {tags && <TagChips tags={tags} onFilter={onFilterTag} />}
         </div>
 
-        <div
-          className="vault-tree-item__actions"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {isFolder && !readOnly && (
+        {showActions && (
+          <div
+            className="vault-tree-item__actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isFolder && !readOnly && (
+              <button
+                type="button"
+                className="vault-tree-action-btn"
+                title="New drawing in this folder"
+                onClick={() => onNewInside(entry.path, "drawing")}
+                aria-label="New drawing in folder"
+              >
+                <IconPlus />
+              </button>
+            )}
             <button
               type="button"
               className="vault-tree-action-btn"
-              title="New drawing in this folder"
-              onClick={() => onNewInside(entry.path, "drawing")}
-              aria-label="New drawing in folder"
+              title="More actions"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              onClick={(e) => {
+                const box = e.currentTarget.getBoundingClientRect();
+                onOpenMenu(entry, box.right, box.bottom + 4);
+              }}
             >
-              <IconPlus />
+              <IconMore />
             </button>
-          )}
-          <button
-            type="button"
-            className="vault-tree-action-btn"
-            title="More actions"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            onClick={(e) => {
-              const box = e.currentTarget.getBoundingClientRect();
-              onOpenMenu(entry, box.right, box.bottom + 4);
-            }}
-          >
-            <IconMore />
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     );
   },
