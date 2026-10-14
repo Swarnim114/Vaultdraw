@@ -57,6 +57,7 @@ import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
 import { VaultHeader } from "./components/VaultHeader";
 import { VaultNavigator } from "./components/VaultNavigator";
+import { useExplorerExport } from "./export/useExplorerExport";
 import { Onboarding } from "./components/Onboarding";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { RecoveryDialog } from "./components/RecoveryDialog";
@@ -1110,6 +1111,19 @@ export const VaultApp = ({
     }
   };
 
+  const handleExportDrawing = useExplorerExport({
+    repository,
+    vault,
+    win: win as (Window & typeof globalThis) | null,
+    dark: appTheme === "dark",
+    flushIfOpen: async (path) => {
+      if (activeDoc?.path === path) {
+        await flushDoc({ commitText: false });
+      }
+    },
+    setAlert: setGlobalAlert,
+  });
+
   // Open recovered snapshot as copy
   const handleOpenRecovered = async (targetPath: string, json: string) => {
     if (!vault) {
@@ -1527,6 +1541,7 @@ export const VaultApp = ({
           onSaveAsTemplate={templates.requestSave}
           onTrashEntry={handleTrashEntry}
           onRevealEntry={handleRevealEntry}
+          onExportDrawing={handleExportDrawing}
           onSwitchVault={handleSwitchVault}
           sortOrder={navigatorSort}
           onSortChange={(order) => {

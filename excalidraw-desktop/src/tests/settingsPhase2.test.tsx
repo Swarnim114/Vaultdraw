@@ -249,6 +249,44 @@ describe("VaultNavigator sort and delete", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("drawing rows offer Export as PNG/SVG and Save a copy; folders don't", () => {
+    const onExportDrawing = vi.fn();
+    const folder: VaultEntry = {
+      ...entry,
+      path: "F",
+      name: "F",
+      kind: "folder",
+    };
+    render(
+      <VaultNavigator
+        {...props({
+          onExportDrawing,
+          treeNodes: [
+            { entry: folder, children: [] } as never,
+            { entry, children: [] } as never,
+          ],
+        })}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText("F"));
+    expect(
+      screen.queryByRole("menuitem", { name: /Export as PNG/ }),
+    ).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.contextMenu(screen.getByText("a"));
+    for (const [label, format] of [
+      ["Export as PNG…", "png"],
+      ["Export as SVG…", "svg"],
+      ["Save a copy…", "copy"],
+    ]) {
+      if (!screen.queryByRole("menu")) {
+        fireEvent.contextMenu(screen.getByText("a"));
+      }
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+      expect(onExportDrawing).toHaveBeenLastCalledWith("a.excalidraw", format);
+    }
+  });
+
   const openTrash = () => {
     fireEvent.contextMenu(screen.getByText("a"));
     fireEvent.click(screen.getByRole("menuitem", { name: /Move to Trash/ }));

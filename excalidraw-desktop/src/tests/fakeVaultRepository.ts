@@ -458,6 +458,20 @@ export class FakeVaultRepository implements VaultRepository {
     return true;
   }
 
+  async saveDrawingCopy(handle: string, path: string): Promise<boolean> {
+    this.ensureOpen(handle);
+    assertValidRelativePath(path);
+    const row = this.files.get(path);
+    if (!row) {
+      throw makeError("NOT_FOUND", `drawing not found: ${path}`);
+    }
+    // Native copies the file's bytes; the fake's file is its JSON text.
+    return this.exportFile(
+      path.split("/").pop()!,
+      new TextEncoder().encode(row.json),
+    );
+  }
+
   async listRecovery(handle: string): Promise<RecoveryEntry[]> {
     this.ensureOpen(handle);
     await this.delay();

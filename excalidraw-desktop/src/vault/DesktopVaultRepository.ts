@@ -153,6 +153,7 @@ export class DesktopVaultRepository implements VaultRepository {
     this.trash = this.trash.bind(this);
     this.reveal = this.reveal.bind(this);
     this.exportFile = this.exportFile.bind(this);
+    this.saveDrawingCopy = this.saveDrawingCopy.bind(this);
     this.listRecovery = this.listRecovery.bind(this);
     this.discardRecovery = this.discardRecovery.bind(this);
     this.subscribe = this.subscribe.bind(this);
@@ -309,6 +310,15 @@ export class DesktopVaultRepository implements VaultRepository {
       return await invoke<boolean>("export_file", bytes, {
         headers: { "x-file-name": encodeURIComponent(name) },
       });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
+  async saveDrawingCopy(handle: string, path: string): Promise<boolean> {
+    const invoke = await this.getInvoke();
+    try {
+      return await invoke<boolean>("save_drawing_copy", { handle, path });
     } catch (err) {
       throw normalizeError(err);
     }

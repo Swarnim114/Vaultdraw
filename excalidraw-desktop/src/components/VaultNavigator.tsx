@@ -18,6 +18,7 @@ import {
   IconCopy,
   IconDrawing,
   IconEdit,
+  IconExport,
   IconFolder,
   IconFolderPlus,
   IconMore,
@@ -50,6 +51,8 @@ import type { ElementMatch, VaultSearch } from "../search/types";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
+import type { ExplorerExportFormat } from "../export/exportFromFile";
+
 const DEFAULT_WIDTH = 280;
 const clampWidth = (value: number) =>
   Math.round(Math.min(480, Math.max(200, value || DEFAULT_WIDTH)));
@@ -79,6 +82,11 @@ interface VaultNavigatorProps {
   onSaveAsTemplate?: (path: string) => void;
   onTrashEntry: (path: string) => void | Promise<void>;
   onRevealEntry: (path: string) => void | Promise<void>;
+  /** Drawing rows: Export as PNG/SVG…, Save a copy… */
+  onExportDrawing?: (
+    path: string,
+    format: ExplorerExportFormat,
+  ) => void | Promise<void>;
   onSwitchVault: () => void | Promise<void>;
   treeNodes: TreeNode[];
   expandedFolders: Set<string>;
@@ -114,6 +122,7 @@ export const VaultNavigator = ({
   onSaveAsTemplate,
   onTrashEntry,
   onRevealEntry,
+  onExportDrawing,
   onSwitchVault,
   treeNodes,
   expandedFolders,
@@ -695,6 +704,10 @@ export const VaultNavigator = ({
           onRename={(entry) => setRenameTarget(entry)}
           onMove={(entry) => setMoveTarget(entry)}
           onReveal={(entry) => void onRevealEntry(entry.path)}
+          onExport={
+            onExportDrawing &&
+            ((entry, format) => void onExportDrawing(entry.path, format))
+          }
           onTrash={requestTrash}
         />
       )}
@@ -1013,6 +1026,7 @@ interface RowMenuProps {
   onRename: (entry: VaultEntry) => void;
   onMove: (entry: VaultEntry) => void;
   onReveal: (entry: VaultEntry) => void;
+  onExport?: (entry: VaultEntry, format: ExplorerExportFormat) => void;
   onTrash: (entry: VaultEntry) => void;
 }
 
@@ -1142,6 +1156,7 @@ const RowMenu = ({
   onRename,
   onMove,
   onReveal,
+  onExport,
   onTrash,
 }: RowMenuProps) => {
   const { entry } = state;
@@ -1186,6 +1201,14 @@ const RowMenu = ({
       {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
       {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
       {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}
+      {!isFolder && onExport && (
+        <>
+          <div className="vault-menu__separator" role="separator" />
+          {item("Export as PNG…", <IconExport />, () => onExport(entry, "png"))}
+          {item("Export as SVG…", <IconExport />, () => onExport(entry, "svg"))}
+          {item("Save a copy…", <IconExport />, () => onExport(entry, "copy"))}
+        </>
+      )}
       {!readOnly && (
         <>
           <div className="vault-menu__separator" role="separator" />

@@ -87,3 +87,17 @@ describe("copy_to_clipboard IPC contract", () => {
     expect(win.navigator.clipboard.writeText).not.toHaveBeenCalled();
   });
 });
+
+describe("save_drawing_copy IPC contract", () => {
+  it("passes only the vault handle and path (native copies the bytes)", async () => {
+    const invoke = vi.fn().mockResolvedValue(true);
+    const repo = new DesktopVaultRepository({ invoke });
+    await expect(repo.saveDrawingCopy("h1", "A/B.excalidraw")).resolves.toBe(
+      true,
+    );
+    expect(invoke).toHaveBeenCalledWith("save_drawing_copy", {
+      handle: "h1",
+      path: "A/B.excalidraw",
+    });
+  });
+});

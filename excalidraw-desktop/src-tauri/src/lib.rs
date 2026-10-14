@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 mod clipboard;
 mod config;
+mod drawing_copy;
 mod search;
 mod library;
 mod memory;
@@ -925,7 +926,12 @@ async fn export_file(request: tauri::ipc::Request<'_>) -> Result<bool> {
     if bytes.len() as u64 > MAX_DRAWING_BYTES {
         return Err(err("INVALID_FILE", "Export exceeds 32 MiB"));
     }
-    let clean = Path::new(&name)
+    save_with_dialog(&name, bytes)
+}
+/// Asks for a destination with the native save dialog (suggesting `name`) and
+/// writes `bytes` there as a new file. Ok(false) = the user cancelled.
+fn save_with_dialog(name: &str, bytes: &[u8]) -> Result<bool> {
+    let clean = Path::new(name)
         .file_name()
         .and_then(|s| s.to_str())
         .filter(|s| !s.is_empty() && !s.contains('/') && !s.contains('\\'))
@@ -1337,7 +1343,7 @@ pub fn run() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-                export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
@@ -1352,7 +1358,7 @@ pub fn run() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-                export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
@@ -1366,7 +1372,7 @@ pub fn run() {
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
-            export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+            export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,

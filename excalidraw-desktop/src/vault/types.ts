@@ -43,6 +43,9 @@ export interface VaultRepository {
   trash(handle: string, path: string): Promise<void>;
   reveal(handle: string, path: string): Promise<void>;
   exportFile(name: string, bytes: Uint8Array): Promise<boolean>;
+  /** Copies a drawing's bytes, unchanged, to a place picked in the save
+   *  dialog. false = cancelled. */
+  saveDrawingCopy(handle: string, path: string): Promise<boolean>;
   listRecovery(handle: string): Promise<RecoveryEntry[]>;
   discardRecovery(handle: string, id: string): Promise<void>;
   subscribe(listener: (event: VaultChange) => void): Promise<() => void>;

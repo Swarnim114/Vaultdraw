@@ -136,6 +136,9 @@ export class HttpVaultRepository implements VaultRepository {
   async exportFile() {
     return true;
   }
+  async saveDrawingCopy() {
+    return true;
+  }
   async listRecovery(): Promise<RecoveryEntry[]> {
     return [];
   }
