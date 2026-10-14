@@ -53,6 +53,7 @@ exports[`exportToSvg > with default arguments 1`] = `
   "exportBackgroundPattern": true,
   "exportEmbedScene": false,
   "exportPadding": undefined,
+  "exportPageShaped": false,
   "exportScale": 1,
   "exportWithDarkMode": false,
   "fileHandle": null,
@@ -89,6 +90,7 @@ exports[`exportToSvg > with default arguments 1`] = `
     "x": 0,
     "y": 0,
   },
+  "pageSetup": null,
   "penDetected": false,
   "penMode": false,
   "preferredSelectionTool": {

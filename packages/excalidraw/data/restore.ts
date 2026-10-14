@@ -116,6 +116,7 @@ import {
 } from "../scene";
 
 import { normalizeBackgroundPattern } from "./backgroundPattern";
+import { normalizePageSetup } from "./pageSetup";
 
 import type { AppState, BinaryFiles, LibraryItem } from "../types";
 import type { ImportedDataState, LegacyAppState } from "./types";
@@ -1300,6 +1301,11 @@ export const restoreAppState = (
   if (typeof nextAppState.exportBackgroundPattern !== "boolean") {
     nextAppState.exportBackgroundPattern =
       defaultAppState.exportBackgroundPattern;
+  }
+  // page mode: untrusted too; files without it open on the normal canvas
+  nextAppState.pageSetup = normalizePageSetup(nextAppState.pageSetup);
+  if (typeof nextAppState.exportPageShaped !== "boolean") {
+    nextAppState.exportPageShaped = defaultAppState.exportPageShaped;
   }
 
   const boxSelectionMode =

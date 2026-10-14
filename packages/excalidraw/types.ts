@@ -61,6 +61,7 @@ import type { Spreadsheet } from "./charts";
 import type { ClipboardData } from "./clipboard";
 import type App from "./components/App";
 import type { BackgroundPattern } from "./data/backgroundPattern";
+import type { PageSetup } from "./data/pageSetup";
 import type Library from "./data/library";
 import type { ContextMenuItems } from "./components/ContextMenu";
 import type { SnapLine } from "./snapping";
@@ -213,6 +214,7 @@ export type StaticCanvasAppState = Readonly<
     /** null indicates transparent bg */
     viewBackgroundColor: AppState["viewBackgroundColor"] | null;
     viewBackgroundPattern: AppState["viewBackgroundPattern"];
+    pageSetup: AppState["pageSetup"];
     exportBackgroundPattern: AppState["exportBackgroundPattern"];
     exportScale: AppState["exportScale"];
     selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
@@ -449,6 +451,8 @@ export interface AppState {
 
   exportBackground: boolean;
   exportBackgroundPattern: boolean;
+  /** page mode: PNG/SVG export the page column instead of the content bounds */
+  exportPageShaped: boolean;
   exportEmbedScene: boolean;
   exportWithDarkMode: boolean;
   exportScale: number;
@@ -473,6 +477,8 @@ export interface AppState {
   viewBackgroundColor: string;
   /** notebook paper behind the drawing; null = plain */
   viewBackgroundPattern: BackgroundPattern | null;
+  /** page mode (simulated paper pages); null = normal infinite canvas */
+  pageSetup: PageSetup | null;
   scrollX: number;
   scrollY: number;
   scrollConstraints: ScrollConstraints | null;

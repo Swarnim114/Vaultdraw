@@ -598,3 +598,18 @@ export type {
   BackgroundPattern,
   BackgroundPatternType,
 } from "./data/backgroundPattern";
+export {
+  normalizePageSetup,
+  updatePageSetup,
+  isPageModeOn,
+  pageSetupKey,
+  PAGE_SIZE_PRESETS,
+  DEFAULT_PAGE_SETUP,
+} from "./data/pageSetup";
+export type {
+  PageSetup,
+  PageLayout,
+  PageSize,
+  PageOrientation,
+  PaperTheme,
+} from "./data/pageSetup";
