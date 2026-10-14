@@ -3,7 +3,6 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   CaptureUpdateAction,
   Excalidraw,
-  getSceneVersion,
   loadFromBlob,
   MainMenu,
   serializeAsJSON,
@@ -21,6 +20,8 @@ import type {
   ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
+import { PaperDialog } from "../components/paper/PaperDialog";
+import { PaperMenuItem } from "../components/paper/PaperMenuItem";
 import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
 
@@ -37,6 +38,7 @@ import {
 } from "./exportOptions";
 import { focusElement } from "./focusElement";
 import { renderImageExport } from "./imageExport";
+import { getSaveSignature } from "./saveSignature";
 
 import type { SettingsPageId } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
@@ -104,6 +106,7 @@ const VaultEditorComponent = ({
   const [exporting, setExporting] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
+  const [paperDialogOpen, setPaperDialogOpen] = useState(false);
   const handledFocusNonce = useRef<number | null>(null);
   const [libraryApi, setLibraryApi] = useState<ExcalidrawImperativeAPI | null>(
     null,
@@ -250,9 +253,7 @@ const VaultEditorComponent = ({
         releasePreview.current();
         releasePreview.current = null;
       }
-      const nextSignature = `${getSceneVersion(elements)}|${
-        appState.viewBackgroundColor
-      }|${appState.gridModeEnabled}`;
+      const nextSignature = getSaveSignature(elements, appState);
       const fileChanged =
         Object.keys(files).length !== Object.keys(fileRefs.current).length ||
         Object.keys(files).some((id) => files[id] !== fileRefs.current[id]);
@@ -281,9 +282,7 @@ const VaultEditorComponent = ({
       api.getAppState(),
       api.getFiles(),
     ];
-    signature.current = `${getSceneVersion(latest.current[0])}|${
-      latest.current[1].viewBackgroundColor
-    }|${latest.current[1].gridModeEnabled}`;
+    signature.current = getSaveSignature(latest.current[0], latest.current[1]);
     fileRefs.current = latest.current[2];
     ready.current = true;
     setApiReady(true);
@@ -474,7 +473,14 @@ const VaultEditorComponent = ({
           )}
           <MainMenu.DefaultItems.ToggleTheme allowSystemTheme={false} />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
+          <PaperMenuItem onOpenSettings={() => setPaperDialogOpen(true)} />
         </MainMenu>
+        {paperDialogOpen && (
+          <PaperDialog
+            onClose={() => setPaperDialogOpen(false)}
+            ownerDocument={host.current?.ownerDocument}
+          />
+        )}
       </Excalidraw>
       {pens.freedrawActive && !readOnly && !disabled && (
         <PenBar
