@@ -10,6 +10,7 @@ import type {
   ElementMatch,
   HighlightRange,
   IndexStatus,
+  NamesListing,
   SearchHit,
   SearchOptions,
   SearchResponse,
@@ -269,6 +270,11 @@ export class FakeVaultSearch implements VaultSearch {
       indexed: this.override?.indexed ?? total,
       total,
     };
+  }
+
+  async listNames(handle: string): Promise<NamesListing> {
+    const paths = (await this.drawings(handle)).sort();
+    return { paths, status: await this.status(handle) };
   }
 
   async subscribe(listener: (s: IndexStatus) => void) {

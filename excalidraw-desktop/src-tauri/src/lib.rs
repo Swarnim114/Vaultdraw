@@ -1157,7 +1157,7 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-                search::search_vault, search::search_index_status, search::vault_tags,
+                search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
@@ -1172,7 +1172,7 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-                search::search_vault, search::search_index_status, search::vault_tags,
+                search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir
@@ -1186,7 +1186,7 @@ pub fn run() {
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-            search::search_vault, search::search_index_status, search::vault_tags,
+            search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
             library::read_library, library::write_library, library::pick_library_file,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir

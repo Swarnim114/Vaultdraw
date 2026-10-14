@@ -8,6 +8,7 @@ import type { InvokeFn, ListenFn } from "../vault/DesktopVaultRepository";
 
 import type {
   IndexStatus,
+  NamesListing,
   SearchOptions,
   SearchResponse,
   VaultSearch,
@@ -36,6 +37,15 @@ export class DesktopVaultSearch implements VaultSearch {
         limit: opts?.limit ?? null,
         scope: opts?.scope ?? null,
       });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
+  async listNames(handle: string): Promise<NamesListing> {
+    const invoke = await resolveInvoke(this.options.invoke);
+    try {
+      return await invoke<NamesListing>("search_list_names", { handle });
     } catch (err) {
       throw normalizeError(err);
     }

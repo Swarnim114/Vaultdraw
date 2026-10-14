@@ -94,6 +94,7 @@ function stubSearch(
 ): VaultSearch {
   return {
     search: vi.fn(async () => (typeof res === "function" ? res() : res)),
+    listNames: vi.fn(async () => ({ paths: [], status: status() })),
     status: vi.fn(async () => status()),
     subscribe: vi.fn(async () => () => {}),
     tags: async () => NO_TAGS,
@@ -276,6 +277,7 @@ describe("useVaultSearch", () => {
             resolvers[q] = resolve;
           }),
       ),
+      listNames: async () => ({ paths: [], status: status() }),
       status: async () => status(),
       tags: async () => NO_TAGS,
       subscribe: async () => () => {},
@@ -315,6 +317,7 @@ describe("useVaultSearch", () => {
     let emit: (s: IndexStatus) => void = () => {};
     const search: VaultSearch = {
       search: vi.fn(async () => response()),
+      listNames: async () => ({ paths: [], status: status() }),
       status: async () => status({ state: "building", indexed: 0, total: 3 }),
       tags: async () => NO_TAGS,
       subscribe: async (l) => {

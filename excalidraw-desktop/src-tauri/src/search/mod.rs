@@ -23,7 +23,7 @@ pub(crate) use index::Index;
 #[allow(unused_imports)]
 pub(crate) use normalize::{normalize, NORMALIZER_VERSION};
 #[allow(unused_imports)]
-pub(crate) use types::{ElementMatch, IndexState, IndexStatus, Scope, SearchHit, SearchResponse, TagsResponse};
+pub(crate) use types::{ElementMatch, IndexState, IndexStatus, NamesListing, Scope, SearchHit, SearchResponse, TagsResponse};
 
 use crate::{err, Result};
 use std::{
@@ -66,8 +66,12 @@ impl VaultIndex {
         *self.state.lock().unwrap_or_else(|p| p.into_inner()) = state;
     }
     fn status(&self, handle: &str) -> IndexStatus {
+        let guard = self.read();
+        self.status_of(handle, &guard)
+    }
+    fn status_of(&self, handle: &str, index: &Index) -> IndexStatus {
         let state = *self.state.lock().unwrap_or_else(|p| p.into_inner());
-        let (indexed, total) = self.read().counts();
+        let (indexed, total) = index.counts();
         IndexStatus { handle: handle.to_string(), state, indexed: indexed as u32, total: total as u32 }
     }
 }
@@ -160,6 +164,18 @@ impl SearchService {
         Ok(TagsResponse { summary, status: v.status(handle), took_ms })
     }
 
+    /// All known drawing paths, sorted, under a single read lock.
+    pub(crate) fn list_names(&self, handle: &str) -> Result<NamesListing> {
+        let v = self.vault(handle)?;
+        let index = v.read();
+        let mut paths = Vec::with_capacity(index.docs().len());
+        paths.extend(index.docs().keys().cloned());
+        let status = v.status_of(handle, &index);
+        drop(index);
+        paths.sort_unstable();
+        Ok(NamesListing { paths, status })
+    }
+
     pub(crate) fn search(&self, handle: &str, query: &str, limit: Option<u32>, scope: Option<&str>) -> Result<SearchResponse> {
         if query.chars().count() > MAX_QUERY_CHARS {
             return Err(err("INVALID_QUERY", format!("Query is longer than {MAX_QUERY_CHARS} characters")));
@@ -178,6 +194,12 @@ impl SearchService {
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) async fn search_vault(handle: String, query: String, limit: Option<u32>, scope: Option<String>, state: State<'_, SearchService>) -> Result<SearchResponse> {
     state.search(&handle, &query, limit, scope.as_deref())
+}
+
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn search_list_names(handle: String, state: State<'_, SearchService>) -> Result<NamesListing> {
+    state.list_names(&handle)
 }
 
 #[tauri::command]
@@ -383,6 +405,67 @@ mod unit_tests {
         assert_eq!(v["byPath"]["a.excalidraw"], serde_json::json!(["Dsa/Graphs"]));
         assert_eq!(v["status"]["state"], "ready");
         assert!(v["tookMs"].is_number());
+    }
+
+    #[test]
+    fn list_names_empty_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let svc = started(dir.path());
+        let l = svc.list_names("h").unwrap();
+        assert!(l.paths.is_empty());
+        assert_eq!(l.status.total, 0);
+        let v = serde_json::to_value(&l).unwrap();
+        assert_eq!(v["paths"], serde_json::json!([]));
+        assert_eq!(v["status"]["state"], "ready");
+    }
+
+    #[test]
+    fn list_names_nested_sorted_forward_slashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "zeta.excalidraw", &["z"]);
+        write(root, "a/deep/c.excalidraw", &["c"]);
+        write(root, "a/b.excalidraw", &["b"]);
+        write(root, "Alpha.excalidraw", &["a"]);
+        let svc = started(root);
+        let l = svc.list_names("h").unwrap();
+        assert_eq!(l.paths, vec!["Alpha.excalidraw", "a/b.excalidraw", "a/deep/c.excalidraw", "zeta.excalidraw"]);
+        assert_eq!((l.status.indexed, l.status.total), (4, 4));
+    }
+
+    #[test]
+    fn list_names_unknown_handle_matches_search_vault() {
+        let svc = SearchService::default();
+        let a = svc.list_names("nope").unwrap_err();
+        let b = svc.search("nope", "x", None, None).unwrap_err();
+        assert_eq!(a.code, b.code);
+        assert_eq!(a.code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn list_names_5k_is_cheap() {
+        let dir = tempfile::tempdir().unwrap();
+        let svc = SearchService::default();
+        svc.start_with("h", dir.path().to_path_buf(), noop(), None);
+        wait_until("ready", || svc.status("h").is_ok_and(|s| s.state == IndexState::Ready));
+        let v = svc.vault("h").unwrap();
+        {
+            let mut idx = v.write();
+            for i in 0..5000 {
+                let p = format!("folder{}/drawing-{i}-name.excalidraw", i % 40);
+                idx.upsert(p.clone(), index::DocEntry::name_only(&p));
+            }
+        }
+        let mut best = std::time::Duration::MAX;
+        for _ in 0..20 {
+            let t = Instant::now();
+            let l = svc.list_names("h").unwrap();
+            best = best.min(t.elapsed());
+            assert_eq!(l.paths.len(), 5000);
+            assert!(l.paths.windows(2).all(|w| w[0] <= w[1]));
+        }
+        println!("list_names 5000 docs: best of 20 = {best:?}");
+        assert!(best < Duration::from_millis(10));
     }
 
     #[test]

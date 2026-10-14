@@ -102,3 +102,12 @@ pub(crate) struct TagsResponse {
     pub status: IndexStatus,
     pub took_ms: f64,
 }
+
+/// Every drawing path the index knows (what `scope: "names"` searches).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NamesListing {
+    /// Vault-relative, forward slashes, sorted.
+    pub paths: Vec<String>,
+    pub status: IndexStatus,
+}

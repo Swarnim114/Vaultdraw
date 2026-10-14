@@ -359,3 +359,25 @@ describe("FakeVaultSearch known divergences from the Rust index", () => {
     },
   );
 });
+
+describe("FakeVaultSearch.listNames", () => {
+  it("lists every drawing path sorted, with the index status", async () => {
+    const { repo, search } = await setup({
+      "zeta.excalidraw": [text("a", "z")],
+      "a/deep/c.excalidraw": [text("a", "c")],
+      "a/b.excalidraw": [text("a", "b")],
+    });
+    const listing = await search.listNames(repo.vault.handle);
+    expect(listing.paths).toEqual([
+      "a/b.excalidraw",
+      "a/deep/c.excalidraw",
+      "zeta.excalidraw",
+    ]);
+    expect(listing.status).toMatchObject({ state: "ready", total: 3 });
+  });
+
+  it("returns an empty list for an empty vault", async () => {
+    const { repo, search } = await setup({});
+    expect((await search.listNames(repo.vault.handle)).paths).toEqual([]);
+  });
+});

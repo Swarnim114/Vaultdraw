@@ -50,12 +50,17 @@ export type SearchScope = "all" | "names" | "content";
 
 export type SearchOptions = { limit?: number; scope?: SearchScope };
 
+/** Every drawing path the index knows (what `scope: "names"` searches). */
+export type NamesListing = { paths: string[]; status: IndexStatus };
+
 export interface VaultSearch {
   search(
     handle: string,
     query: string,
     opts?: SearchOptions,
   ): Promise<SearchResponse>;
+  /** Vault-relative paths (forward slashes), sorted; fetched once per switcher open. */
+  listNames(handle: string): Promise<NamesListing>;
   status(handle: string): Promise<IndexStatus>;
   tags(handle: string): Promise<TagsResponse>;
   subscribe(listener: (status: IndexStatus) => void): Promise<() => void>;
