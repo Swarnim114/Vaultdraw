@@ -103,7 +103,19 @@ export function updateBaseline(file, result, catalogue) {
   }
   combined.machine = result.machine;
   combined.commit = result.git;
-  combined.modes[result.mode] = result;
+  // Merge per metric, so an app-only or Chromium-only refresh keeps the other half of the mode.
+  const prev = combined.modes[result.mode];
+  combined.modes[result.mode] = prev
+    ? {
+        ...result,
+        metrics: { ...prev.metrics, ...result.metrics },
+        raw: {
+          app: result.raw?.app?.length ? result.raw.app : prev.raw?.app ?? [],
+          browser: result.raw?.browser?.length ? result.raw.browser : prev.raw?.browser ?? [],
+        },
+        notes: [...new Set([...(prev.notes ?? []), ...(result.notes ?? [])])],
+      }
+    : result;
   writeFileSync(file, JSON.stringify(combined, null, 2) + "\n");
   const md = file.replace(/\.json$/, "") + ".md";
   writeFileSync(md, baselineMarkdown(combined, catalogue));

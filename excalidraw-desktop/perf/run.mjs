@@ -6,11 +6,12 @@ import { parseArgs } from "node:util";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadCatalogue, specFor, unitOf } from "./lib/catalogue.mjs";
 import { aggregate } from "./lib/stats.mjs";
 import { compare, pickBaseline } from "./lib/compare.mjs";
-import { buildPerfApp, reuseBuiltApp, runAppOnce, gitInfo, perfCacheDir } from "./lib/app.mjs";
+import { buildPerfApp, reuseBuiltApp, runAppOnce, gitInfo, perfCacheDir, isScreenLocked } from "./lib/app.mjs";
 import { machineInfo, resultTable, comparisonTable, updateBaseline } from "./lib/report.mjs";
 
 const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
@@ -61,11 +62,21 @@ let rawBrowser = [];
 let git = gitInfo(wtRoot);
 let fixtureHash = createHash("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 12);
 
+// Keep the display awake (and the session from idle-locking) for the whole run: a locked or
+// sleeping screen hides the WebView, which stops requestAnimationFrame in the packaged app.
+try {
+  spawn("caffeinate", ["-dimsu", "-t", "7200", "-w", String(process.pid)], { stdio: "ignore", detached: false }).on("error", () => {});
+} catch { /* best effort */ }
+const LOCKED_MSG = "screen is locked: the packaged app can't be measured (WebKit stops rendering hidden windows). Unlock the screen, or use --skip-app for Chromium-only numbers";
+
 const gatedNoisy = (metrics) => Object.entries(metrics).some(([id, m]) => m.noisy && specFor(catalogue, id));
 
 // ---- app mode ----
 let appTarget = null;
-if (!o["skip-app"]) {
+if (!o["skip-app"] && isScreenLocked()) {
+  errors.push(`app mode: ${LOCKED_MSG}`);
+  log(`app mode skipped: ${LOCKED_MSG}`);
+} else if (!o["skip-app"]) {
   try {
     const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
     const { vaultDir, manifest } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
@@ -90,6 +101,11 @@ if (!o["skip-app"]) {
 
 async function collectApp(count, label) {
   for (let i = 0; i < count; i++) {
+    if (isScreenLocked()) {
+      errors.push(`app run: ${LOCKED_MSG}`);
+      log(`app run aborted: ${LOCKED_MSG}`);
+      return;
+    }
     log(`app ${label} run ${i + 1}/${count} (${mode})`);
     const r = await appTarget.runOne(rawApp.length + i + (label === "warmup" ? 1000 : 0));
     if (label === "warmup") continue;
@@ -166,7 +182,9 @@ if (o.compare) {
   if (cmp.failing.length) console.log(`\nFAIL: ${cmp.failing.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ")}`);
   exitCode = cmp.exitCode;
 }
-if (o["update-baseline"]) {
+if (o["update-baseline"] && errors.length) {
+  console.log(`\nbaseline NOT updated: this run had errors (a baseline must come from a clean run)`);
+} else if (o["update-baseline"]) {
   const r = updateBaseline(path.resolve(o["update-baseline"]), result, catalogue);
   console.log(`baseline updated: ${r.file} (+ ${r.md})`);
 }
