@@ -292,6 +292,8 @@ export const useSettingsController = ({
 /** A setting's control, rendered on its page and in search results. */
 export interface SettingControl {
   Component: () => ReactElement | null;
+  /** Shown in search results instead of `Component` (a heavy custom page). */
+  SearchComponent?: () => ReactElement | null;
   /** False hides the setting (and excludes it from search). */
   available?: (ctx: SettingsContextValue) => boolean;
 }

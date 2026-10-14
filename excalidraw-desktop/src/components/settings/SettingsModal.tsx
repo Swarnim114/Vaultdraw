@@ -42,10 +42,18 @@ const isEditable = (el: Element | null) =>
     el.tagName === "SELECT" ||
     (el as HTMLElement).isContentEditable);
 
-const SettingList = ({ settings }: { settings: readonly SettingSchema[] }) => (
+const SettingList = ({
+  settings,
+  inSearch = false,
+}: {
+  settings: readonly SettingSchema[];
+  inSearch?: boolean;
+}) => (
   <div className="vault-settings-section">
     {settings.map((s) => {
-      const { Component } = SETTING_CONTROLS[s.id];
+      const control = SETTING_CONTROLS[s.id];
+      const Component =
+        (inSearch && control.SearchComponent) || control.Component;
       return <Component key={s.id} />;
     })}
   </div>
@@ -211,7 +219,7 @@ export const SettingsModal = ({
                           {group.page.label}
                         </button>
                       </h3>
-                      <SettingList settings={group.settings} />
+                      <SettingList settings={group.settings} inSearch />
                     </section>
                   ))
                 )}

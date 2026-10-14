@@ -23,8 +23,8 @@ export interface SettingsPage {
 }
 
 /**
- * Sidebar order. A page with no available settings is not shown, so
- * Hotkeys stays hidden until a later phase gives it rows.
+ * Sidebar order. A page with no available settings is not shown; Hotkeys is
+ * a custom page backed by the single "hotkeys-list" row.
  */
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "general", label: "General", group: "Options" },
@@ -260,6 +260,16 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["templates", "template", "folder", "location"],
     configKey: "files.templates_folder",
     perVault: true,
+  },
+
+  // ---- Hotkeys ----
+  {
+    id: "hotkeys-list",
+    page: "hotkeys",
+    label: "Hotkeys",
+    description:
+      "Assign keyboard shortcuts to commands; changes are saved to [hotkeys] in config.toml.",
+    keywords: ["shortcuts", "keyboard", "keybindings", "keys", "commands"],
   },
 ];
 
