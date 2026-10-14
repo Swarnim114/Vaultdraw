@@ -63,14 +63,14 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
       ".library-unit__pulse",
     ) as HTMLElement | null;
 
-  const keydown = (key: string) =>
+  const keydown = (key: string, chord = true) =>
     doc.dispatchEvent(
       new win.KeyboardEvent("keydown", {
         key,
         code: `Key${key.toUpperCase()}`,
         cancelable: true,
-        metaKey: true,
-        ctrlKey: true,
+        metaKey: chord,
+        ctrlKey: chord,
         bubbles: true,
       }),
     );
@@ -113,14 +113,18 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
   };
   const addFromSelection = async (id: Scope) => {
     // Select everything on the open drawing, as a user would, then use the tile.
-    // Select-all is idempotent: repeat it on every poll, so a keydown that lands
-    // while the editor is still settling after the previous step's saves (the
-    // scene can be re-applied and drop the selection) is not lost.
+    // The library only offers the pending tile while the SELECTION tool is
+    // active (LibraryMenu ignores selection changes under any other tool, in
+    // every layout), and earlier smoke steps leave a drawing tool active. So
+    // press V (selection tool) before select-all. Both are idempotent: repeat
+    // them on every poll, so a keydown that lands while the editor is still
+    // settling after the previous step's saves is not lost.
     const tile = await waitFor(
       `${id} add tile`,
       () => {
         const found = adder(id);
         if (!found) {
+          keydown("v", false);
           keydown("a");
         }
         return found;
@@ -134,7 +138,25 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
           activeElement: active
             ? `${active.tagName}.${active.className}`.slice(0, 120)
             : null,
+          // Not a modal: in the phone layout the style pickers are role=dialog
+          // and appear once something IS selected.
           dialogOpen: !!root.querySelector(".Modal, .Dialog, [role=dialog]"),
+          mobileLayout: !!root.querySelector(".excalidraw--mobile"),
+          innerWidth: win.innerWidth,
+          editorWidth: Math.round(
+            root.querySelector(".excalidraw")?.getBoundingClientRect().width ??
+              -1,
+          ),
+          checkedTools: Array.from(
+            root.querySelectorAll<HTMLInputElement>(
+              "input[type=radio]:checked",
+            ),
+          ).map(
+            (el) =>
+              el.getAttribute("data-testid") ??
+              el.closest<HTMLElement>("[data-testid]")?.dataset.testid ??
+              el.name,
+          ),
           selectedHandles: root.querySelectorAll(
             ".excalidraw .selected-shape-actions",
           ).length,
