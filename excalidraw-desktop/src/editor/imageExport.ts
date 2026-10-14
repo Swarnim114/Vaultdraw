@@ -8,6 +8,12 @@
 import { exportToBlob, exportToSvg } from "@excalidraw/excalidraw";
 import { SVG_DOCUMENT_PREAMBLE } from "@excalidraw/common";
 
+import {
+  createPageAreaExportFrame,
+  detachFromFrames,
+} from "@excalidraw/excalidraw/data/pageExportFrame";
+import { isPageModeOn } from "@excalidraw/excalidraw/data/pageSetup";
+
 import type { ImageExportRequest } from "@excalidraw/excalidraw/types";
 
 import { withStandardCanvasColors } from "./canvasSync";
@@ -23,7 +29,7 @@ const isClipboard = (type: ImageExportRequest["type"]) =>
 
 export const exportFileName = (
   drawingName: string,
-  extension: "png" | "svg",
+  extension: "png" | "svg" | "pdf",
   embedScene: boolean,
 ) => {
   const base = drawingName.replace(/\.excalidraw$/i, "") || "Drawing";
@@ -41,11 +47,24 @@ export const renderImageExport = (
   // Scene embedding applies to files only, never to the clipboard.
   const embedScene =
     !isClipboard(request.type) && request.appState.exportEmbedScene;
+  // Page-shaped: the export area is the whole page column (a frame the
+  // caller already chose, e.g. a selected frame, wins).
+  const { pageSetup } = request.appState;
+  const pageShaped =
+    request.appState.exportPageShaped &&
+    !request.exportingFrame &&
+    isPageModeOn(pageSetup);
   const options = {
-    elements: request.elements,
+    elements: pageShaped
+      ? (detachFromFrames(
+          request.elements,
+        ) as unknown as ImageExportRequest["elements"])
+      : request.elements,
     appState: { ...request.appState, exportEmbedScene: embedScene },
     files: request.files,
-    exportingFrame: request.exportingFrame,
+    exportingFrame: pageShaped
+      ? createPageAreaExportFrame(pageSetup!)
+      : request.exportingFrame,
   };
   // Exports never contain the theme's on-screen colours (the transform is
   // global), so the whole render runs with canvas sync suspended.

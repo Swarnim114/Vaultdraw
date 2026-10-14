@@ -29,6 +29,8 @@ mod vault_settings;
 mod smoke;
 
 const MAX_DRAWING_BYTES: u64 = 32 * 1024 * 1024;
+/// Exported files (PNG, SVG, multi-page PDF) may be much larger than a drawing.
+const MAX_EXPORT_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_RECOVERY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RECOVERY_RECORD_BYTES: u64 = MAX_DRAWING_BYTES * 2 + 8192;
 const META_DIR: &str = ".excalidraw-vault";
@@ -975,9 +977,13 @@ async fn reveal_entry(handle: String, path: String, state: State<'_, Service>) -
 #[tauri::command]
 async fn export_file(request: tauri::ipc::Request<'_>) -> Result<bool> {
     let name = clipboard::percent_decode(&clipboard::header(&request, "x-file-name")?)?;
-    let bytes = clipboard::raw_body(&request)?;
-    if bytes.len() as u64 > MAX_DRAWING_BYTES {
-        return Err(err("INVALID_FILE", "Export exceeds 32 MiB"));
+    // Not clipboard::raw_body: its 64 MiB clipboard cap is too small for a PDF.
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) if !bytes.is_empty() => bytes.as_slice(),
+        _ => return Err(err("INVALID_ARGUMENT", "Expected a non-empty raw binary body")),
+    };
+    if bytes.len() as u64 > MAX_EXPORT_BYTES {
+        return Err(err("INVALID_FILE", "Export exceeds 256 MiB"));
     }
     save_with_dialog(&name, bytes)
 }

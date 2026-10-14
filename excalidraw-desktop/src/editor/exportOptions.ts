@@ -14,6 +14,7 @@ type ExportFields = Pick<
   | "exportBackground"
   | "exportEmbedScene"
   | "exportBackgroundPattern"
+  | "exportPageShaped"
 >;
 
 export const exportOptionsToAppState = (opts: ExportOptions): ExportFields => ({
@@ -21,6 +22,7 @@ export const exportOptionsToAppState = (opts: ExportOptions): ExportFields => ({
   exportBackground: opts.background,
   exportEmbedScene: opts.embedScene,
   exportBackgroundPattern: opts.pattern,
+  exportPageShaped: opts.pageShaped,
 });
 
 export const appStateToExportOptions = (
@@ -30,6 +32,7 @@ export const appStateToExportOptions = (
   background: appState.exportBackground,
   embedScene: appState.exportEmbedScene,
   pattern: appState.exportBackgroundPattern,
+  pageShaped: appState.exportPageShaped,
 });
 
 let known: ExportOptions | null = null;
@@ -42,7 +45,7 @@ export const loadExportOptions = (): ExportOptions => {
 
 /**
  * Persists the options only when they differ from the last known ones; the
- * common case is five comparisons and no allocation (runs on every change).
+ * common case is six comparisons and no allocation (runs on every change).
  */
 export const rememberExportOptions = (appState: ExportFields): void => {
   const stored = known ?? loadExportOptions();
@@ -50,7 +53,8 @@ export const rememberExportOptions = (appState: ExportFields): void => {
     stored.scale === appState.exportScale &&
     stored.background === appState.exportBackground &&
     stored.embedScene === appState.exportEmbedScene &&
-    stored.pattern === appState.exportBackgroundPattern
+    stored.pattern === appState.exportBackgroundPattern &&
+    stored.pageShaped === appState.exportPageShaped
   ) {
     return;
   }

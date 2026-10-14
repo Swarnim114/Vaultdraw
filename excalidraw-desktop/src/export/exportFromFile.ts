@@ -11,11 +11,14 @@ import { getNonDeletedElements } from "@excalidraw/element";
 
 import type { ImageExportRequest } from "@excalidraw/excalidraw/types";
 
-import { renderImageExport } from "../editor/imageExport";
+import { withStandardCanvasColors } from "../editor/canvasSync";
+import { exportFileName, renderImageExport } from "../editor/imageExport";
+
+import { renderPdf } from "./pdf/renderPdf";
 
 import type { VaultRepository } from "../vault/types";
 
-export type ExplorerExportFormat = "png" | "svg" | "copy";
+export type ExplorerExportFormat = "png" | "svg" | "pdf" | "copy";
 
 export type ExplorerExportOptions = {
   scale: number;
@@ -24,6 +27,8 @@ export type ExplorerExportOptions = {
   /** Paper pattern (notebook backgrounds); only with the background. */
   pattern: boolean;
   dark: boolean;
+  /** Page mode: the whole page column instead of the content (PNG/SVG). */
+  pageShaped?: boolean;
 };
 
 type ExportRepository = Pick<
@@ -38,6 +43,14 @@ export const readDrawingJson = async (
   path: string,
 ): Promise<string> => (await repository.readDrawing(handle, path)).json;
 
+const loadScene = (json: string, win: Window & typeof globalThis) =>
+  loadFromBlob(
+    new win.Blob([json], { type: "application/json" }),
+    null,
+    null,
+    null,
+  );
+
 /** Restores the drawing's JSON into an export request (no editor needed). */
 export const sceneToExportRequest = async (
   json: string,
@@ -46,12 +59,7 @@ export const sceneToExportRequest = async (
   options: ExplorerExportOptions,
   win: Window & typeof globalThis,
 ): Promise<ImageExportRequest> => {
-  const scene = await loadFromBlob(
-    new win.Blob([json], { type: "application/json" }),
-    null,
-    null,
-    null,
-  );
+  const scene = await loadScene(json, win);
   return {
     type,
     // The whole (non-deleted) scene, like the dialog without "only selected".
@@ -68,6 +76,7 @@ export const sceneToExportRequest = async (
       // Like the dialog's "Background pattern" switch: off without background.
       exportBackgroundPattern: options.background && options.pattern,
       exportWithDarkMode: options.dark,
+      exportPageShaped: !!options.pageShaped,
     } as ImageExportRequest["appState"],
     files: scene.files,
     exportingFrame: null,
@@ -92,6 +101,8 @@ export const exportDrawingFromVault = async (input: {
   beforeRender?: (json: string) => void | Promise<void>;
   /** Called after rendering, right before the save dialog opens. */
   onRendered?: () => void;
+  /** PDF only: pages rendered so far. */
+  onProgress?: (done: number, total: number) => void;
 }): Promise<boolean> => {
   const { repository, handle, path, format, options, win } = input;
   if (format === "copy") {
@@ -100,6 +111,23 @@ export const exportDrawingFromVault = async (input: {
   }
   const json = await readDrawingJson(repository, handle, path);
   await input.beforeRender?.(json);
+  if (format === "pdf") {
+    const scene = await loadScene(json, win);
+    const pdf = await withStandardCanvasColors(() =>
+      renderPdf({
+        elements: scene.elements,
+        appState: scene.appState,
+        files: scene.files,
+        pattern: options.pattern,
+        onProgress: input.onProgress,
+      }),
+    );
+    input.onRendered?.();
+    return repository.exportFile(
+      exportFileName(baseName(path), "pdf", false),
+      pdf,
+    );
+  }
   const request = await sceneToExportRequest(
     json,
     baseName(path),

@@ -277,6 +277,7 @@ describe("VaultNavigator sort and delete", () => {
     for (const [label, format] of [
       ["Export as PNG…", "png"],
       ["Export as SVG…", "svg"],
+      ["Export as PDF…", "pdf"],
       ["Save a copy…", "copy"],
     ]) {
       if (!screen.queryByRole("menu")) {

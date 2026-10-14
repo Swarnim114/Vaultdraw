@@ -110,6 +110,28 @@ export const actionChangeExportBackgroundPattern = register<
   ),
 });
 
+export const actionChangeExportPageShaped = register<
+  AppState["exportPageShaped"]
+>({
+  name: "changeExportPageShaped",
+  label: "imageExportDialog.label.pageShaped",
+  trackEvent: { category: "export", action: "togglePageShaped" },
+  perform: (_elements, appState, value) => {
+    return {
+      appState: { ...appState, exportPageShaped: value },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+  PanelComponent: ({ appState, updateData }) => (
+    <CheckboxItem
+      checked={appState.exportPageShaped}
+      onChange={(checked) => updateData(checked)}
+    >
+      {t("imageExportDialog.label.pageShaped")}
+    </CheckboxItem>
+  ),
+});
+
 export const actionChangeExportEmbedScene = register<
   AppState["exportEmbedScene"]
 >({

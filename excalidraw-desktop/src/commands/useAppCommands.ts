@@ -36,7 +36,7 @@ export interface AppCommandActions {
   openSettingsPage(page: SettingsTarget): void;
   setMode(mode: "light" | "dark" | "system"): void;
   setSyncCanvas(on: boolean): void;
-  exportActive(format: "png" | "svg" | "copy"): void | Promise<void>;
+  exportActive(format: "png" | "svg" | "pdf" | "copy"): void | Promise<void>;
   saveActiveAsTemplate(): void;
   searchTags(): void;
   newFolder(): void;
@@ -78,6 +78,7 @@ export function appCommandHandlers(
     "appearance.syncCanvas.off": () => actions.setSyncCanvas(false),
     "file.exportPng": () => actions.exportActive("png"),
     "file.exportSvg": () => actions.exportActive("svg"),
+    "file.exportPdf": () => actions.exportActive("pdf"),
     "file.saveCopy": () => actions.exportActive("copy"),
     "templates.saveDrawing": actions.saveActiveAsTemplate,
     "navigator.searchTags": actions.searchTags,

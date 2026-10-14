@@ -1,5 +1,5 @@
 import { exportToCanvas } from "@excalidraw/utils/export";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DEFAULT_EXPORT_PADDING,
@@ -15,12 +15,19 @@ import {
   actionExportWithDarkMode,
   actionChangeExportBackground,
   actionChangeExportBackgroundPattern,
+  actionChangeExportPageShaped,
   actionChangeExportEmbedScene,
   actionChangeExportScale,
   actionChangeProjectName,
 } from "../actions/actionExport";
 import { probablySupportsClipboardBlob } from "../clipboard";
 import { prepareElementsForExport } from "../data";
+
+import {
+  createPageAreaExportFrame,
+  detachFromFrames,
+} from "../data/pageExportFrame";
+import { isPageModeOn } from "../data/pageSetup";
 import { canvasToBlob } from "../data/blob";
 import { nativeFileSystemSupported } from "../data/filesystem";
 import { useCopyStatus } from "../hooks/useCopiedIndicator";
@@ -36,6 +43,8 @@ import { Tooltip } from "./Tooltip";
 import { FilledButton } from "./FilledButton";
 
 import "./ImageExportDialog.scss";
+
+import type { ExportedElements } from "../data";
 
 import type { ActionManager } from "../actions/manager";
 
@@ -87,6 +96,9 @@ const ImageExportModal = ({
   const [exportWithPattern, setExportWithPattern] = useState(
     appStateSnapshot.exportBackgroundPattern,
   );
+  const [exportPageShaped, setExportPageShaped] = useState(
+    appStateSnapshot.exportPageShaped,
+  );
   const [embedScene, setEmbedScene] = useState(
     appStateSnapshot.exportEmbedScene,
   );
@@ -118,10 +130,31 @@ const ImageExportModal = ({
     resetCopySvgStatus,
   ]);
 
-  const { exportedElements, exportingFrame } = prepareElementsForExport(
+  const prepared = prepareElementsForExport(
     elementsSnapshot,
     appStateSnapshot,
     exportSelectionOnly,
+  );
+  // Page shape: the export area is the whole page column (not for a
+  // selection export, which keeps its own bounds).
+  const pageSetup = appStateSnapshot.pageSetup;
+  const isPageShaped =
+    exportPageShaped &&
+    isPageModeOn(pageSetup) &&
+    !prepared.exportingFrame &&
+    !(exportSelectionOnly && hasSelection);
+  const pageFrame = useMemo(
+    () =>
+      isPageShaped && pageSetup ? createPageAreaExportFrame(pageSetup) : null,
+    [isPageShaped, pageSetup],
+  );
+  const exportingFrame = pageFrame ?? prepared.exportingFrame;
+  const exportedElements = useMemo(
+    () =>
+      pageFrame
+        ? (detachFromFrames(prepared.exportedElements) as ExportedElements)
+        : prepared.exportedElements,
+    [pageFrame, prepared.exportedElements],
   );
 
   useEffect(() => {
@@ -276,6 +309,25 @@ const ImageExportModal = ({
                 setExportWithPattern(checked);
                 actionManager.executeAction(
                   actionChangeExportBackgroundPattern,
+                  "ui",
+                  checked,
+                );
+              }}
+            />
+          </ExportSetting>
+        )}
+        {isPageModeOn(pageSetup) && (
+          <ExportSetting
+            label={t("imageExportDialog.label.pageShaped")}
+            name="exportPageShapedSwitch"
+          >
+            <Switch
+              name="exportPageShapedSwitch"
+              checked={exportPageShaped}
+              onChange={(checked) => {
+                setExportPageShaped(checked);
+                actionManager.executeAction(
+                  actionChangeExportPageShaped,
                   "ui",
                   checked,
                 );

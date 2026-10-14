@@ -544,6 +544,7 @@
     "label": {
       "withBackground": "Background",
       "withBackgroundPattern": "Background pattern",
+      "pageShaped": "Page shape",
       "onlySelected": "Only selected",
       "darkMode": "Dark mode",
       "embedScene": "Embed scene",

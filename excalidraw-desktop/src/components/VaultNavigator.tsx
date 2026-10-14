@@ -108,7 +108,7 @@ interface VaultNavigatorProps {
   onSaveAsTemplate?: (path: string) => void;
   onTrashEntry: (path: string) => void | Promise<void>;
   onRevealEntry: (path: string) => void | Promise<void>;
-  /** Drawing rows: Export as PNG/SVG…, Save a copy… */
+  /** Drawing rows: Export as PNG/SVG/PDF…, Save a copy… */
   onExportDrawing?: (
     path: string,
     format: ExplorerExportFormat,
@@ -1321,6 +1321,7 @@ const RowMenu = ({
           <div className="vault-menu__separator" role="separator" />
           {item("Export as PNG…", <IconExport />, () => onExport(entry, "png"))}
           {item("Export as SVG…", <IconExport />, () => onExport(entry, "svg"))}
+          {item("Export as PDF…", <IconExport />, () => onExport(entry, "pdf"))}
           {item("Save a copy…", <IconExport />, () => onExport(entry, "copy"))}
         </>
       )}

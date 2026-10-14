@@ -1,4 +1,4 @@
-/** Navigator "Export as PNG/SVG…" and "Save a copy…" for VaultApp. */
+/** Navigator "Export as PNG/SVG/PDF…" and "Save a copy…" for VaultApp. */
 
 import { useCallback, useRef } from "react";
 
@@ -50,12 +50,10 @@ export const useExplorerExport = (input: {
     const name = path.slice(path.lastIndexOf("/") + 1);
     // Busy notice for slow renders only: never while the save dialog is up.
     let noticeShown = false;
-    const showNotice = () => {
+    const showNotice = (message = `Exporting ${name}…`) => {
       win.clearTimeout(notice);
-      if (!noticeShown) {
-        noticeShown = true;
-        setAlert({ message: `Exporting ${name}…`, type: "info" });
-      }
+      noticeShown = true;
+      setAlert({ message, type: "info" });
     };
     const notice = win.setTimeout(showNotice, BUSY_NOTICE_MS);
     const endNotice = () => {
@@ -67,18 +65,30 @@ export const useExplorerExport = (input: {
     };
     try {
       await flushIfOpen(path);
-      const { scale, background, embedScene, pattern } = loadExportOptions();
+      const { scale, background, embedScene, pattern, pageShaped } =
+        loadExportOptions();
       await exportDrawingFromVault({
         repository,
         handle: vault.handle,
         path,
         format,
-        options: { scale, background, embedScene, pattern, dark },
+        options: { scale, background, embedScene, pattern, dark, pageShaped },
         win,
         beforeRender: async (json) => {
           if (json.length > LARGE_DRAWING_CHARS) {
             showNotice();
             await nextPaint(win);
+          }
+        },
+        onProgress: (done, total) => {
+          // Multi-page PDFs take seconds: report progress ("page 3 of 12").
+          if (total > 1) {
+            showNotice(
+              `Exporting ${name}… page ${Math.min(
+                done + 1,
+                total,
+              )} of ${total}`,
+            );
           }
         },
         onRendered: endNotice,

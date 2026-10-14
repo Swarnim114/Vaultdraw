@@ -7,8 +7,13 @@ import { IMAGE_FILE_ID, IMAGE_SCENE, SAMPLE_SCENE } from "../tests/fixtures";
 import { exportDrawingFromVault, sceneToExportRequest } from "./exportFromFile";
 
 const renderImageExport = vi.fn();
-vi.mock("../editor/imageExport", () => ({
+vi.mock("../editor/imageExport", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../editor/imageExport")>()),
   renderImageExport: (...args: unknown[]) => renderImageExport(...args),
+}));
+const renderPdf = vi.fn();
+vi.mock("./pdf/renderPdf", () => ({
+  renderPdf: (...args: unknown[]) => renderPdf(...args),
 }));
 
 const win = window as unknown as Window & typeof globalThis;
@@ -170,5 +175,46 @@ describe("exportDrawingFromVault", () => {
       }),
     ).rejects.toThrow("empty canvas");
     expect(repo.exported).toHaveLength(0);
+  });
+});
+
+describe("exportDrawingFromVault: PDF", () => {
+  it("renders the restored scene as a PDF and saves it as <name>.pdf", async () => {
+    const repo = await seeded();
+    const bytes = new Uint8Array([37, 80, 68, 70]);
+    renderPdf.mockResolvedValue(bytes);
+    const onProgress = vi.fn();
+    const onRendered = vi.fn();
+    await expect(
+      exportDrawingFromVault({
+        repository: repo,
+        handle: repo.vault.handle,
+        path: "A/Graphs.excalidraw",
+        format: "pdf",
+        options,
+        win,
+        onProgress,
+        onRendered,
+      }),
+    ).resolves.toBe(true);
+    expect(renderImageExport).not.toHaveBeenCalled();
+    const input = renderPdf.mock.calls[0][0];
+    expect(input.elements.length).toBeGreaterThan(0);
+    expect(input.pattern).toBe(true);
+    input.onProgress(1, 3);
+    expect(onProgress).toHaveBeenCalledWith(1, 3);
+    expect(onRendered).toHaveBeenCalledTimes(1);
+    expect(repo.exported).toEqual([{ name: "Graphs.pdf", bytes }]);
+  });
+
+  it("passes the page-shaped option into the image request", async () => {
+    const request = await sceneToExportRequest(
+      SAMPLE_SCENE,
+      "G.excalidraw",
+      "png",
+      { ...options, pageShaped: true },
+      win,
+    );
+    expect(request.appState.exportPageShaped).toBe(true);
   });
 });

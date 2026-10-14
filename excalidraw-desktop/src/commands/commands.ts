@@ -363,6 +363,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["drawingOpen"],
   },
   {
+    id: "file.exportPdf",
+    title: "Export: PDF",
+    category: "Export",
+    keys: { default: [] },
+    when: ["drawingOpen"],
+  },
+  {
     id: "file.saveCopy",
     title: "Save a copy",
     category: "Export",

@@ -77,6 +77,17 @@ describe("suspendCanvasSync", () => {
   });
 });
 
+describe("export options: page shape", () => {
+  it("round-trips through the appState fields", () => {
+    const opts = { ...DEFAULT_EXPORT_OPTIONS, pageShaped: true };
+    expect(exportOptionsToAppState(opts).exportPageShaped).toBe(true);
+    expect(
+      appStateToExportOptions(exportOptionsToAppState(opts)).pageShaped,
+    ).toBe(true);
+    expect(normalizeExportOptions({ pageShaped: "x" }).pageShaped).toBe(false);
+  });
+});
+
 describe("renderImageExport", () => {
   const base = {
     elements: [{ id: "a" }],
@@ -132,6 +143,47 @@ describe("renderImageExport", () => {
     });
   });
 
+  it("page-shaped exports the whole page column as a synthetic frame", async () => {
+    exportToBlob.mockResolvedValue(new Blob([new Uint8Array([1])]));
+    const pageSetup = {
+      enabled: true,
+      layout: "separate",
+      width: 100,
+      height: 200,
+      pageCount: 3,
+    };
+    await renderImageExport(
+      req({ type: "png", appState: { exportPageShaped: true, pageSetup } }),
+      win,
+    );
+    const { exportingFrame } = exportToBlob.mock.calls[0][0];
+    expect(exportingFrame).toMatchObject({
+      type: "frame",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 3 * 240 - 40,
+    });
+    exportToBlob.mockClear();
+    // not page mode / switch off / a frame chosen by the caller: unchanged
+    await renderImageExport(
+      req({ type: "png", appState: { exportPageShaped: true } }),
+      win,
+    );
+    await renderImageExport(
+      req({ type: "png", appState: { exportPageShaped: false, pageSetup } }),
+      win,
+    );
+    expect(exportToBlob.mock.calls.map((c) => c[0].exportingFrame)).toEqual([
+      null,
+      null,
+    ]);
+  });
+
+  it("builds pdf file names", () => {
+    expect(exportFileName("Plan.excalidraw", "pdf", false)).toBe("Plan.pdf");
+  });
+
   it("clipboard never embeds the scene", async () => {
     exportToBlob.mockResolvedValue(new Blob([new Uint8Array([9])]));
     const out = await renderImageExport(
@@ -165,6 +217,7 @@ describe("export options", () => {
       background: false,
       embedScene: true,
       pattern: false,
+      pageShaped: false,
     } as const;
     expect(
       appStateToExportOptions(exportOptionsToAppState(opts) as never),
@@ -179,6 +232,7 @@ describe("export options", () => {
       background: true,
       embedScene: true,
       pattern: true,
+      pageShaped: false,
     });
   });
 
