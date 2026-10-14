@@ -454,6 +454,17 @@ const PAPER = {
 
 export const refreshRatePath = (pattern, elements) => `hz-${pattern}-${elements}.excalidraw`;
 
+/** Copies of a real drawing, one per paper style (same content, pattern swapped): [{ rel, json, pattern, elements }]. */
+export function paperVariants(json, patterns, prefix = "user") {
+  const scene = JSON.parse(json);
+  const elements = (scene.elements ?? []).filter((e) => !e.isDeleted).length;
+  return patterns.map((pattern) => {
+    if (!(pattern in PAPER)) throw new Error(`unknown paper style ${pattern}`);
+    const copy = { ...scene, appState: { ...scene.appState, viewBackgroundPattern: PAPER[pattern] } };
+    return { rel: `${prefix}-${pattern}.excalidraw`, json: JSON.stringify(copy), pattern, elements };
+  });
+}
+
 /** Refresh-rate probe drawings: [{ rel, json, pattern, elements }] (deterministic). */
 export function refreshRateScenes(config) {
   const spec = config.refreshRate;

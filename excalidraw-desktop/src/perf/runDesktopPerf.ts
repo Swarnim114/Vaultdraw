@@ -6,7 +6,11 @@ import { desktopRepository } from "../vault/DesktopVaultRepository";
 import { installIpcTrace } from "./ipcTrace";
 import { runPerfScenarios } from "./perfScenarios";
 
-import type { NativeProbe, RefreshRateInput } from "./refreshRate";
+import type {
+  NativeProbe,
+  RefreshRateDrawing,
+  RefreshRateInput,
+} from "./refreshRate";
 
 const IDLE_MS = 10_000;
 
@@ -55,7 +59,11 @@ const SUITE_INPUTS: RefreshRateInput[] = [
  * elements, plus the large drawings for the first two styles; full screen.
  * Harness: the small subset in fixtures.config.json, default window.
  */
-const refreshRateOptions = (only: boolean) => {
+const refreshRateOptions = (
+  only: boolean,
+  extra: RefreshRateDrawing[] = [],
+  extraOnly = false,
+) => {
   const spec = fixturesConfig.refreshRate;
   const drawing = (pattern: string, elements: number) => ({
     path: `hz-${pattern}-${elements}.excalidraw`,
@@ -74,12 +82,15 @@ const refreshRateOptions = (only: boolean) => {
           "zoom.native.out",
           "pan.native",
         ] as RefreshRateInput[]),
-    drawings: only
-      ? [
+    drawings: !only
+      ? spec.harness.patterns.map((p) => drawing(p, spec.harness.elements))
+      : extraOnly
+      ? extra
+      : [
+          ...extra,
           ...spec.patterns.flatMap((p) => small.map((n) => drawing(p, n))),
           ...spec.harness.patterns.map((p) => drawing(p, large)),
-        ]
-      : spec.harness.patterns.map((p) => drawing(p, spec.harness.elements)),
+        ],
   };
 };
 
@@ -188,10 +199,25 @@ export async function runDesktopPerf(): Promise<void> {
         },
       }).catch(() => undefined);
     });
-    const environment = await invoke<{ perfSuite?: string }>(
-      "smoke_environment",
-    ).catch(() => ({ perfSuite: "" }));
-    const onlyRefreshRate = environment.perfSuite === "refresh-rate";
+    const environment = await invoke<{
+      perfSuite?: string;
+      perfDrawings?: string;
+    }>("smoke_environment").catch(() => ({
+      perfSuite: "",
+      perfDrawings: "",
+    }));
+    // "refresh-rate": the full probe suite; "refresh-rate-drawings": only the
+    // extra drawings passed in VAULTDRAW_PERF_DRAWINGS.
+    const suite = environment.perfSuite ?? "";
+    const onlyRefreshRate = suite.startsWith("refresh-rate");
+    let extraDrawings: RefreshRateDrawing[] = [];
+    try {
+      extraDrawings = environment.perfDrawings
+        ? (JSON.parse(environment.perfDrawings) as RefreshRateDrawing[])
+        : [];
+    } catch {
+      extraDrawings = [];
+    }
     const { samples, info, errors } = await runPerfScenarios({
       root,
       doc,
@@ -199,7 +225,11 @@ export async function runDesktopPerf(): Promise<void> {
       repository: desktopRepository,
       config: fixturesConfig,
       mark,
-      refreshRate: refreshRateOptions(onlyRefreshRate),
+      refreshRate: refreshRateOptions(
+        onlyRefreshRate,
+        extraDrawings,
+        suite === "refresh-rate-drawings",
+      ),
       // Progress lines (smoke-progress.log) for the standalone suite only: the
       // full run keeps the vault folder free of extra writes.
       log: onlyRefreshRate

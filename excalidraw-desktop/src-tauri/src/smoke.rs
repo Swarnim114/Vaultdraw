@@ -44,8 +44,10 @@ pub fn export_dir() -> Result<PathBuf, String> {
 pub fn smoke_environment() -> Result<Value, String> {
     let root = test_dir()?;
     // VAULTDRAW_PERF_SUITE selects a perf suite (e.g. "refresh-rate"); empty = the full run.
+    // VAULTDRAW_PERF_DRAWINGS: extra probe drawings, JSON [{ path, pattern, elements }].
     let perf_suite = env::var("VAULTDRAW_PERF_SUITE").unwrap_or_default();
-    Ok(json!({ "enabled": true, "vaultPath": root.to_string_lossy(), "exportPath": root.join("smoke-exports").to_string_lossy(), "perfSuite": perf_suite }))
+    let perf_drawings = env::var("VAULTDRAW_PERF_DRAWINGS").unwrap_or_default();
+    Ok(json!({ "enabled": true, "vaultPath": root.to_string_lossy(), "exportPath": root.join("smoke-exports").to_string_lossy(), "perfSuite": perf_suite, "perfDrawings": perf_drawings }))
 }
 
 #[tauri::command]

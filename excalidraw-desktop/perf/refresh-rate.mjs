@@ -11,9 +11,14 @@ import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 
 import { buildPerfApp, isScreenLocked, perfCacheDir, reuseBuiltApp, runAppOnce } from "./lib/app.mjs";
-import { refreshRateScenes } from "./lib/fixtures.mjs";
+import { paperVariants, refreshRateScenes } from "./lib/fixtures.mjs";
 
-const HELP = `Usage: node excalidraw-desktop/perf/refresh-rate.mjs [--no-build] [--out file.json] [--label text]
+const HELP = `Usage: node excalidraw-desktop/perf/refresh-rate.mjs [--no-build] [--out file.json] [--label text] [--config config.toml]
+
+--drawing copies a real .excalidraw (read only) into the probe vault once per paper style (same content,
+pattern swapped: user-<style>.excalidraw) and measures it first; --drawing-only skips the generated drawings.
+--config copies a config.toml (e.g. ~/.config/vaultdraw/config.toml: theme, dark mode, canvas sync) into the
+run's temp config dir; the file itself is only read.
 
 Builds the perf app (smoke-test feature, temp config/state dirs; never the user's), launches it once
 (~1-2 min, the window opens in the background) and prints effective fps / rendered Hz per scenario.
@@ -24,7 +29,7 @@ Wrap in the shared build lock:
 
 const { values: o } = parseArgs({
   options: {
-    "no-build": { type: "boolean" }, out: { type: "string" }, label: { type: "string" },
+    "no-build": { type: "boolean" }, out: { type: "string" }, label: { type: "string" }, config: { type: "string" }, drawing: { type: "string" }, "drawing-only": { type: "boolean" },
     "keep-runs": { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
@@ -67,9 +72,12 @@ function environment() {
 
 const config = JSON.parse(readFileSync(path.join(here, "fixtures.config.json"), "utf8"));
 
+const PAPER_STYLES = ["plain", "grid", "lines", "dots", "graph", "isometric"];
+const extraScenes = o.drawing ? paperVariants(readFileSync(o.drawing, "utf8"), PAPER_STYLES) : [];
+
 /** A small vault with just the probe drawings (cached by content hash). */
 async function ensureProbeVault() {
-  const scenes = refreshRateScenes(config);
+  const scenes = [...refreshRateScenes(config), ...extraScenes];
   const hash = createHash("sha1").update(scenes.map((s) => s.json).join("\n")).digest("hex").slice(0, 12);
   const dir = path.join(cacheDir, `refresh-rate-vault-${hash}`);
   try {
@@ -109,7 +117,12 @@ try {
 log("launching the app (window opens in the background) ...");
 const run = await runAppOnce({
   appPath: built.appPath, pristineVault: vault, runIndex: 0, timeoutMs: 240_000,
-  keepRuns: !!o["keep-runs"], memoryPressure: false, log, env: { VAULTDRAW_PERF_SUITE: "refresh-rate" },
+  keepRuns: !!o["keep-runs"], memoryPressure: false, log,
+  env: {
+    VAULTDRAW_PERF_SUITE: o["drawing-only"] && extraScenes.length ? "refresh-rate-drawings" : "refresh-rate",
+    VAULTDRAW_PERF_DRAWINGS: JSON.stringify(extraScenes.map((s) => ({ path: s.rel, pattern: s.pattern, elements: s.elements }))),
+  },
+  configToml: o.config ? readFileSync(o.config, "utf8") : undefined,
 });
 const probe = run.info?.refreshRate ?? null;
 const result = {
@@ -117,6 +130,8 @@ const result = {
   at: new Date().toISOString(),
   git: built.git,
   environment: env,
+  config: o.config ?? null,
+  drawing: o.drawing ?? null,
   display: probe?.display ?? null,
   displayHz: probe?.displayHz ?? null,
   samples: run.samples,
@@ -129,6 +144,7 @@ writeFileSync(out, JSON.stringify(result, null, 2));
 
 const d = probe?.display ?? {};
 console.log(`\nRefresh-rate probe ${result.label ? `(${result.label}) ` : ""}@ ${built.git?.sha?.slice(0, 7) ?? "?"}${built.git?.dirty ? "+dirty" : ""}`);
+if (o.config) console.log(`config: ${o.config} (copied into the temp config dir)`);
 console.log(`macOS ${env.macOS}; WebKit ${d.display?.webkitVersion ?? "?"}; power ${env.powerSource}; Low Power Mode ${env.lowPowerMode}`);
 console.log(`screen: ${d.display?.screenName ?? "?"} max ${d.display?.screenMaxFps ?? "?"} fps; CVDisplayLink ${d.displayLink?.measuredHz ?? "?"} Hz (nominal ${d.displayLink?.nominalHz ?? "?"}); window visible=${d.display?.windowVisibleOcclusionBit} key=${d.display?.windowIsKey}`);
 console.log(`60 fps cap flag: ${JSON.stringify(d.flag ?? null)}; live: near60fps enabled=${d.display?.liveNear60fpsEnabled}`);

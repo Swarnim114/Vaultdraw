@@ -90,11 +90,12 @@ export function reuseBuiltApp({ wtRoot }) {
 
 /**
  * Launch the app once. Returns { samples, info, errors, notes, marks, spawnWallMs, appPid, helperPids, runDir }.
- * Options: runsDir (default <cache>/runs), binary (override, used by tests), timeoutMs, keepRuns, memoryPressure.
+ * Options: runsDir (default <cache>/runs), binary (override, used by tests), timeoutMs, keepRuns, memoryPressure,
+ * configToml (text written to the temp config dir's config.toml, e.g. a copy of a user's appearance settings).
  */
 export async function runAppOnce({
   appPath, pristineVault, lowEnd = false, runIndex = 0, runsDir, binary, timeoutMs, keepRuns = false,
-  memoryPressure = lowEnd, log = () => {}, sampleEveryMs = 250, env: extraEnv = {},
+  memoryPressure = lowEnd, log = () => {}, sampleEveryMs = 250, env: extraEnv = {}, configToml,
 }) {
   const bin = binary ?? path.join(appPath, BINARY_REL);
   runsDir ??= path.join(path.dirname(path.dirname(appPath)), "runs");
@@ -106,6 +107,7 @@ export async function runAppOnce({
   await mkdir(runDir, { recursive: true });
   await mkdir(cfg, { recursive: true });
   await mkdir(state, { recursive: true });
+  if (configToml) writeFileSync(path.join(cfg, "config.toml"), configToml);
   await sh("cp", ["-cR", pristineVault, vault]); // APFS clone
 
   const errors = [];
