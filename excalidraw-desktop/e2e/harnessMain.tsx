@@ -55,6 +55,39 @@ if (params.get("seed") !== "empty") {
     // Opt-in (?seed=search): keeps other specs' drawing counts unchanged.
     repository.seedDrawing("DSA/Shortest Paths.excalidraw", SEARCH_SCENE);
   }
+  if (params.get("seed") === "names5k") {
+    // Opt-in (?seed=names5k): 5,000 small drawings in nested folders, for the
+    // quick switcher's per-keystroke latency measurement.
+    const words = [
+      "alpha",
+      "design",
+      "vault",
+      "roadmap",
+      "notes",
+      "sketch",
+      "graph",
+      "plan",
+      "review",
+      "draft",
+    ];
+    const empty = JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      elements: [],
+      appState: {},
+      files: {},
+    });
+    for (let i = 0; i < 5000; i++) {
+      const top = `Area ${i % 25}`;
+      const sub = `${words[i % 10]} ${Math.floor(i / 250) % 8}`;
+      repository.seedDrawing(
+        `${top}/${sub}/${words[(i * 7) % 10]} ${
+          words[(i * 3) % 10]
+        } ${i}.excalidraw`,
+        empty,
+      );
+    }
+  }
 }
 
 if (params.get("seed") === "tags") {
