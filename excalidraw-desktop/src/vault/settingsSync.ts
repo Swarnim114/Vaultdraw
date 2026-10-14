@@ -115,7 +115,8 @@ type ConfigField =
   | "confirmDelete"
   | "showTagChips"
   | "navigatorSort"
-  | "newDrawingFolder";
+  | "newDrawingFolder"
+  | "templatesFolder";
 
 interface ConfigMapping {
   field: ConfigField;
@@ -272,6 +273,14 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
     key: "files.new_drawing_folder",
     expected: 'a folder path inside the vault like "Sketches/Inbox", or ""',
     valid: isVaultRelativeFolder,
+  },
+  {
+    // Never empty: "" is invalid (reported, ignored) so the effective value
+    // falls back to "Templates".
+    field: "templatesFolder",
+    key: "files.templates_folder",
+    expected: 'a non-empty folder path inside the vault like "Templates"',
+    valid: (v) => isVaultRelativeFolder(v) && v !== "",
   },
 ];
 

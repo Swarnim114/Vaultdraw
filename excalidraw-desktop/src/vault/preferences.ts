@@ -1,3 +1,5 @@
+import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
+
 import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from "./sortOrder";
 
 export type VaultTheme = "light" | "dark" | "system";
@@ -64,6 +66,12 @@ export interface VaultPreferences {
   navigatorSort: SortOrder;
   /** Folder for new drawings, relative to the vault root ("" = unset). A vault's settings.toml may override it. */
   newDrawingFolder: string;
+  /**
+   * Vault folder holding templates, relative to the vault root. Never empty:
+   * "" is not a valid value and falls back to "Templates". A vault's
+   * settings.toml may override it.
+   */
+  templatesFolder: string;
 }
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
@@ -96,6 +104,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   showTagChips: true,
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
+  templatesFolder: DEFAULT_TEMPLATES_FOLDER,
 };
 
 export const MIN_ZOOM = 50;
@@ -212,6 +221,11 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       parsed.newDrawingFolder,
       isString,
       d.newDrawingFolder,
+    ),
+    templatesFolder: pick(
+      parsed.templatesFolder,
+      (v) => isString(v) && (v as string).trim() !== "",
+      d.templatesFolder,
     ),
   };
 }

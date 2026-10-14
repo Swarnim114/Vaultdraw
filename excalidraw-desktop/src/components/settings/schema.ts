@@ -251,6 +251,16 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "files.new_drawing_folder",
     perVault: true,
   },
+  {
+    id: "templates-folder",
+    page: "files",
+    label: "Templates Folder",
+    description:
+      "Vault folder holding your templates. Global templates live in the config folder.",
+    keywords: ["templates", "template", "folder", "location"],
+    configKey: "files.templates_folder",
+    perVault: true,
+  },
 ];
 
 const BY_ID = new Map(SETTINGS_SCHEMA.map((s) => [s.id, s]));

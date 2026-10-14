@@ -21,7 +21,11 @@ import {
 
 import type { VaultPreferences } from "./preferences";
 
-export const PER_VAULT_FIELDS = ["navigatorSort", "newDrawingFolder"] as const;
+export const PER_VAULT_FIELDS = [
+  "navigatorSort",
+  "newDrawingFolder",
+  "templatesFolder",
+] as const;
 export type VaultField = typeof PER_VAULT_FIELDS[number];
 export type VaultOverrides = Partial<Pick<VaultPreferences, VaultField>>;
 export type EffectiveVaultSettings = Pick<VaultPreferences, VaultField>;
@@ -83,6 +87,7 @@ export const resolveSettings = (
 ): EffectiveVaultSettings => ({
   navigatorSort: resolveSetting("navigatorSort", overrides, prefs),
   newDrawingFolder: resolveSetting("newDrawingFolder", overrides, prefs),
+  templatesFolder: resolveSetting("templatesFolder", overrides, prefs),
 });
 
 // ---------------------------------------------------------------------------

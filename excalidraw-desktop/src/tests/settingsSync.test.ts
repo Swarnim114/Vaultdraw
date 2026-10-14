@@ -186,7 +186,11 @@ describe("settingsSync mapping", () => {
       appearance: { accent_color: "#336699" },
       interface: { zoom: 125 },
       navigator: { sort: "modified_desc" },
-      files: { confirm_delete: false, new_drawing_folder: "Inbox/Deep" },
+      files: {
+        confirm_delete: false,
+        new_drawing_folder: "Inbox/Deep",
+        templates_folder: "Shared/Tpl",
+      },
     });
     expect(
       configToPreferences({ interface: { show_tag_chips: false } }),
@@ -213,6 +217,7 @@ describe("settingsSync mapping", () => {
       navigatorSort: "modified_desc",
       confirmDelete: false,
       newDrawingFolder: "Inbox/Deep",
+      templatesFolder: "Shared/Tpl",
     });
   });
 
@@ -225,6 +230,7 @@ describe("settingsSync mapping", () => {
       navigatorSort: DEFAULT_PREFERENCES.navigatorSort,
       confirmDelete: true,
       newDrawingFolder: "",
+      templatesFolder: "Templates",
     });
   });
 
@@ -237,6 +243,8 @@ describe("settingsSync mapping", () => {
     ["files", "confirm_delete", "no", "confirmDelete"],
     ["files", "new_drawing_folder", "../escape", "newDrawingFolder"],
     ["files", "new_drawing_folder", "/abs", "newDrawingFolder"],
+    ["files", "templates_folder", "../escape", "templatesFolder"],
+    ["files", "templates_folder", "", "templatesFolder"],
   ] as const)(
     "invalid %s.%s = %j reports a problem and uses the default",
     (table, name, bad, field) => {

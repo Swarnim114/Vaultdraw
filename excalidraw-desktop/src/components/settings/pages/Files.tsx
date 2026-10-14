@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DEFAULT_TEMPLATES_FOLDER } from "../../../templates/types";
 import { isVaultRelativeFolder } from "../../../vault/settingsSync";
 import { IconFolder } from "../../Icons";
 import { useSettings, type SettingControls } from "../SettingsContext";
@@ -89,9 +90,15 @@ const normaliseFolder = (text: string) => text.trim().replace(/^\/+|\/+$/g, "");
 const FolderInput = ({
   value,
   onCommit,
+  label = "Default folder for new drawings",
+  placeholder = "Next to the open drawing",
+  allowEmpty = true,
 }: {
   value: string;
   onCommit: (folder: string) => void;
+  label?: string;
+  placeholder?: string;
+  allowEmpty?: boolean;
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +107,7 @@ const FolderInput = ({
       return;
     }
     const next = normaliseFolder(draft);
-    if (!isVaultRelativeFolder(next)) {
+    if (!isVaultRelativeFolder(next) || (!allowEmpty && next === "")) {
       setError("Use a folder path inside the vault, like Inbox/Sketches.");
       return;
     }
@@ -115,9 +122,9 @@ const FolderInput = ({
       <input
         type="text"
         className="vault-input"
-        aria-label="Default folder for new drawings"
+        aria-label={label}
         aria-invalid={error !== null}
-        placeholder="Next to the open drawing"
+        placeholder={placeholder}
         spellCheck={false}
         value={draft ?? value}
         onChange={(e) => setDraft(e.target.value)}
@@ -156,9 +163,24 @@ const NewDrawingFolderSetting = () => (
   </PerVaultRow>
 );
 
+const TemplatesFolderSetting = () => (
+  <PerVaultRow id="templates-folder" field="templatesFolder">
+    {(value, onChange) => (
+      <FolderInput
+        value={value}
+        onCommit={onChange}
+        label="Templates folder"
+        placeholder={DEFAULT_TEMPLATES_FOLDER}
+        allowEmpty={false}
+      />
+    )}
+  </PerVaultRow>
+);
+
 export const filesControls: SettingControls = {
   "vault-folder": { Component: VaultFolderSetting },
   autosave: { Component: AutosaveSetting },
   "confirm-delete": { Component: ConfirmDeleteSetting },
   "new-drawing-folder": { Component: NewDrawingFolderSetting },
+  "templates-folder": { Component: TemplatesFolderSetting },
 };

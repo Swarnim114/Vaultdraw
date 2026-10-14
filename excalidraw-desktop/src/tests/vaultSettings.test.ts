@@ -116,7 +116,22 @@ describe("parse and merge", () => {
     expect(resolveSettings({ newDrawingFolder: "A" }, prefs)).toEqual({
       navigatorSort: "name_desc",
       newDrawingFolder: "A",
+      templatesFolder: "Templates",
     });
+    expect(resolveSettings({ templatesFolder: "T/x" }, prefs)).toMatchObject({
+      templatesFolder: "T/x",
+    });
+  });
+
+  it("parses a templates folder override and rejects an empty one", () => {
+    expect(
+      parseVaultSettings({ files: { templates_folder: "Tpl" } }).overrides,
+    ).toEqual({ templatesFolder: "Tpl" });
+    const { overrides, problems } = parseVaultSettings({
+      files: { templates_folder: "" },
+    });
+    expect(overrides).toEqual({});
+    expect(problems).toHaveLength(1);
   });
 });
 

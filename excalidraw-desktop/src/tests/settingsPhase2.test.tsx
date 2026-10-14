@@ -183,6 +183,21 @@ describe("per-vault rows", () => {
     fireEvent.blur(input);
     expect(getPreferences(window).newDrawingFolder).toBe("Inbox/Sketches");
   });
+
+  it("validates the templates folder and rejects an empty value", async () => {
+    await attachVaultSettings(window, vault.handle);
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    const input = screen.getByLabelText("Templates folder");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(getPreferences(window).templatesFolder).toBe("Templates");
+
+    fireEvent.change(input, { target: { value: " /Shared/Tpl/ " } });
+    fireEvent.blur(input);
+    expect(getPreferences(window).templatesFolder).toBe("Shared/Tpl");
+  });
 });
 
 describe("VaultNavigator sort and delete", () => {
