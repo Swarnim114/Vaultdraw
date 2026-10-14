@@ -62,6 +62,7 @@ sort = "name_asc"            # name_asc | name_desc | modified_desc | modified_a
 [files]
 confirm_delete = true        # ask before moving to Trash
 new_drawing_folder = ""      # relative to the vault root; "" = next to the open drawing
+templates_folder = "Templates" # vault folder holding templates, relative to the vault root
 ```
 
 - **Settings and the file stay in sync.** Changing something in Settings updates `config.toml` and keeps your comments and layout. Editing the file updates the app.
@@ -83,7 +84,7 @@ Everything here can be changed in **Settings** (Cmd/Ctrl+,) or by editing `confi
 
 #### Per-vault settings
 
-Navigator sort order and the default folder for new drawings can differ per vault. Those rows have a **This vault** switch:
+Navigator sort order, the default folder for new drawings and the templates folder can differ per vault. Those rows have a **This vault** switch:
 
 - **On:** the value is saved in `<vault>/.excalidraw-vault/settings.toml`, starting from the value currently in effect. Edits go there.
 - **Off:** the key is removed from that file and the global value applies again.
@@ -176,6 +177,19 @@ Matching rules:
 - Chinese, Japanese and Korean text is searched as written, without spaces between words.
 
 The index is stored outside the vault, in the state folder (`~/.local/state/vaultdraw/index/` by default; `VAULTDRAW_STATE_DIR` changes the folder). Nothing is written into your vault. The index is rebuilt automatically when it is missing or damaged, and it is safe to delete. When a large vault is indexed for the first time, the status line shows progress, such as "Indexing 1,234 of 5,000 drawings…", and results cover only the drawings indexed so far.
+
+## Templates
+
+A template is an ordinary `.excalidraw` file, so any drawing can become one, and a template can be opened and edited like any other drawing.
+
+- **Vault templates** live in `Templates/` at the vault root. Change the folder in **Settings → Files → Templates Folder** (`files.templates_folder`). Like the other per-vault settings, it is stored in `<vault>/.excalidraw-vault/settings.toml` when set for that vault.
+- **Global templates** live in `templates/` inside the config folder (`~/.config/vaultdraw/templates/` on macOS and Linux). All vaults share them.
+
+To start a drawing from a template, use **New from template…** in the header, the button in an empty vault, or Cmd+Option+N (Ctrl+Alt+N on Windows and Linux). The picker has a search box with thumbnails for each template. Use the arrow keys to move and Enter to create the drawing. A new drawing gets fresh element ids, so it never shares ids with its template, and it keeps the template's canvas background.
+
+To make a template, choose **Save as template…** in a drawing's ⋯ menu, then pick **This vault** or **All vaults**.
+
+Templates are left out of the Recent list. They still appear in the navigator, where you can open and edit them.
 
 ## Repository layout
 
