@@ -1,0 +1,82 @@
+/**
+ * Command registry contract (Settings phase 3). Commands are static metadata
+ * (`commands.ts`); their handlers are bound at runtime by the app shell, so
+ * settings sync, the Hotkeys page and the quick switcher can use the list
+ * without React or VaultApp.
+ */
+
+export type CommandCategory =
+  | "File"
+  | "Vault"
+  | "View"
+  | "Navigator"
+  | "Settings"
+  | "Appearance"
+  | "Palette";
+
+/**
+ * Facts the dispatcher checks before claiming a key.
+ * - vaultOpen: a vault is open.
+ * - drawingOpen: a drawing is open in the editor.
+ * - writable: the vault is not read-only.
+ * - textEditing: focus is in an input, textarea, select or contenteditable
+ *   (includes Excalidraw's WYSIWYG text editor).
+ * - canvasFocus: focus is inside the editor and not text editing.
+ * - modalOpen: a vault dialog (`.vault-modal-backdrop`) is open.
+ */
+export type ContextKey =
+  | "vaultOpen"
+  | "drawingOpen"
+  | "writable"
+  | "textEditing"
+  | "canvasFocus"
+  | "modalOpen";
+
+/** `"!modalOpen"` = must not hold. All entries of `when` must hold. */
+export type WhenClause = ContextKey | `!${ContextKey}`;
+
+export type Platform = "mac" | "win" | "linux";
+
+/**
+ * A chord in config notation: modifiers then a `KeyboardEvent.code`-based key
+ * name, joined by "+", e.g. "Mod+Shift+Equal", "Mod+Comma", "F2", "Alt+N".
+ * `Mod` = Cmd on macOS, Ctrl elsewhere. Canonical modifier order:
+ * Mod, Ctrl, Alt, Shift, Meta (see keys.ts).
+ */
+export type Chord = string;
+
+export interface CommandKeys {
+  /** Used when the platform has no entry of its own. [] = unassigned. */
+  default: Chord[];
+  mac?: Chord[];
+  win?: Chord[];
+  linux?: Chord[];
+}
+
+export interface CommandDefinition {
+  /** "namespace.camelCase", stable: it is the key in `[hotkeys]`. */
+  id: string;
+  title: string;
+  category: CommandCategory;
+  keys: CommandKeys;
+  when?: WhenClause[];
+  /**
+   * Let the key event continue to Excalidraw (preventDefault only) and run the
+   * handler after the event has finished propagating. Used by file.save so
+   * Excalidraw's WYSIWYG editor commits the text being typed before we save.
+   */
+  passThrough?: boolean;
+  /** Listed in the Cmd+P quick switcher (default true). */
+  palette?: boolean;
+}
+
+/** Live context snapshot the dispatcher evaluates `when` against. */
+export type CommandContext = Readonly<Record<ContextKey, boolean>>;
+
+export type CommandHandler = () => void | Promise<void>;
+
+/** Handlers bound by the app shell; a command without one is unavailable. */
+export type CommandHandlers = Partial<Record<string, CommandHandler>>;
+
+/** `[hotkeys]` overrides: command id -> chords. [] = unassigned. */
+export type HotkeyOverrides = Readonly<Record<string, readonly Chord[]>>;
