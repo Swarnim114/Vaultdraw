@@ -12,7 +12,7 @@ describe("VaultEditor safety and drop guard", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-safety-1"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="test.excalidraw"
         onChange={onChange}
       />,
@@ -49,7 +49,7 @@ describe("VaultEditor safety and drop guard", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-safety-2"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="test.excalidraw"
         onChange={onChange}
       />,
@@ -79,7 +79,7 @@ describe("VaultEditor safety and drop guard", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-safety-img"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="test.excalidraw"
         onChange={vi.fn()}
       />,
@@ -105,7 +105,7 @@ describe("VaultEditor safety and drop guard", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-safety-3"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="readonly.excalidraw"
         onChange={onChange}
         readOnly={true}
@@ -126,7 +126,7 @@ describe("VaultEditor safety and drop guard", () => {
       const { container } = render(
         <VaultEditor
           documentId="doc-safety-4"
-          initialJson={BLANK_SCENE}
+          initialSource={{ json: BLANK_SCENE }}
           name="theme-test.excalidraw"
           onChange={onChange}
           theme="dark"

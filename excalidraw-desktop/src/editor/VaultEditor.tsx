@@ -14,7 +14,6 @@ import {
   Excalidraw,
   loadFromBlob,
   MainMenu,
-  serializeAsJSON,
 } from "@excalidraw/excalidraw";
 import { DEFAULT_SIDEBAR } from "@excalidraw/common";
 
@@ -67,6 +66,7 @@ import {
 import { focusElement } from "./focusElement";
 import { PANNED_CLASS, watchFirstPan } from "./panHint";
 import { renderImageExport } from "./imageExport";
+import { serializeSceneForSave } from "./sceneSerializer";
 import { getSaveSignature } from "./saveSignature";
 
 import type { EditorLinksWiring } from "./links/useVaultEditorLinks";
@@ -81,7 +81,8 @@ import type { ComponentProps, DragEvent } from "react";
 
 type Props = {
   documentId: string;
-  initialJson: string;
+  /** Stable per-activation handle; read when the scene loads, not on render. */
+  initialSource: { readonly json: string };
   name: string;
   onChange: (json: string) => void;
   onExport?: (name: string, bytes: Uint8Array) => Promise<boolean>;
@@ -120,7 +121,7 @@ const MAX_SERIALIZE_MS = 2500;
 /** One keyed instance per vault document keeps editor history and image files isolated. */
 const VaultEditorComponent = ({
   documentId,
-  initialJson,
+  initialSource,
   name,
   onChange,
   onExport,
@@ -278,7 +279,7 @@ const VaultEditorComponent = ({
       throw new Error("Editor document is not mounted");
     }
     try {
-      const blob = new doc.defaultView!.Blob([initialJson], {
+      const blob = new doc.defaultView!.Blob([initialSource.json], {
         type: "application/json",
       });
       const scene = await loadFromBlob(blob, null, null, null);
@@ -294,8 +295,9 @@ const VaultEditorComponent = ({
       throw cause;
     }
     // documentId: a new document must load fresh even with identical JSON.
+    // The source is read at call time so it always yields the latest saved text.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialJson, documentId]);
+  }, [initialSource, documentId]);
 
   const commitTextEditing = useCallback(() => {
     const mounted = host.current;
@@ -330,7 +332,7 @@ const VaultEditorComponent = ({
     }
     pendingChanges.current = false;
     callbackRef.current(
-      serializeAsJSON(current[0], current[1], current[2], "local"),
+      serializeSceneForSave(current[0], current[1], current[2]),
     );
   }, []);
 
@@ -500,11 +502,10 @@ const VaultEditorComponent = ({
     exportingRef.current = true;
     setExporting(true);
     try {
-      const json = serializeAsJSON(
+      const json = serializeSceneForSave(
         api.getSceneElements(),
         api.getAppState(),
         api.getFiles(),
-        "local",
       );
       const blob = new ownerDocument.defaultView!.Blob([json], {
         type: "application/json",

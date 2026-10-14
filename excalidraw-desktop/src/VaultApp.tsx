@@ -2102,7 +2102,7 @@ export const VaultApp = ({
               <EditorComponent
                 key={activeDoc.id}
                 documentId={activeDoc.id}
-                initialJson={activeDoc.json}
+                initialSource={activeDoc.source}
                 name={getBaseName(activeDoc.path)}
                 onChange={changeDoc}
                 onExport={exportEditorFile}

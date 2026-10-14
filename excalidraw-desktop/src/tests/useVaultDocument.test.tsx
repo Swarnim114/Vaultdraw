@@ -4,7 +4,7 @@
  *
  * Covers:
  * - open/create/change/flush/close/reload/saveCopy/relocate signatures
- * - document.json stays the load snapshot; edits live in internal currentJson
+ * - document.source.json is the load text until a save settles; edits live in internal currentJson
  * - flush-before-navigation: open/create/close/relocate flush first; on flush
  *   failure the current document stays intact and the call rejects
  * - rapid A -> B -> C navigation: generation IDs reject stale load results
@@ -36,19 +36,19 @@ async function openPath(
 }
 
 describe("useVaultDocument open/create/change/flush", () => {
-  it("opens a drawing; document.json is the load snapshot, not live edits", async () => {
+  it("opens a drawing; document.source.json is the load text, not live edits", async () => {
     const repo = new FakeVaultRepository();
     repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
     const { result } = renderHook(() => useVaultDocument(repo, vaultOf(repo)));
     await openPath(result, "a.excalidraw");
     expect(result.current.document?.path).toBe("a.excalidraw");
-    expect(result.current.document?.json).toBe(SAMPLE_SCENE);
+    expect(result.current.document?.source.json).toBe(SAMPLE_SCENE);
     expect(result.current.status).toBe("saved");
 
     act(() => result.current.change(BLANK_SCENE));
     expect(result.current.status).toBe("dirty");
     // Snapshot stays stable so the editor is not reset on every keystroke.
-    expect(result.current.document?.json).toBe(SAMPLE_SCENE);
+    expect(result.current.document?.source.json).toBe(SAMPLE_SCENE);
     await act(async () => {
       await result.current.flush();
     });
@@ -130,7 +130,7 @@ describe("useVaultDocument open/create/change/flush", () => {
       await result.current.reload();
     });
     // reload deliberately drops dirty edits (UI confirms first).
-    expect(result.current.document?.json).toBe(BLANK_SCENE);
+    expect(result.current.document?.source.json).toBe(BLANK_SCENE);
     expect(result.current.status).toBe("saved");
   });
 });
@@ -150,7 +150,7 @@ describe("rapid navigation and dirty-switch failures", () => {
     });
     // Generation IDs reject stale A/B results; C wins.
     expect(result.current.document?.path).toBe("c.excalidraw");
-    expect(result.current.document?.json).toBe(editedSampleScene());
+    expect(result.current.document?.source.json).toBe(editedSampleScene());
   });
 
   it("failed flush before navigation keeps the current document intact", async () => {
@@ -194,7 +194,7 @@ describe("external conflicts and deletion", () => {
       repo.externalWrite("a.excalidraw", BLANK_SCENE);
     });
     await waitFor(() =>
-      expect(result.current.document?.json).toBe(BLANK_SCENE),
+      expect(result.current.document?.source.json).toBe(BLANK_SCENE),
     );
     expect(result.current.status).toBe("saved");
 
@@ -248,7 +248,7 @@ describe("external conflicts and deletion", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30));
     });
-    expect(result.current.document?.json).toBe(SAMPLE_SCENE);
+    expect(result.current.document?.source.json).toBe(SAMPLE_SCENE);
     expect(result.current.status).toBe("saved");
   });
 });
@@ -329,7 +329,7 @@ describe("useVaultDocument watcher revision probe", () => {
       repo.externalWrite("a.excalidraw", BLANK_SCENE);
     });
     await waitFor(() =>
-      expect(result.current.document?.json).toBe(BLANK_SCENE),
+      expect(result.current.document?.source.json).toBe(BLANK_SCENE),
     );
     expect(repo.reads).toBe(1);
   });
@@ -402,5 +402,128 @@ describe("useVaultDocument watcher revision probe", () => {
     await waitFor(() => expect(result.current.status).toBe("conflict"));
     expect(result.current.error).toMatch(/deleted/i);
     expect(repo.reads).toBe(0);
+  });
+});
+
+describe("document source handle (no retained load-time copy)", () => {
+  const setup = async () => {
+    const repo = new FakeVaultRepository();
+    repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
+    repo.seedDrawing("b.excalidraw", BLANK_SCENE);
+    let renders = 0;
+    const hook = renderHook(() => {
+      renders += 1;
+      return useVaultDocument(repo, vaultOf(repo));
+    });
+    await openPath(hook.result, "a.excalidraw");
+    return { repo, hook, renders: () => renders };
+  };
+
+  it("a save points the handle at the saved string without touching the document", async () => {
+    const { hook } = await setup();
+    const { result } = hook;
+    const before = result.current.document!;
+    const source = before.source;
+    expect(source.json).toBe(SAMPLE_SCENE);
+
+    act(() => result.current.change(BLANK_SCENE));
+    // Not saved yet: the handle still holds the load text.
+    expect(source.json).toBe(SAMPLE_SCENE);
+    await act(async () => {
+      await result.current.flush();
+    });
+    expect(result.current.status).toBe("saved");
+    expect(source.json).toBe(BLANK_SCENE);
+    expect(result.current.document).toBe(before);
+    expect(result.current.document?.source).toBe(source);
+    expect(result.current.document?.id).toBe(before.id);
+  });
+
+  it("saving does not re-render the hook's document consumers", async () => {
+    const { hook } = await setup();
+    const { result } = hook;
+    const doc = result.current.document;
+    const seen: unknown[] = [];
+    // Status churn (dirty/saving/saved) re-renders the hook owner by design;
+    // the document object itself must never be replaced by a save.
+    act(() => result.current.change(BLANK_SCENE));
+    seen.push(result.current.document);
+    await act(async () => {
+      await result.current.flush();
+    });
+    seen.push(result.current.document);
+    act(() => result.current.change(SAMPLE_SCENE));
+    await act(async () => {
+      await result.current.flush();
+    });
+    seen.push(result.current.document);
+    expect(seen.every((entry) => entry === doc)).toBe(true);
+    expect(doc?.source.json).toBe(SAMPLE_SCENE);
+  });
+
+  it("relocate keeps the same handle; path updates", async () => {
+    const { hook } = await setup();
+    const { result } = hook;
+    const source = result.current.document!.source;
+    await act(async () => {
+      await result.current.relocate("a.excalidraw", "moved.excalidraw");
+    });
+    expect(result.current.document?.path).toBe("moved.excalidraw");
+    expect(result.current.document?.source).toBe(source);
+  });
+
+  it("open, reload, saveCopy and external reload each create a fresh handle", async () => {
+    const { repo, hook } = await setup();
+    const { result } = hook;
+    const first = result.current.document!.source;
+
+    await openPath(result, "b.excalidraw");
+    const second = result.current.document!.source;
+    expect(second).not.toBe(first);
+    expect(second.json).toBe(BLANK_SCENE);
+
+    await act(async () => {
+      await result.current.reload();
+    });
+    const third = result.current.document!.source;
+    expect(third).not.toBe(second);
+
+    act(() => result.current.change(SAMPLE_SCENE));
+    await act(async () => {
+      await result.current.saveCopy("copy.excalidraw");
+    });
+    const fourth = result.current.document!.source;
+    expect(fourth).not.toBe(third);
+    expect(fourth.json).toBe(SAMPLE_SCENE);
+
+    act(() => {
+      repo.externalWrite("copy.excalidraw", BLANK_SCENE);
+    });
+    await waitFor(() =>
+      expect(result.current.document?.source.json).toBe(BLANK_SCENE),
+    );
+    expect(result.current.document?.source).not.toBe(fourth);
+  });
+
+  it("an external write equal to the editor text keeps the handle current", async () => {
+    const { repo, hook } = await setup();
+    const { result } = hook;
+    const source = result.current.document!.source;
+    act(() => result.current.change(BLANK_SCENE));
+    await act(async () => {
+      await result.current.flush();
+    });
+    act(() => {
+      repo.externalWrite("a.excalidraw", BLANK_SCENE);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(result.current.status).toBe("saved");
+    expect(result.current.document?.source.json).toBe(BLANK_SCENE);
+    expect(result.current.document?.source.json).toBe(
+      (await repo.readDrawing(repo.handle, "a.excalidraw")).json,
+    );
+    expect(source.json).toBe(BLANK_SCENE);
   });
 });

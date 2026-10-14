@@ -95,7 +95,7 @@ describe("VaultEditor component and bridge tests", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-image-1"
-        initialJson={IMAGE_SCENE}
+        initialSource={{ json: IMAGE_SCENE }}
         name="test-diagram.excalidraw"
         onChange={onChange}
         onExport={onExport}
@@ -128,7 +128,7 @@ describe("VaultEditor component and bridge tests", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-export-1"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="my-drawing.excalidraw"
         onChange={onChange}
         onExport={onExport}
@@ -166,7 +166,7 @@ describe("VaultEditor component and bridge tests", () => {
     const { container } = render(
       <VaultEditor
         documentId="doc-shortcut-1"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="shortcut.excalidraw"
         onChange={onChange}
         onExport={onExport}
@@ -194,7 +194,7 @@ describe("VaultEditor component and bridge tests", () => {
     const { unmount } = render(
       <VaultEditor
         documentId="doc-cleanup-1"
-        initialJson={BLANK_SCENE}
+        initialSource={{ json: BLANK_SCENE }}
         name="cleanup.excalidraw"
         onChange={onChange}
       />,

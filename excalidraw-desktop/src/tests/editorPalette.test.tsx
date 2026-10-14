@@ -52,7 +52,7 @@ const mount = (props: Record<string, unknown> = {}) =>
   render(
     <VaultEditor
       documentId="doc-palette"
-      initialJson={scene}
+      initialSource={{ json: scene }}
       name="t.excalidraw"
       onChange={() => {}}
       {...props}

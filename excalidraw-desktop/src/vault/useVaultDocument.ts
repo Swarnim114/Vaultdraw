@@ -15,10 +15,18 @@ import { SaveCoordinator } from "./saveCoordinator";
 
 import type { HistoryRepository } from "../history/types";
 
+/**
+ * Mutable, per-activation handle to the document text. The editor reads it
+ * only when it loads the scene; after each save it points at the saved string
+ * (the same reference the save path holds), so no load-time copy stays alive
+ * and no re-render is needed.
+ */
+export type DocumentSource = { json: string };
+
 export type VaultDocument = {
   id: string;
   path: string;
-  json: string;
+  source: DocumentSource;
   revision: string;
 };
 export type UseVaultDocumentResult = {
@@ -48,12 +56,17 @@ export type UseVaultDocumentResult = {
   ) => Promise<void>;
 };
 
-type Active = VaultDocument & {
+type Active = Omit<VaultDocument, "source"> & {
+  source: DocumentSource;
   handle: string;
   currentJson: string;
   savedJson: string;
   deleted: boolean;
 };
+const withoutSource = ({
+  source: _source,
+  ...rest
+}: Active): Omit<Active, "source"> => rest;
 const operationId = () =>
   `vault-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const isNotFound = (error: unknown) =>
@@ -128,7 +141,7 @@ export const useVaultDocument = (
   );
 
   const activate = useCallback(
-    async (next: Active | null) => {
+    async (fresh: Omit<Active, "source"> | null) => {
       const activationGeneration = generation.current;
       const previousCoordinator = coordinator.current;
       coordinator.current = null;
@@ -136,13 +149,17 @@ export const useVaultDocument = (
       if (activationGeneration !== generation.current) {
         return;
       }
+      // Every activation gets its own handle (reload, open, copy...).
+      const next: Active | null = fresh
+        ? { ...fresh, source: { json: fresh.savedJson } }
+        : null;
       active.current = next;
       setDocument(
         next
           ? {
               id: next.id,
               path: next.path,
-              json: next.json,
+              source: next.source,
               revision: next.revision,
             }
           : null,
@@ -189,6 +206,7 @@ export const useVaultDocument = (
           next.revision = revision;
           next.savedJson = json;
           onDrawingSavedRef.current?.(next.path, revision);
+          next.source.json = json;
           if (next.currentJson === json) {
             setCurrentStatus("saved", null);
           }
@@ -241,7 +259,6 @@ export const useVaultDocument = (
         await activate({
           id: `${currentVault.handle}:${mine}:${path}`,
           path,
-          json: loaded.json,
           currentJson: loaded.json,
           savedJson: loaded.json,
           revision: loaded.revision,
@@ -315,7 +332,6 @@ export const useVaultDocument = (
       await activate({
         id: `${currentVault.handle}:${mine}:${path}`,
         path,
-        json: initial,
         currentJson: initial,
         savedJson: initial,
         revision: created.revision,
@@ -413,9 +429,8 @@ export const useVaultDocument = (
       );
     }
     await activate({
-      ...current,
+      ...withoutSource(current),
       id: `${current.handle}:${mine}:${current.path}`,
-      json: loaded.json,
       currentJson: loaded.json,
       savedJson: loaded.json,
       revision: loaded.revision,
@@ -483,7 +498,6 @@ export const useVaultDocument = (
         ...current,
         id: `${current.handle}:${mine}:${path}`,
         path,
-        json: copyJson,
         currentJson: copyJson,
         savedJson: copyJson,
         revision: saved.revision,
@@ -560,7 +574,7 @@ export const useVaultDocument = (
         setDocument({
           id: current.id,
           path,
-          json: current.json,
+          source: current.source,
           revision: current.revision,
         });
       }
@@ -644,7 +658,10 @@ export const useVaultDocument = (
           }
           if (disk.json === current.currentJson) {
             current.revision = disk.revision;
+            // Equal text: keep one reference instead of two copies.
+            current.currentJson = disk.json;
             current.savedJson = disk.json;
+            current.source.json = disk.json;
             setCurrentStatus("saved", null);
             return;
           }
@@ -665,9 +682,8 @@ export const useVaultDocument = (
           } else {
             const nextGeneration = ++generation.current;
             await activate({
-              ...current,
+              ...withoutSource(current),
               id: `${current.handle}:${nextGeneration}:${current.path}`,
-              json: disk.json,
               currentJson: disk.json,
               savedJson: disk.json,
               revision: disk.revision,

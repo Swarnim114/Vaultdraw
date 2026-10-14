@@ -17,7 +17,7 @@ const mount = async (props: { readOnly?: boolean; json?: string } = {}) => {
   const view = render(
     <VaultEditor
       documentId={`doc-paper-${Math.random()}`}
-      initialJson={props.json ?? BLANK_SCENE}
+      initialSource={{ json: props.json ?? BLANK_SCENE }}
       name="paper.excalidraw"
       onChange={onChange}
       readOnly={props.readOnly}
