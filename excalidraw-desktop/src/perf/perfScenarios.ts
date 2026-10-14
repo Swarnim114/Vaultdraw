@@ -428,6 +428,15 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
   const { openTargets, bigFolder, needle } = config;
   const rootSegment = (path: string) => path.split("/")[0];
 
+  // Boot marks (report-only): performance.mark("vaultdraw:boot:<name>") -> startup.<name> in ms since
+  // navigation start. Absent marks (Chromium harness, older builds) simply yield no sample.
+  for (const entry of win.performance.getEntriesByType("mark")) {
+    const match = /^vaultdraw:boot:(.+)$/.exec(entry.name);
+    if (match) {
+      push(`startup.${match[1]}`, entry.startTime);
+    }
+  }
+
   // 1. vault-open ----------------------------------------------------------------------
   await scenario("vault-open", async () => {
     if (!root.querySelector(".vault-onboarding")) {
@@ -580,6 +589,84 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
       for (const size of sizes) {
         push(`open.${size}`, await openByRow(openTargets[size]));
         // Let post-open work (autosave bookkeeping, image decoding) settle.
+        await sleep(300);
+      }
+    }
+  });
+
+  // 4b. switch drawing ---------------------------------------------------------------
+  // With one drawing open, select another in the navigator: click to its canvas painted.
+  // The first switch to each drawing is switch.drawing; later A-B-A switches back to a
+  // recently opened drawing are switch.recent.
+  await scenario("switch", async () => {
+    const pair = [openTargets.small, openTargets.medium];
+    await ensureOpen(pair[1]);
+    await sleep(300);
+    const seen = new Set<string>();
+    for (let k = 0; k < iter.open * 4; k++) {
+      const target = pair[k % 2];
+      const elapsed = await openByRow(target);
+      push(seen.has(target) ? "switch.recent" : "switch.drawing", elapsed);
+      seen.add(target);
+      await sleep(300);
+    }
+  });
+
+  // 4c. settings + palette ---------------------------------------------------------------
+  /** Dispatches a chord on the document (window dispatcher), `code` set like a real key. */
+  const chord = (k: string, code: string, extra: KeyboardEventInit = {}) =>
+    key(doc, k, { code, ...MOD, ...extra });
+  const modalGone = (selector: string) => () => !doc.querySelector(selector);
+
+  await scenario("settings", async () => {
+    await ensureOpen(openTargets.small);
+    await sleep(300);
+    for (let k = 0; k < iter.open; k++) {
+      const t0 = now();
+      chord(",", "Comma");
+      await waitUntil(
+        "settings page",
+        () =>
+          Boolean(
+            doc.querySelector(".vault-settings-modal .vault-settings-body"),
+          ),
+        5000,
+      );
+      await afterPaint();
+      push("settings.open", now() - t0);
+      await sleep(200);
+      const t1 = now();
+      key(doc, "Escape");
+      await waitUntil(
+        "settings closed",
+        modalGone(".vault-settings-modal"),
+        5000,
+      );
+      await afterPaint();
+      push("settings.close", now() - t1);
+      await sleep(300);
+    }
+  });
+
+  await scenario("palette", async () => {
+    await ensureOpen(openTargets.small);
+    await sleep(300);
+    const rows = () => doc.querySelectorAll(".vault-quick__row").length > 0;
+    for (const [metric, k, extra] of [
+      ["palette.openFiles", "p", {}],
+      ["palette.openCommands", "P", { shiftKey: true }],
+    ] as const) {
+      for (let i = 0; i < iter.open; i++) {
+        const t0 = now();
+        chord(k, "KeyP", extra);
+        await waitUntil("palette rows", rows, 5000);
+        await afterPaint();
+        push(metric, now() - t0);
+        await sleep(200);
+        const input = doc.querySelector<HTMLElement>(".vault-quick__input");
+        key(input ?? doc, "Escape");
+        await waitUntil("palette closed", modalGone(".vault-quick"), 5000);
+        await afterPaint();
         await sleep(300);
       }
     }

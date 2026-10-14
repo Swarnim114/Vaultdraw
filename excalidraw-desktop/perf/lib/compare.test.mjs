@@ -86,3 +86,16 @@ test("higher-is-better metrics: a drop regresses, a rise improves, min budgets",
   assert.ok(breach.rows.some((r) => r.metric === "zoom.fps" && r.status === "budget" && r.note.includes(">= 110")));
   assert.equal(breach.exitCode, 1);
 });
+
+test("metrics absent from the baseline are 'new'; warn-only budgets and report-only metrics never fail", () => {
+  const cur = m({ "settings.open": mk(150), "palette.openFiles": mk(40), "startup.jsStart": mk(90) });
+  const r = compare(cur, m({ "save.large": mk(1) }), cat);
+  assert.equal(r.exitCode, 0);
+  assert.ok(r.rows.some((x) => x.metric === "palette.openFiles" && x.status === "new"));
+  assert.ok(r.rows.some((x) => x.metric === "settings.open" && x.status === "budget-warn"));
+  assert.ok(!r.rows.some((x) => x.metric === "startup.jsStart"));
+  // with a baseline that met the budget it is still only a warning
+  const withBase = compare(cur, m({ "settings.open": mk(50) }), cat);
+  assert.equal(withBase.exitCode, 1); // 50 -> 150 is a real regression
+  assert.ok(withBase.rows.some((x) => x.metric === "settings.open" && x.status === "budget-warn"));
+});

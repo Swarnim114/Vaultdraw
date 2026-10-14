@@ -69,7 +69,7 @@ function cmpRows(rows) {
     r.metric, r.stat, fmt(r.base, r.unit), fmt(r.cur, r.unit),
     r.deltaPct === undefined ? "-" : (Number.isFinite(r.deltaPct) ? (r.deltaPct >= 0 ? "+" : "") + r.deltaPct.toFixed(1) : "inf"),
     r.threshold === undefined ? "-" : r.threshold.toFixed(1),
-    r.status.toUpperCase() === "OK" ? "ok" : r.status === "regressed" || r.status === "budget" ? `** ${r.status.toUpperCase()} **` : r.status === "budget-preexisting" ? "WARN budget-preexisting" : r.status,
+    r.status.toUpperCase() === "OK" ? "ok" : r.status === "regressed" || r.status === "budget" ? `** ${r.status.toUpperCase()} **` : r.status === "budget-preexisting" || r.status === "budget-warn" ? `WARN ${r.status}` : r.status,
     r.note ?? "",
   ]);
 }

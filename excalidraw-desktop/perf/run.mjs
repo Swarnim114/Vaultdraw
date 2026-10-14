@@ -192,6 +192,8 @@ if (o.compare) {
   console.log(`\nComparison vs ${o.compare}`);
   console.log(comparisonTable(cmp.rows));
   const pre = cmp.rows.filter((r) => r.status === "budget-preexisting");
+  const warnBud = cmp.rows.filter((r) => r.status === "budget-warn");
+  if (warnBud.length) console.log(`\nWARNING: ${warnBud.length} warn-only budget(s) above target: ${warnBud.map((r) => `${r.metric}.${r.stat}=${r.cur.toFixed(0)}`).join(", ")}`);
   if (pre.length) console.log(`\nWARNING: ${pre.length} budget breach(es) already present in the baseline (not failing): ${pre.map((r) => `${r.metric}.${r.stat}`).join(", ")}`);
   if (cmp.failing.length) console.log(`\nFAIL: ${cmp.failing.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ")}`);
   exitCode = cmp.exitCode;

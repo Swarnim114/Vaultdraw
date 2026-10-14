@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "Metric catalogue. 'browser.<id>' inherits the spec of '<id>' unless listed explicitly. gate = stats compared against the baseline; report = extra stats shown but never gated. slack = absolute change below which a regression is ignored (default by unit). pct = relative threshold override (default 5). noiseWidening=false disables max(5%, 2*CV) widening. budgets: absolute limits (value must be < max); a breach fails only if the baseline met it.",
+  "comment": "Metric catalogue. 'browser.<id>' inherits the spec of '<id>' unless listed explicitly. gate = stats compared against the baseline; report = extra stats shown but never gated. slack = absolute change below which a regression is ignored (default by unit). pct = relative threshold override (default 5). noiseWidening=false disables max(5%, 2*CV) widening. budgets: absolute limits (value must be < max); a breach fails only if the baseline met it. A budget with warn:true is reported but never fails.",
   "defaults": {
     "pct": 5,
     "noisyCv": 0.05,
@@ -9,6 +9,8 @@
   },
   "metrics": {
     "startup.coldToInteractive": { "unit": "ms", "desc": "spawn to onboarding visible" },
+    "startup.jsStart": {"unit": "ms", "desc": "report-only: vaultdraw:boot:jsStart mark, ms since navigation start", "gate": [], "report": ["median"]},
+    "startup.firstRender": {"unit": "ms", "desc": "report-only: vaultdraw:boot:firstRender mark, ms since navigation start", "gate": [], "report": ["median"]},
     "vault.openToTree": { "unit": "ms", "desc": "Open Vault Folder click to root tree rows painted" },
     "vault.searchIndexReady": { "unit": "ms", "desc": "open click to needle query returning 1 result" },
     "tree.expandBigFolder": { "unit": "ms", "desc": "expand the 500-drawing folder to rows painted" },
@@ -29,6 +31,12 @@
       "unit": "ms",
       "desc": "No absolute budget by decision: the large drawing embeds ~18 MB of images, so only the 5% regression gate applies."
     },
+    "switch.drawing": {"unit": "ms", "desc": "drawing A open, click drawing B (small<->medium alternating) in the navigator to B's canvas painted"},
+    "switch.recent": {"unit": "ms", "desc": "as switch.drawing, for the A-B-A switch back to a recently opened drawing"},
+    "settings.open": {"unit": "ms", "desc": "Cmd+, to settings page painted", "budgets": [{"stat": "median", "max": 100, "warn": true, "why": "product target < 100 ms; warning only"}, {"stat": "p95", "max": 100, "warn": true}]},
+    "settings.close": {"unit": "ms", "desc": "Escape to settings closed and painted"},
+    "palette.openFiles": {"unit": "ms", "desc": "Cmd+P to palette rows painted (files mode)", "budgets": [{"stat": "median", "max": 100, "warn": true, "why": "product target < 100 ms; warning only"}, {"stat": "p95", "max": 100, "warn": true}]},
+    "palette.openCommands": {"unit": "ms", "desc": "Cmd+Shift+P to palette rows painted (commands mode)", "budgets": [{"stat": "median", "max": 100, "warn": true, "why": "product target < 100 ms; warning only"}, {"stat": "p95", "max": 100, "warn": true}]},
     "search.keystrokeJs": { "unit": "ms", "desc": "per keystroke, JS cost of the input event (dispatch to return, no frame wait)", "slack": 0.5 },
     "typing.keystrokeJs": { "unit": "ms", "desc": "per character in the WYSIWYG editor, JS cost of the input event (dispatch to return)", "slack": 0.5 },
     "save.medium": { "unit": "ms" },

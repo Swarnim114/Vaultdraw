@@ -30,7 +30,7 @@ const pctDelta = (cur, base) => (base === 0 ? (cur === 0 ? 0 : Infinity) : ((cur
 
 /**
  * Rows: { metric, stat, unit, base, cur, deltaPct, threshold (percent), noisy, status, note }
- * status: ok | regressed | improved | budget | budget-preexisting | noisy-ok | new | missing
+ * status: ok | regressed | improved | budget | budget-preexisting | budget-warn | noisy-ok | new | missing
  *
  * Regression: cur > base*(1+thr) AND cur-base > absolute slack (mirrored for `better: "higher"` metrics). thr = 5% (spec.pct) or, when either side is noisy
  * (CV > 5%), max(thr, 2*max(cvBase, cvCur)).
@@ -97,8 +97,8 @@ export function compare(current, baseline, catalogue) {
         metric: id, stat: bud.stat, unit: spec.unit, base: baseVal, cur,
         deltaPct: baseVal === undefined ? undefined : pctDelta(cur, baseVal),
         threshold: undefined, noisy: false,
-        status: baseMet ? "budget" : "budget-preexisting",
-        note: `budget ${bud.min !== undefined ? `>= ${bud.min}` : `< ${bud.max}`} ${spec.unit}${baseMet ? "" : " (baseline already breached it; warning only)"}`,
+        status: bud.warn ? "budget-warn" : baseMet ? "budget" : "budget-preexisting",
+        note: `budget ${bud.min !== undefined ? `>= ${bud.min}` : `< ${bud.max}`} ${spec.unit}${bud.warn ? " (warning only)" : baseMet ? "" : " (baseline already breached it; warning only)"}`,
       });
     }
   }
