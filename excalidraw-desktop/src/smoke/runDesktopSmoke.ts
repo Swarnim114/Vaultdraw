@@ -18,6 +18,7 @@ import {
   mermaidOfflineStep,
   perfExportMermaidStep,
 } from "./exportSmoke";
+import { explorerExportStep } from "./explorerExportSmoke";
 import { runLibrarySmoke } from "./librarySmoke";
 import {
   paperDefaultStampedStep,
@@ -3528,6 +3529,7 @@ export async function runDesktopSmoke(): Promise<void> {
       clipboardCopyStep(exportCtx),
     );
     await exportStep("mermaid-offline", () => mermaidOfflineStep(exportCtx));
+    await exportStep("explorer-export", () => explorerExportStep(exportCtx));
     await exportStep("perf-export-mermaid", () =>
       perfExportMermaidStep(exportCtx),
     );
