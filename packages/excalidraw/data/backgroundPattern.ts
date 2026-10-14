@@ -55,7 +55,7 @@ export const DEFAULT_BACKGROUND_PATTERNS: Readonly<
   grid: { ...BASE, type: "grid", spacing: 20, majorEvery: 5 },
   lines: { ...BASE, type: "lines", spacing: 32, marginLine: true },
   dots: { ...BASE, type: "dots", spacing: 20 },
-  graph: { ...BASE, type: "graph", spacing: 10, majorEvery: 10 },
+  graph: { ...BASE, type: "graph", spacing: 16, majorEvery: 5 },
   isometric: { ...BASE, type: "isometric", spacing: 24 },
 };
 
