@@ -33,12 +33,14 @@ export const COMMANDS: readonly CommandDefinition[] = [
     title: "Zoom in (interface)",
     category: "View",
     keys: { default: ["Mod+Shift+Equal", "Mod+Shift+NumpadAdd"] },
+    repeat: true,
   },
   {
     id: "view.zoomOut",
     title: "Zoom out (interface)",
     category: "View",
     keys: { default: ["Mod+Shift+Minus", "Mod+Shift+NumpadSubtract"] },
+    repeat: true,
   },
   {
     id: "view.zoomReset",

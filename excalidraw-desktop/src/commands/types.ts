@@ -66,6 +66,11 @@ export interface CommandDefinition {
    * Excalidraw's WYSIWYG editor commits the text being typed before we save.
    */
   passThrough?: boolean;
+  /**
+   * Run again on auto-repeat keydowns while the key is held (e.g. zoom).
+   * Default false: a held key is still claimed but runs once.
+   */
+  repeat?: boolean;
   /** Listed in the Cmd+P quick switcher (default true). */
   palette?: boolean;
 }

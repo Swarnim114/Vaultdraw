@@ -69,6 +69,23 @@ describe("dispatcher", () => {
     expect(docListener).not.toHaveBeenCalled();
   });
 
+  it("runs a held key once unless the command opts into repeat", () => {
+    const newDrawing = vi.fn();
+    const zoomIn = vi.fn();
+    install({
+      handlers: { "vault.newDrawing": newDrawing, "view.zoomIn": zoomIn },
+    });
+    press(cmdN);
+    const held = press({ ...cmdN, repeat: true });
+    expect(newDrawing).toHaveBeenCalledTimes(1);
+    expect(held.defaultPrevented).toBe(true);
+    expect(docListener).not.toHaveBeenCalled();
+    const zoom = { code: "Equal", key: "+", metaKey: true, shiftKey: true };
+    press(zoom);
+    press({ ...zoom, repeat: true });
+    expect(zoomIn).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves unbound keys alone", () => {
     const handler = vi.fn();
     install({ handlers: { "vault.newDrawing": handler } });
