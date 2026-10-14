@@ -6,6 +6,7 @@ import { desktopRepository } from "../vault/DesktopVaultRepository";
 import { installIpcTrace } from "./ipcTrace";
 import { runPerfScenarios } from "./perfScenarios";
 
+import type { PerfModes } from "./perfKit";
 import type {
   NativeProbe,
   RefreshRateDrawing,
@@ -93,6 +94,21 @@ const refreshRateOptions = (
         ],
   };
 };
+
+/**
+ * Opt-in modes travel in the run vault's folder name (the runner names it `vault+leak`, `vault+typical`),
+ * so the default gate run needs no switch and the app needs no extra hook.
+ */
+export function modesFromVaultPath(vaultPath: string): PerfModes {
+  const name = vaultPath.split(/[\\/]/).filter(Boolean).pop() ?? "";
+  const tokens = name.split("+").slice(1);
+  const leakOnly = tokens.includes("leakonly");
+  return {
+    leak: leakOnly || tokens.includes("leak"),
+    leakOnly,
+    typical: tokens.includes("typical"),
+  };
+}
 
 /** Packaged-app perf run (VITE_APP_PERF_TEST=true). Reports through the smoke bridge. */
 export async function runDesktopPerf(): Promise<void> {
@@ -202,10 +218,13 @@ export async function runDesktopPerf(): Promise<void> {
     const environment = await invoke<{
       perfSuite?: string;
       perfDrawings?: string;
+      vaultPath?: string;
     }>("smoke_environment").catch(() => ({
       perfSuite: "",
       perfDrawings: "",
+      vaultPath: "",
     }));
+    const modes: PerfModes = modesFromVaultPath(environment.vaultPath ?? "");
     // "refresh-rate": the full probe suite; "refresh-rate-drawings": only the
     // extra drawings passed in VAULTDRAW_PERF_DRAWINGS.
     const suite = environment.perfSuite ?? "";
@@ -239,6 +258,7 @@ export async function runDesktopPerf(): Promise<void> {
             );
           }
         : undefined,
+      modes,
     });
 
     if (onlyRefreshRate) {

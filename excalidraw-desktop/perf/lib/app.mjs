@@ -7,8 +7,16 @@ import {
   snapshotWebKitPids, discoverWebKitHelpers, listProcesses, sampleProcs, sampleFootprint,
   applyBackgroundPolicy, trackChild, startMemoryPressure,
 } from "./procs.mjs";
+import { LEAK_PREFIX, leakSummary, leakTableText } from "./leak.mjs";
 
 const BUNDLE_REL = "excalidraw-desktop/src-tauri/target/release/bundle/macos/Vaultdraw.app";
+/**
+ * Opt-in modes travel to the app in the run vault's folder name (read in-app by runDesktopPerf.modesFromVaultPath).
+ * The default gate run keeps the plain name `vault`.
+ */
+export const vaultDirName = (modes = {}) =>
+  ["vault", modes.leakOnly ? "leakonly" : modes.leak && "leak", modes.typical && "typical"].filter(Boolean).join("+");
+
 export const BINARY_REL = "Contents/MacOS/excalidraw-vault";
 const MARK_PREFIX = "VAULTDRAW_SMOKE_LOG ";
 
@@ -96,12 +104,14 @@ export function reuseBuiltApp({ wtRoot }) {
 export async function runAppOnce({
   appPath, pristineVault, lowEnd = false, runIndex = 0, runsDir, binary, timeoutMs, keepRuns = false,
   memoryPressure = lowEnd, log = () => {}, sampleEveryMs = 250, env: extraEnv = {}, configToml,
+  modes = {}, altVault,
 }) {
   const bin = binary ?? path.join(appPath, BINARY_REL);
   runsDir ??= path.join(path.dirname(path.dirname(appPath)), "runs");
-  timeoutMs ??= lowEnd ? 360_000 : 180_000;
+  timeoutMs ??= (lowEnd ? 360_000 : 180_000) + (modes.leak ? 180_000 : 0);
   const runDir = path.join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${runIndex}`);
-  const vault = path.join(runDir, "vault");
+  const vault = path.join(runDir, vaultDirName(modes));
+  const vaultAlt = path.join(runDir, "vault-alt");
   const cfg = path.join(runDir, "config");
   const state = path.join(runDir, "state");
   await mkdir(runDir, { recursive: true });
@@ -109,12 +119,15 @@ export async function runAppOnce({
   await mkdir(state, { recursive: true });
   if (configToml) writeFileSync(path.join(cfg, "config.toml"), configToml);
   await sh("cp", ["-cR", pristineVault, vault]); // APFS clone
+  // Leak mode: second vault for the in-app vault switch. The app only uses it when its smoke-mode
+  // choose_vault honours EXCALIDRAW_VAULT_SMOKE_DIR_ALT (otherwise the scenario reports "unavailable").
+  if (modes.leak && altVault) await sh("cp", ["-cR", altVault, vaultAlt]);
 
   const errors = [];
   const notes = [];
   const marks = [];
   const before = await snapshotWebKitPids();
-  const env = { ...process.env, VAULTDRAW_PERF: "1", ...extraEnv, EXCALIDRAW_VAULT_SMOKE_DIR: vault, VAULTDRAW_CONFIG_DIR: cfg, VAULTDRAW_STATE_DIR: state };
+  const env = { ...process.env, VAULTDRAW_PERF: "1", ...extraEnv, EXCALIDRAW_VAULT_SMOKE_DIR: vault, ...(modes.leak && altVault ? { EXCALIDRAW_VAULT_SMOKE_DIR_ALT: vaultAlt } : {}), VAULTDRAW_CONFIG_DIR: cfg, VAULTDRAW_STATE_DIR: state };
   const [cmd, args] = lowEnd ? ["taskpolicy", ["-c", "background", bin]] : [bin, []];
 
   const mp = memoryPressure ? startMemoryPressure({ seconds: Math.ceil(timeoutMs / 1000), log }) : null;
@@ -151,6 +164,7 @@ export async function runAppOnce({
   // Opt-in (PERF_MEM_TIMELINE=1): footprint per process at each phase boundary, to attribute the peak.
   const memTimeline = process.env.PERF_MEM_TIMELINE === "1";
   const timeline = [];
+  const leakCheckpoints = []; // always on in leak mode: { label, procs: { role: MB } }
   const footprintMB = (m) => Object.fromEntries([...m].map(([pid, v]) => [roleOf(pid), { now: Math.round(v.footprint / 1048576), peak: Math.round(v.peak / 1048576) }]));
   async function recordTimeline(mark) {
     if (!memTimeline) return;
@@ -246,6 +260,15 @@ export async function runAppOnce({
         }
         pidsInfo = p;
       }
+      return;
+    }
+    if (name.startsWith(LEAK_PREFIX)) {
+      await rediscover();
+      const m = await sampleFootprint(livePids());
+      leakCheckpoints.push({
+        label: name.slice(LEAK_PREFIX.length),
+        procs: Object.fromEntries([...m].map(([pid, v]) => [roleOf(pid), Math.round((v.footprint / 1048576) * 10) / 10])),
+      });
       return;
     }
     if (name === "interactive") {
@@ -362,6 +385,14 @@ export async function runAppOnce({
   } else {
     notes.push("idle marks missing; idle.cpuPercent not measured");
   }
+  if (leakCheckpoints.length) {
+    const { samples: leakSamples, rows, notes: leakNotes } = leakSummary(leakCheckpoints);
+    Object.assign(samples, leakSamples);
+    info.leakCheckpoints = rows;
+    notes.push(`leak checkpoints (footprint MB per process):\n${leakTableText(rows)}`, ...leakNotes);
+  } else if (modes.leak) {
+    errors.push("leak mode: no leak checkpoints were recorded");
+  }
   // Per-process breakdown (app / webContent / network / gpu) so a budget breach points at its owner.
   const breakdown = {};
   if (memTimeline) info.memoryTimeline = timeline;
@@ -377,6 +408,16 @@ export async function runAppOnce({
     }
   }
   info.processBreakdown = breakdown;
+  if (modes.typical && footprintAtEnd?.size) {
+    // Per-process idle footprint of a typical vault, for comparison with other note apps.
+    let total = 0;
+    for (const [pid, v] of footprintAtEnd) {
+      const mb = v.footprint / 1048576;
+      total += mb;
+      samples[`memory.typical.idle.${roleOf(pid)}MB`] = [Math.round(mb * 10) / 10];
+    }
+    samples["memory.typical.idleFootprintMB"] = [Math.round(total * 10) / 10];
+  }
   if (Object.keys(breakdown).length) notes.push(`per process: ${JSON.stringify(breakdown)}`);
   if (exactPids) notes.push(`WebKit helpers from perf_process_ids (exact): ${helpers.size}`);
   else if (helpers.size) notes.push(`perf_process_ids unavailable; WebKit helpers attributed by pid-diff (${helpers.size}; may include other apps' helpers)`);

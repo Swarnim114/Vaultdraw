@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "comment": "Typical personal vault, for a fair memory comparison with other note apps: 50 drawings in a few folders and one 300-element drawing with 2 images (~1.5 MB). Separate from fixtures.config.json so the gate vault hash is unchanged.",
+  "seed": 20261015,
+  "folders": { "Projects": 14, "Meetings": 10, "Journal": 10, "Ideas": 8, "Sketches": 4 },
+  "rootDrawings": 3,
+  "target": { "path": "Projects/architecture-300.excalidraw", "elements": 300, "imageTotalMB": 1.5 },
+  "warmOpens": 3,
+  "panMs": 1000
+}

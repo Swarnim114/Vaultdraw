@@ -735,3 +735,6 @@ export async function ensureVault({ cacheDir, config, log = console.log }) {
   log(`[fixtures] generated ${vaultDir} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   return { vaultDir, manifest };
 }
+
+// Building blocks reused by extraVaults.mjs.
+export { mulberry32, hashSeed, ordinaryScene, imageHeavyScene, fileNameFor, sceneJson, generateElements };

@@ -99,3 +99,13 @@ test("metrics absent from the baseline are 'new'; warn-only budgets and report-o
   assert.equal(withBase.exitCode, 1); // 50 -> 150 is a real regression
   assert.ok(withBase.rows.some((x) => x.metric === "settings.open" && x.status === "budget-warn"));
 });
+
+test("warn budget: a breach is reported as budget-warn and never fails", () => {
+  const r = compare(m({ "memory.leak.growthMB": mk(80, 80, { unit: "MB" }) }), m({}), cat);
+  const x = r.rows.find((y) => y.status === "budget-warn");
+  assert.equal(x.metric, "memory.leak.growthMB");
+  assert.match(x.note, /warning only/);
+  assert.equal(r.exitCode, 0);
+  const ok = compare(m({ "memory.leak.growthMB": mk(10, 10, { unit: "MB" }) }), m({}), cat);
+  assert.equal(ok.rows.some((y) => y.status === "budget-warn"), false);
+});

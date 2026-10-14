@@ -37,6 +37,14 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
   --require-quiet        exit 1 instead of measuring when the machine never got quiet
   PERF_WT_ROOT           (env) measure another worktree's app/harness with this runner's code (ab.mjs uses it for the base side)
   PERF_FIXTURES_DIR      (env) fixture vault cache dir (default <wt>/.cache/perf/fixtures); ab.mjs shares one
+  --leak                 (or PERF_LEAK=1) memory leak scenario after the normal phases (+ ~60 s per run): open 50 drawings,
+                         switch vault and back, idle; footprint per process at each checkpoint -> memory.leak.* metrics.
+                         Also runs in Chromium mode (JS heap after forced GC). Opt-in: default run time is unchanged.
+  --leak-only            (or PERF_LEAK_ONLY=1) leak scenario right after vault-open, skipping the stress phases: a clean baseline
+                         (after the stress phases WebKit still holds ~300 MB that it releases only later, which hides growth)
+  --typical              (or PERF_TYPICAL=1) typical-vault mode, packaged app only (implies --app): 50 drawings in a few
+                         folders + one 300-element drawing with 2 images; cold start, open, save, pan, idle footprint per
+                         process (memory.typical.*) for comparison with other note apps. Replaces the stress scenarios.
   --quick                1 run, no warmup, no extra noise runs (harness smoke test)
 
 Recommended merge gate: node excalidraw-desktop/perf/ab.mjs --base <ref> (interleaved base/head A/B in one session; bisect only after a
@@ -51,7 +59,7 @@ const { values: o } = parseArgs({
     "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
     out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
     "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
-    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, leak: { type: "boolean" }, "leak-only": { type: "boolean" }, typical: { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help) { console.log(HELP); process.exit(0); }
@@ -61,16 +69,22 @@ const wtRoot = process.env.PERF_WT_ROOT ? path.resolve(process.env.PERF_WT_ROOT)
 const cacheDir = perfCacheDir(wtRoot);
 const fixturesDir = process.env.PERF_FIXTURES_DIR ? path.resolve(process.env.PERF_FIXTURES_DIR) : path.join(cacheDir, "fixtures");
 const mode = o["low-end"] ? "low-end" : "normal";
+const leakOnly = !!(o["leak-only"] || process.env.PERF_LEAK_ONLY === "1");
+const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || process.env.PERF_TYPICAL === "1") };
+const variant = [modes.leakOnly ? "leak-only" : modes.leak && "leak", modes.typical && "typical"].filter(Boolean).join("+");
 const runs = o.quick ? 1 : Number(o.runs ?? (o.milestone ? 4 : 2));
 const warmup = o.quick ? 0 : Number(o.warmup ?? (o.milestone ? 1 : 0));
 // Packaged-app runs open windows on the user's screen: only on request or at milestones.
-const skipApp = !!o["skip-app"] || !(o.app || o.milestone);
+const skipApp = !!o["skip-app"] || !(o.app || o.milestone || modes.typical);
+// The typical vault is app-only: the Chromium harness runs the stress vault.
+const skipBrowser = !!o["skip-browser"] || modes.typical;
 const log = (m) => console.error(`[perf] ${m}`);
 const t0 = Date.now();
 const elapsedMin = () => (Date.now() - t0) / 60000;
 
 const catalogue = loadCatalogue();
 const config = JSON.parse(readFileSync(path.join(here, "fixtures.config.json"), "utf8"));
+const typicalConfig = JSON.parse(readFileSync(path.join(here, "typical.config.json"), "utf8"));
 const errors = [];
 const notes = [];
 const rawApp = [];
@@ -108,15 +122,19 @@ if (!skipApp && isScreenLocked()) {
 } else if (!skipApp) {
   try {
     const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
-    const { vaultDir, manifest } = await ensureVault({ cacheDir: fixturesDir, config, log });
+    const extra = await import(pathToFileURL(path.join(here, "lib", "extraVaults.mjs")).href);
+    const { vaultDir, manifest } = modes.typical
+      ? await extra.ensureTypicalVault({ cacheDir: fixturesDir, config: typicalConfig })
+      : await ensureVault({ cacheDir: fixturesDir, config, log });
     if (manifest?.hash) fixtureHash = String(manifest.hash).slice(0, 12);
+    const altVault = modes.leak ? (await extra.ensureAltVault({ cacheDir: fixturesDir, seed: config.seed })).vaultDir : undefined;
     const built = o["no-build"] ? reuseBuiltApp({ wtRoot }) : await buildPerfApp({ wtRoot, log });
     git = built.git ?? git;
     appTarget = {
       runOne: async (i) => {
         const r = await runAppOnce({
           appPath: built.appPath, pristineVault: vaultDir, lowEnd: mode === "low-end", runIndex: i,
-          keepRuns: !!o["keep-runs"], memoryPressure: mode === "low-end" || !!o["memory-pressure"], log,
+          keepRuns: !!o["keep-runs"], memoryPressure: mode === "low-end" || !!o["memory-pressure"], log, modes, altVault,
         });
         for (const n of r.notes) if (!notes.includes(n)) notes.push(n);
         return r;
@@ -165,7 +183,7 @@ if (appTarget) {
 }
 
 // ---- browser mode ----
-if (!o["skip-browser"]) {
+if (!skipBrowser) {
   const bf = path.join(here, "lib", "browser.mjs");
   if (!existsSync(bf)) {
     notes.push("browser mode skipped: lib/browser.mjs not present");
@@ -175,7 +193,7 @@ if (!o["skip-browser"]) {
       const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
       const { vaultDir } = await ensureVault({ cacheDir: fixturesDir, config, log });
       // runBrowser discards its own warmup runs and returns only measured ones.
-      const r = await runBrowser({ mode, runs, warmup, vaultDir, config, wtRoot, build: !o["no-build"], onRun: () => { if (!appTarget) sampleRunLoad(); }, log });
+      const r = await runBrowser({ mode, runs, warmup, vaultDir, config, wtRoot, build: !o["no-build"], leak: modes.leak, leakOnly: modes.leakOnly, onRun: () => { if (!appTarget) sampleRunLoad(); }, log });
       for (const e of r.errors ?? []) errors.push(`browser mode: ${e}`);
       rawBrowser = (r.samplesPerRun ?? []).map((run) =>
         Object.fromEntries(Object.entries(run).map(([k, v]) => [k.startsWith("browser.") ? k : `browser.${k}`, v])));
@@ -200,11 +218,11 @@ if (lnote) notes.push(lnote);
 
 const result = {
   version: 1, mode, createdAt: new Date().toISOString(), git, machine: machineInfo(),
-  config: { runs: rawApp.length || rawBrowser.length, warmup, fixtureHash, drawingCount: config.drawingCount },
+  config: { runs: rawApp.length || rawBrowser.length, warmup, fixtureHash, drawingCount: modes.typical ? 50 : config.drawingCount, ...(variant ? { variant } : {}) },
   load, metrics, raw: { app: rawApp, browser: rawBrowser }, notes, errors,
 };
 
-const outFile = o.out ? path.resolve(o.out) : path.join(cacheDir, "results", `${new Date().toISOString().replace(/[:.]/g, "-")}-${mode}.json`);
+const outFile = o.out ? path.resolve(o.out) : path.join(cacheDir, "results", `${new Date().toISOString().replace(/[:.]/g, "-")}-${mode}${variant ? `-${variant}` : ""}.json`);
 mkdirSync(path.dirname(outFile), { recursive: true });
 writeFileSync(outFile, JSON.stringify(result, null, 2) + "\n");
 
@@ -227,7 +245,9 @@ if (o.compare) {
   if (cmp.failing.length) console.log(`\nFAIL: ${cmp.failing.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ")}`);
   exitCode = cmp.exitCode;
 }
-if (o["update-baseline"] && errors.length) {
+if (o["update-baseline"] && variant) {
+  console.log(`\nbaseline NOT updated: ${variant} runs are opt-in diagnostics, not part of the gate baseline`);
+} else if (o["update-baseline"] && errors.length) {
   console.log(`\nbaseline NOT updated: this run had errors (a baseline must come from a clean run)`);
 } else if (o["update-baseline"]) {
   const r = updateBaseline(path.resolve(o["update-baseline"]), result, catalogue);

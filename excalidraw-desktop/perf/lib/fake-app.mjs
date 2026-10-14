@@ -10,6 +10,7 @@ await sleep(300);
 mark("interactive");
 if (mode === "hang") await sleep(60_000);
 mark("phase:open");
+if (mode === "leak") for (const label of ["baseline", "after-10", "after-vault-switch", "idle-after"]) { mark(`leak:${label}`); await sleep(500); }
 mark("idle-begin");
 const end = Date.now() + 1000; // ~50% busy for 1 s
 while (Date.now() < end) { const t = Date.now() + 25; while (Date.now() < t); await sleep(25); }

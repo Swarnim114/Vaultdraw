@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runAppOnce } from "./app.mjs";
+import { runAppOnce, vaultDirName } from "./app.mjs";
 
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-app.mjs");
 function setup() {
@@ -40,4 +40,28 @@ test("runAppOnce kills on timeout", async () => {
   const r = await runAppOnce({ appPath: "unused", binary: fake, pristineVault: vault, runsDir, timeoutMs: 1500, env: { FAKE_MODE: "hang" } });
   assert.ok(r.errors.some((e) => /timeout/.test(e)));
   assert.equal(r.samples["startup.coldToInteractive"]?.length, 1);
+});
+
+test("vaultDirName encodes the opt-in modes; the default stays 'vault'", () => {
+  assert.equal(vaultDirName(), "vault");
+  assert.equal(vaultDirName({}), "vault");
+  assert.equal(vaultDirName({ leak: true }), "vault+leak");
+  assert.equal(vaultDirName({ typical: true }), "vault+typical");
+  assert.equal(vaultDirName({ leak: true, leakOnly: true }), "vault+leakonly");
+  assert.equal(vaultDirName({ leak: true, typical: true }), "vault+leak+typical");
+});
+
+test("runAppOnce in leak mode: marks become checkpoints; mode travels in the vault folder name", async () => {
+  const { vault, runsDir } = setup();
+  const r = await runAppOnce({
+    appPath: "unused", binary: fake, pristineVault: vault, runsDir, sampleEveryMs: 100, keepRuns: true,
+    modes: { leak: true }, altVault: vault, env: { FAKE_MODE: "leak" },
+  });
+  assert.ok(r.runDir && path.basename(r.runDir.length ? path.join(r.runDir, "vault+leak") : "") === "vault+leak");
+  assert.ok(existsSync(path.join(r.runDir, "vault+leak")) && existsSync(path.join(r.runDir, "vault-alt")));
+  // The fake app is not a WebKit app: the footprint of its pid is read like any other process.
+  const labels = (r.info.leakCheckpoints ?? []).map((c) => c.label);
+  assert.deepEqual(labels, ["baseline", "after-10", "after-vault-switch", "idle-after"]);
+  assert.ok(r.samples["memory.leak.growthMB"].length === 1);
+  assert.ok(r.notes.some((n) => /leak checkpoints/.test(n)));
 });

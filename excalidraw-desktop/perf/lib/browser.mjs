@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 import { cdpDeltas } from "./cdp-metrics.mjs";
+import { leakSummary } from "./leak.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(here, "../..");
@@ -173,7 +174,7 @@ function longTaskStats(tasks, marks, endT) {
   return { count, totalMs };
 }
 
-async function onePage(browser, { port, mode, timeoutMs, log }) {
+async function onePage(browser, { port, mode, timeoutMs, log, leak, leakOnly }) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 850 },
   });
@@ -210,8 +211,9 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
     let marks = [];
     let endT = 0;
     let endMetrics = [];
+    let leakHeap = [];
     try {
-      await page.goto(`http://127.0.0.1:${port}/`);
+      await page.goto(`http://127.0.0.1:${port}/${leak ? `?leak=1${leakOnly ? "&only=1" : ""}` : ""}`);
       try {
         await page.waitForFunction(
           () => window.__perfResult !== undefined,
@@ -260,7 +262,8 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
       }
       await sampleHeap();
       endMetrics = await getMetrics();
-      ({ result, tasks, marks, endT } = await page.evaluate(() => ({
+      ({ result, tasks, marks, endT, leakHeap } = await page.evaluate(() => ({
+        leakHeap: window.__leakHeap ?? [],
         result: window.__perfResult,
         tasks: window.__longTasks,
         marks: window.__perfMarks,
@@ -274,6 +277,7 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
       tasks,
       marks,
       endT,
+      leakHeap,
       peakMB: peak / (1024 * 1024),
       cdp: { start: startMetrics, end: endMetrics },
     };
@@ -291,6 +295,8 @@ export async function runBrowser({
   wtRoot = defaultWtRoot,
   build = true,
   onRun = () => {},
+  leak = false,
+  leakOnly = false,
   log = () => {},
 }) {
   const desktop = path.join(wtRoot, "excalidraw-desktop");
@@ -311,7 +317,7 @@ export async function runBrowser({
 
   const timeoutMs =
     Number(process.env.PERF_BROWSER_TIMEOUT_MS) ||
-    (mode === "low-end" ? 5 * 60_000 : 90_000);
+    (mode === "low-end" ? 5 * 60_000 : 90_000) + (leak ? 120_000 : 0);
   const samplesPerRun = [];
   const errors = [];
   const info = { engine: "chromium", mode, warmup, runs };
@@ -325,6 +331,8 @@ export async function runBrowser({
         "--disable-renderer-backgrounding",
         "--disable-backgrounding-occluded-windows",
         "--disable-background-timer-throttling",
+        // Leak mode reads performance.memory after a forced GC.
+        ...(leak ? ["--js-flags=--expose-gc", "--enable-precise-memory-info"] : []),
       ],
     });
     info.browserVersion = browser.version();
@@ -342,7 +350,7 @@ export async function runBrowser({
       // Headless rAF occasionally stalls under heavy machine load: retry a stalled run once.
       for (let attempt = 0; ; attempt++) {
         try {
-          page = await onePage(browser, { port, mode, timeoutMs, log });
+          page = await onePage(browser, { port, mode, timeoutMs, log, leak, leakOnly });
           break;
         } catch (error) {
           if (
@@ -355,7 +363,7 @@ export async function runBrowser({
           log(`[browser] ${error.message.slice(0, 300)}; retrying`);
         }
       }
-      const { result, tasks, marks, endT, peakMB, cdp } = page;
+      const { result, tasks, marks, endT, leakHeap, peakMB, cdp } = page;
       if (!info.cdpMetricNames) {
         info.cdpMetricNames = cdp.end.map((m) => m.name);
       }
@@ -372,6 +380,13 @@ export async function runBrowser({
       out["browser.longTasks.totalMs"] = [lt.totalMs];
       // CPU time / event counts over the whole page run: far less load-sensitive than wall time.
       Object.assign(out, cdpDeltas(cdp.start, cdp.end));
+      if (leak) {
+        const { samples: leakSamples, rows } = leakSummary(
+          leakHeap.map((c) => ({ label: c.label, procs: { jsHeap: c.jsHeapMB } })),
+        );
+        Object.assign(out, leakSamples);
+        info.leakJsHeapMB = rows.map((r) => `${r.label}=${r.totalMB.toFixed(1)}`).join(" ");
+      }
       samplesPerRun.push(out);
       Object.assign(info, result.info ?? {});
       for (const e of result.errors ?? []) {

@@ -4,8 +4,10 @@
  * synthetic DOM events dispatched into the real app; timers bracket "event
  * dispatched" to "frame after the DOM updated has been presented".
  */
+import { runLeakScenario } from "./leakScenario";
 import { collectFrames, countLong } from "./perfStats";
 import { refreshRateSamples, runRefreshRateProbe } from "./refreshRate";
+import { runTypicalScenarios } from "./typicalScenarios";
 
 import type {
   NativeProbe,
@@ -14,6 +16,7 @@ import type {
 } from "./refreshRate";
 
 import type fixturesConfig from "../../perf/fixtures.config.json";
+import type { PerfKit, PerfModes } from "./perfKit";
 import type { VaultRepository } from "../vault/types";
 
 export type PerfSamples = Record<string, number[]>;
@@ -28,6 +31,8 @@ export type PerfContext = {
   config: PerfConfig;
   /** Environment-specific live mark. */
   mark: (name: string) => Promise<void>;
+  /** Opt-in modes (leak, typical vault); none in the default gate run. */
+  modes?: PerfModes;
   iterations?: Partial<{
     open: number;
     save: number;
@@ -439,6 +444,143 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     }
   }
 
+  // 5. save ----------------------------------------------------------------------------
+  const saveOnce = async (path: string, metric: string) => {
+    const canvas = interactiveCanvas();
+    if (!canvas) {
+      throw new Error("No interactive canvas for save");
+    }
+    // Previous writes settled and autosave quiet before editing.
+    await waitUntil("pending writes settled", () =>
+      writes.every((record) => record.end !== null),
+    );
+    await sleep(900);
+    key(doc, "Escape");
+    key(canvas, "a", MOD);
+    await afterPaint();
+    key(canvas, "ArrowRight");
+    await afterPaint();
+    // Explicit save straight after the edit, so it is the write being measured.
+    const t0 = now();
+    const first = writes.length;
+    key(doc, "s", MOD);
+    let record: WriteRecord | undefined;
+    await waitUntil(
+      `writeDrawing for ${path}`,
+      () => {
+        record = writes
+          .slice(first)
+          .find((item) => item.path === path && item.start >= t0);
+        return Boolean(record && record.end !== null);
+      },
+      15_000,
+    );
+    if (!record!.ok) {
+      throw new Error(`writeDrawing failed for ${path}`);
+    }
+    push(metric, record!.end! - t0);
+    key(doc, "Escape");
+    await afterPaint();
+  };
+  // 6. pan / zoom ----------------------------------------------------------------------
+  /** Tiny fingerprint of the static canvas, to prove the viewport really changed. */
+  const fingerprint = () => {
+    const source = root.querySelector<HTMLCanvasElement>(
+      ".vault-editor canvas.static",
+    );
+    if (!source || !source.width || !source.height) {
+      return null;
+    }
+    const probe = doc.createElement("canvas");
+    probe.width = 48;
+    probe.height = 48;
+    const context = probe.getContext("2d");
+    if (!context) {
+      return null;
+    }
+    context.drawImage(source, 0, 0, 48, 48);
+    return Array.from(context.getImageData(0, 0, 48, 48).data);
+  };
+  const differs = (a: number[] | null, b: number[] | null) =>
+    Boolean(a && b && a.some((value, index) => value !== b[index]));
+
+  const wheelPass = async (
+    canvas: HTMLCanvasElement,
+    totalMs: number,
+    makeEvent: (phase: 0 | 1) => WheelEventInit,
+  ) => {
+    const bounds = canvas.getBoundingClientRect();
+    const cx = bounds.left + bounds.width / 2;
+    const cy = bounds.top + bounds.height / 2;
+    // Excalidraw zooms around the last known pointer position.
+    pointer(canvas, "pointermove", cx, cy, 0);
+    await afterPaint();
+    const before = fingerprint();
+    const frames = collectFrames(win);
+    const start = now();
+    let mid: number[] | null = null;
+    while (now() - start < totalMs) {
+      const phase = now() - start < totalMs / 2 ? 0 : 1;
+      if (phase === 1 && mid === null) {
+        mid = fingerprint() ?? [];
+      }
+      canvas.dispatchEvent(
+        new win.WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: cx,
+          clientY: cy,
+          ...makeEvent(phase),
+        }),
+      );
+      await raf();
+    }
+    const intervals = frames.stop();
+    await afterPaint();
+    return { intervals, verified: differs(before, mid) };
+  };
+
+  const kit: PerfKit = {
+    root,
+    doc,
+    win,
+    config,
+    modes: ctx.modes ?? {},
+    samples,
+    info,
+    errors,
+    mark: ctx.mark,
+    log,
+    now,
+    sleep,
+    raf,
+    afterPaint,
+    waitUntil,
+    push,
+    row,
+    treeRows,
+    childRows,
+    click,
+    key,
+    interactiveCanvas,
+    editorId,
+    openByRow,
+    ensureOpen,
+    saveOnce,
+    wheelPass,
+    scenario,
+    wrapWrites,
+    resetWrites: () => {
+      writes = [];
+    },
+  };
+  if (kit.modes.typical) {
+    // Typical-vault mode replaces the stress-vault scenarios.
+    await runTypicalScenarios(kit);
+    unwrapWrites();
+    return { samples, info, errors };
+  }
+
   // 1. vault-open ----------------------------------------------------------------------
   await scenario("vault-open", async () => {
     if (!root.querySelector(".vault-onboarding")) {
@@ -512,6 +654,11 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     setSearch("");
     await afterPaint();
   });
+
+  if (kit.modes.leakOnly) {
+    await scenario("leak", () => runLeakScenario(kit));
+    return { samples, info, errors };
+  }
 
   // 2. tree-expand ---------------------------------------------------------------------
   await scenario("tree-expand", async () => {
@@ -680,44 +827,6 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     }
   });
 
-  // 5. save ----------------------------------------------------------------------------
-  const saveOnce = async (path: string, metric: string) => {
-    const canvas = interactiveCanvas();
-    if (!canvas) {
-      throw new Error("No interactive canvas for save");
-    }
-    // Previous writes settled and autosave quiet before editing.
-    await waitUntil("pending writes settled", () =>
-      writes.every((record) => record.end !== null),
-    );
-    await sleep(900);
-    key(doc, "Escape");
-    key(canvas, "a", MOD);
-    await afterPaint();
-    key(canvas, "ArrowRight");
-    await afterPaint();
-    // Explicit save straight after the edit, so it is the write being measured.
-    const t0 = now();
-    const first = writes.length;
-    key(doc, "s", MOD);
-    let record: WriteRecord | undefined;
-    await waitUntil(
-      `writeDrawing for ${path}`,
-      () => {
-        record = writes
-          .slice(first)
-          .find((item) => item.path === path && item.start >= t0);
-        return Boolean(record && record.end !== null);
-      },
-      15_000,
-    );
-    if (!record!.ok) {
-      throw new Error(`writeDrawing failed for ${path}`);
-    }
-    push(metric, record!.end! - t0);
-    key(doc, "Escape");
-    await afterPaint();
-  };
   await scenario("save", async () => {
     wrapWrites();
     writes = [];
@@ -732,64 +841,6 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
       }
     }
   });
-
-  // 6. pan / zoom ----------------------------------------------------------------------
-  /** Tiny fingerprint of the static canvas, to prove the viewport really changed. */
-  const fingerprint = () => {
-    const source = root.querySelector<HTMLCanvasElement>(
-      ".vault-editor canvas.static",
-    );
-    if (!source || !source.width || !source.height) {
-      return null;
-    }
-    const probe = doc.createElement("canvas");
-    probe.width = 48;
-    probe.height = 48;
-    const context = probe.getContext("2d");
-    if (!context) {
-      return null;
-    }
-    context.drawImage(source, 0, 0, 48, 48);
-    return Array.from(context.getImageData(0, 0, 48, 48).data);
-  };
-  const differs = (a: number[] | null, b: number[] | null) =>
-    Boolean(a && b && a.some((value, index) => value !== b[index]));
-
-  const wheelPass = async (
-    canvas: HTMLCanvasElement,
-    totalMs: number,
-    makeEvent: (phase: 0 | 1) => WheelEventInit,
-  ) => {
-    const bounds = canvas.getBoundingClientRect();
-    const cx = bounds.left + bounds.width / 2;
-    const cy = bounds.top + bounds.height / 2;
-    // Excalidraw zooms around the last known pointer position.
-    pointer(canvas, "pointermove", cx, cy, 0);
-    await afterPaint();
-    const before = fingerprint();
-    const frames = collectFrames(win);
-    const start = now();
-    let mid: number[] | null = null;
-    while (now() - start < totalMs) {
-      const phase = now() - start < totalMs / 2 ? 0 : 1;
-      if (phase === 1 && mid === null) {
-        mid = fingerprint() ?? [];
-      }
-      canvas.dispatchEvent(
-        new win.WheelEvent("wheel", {
-          bubbles: true,
-          cancelable: true,
-          clientX: cx,
-          clientY: cy,
-          ...makeEvent(phase),
-        }),
-      );
-      await raf();
-    }
-    const intervals = frames.stop();
-    await afterPaint();
-    return { intervals, verified: differs(before, mid) };
-  };
 
   await scenario("pan-zoom", async () => {
     await ensureOpen(openTargets.large);
@@ -890,6 +941,10 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     );
     await afterPaint();
   });
+
+  if (kit.modes.leak) {
+    await scenario("leak", () => runLeakScenario(kit));
+  }
 
   unwrapWrites();
   return { samples, info, errors };

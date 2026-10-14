@@ -16,6 +16,9 @@ const w = ownerWindow as any;
 w.__EXCALIDRAW_DESKTOP__ = true;
 w.EXCALIDRAW_ASSET_PATH = `${ownerWindow.location.origin}/`;
 w.__perfMarks = [] as Array<{ name: string; t: number }>;
+// Leak mode (?leak=1): JS heap after a forced GC at every `leak:<label>` mark (read by lib/browser.mjs).
+w.__leakHeap = [] as Array<{ label: string; jsHeapMB: number }>;
+const leakMode = new URLSearchParams(ownerWindow.location.search).has("leak");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -51,6 +54,18 @@ async function main() {
     config: fixturesConfig,
     mark: async (name) => {
       w.__perfMarks.push({ name, t: ownerWindow.performance.now() });
+      if (name.startsWith("leak:")) {
+        w.gc?.();
+        await sleep(100);
+        w.__leakHeap.push({
+          label: name.slice("leak:".length),
+          jsHeapMB: (w.performance.memory?.usedJSHeapSize ?? 0) / 1048576,
+        });
+      }
+    },
+    modes: {
+      leak: leakMode,
+      leakOnly: new URLSearchParams(ownerWindow.location.search).has("only"),
     },
     // eslint-disable-next-line no-console
     log: (m) => console.log(`[perf] ${m}`),
