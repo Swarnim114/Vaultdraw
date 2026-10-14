@@ -95,6 +95,9 @@ export type DisplayColorTransform = (
 let displayColorTransform: DisplayColorTransform | null = null;
 let displayCanvasBackground: string | null = null;
 let displayColorTransformVersion = 0;
+const displayColorListeners = new Set<() => void>();
+const displayColorTransformIds = new WeakMap<DisplayColorTransform, number>();
+let nextDisplayColorTransformId = 1;
 
 export const setDisplayColorTransform = (
   transform: DisplayColorTransform | null,
@@ -103,10 +106,36 @@ export const setDisplayColorTransform = (
   displayColorTransform = transform;
   displayCanvasBackground = transform ? canvasBackground : null;
   displayColorTransformVersion++;
+  displayColorListeners.forEach((listener) => listener());
 };
 
 export const getDisplayColorTransformVersion = () =>
   displayColorTransformVersion;
+
+/** Notified whenever the display colour transform is set (or cleared). */
+export const subscribeDisplayColorTransform = (listener: () => void) => {
+  displayColorListeners.add(listener);
+  return () => {
+    displayColorListeners.delete(listener);
+  };
+};
+
+/**
+ * Identifies what's on screen: equal keys render the same colours, so
+ * re-installing the same transform (e.g. after an export) keeps caches
+ * keyed by it valid (unlike `getDisplayColorTransformVersion`).
+ */
+export const getDisplayColorKey = (): string => {
+  if (!displayColorTransform) {
+    return "none";
+  }
+  let id = displayColorTransformIds.get(displayColorTransform);
+  if (!id) {
+    id = nextDisplayColorTransformId++;
+    displayColorTransformIds.set(displayColorTransform, id);
+  }
+  return `${id}:${displayCanvasBackground ?? ""}`;
+};
 
 export const applyDarkModeFilter = (color: string, enable = true): string => {
   if (displayColorTransform) {

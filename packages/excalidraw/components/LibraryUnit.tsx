@@ -1,7 +1,12 @@
 import clsx from "clsx";
 import { memo, useRef, useState } from "react";
 
-import { useLibraryItemSvg } from "../hooks/useLibraryItemSvg";
+import type { Theme } from "@excalidraw/element/types";
+
+import {
+  useHasBeenVisible,
+  useLibraryItemSvg,
+} from "../hooks/useLibraryItemSvg";
 
 import { useEditorInterface } from "./App";
 import { CheckboxItem } from "./CheckboxItem";
@@ -25,6 +30,7 @@ export const LibraryUnit = memo(
     onToggle,
     onDrag,
     svgCache,
+    theme,
   }: {
     id: LibraryItem["id"] | /** for pending item */ null;
     name?: LibraryItem["name"];
@@ -37,9 +43,14 @@ export const LibraryUnit = memo(
     onToggle: (id: string, event: React.MouseEvent) => void;
     onDrag: (id: string, event: React.DragEvent) => void;
     svgCache: SvgCache;
+    /** previews are rendered in this theme's on-screen colours */
+    theme: Theme;
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
-    const svg = useLibraryItemSvg(id, elements, svgCache, ref);
+    const tileRef = useRef<HTMLDivElement | null>(null);
+    // render previews lazily, when they come near the viewport
+    const visible = useHasBeenVisible(tileRef);
+    const svg = useLibraryItemSvg(id, elements, svgCache, ref, theme, visible);
 
     const [isHovered, setIsHovered] = useState(false);
     const isMobile = useEditorInterface().formFactor === "phone";
@@ -51,6 +62,7 @@ export const LibraryUnit = memo(
 
     return (
       <div
+        ref={tileRef}
         className={clsx("library-unit", {
           "library-unit__active": elements,
           "library-unit--hover": elements && isHovered,

@@ -321,6 +321,7 @@ export default function LibraryMenuItems({
                   onClick={() => onAddToLibrary(pendingElements, section.id)}
                   isItemSelected={isItemSelected}
                   svgCache={svgCache}
+                  theme={theme}
                 />
               )}
               <LibraryMenuSection
@@ -331,6 +332,7 @@ export default function LibraryMenuItems({
                 onClick={onItemClick}
                 isItemSelected={isItemSelected}
                 svgCache={svgCache}
+                theme={theme}
               />
             </LibraryMenuSectionGrid>
           )}
@@ -370,6 +372,7 @@ export default function LibraryMenuItems({
               onClick={onAddToLibraryClick}
               isItemSelected={isItemSelected}
               svgCache={svgCache}
+              theme={theme}
             />
           )}
           <LibraryMenuSection
@@ -380,6 +383,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
+            theme={theme}
           />
         </LibraryMenuSectionGrid>
       )}
@@ -402,6 +406,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
+            theme={theme}
           />
         </LibraryMenuSectionGrid>
       )}
@@ -435,6 +440,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
+            theme={theme}
             showNames
           />
         </LibraryMenuSectionGrid>

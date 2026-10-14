@@ -1,7 +1,15 @@
 import { exportToSvg } from "@excalidraw/utils/export";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { COLOR_PALETTE } from "@excalidraw/common";
+import {
+  COLOR_PALETTE,
+  THEME,
+  getDisplayColorKey,
+  subscribeDisplayColorTransform,
+} from "@excalidraw/common";
+import { hashElementsVersion } from "@excalidraw/element";
+
+import type { Theme } from "@excalidraw/element/types";
 
 import { atom, useAtom } from "../editor-jotai";
 
@@ -11,14 +19,21 @@ export type SvgCache = Map<LibraryItem["id"], SVGSVGElement>;
 
 export const libraryItemSvgsCache = atom<SvgCache>(new Map());
 
-const exportLibraryItemToSvg = async (elements: LibraryItem["elements"]) => {
-  // TODO should pass theme (appState.exportWithDark) - we're still using
-  // CSS filter here
+/**
+ * Previews are rendered the way the canvas shows elements right now: dark
+ * mode and the host's display colour transform (e.g. theme sync) are applied
+ * to the colours at export time (no CSS filter). Item data is untouched.
+ */
+const exportLibraryItemToSvg = async (
+  elements: LibraryItem["elements"],
+  theme: Theme,
+) => {
   return await exportToSvg({
     elements,
     appState: {
       exportBackground: false,
       viewBackgroundColor: COLOR_PALETTE.white,
+      exportWithDarkMode: theme === THEME.DARK,
     },
     files: null,
     renderEmbeddables: false,
@@ -26,44 +41,69 @@ const exportLibraryItemToSvg = async (elements: LibraryItem["elements"]) => {
   });
 };
 
+/** Key of the on-screen colours; the component re-renders when it changes. */
+export const useDisplayColorKey = () =>
+  useSyncExternalStore(subscribeDisplayColorTransform, getDisplayColorKey);
+
+// what each cache's previews were rendered for (theme + display colours)
+const cacheColorKeys = new WeakMap<SvgCache, string>();
+// elements version each cached preview was rendered from
+const svgElementsVersions = new WeakMap<SVGSVGElement, number>();
+
+/** Drops every cached preview rendered for other colours than `colorKey`. */
+const syncCacheColorKey = (svgCache: SvgCache, colorKey: string) => {
+  if (cacheColorKeys.get(svgCache) !== colorKey) {
+    svgCache.clear();
+    cacheColorKeys.set(svgCache, colorKey);
+  }
+};
+
 export const useLibraryItemSvg = (
   id: LibraryItem["id"] | null,
   elements: LibraryItem["elements"] | undefined,
   svgCache: SvgCache,
   ref: React.RefObject<HTMLDivElement | null>,
+  theme: Theme,
+  /** false: don't render (yet), e.g. while scrolled out of view */
+  enabled = true,
 ): SVGSVGElement | undefined => {
   const [svg, setSvg] = useState<SVGSVGElement>();
+  const displayColorKey = useDisplayColorKey();
 
   useEffect(() => {
-    if (elements) {
-      if (id) {
-        // Try to load cached svg
-        const cachedSvg = svgCache.get(id);
-
-        if (cachedSvg) {
-          setSvg(cachedSvg);
-        } else {
-          // When there is no svg in cache export it and save to cache
-          (async () => {
-            const exportedSvg = await exportLibraryItemToSvg(elements);
-            // TODO: should likely be removed for custom fonts
-            exportedSvg.querySelector(".style-fonts")?.remove();
-
-            if (exportedSvg) {
-              svgCache.set(id, exportedSvg);
-              setSvg(exportedSvg);
-            }
-          })();
-        }
-      } else {
-        // When we have no id (usualy selected items from canvas) just export the svg
-        (async () => {
-          const exportedSvg = await exportLibraryItemToSvg(elements);
-          setSvg(exportedSvg);
-        })();
-      }
+    if (!elements || !enabled) {
+      return;
     }
-  }, [id, elements, svgCache, setSvg]);
+    let cancelled = false;
+    const render = async (version?: number) => {
+      const exportedSvg = await exportLibraryItemToSvg(elements, theme);
+      // TODO: should likely be removed for custom fonts
+      exportedSvg.querySelector(".style-fonts")?.remove();
+      if (id && version !== undefined) {
+        svgElementsVersions.set(exportedSvg, version);
+        svgCache.set(id, exportedSvg);
+      }
+      if (!cancelled) {
+        setSvg(exportedSvg);
+      }
+    };
+    if (id) {
+      syncCacheColorKey(svgCache, `${theme}|${displayColorKey}`);
+      const version = hashElementsVersion(elements);
+      const cachedSvg = svgCache.get(id);
+      if (cachedSvg && svgElementsVersions.get(cachedSvg) === version) {
+        setSvg(cachedSvg);
+      } else {
+        render(version);
+      }
+    } else {
+      // no id (pending elements selected on canvas): not cached
+      render();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [id, elements, svgCache, theme, displayColorKey, enabled]);
 
   useEffect(() => {
     const node = ref.current;
@@ -98,4 +138,53 @@ export const useLibraryCache = () => {
     deleteItemsFromLibraryCache,
     svgCache,
   };
+};
+
+// -----------------------------------------------------------------------------
+// lazy rendering: one shared IntersectionObserver for all library previews
+
+let viewportObserver: IntersectionObserver | null = null;
+const onBecameVisible = new WeakMap<Element, () => void>();
+
+const getViewportObserver = () => {
+  if (!viewportObserver && typeof IntersectionObserver !== "undefined") {
+    viewportObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            onBecameVisible.get(entry.target)?.();
+          }
+        }
+      },
+      // render a little ahead of scrolling
+      { rootMargin: "300px 0px" },
+    );
+  }
+  return viewportObserver;
+};
+
+/**
+ * True once the element has come near the viewport (then stays true).
+ * Without IntersectionObserver (e.g. jsdom) everything counts as visible.
+ */
+export const useHasBeenVisible = (
+  ref: React.RefObject<HTMLElement | null>,
+): boolean => {
+  const [visible, setVisible] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
+  useEffect(() => {
+    const node = ref.current;
+    const observer = getViewportObserver();
+    if (visible || !node || !observer) {
+      return;
+    }
+    onBecameVisible.set(node, () => setVisible(true));
+    observer.observe(node);
+    return () => {
+      observer.unobserve(node);
+      onBecameVisible.delete(node);
+    };
+  }, [ref, visible]);
+  return visible;
 };

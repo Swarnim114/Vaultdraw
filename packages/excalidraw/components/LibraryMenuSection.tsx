@@ -1,7 +1,11 @@
 import clsx from "clsx";
 import React, { memo, useEffect, useState } from "react";
 
-import type { ExcalidrawElement, NonDeleted } from "@excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  NonDeleted,
+  Theme,
+} from "@excalidraw/element/types";
 
 import { useTransition } from "../hooks/useTransition";
 
@@ -29,6 +33,7 @@ interface Props {
   itemsRenderedPerBatch: number;
   /** larger items with their name below */
   showNames?: boolean;
+  theme: Theme;
 }
 
 export const LibraryMenuSectionGrid = ({
@@ -60,6 +65,7 @@ export const LibraryMenuSection = memo(
     svgCache,
     itemsRenderedPerBatch,
     showNames,
+    theme,
   }: Props) => {
     const [, startTransition] = useTransition();
     const [index, setIndex] = useState(0);
@@ -84,6 +90,7 @@ export const LibraryMenuSection = memo(
               id={item?.id}
               name={"name" in item ? item.name : undefined}
               showName={showNames}
+              theme={theme}
               selected={isItemSelected(item.id)}
               onToggle={onItemSelectToggle}
               onDrag={onItemDrag}

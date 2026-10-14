@@ -976,8 +976,9 @@ const LibraryItemIcon = ({
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const { svgCache } = useLibraryCache();
+  const { theme } = useUIAppState();
 
-  useLibraryItemSvg(id, elements, svgCache, ref);
+  useLibraryItemSvg(id, elements, svgCache, ref, theme);
 
   return <div className="library-item-icon" ref={ref} />;
 };
