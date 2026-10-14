@@ -11,6 +11,11 @@ import "./desktop.css";
 // native side owns persistence. DOM APIs are derived from the mount node's
 // ownerDocument/defaultView per repo convention (no bare `document`/`window`
 // globals beyond the initial mount lookup fallback).
+// Boot phase marks (read with performance.getEntriesByName("vd:..."), e.g.
+// from the perf harness or devtools); times are ms since navigation start.
+const mark = (name: string) => performance.mark(`vd:${name}`);
+mark("main-start");
+
 const mountNode = document.getElementById("root");
 
 if (!mountNode) {
@@ -47,6 +52,7 @@ if (ownerWindow.matchMedia("(prefers-color-scheme: dark)").matches) {
 // initSettings never throws; in a plain browser it keeps localStorage.
 void initSettings(ownerWindow)
   .then(async () => {
+    mark("settings-ready");
     ownerDocument.documentElement.classList.toggle(
       "dark",
       resolveTheme(getTheme(ownerWindow), ownerWindow) === "dark",
@@ -71,15 +77,19 @@ void initSettings(ownerWindow)
     } catch {
       // VaultApp retries through useAppearance.
     }
+    mark("theme-applied");
     return import("./VaultApp");
   })
   .then(({ default: VaultApp }) => {
+    mark("app-module-ready");
     const root = createRoot(mountNode);
     root.render(
       <StrictMode>
         <VaultApp ownerDocument={ownerDocument} ownerWindow={ownerWindow} />
       </StrictMode>,
     );
+    mark("render-called");
+    ownerWindow.requestAnimationFrame(() => mark("first-frame"));
     if (import.meta.env.VITE_APP_PERF_TEST === "true") {
       ownerWindow.setTimeout(() => {
         void import("./perf/runDesktopPerf")
