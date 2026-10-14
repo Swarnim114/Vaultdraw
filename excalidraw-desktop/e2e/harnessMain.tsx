@@ -49,6 +49,60 @@ if (params.get("seed") !== "empty") {
   }
 }
 
+if (params.get("seed") === "tags") {
+  // Opt-in (?seed=tags): tagged drawings plus text that must NOT become tags
+  // (URL fragment, hex colour).
+  const textScene = (...texts: string[]) =>
+    JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      source: "e2e-tags",
+      elements: texts.map((text, i) => ({
+        id: `t${i}`,
+        type: "text",
+        x: 0,
+        y: i * 40,
+        width: 200,
+        height: 25,
+        angle: 0,
+        strokeColor: "#1e1e1e",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 1,
+        opacity: 100,
+        groupIds: [],
+        roundness: null,
+        link: null,
+        locked: false,
+        isDeleted: false,
+        text,
+        originalText: text,
+        fontSize: 20,
+        fontFamily: 1,
+        textAlign: "left",
+        verticalAlign: "top",
+        containerId: null,
+        lineHeight: 1.25,
+      })),
+      appState: {},
+      files: {},
+    });
+  repository.seedDrawing(
+    "DSA/Tagged Graphs.excalidraw",
+    textScene("BFS traversal #dsa/graphs", "mock round #Interview"),
+  );
+  repository.seedDrawing(
+    "DSA/Tagged Arrays.excalidraw",
+    textScene("two pointers #dsa"),
+  );
+  repository.seedDrawing(
+    "DSA/Not Tags.excalidraw",
+    textScene("see https://example.com/page#frag", "colour #ff00aa"),
+  );
+}
+
 const libraryRepository = new FakeLibraryRepository();
 
 (ownerWindow as any).__vaultRepo = repository;

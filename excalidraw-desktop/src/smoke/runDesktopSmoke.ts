@@ -77,6 +77,10 @@ type Native = {
     totalMatches: number;
     status: { state: string; indexed: number; total: number };
   }>;
+  vault_tags: (args: { handle: string }) => Promise<{
+    tags: Array<{ tag: string; display: string; count: number }>;
+    byPath: Record<string, string[]>;
+  }>;
   search_index_status: (args: { handle: string }) => Promise<{
     state: string;
     indexed: number;
@@ -689,6 +693,175 @@ export async function runDesktopSmoke(): Promise<void> {
         throw new Error(`Index not ready: ${JSON.stringify(status)}`);
       }
       return { dir, firstHitMs: hitMs, renamed, status };
+    });
+
+    await step("native-tags", async () => {
+      const dir = `smoke-tags-${runId}`;
+      // Tags are letters only: digits would still be valid, but keep the key
+      // trivially predictable (a-j replace 0-9).
+      const letters = runId.replace(/[0-9]/g, (d) =>
+        String.fromCharCode(97 + Number(d)),
+      );
+      const parent = `smoketag${letters}`;
+      const child = `${parent}/child`;
+      const label = (id: string, text: string) => ({
+        id,
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 20,
+        text,
+        originalText: text,
+        isDeleted: false,
+      });
+      const scene = (...texts: string[]) =>
+        JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "desktop-smoke",
+          elements: texts.map((text, i) => label(`t${i}`, text)),
+          appState: {},
+          files: {},
+        });
+      const first = `${dir}/first-${runId}.excalidraw`;
+      const second = `${dir}/second-${runId}.excalidraw`;
+      const write = (path: string, json: string, op: string, rev: unknown) =>
+        call("write_drawing", {
+          handle: activeVault.handle,
+          path,
+          json,
+          expectedRevision: rev,
+          operationId: op,
+        });
+      await call("create_folder", { handle: activeVault.handle, path: dir });
+      const firstWrite = await write(
+        first,
+        scene(
+          `notes #${child}`,
+          `link https://example.com/page#fragmentnottag${letters}`,
+        ),
+        "smoke-tags-first",
+        null,
+      );
+      await write(second, scene(`notes #${parent}`), "smoke-tags-second", null);
+
+      const readTags = () => call("vault_tags", { handle: activeVault.handle });
+      const countOf = (
+        tags: Array<{ tag: string; count: number }>,
+        key: string,
+      ) => tags.find((t) => t.tag === key)?.count ?? 0;
+      const pollTags = async (
+        what: string,
+        done: (res: Awaited<ReturnType<typeof readTags>>) => boolean,
+      ) => {
+        const until = win.performance.now() + 10_000;
+        let last: unknown = null;
+        while (win.performance.now() < until) {
+          const res = await readTags();
+          last = res.tags.filter((t: { tag: string }) =>
+            t.tag.includes(letters),
+          );
+          if (done(res)) {
+            return res;
+          }
+          await delay(win, 100);
+        }
+        throw new Error(
+          `Timed out waiting for ${what}; last matching tags: ${JSON.stringify(
+            last,
+          )}`,
+        );
+      };
+      const startedTags = win.performance.now();
+      const tagged = await pollTags(
+        "nested tag counts",
+        (res) =>
+          countOf(res.tags, parent) === 2 && countOf(res.tags, child) === 1,
+      );
+      const tagsMs = Math.round(win.performance.now() - startedTags);
+      if (
+        !(tagged.byPath[first] ?? []).some((t: string) => t === child) ||
+        !(tagged.byPath[second] ?? []).some((t: string) => t === parent)
+      ) {
+        throw new Error(
+          `vault_tags byPath is missing the smoke drawings: ${JSON.stringify([
+            tagged.byPath[first],
+            tagged.byPath[second],
+          ])}`,
+        );
+      }
+      if (
+        tagged.tags.some((t: { tag: string }) =>
+          t.tag.includes("fragmentnottag"),
+        )
+      ) {
+        throw new Error("A URL fragment was indexed as a tag");
+      }
+
+      const pathsFor = async (query: string) =>
+        (
+          await call("search_vault", { handle: activeVault.handle, query })
+        ).results.map((hit: { path: string }) => hit.path);
+      const pollPaths = async (
+        what: string,
+        query: string,
+        done: (paths: string[]) => boolean,
+      ) => {
+        const until = win.performance.now() + 10_000;
+        let last: string[] = [];
+        while (win.performance.now() < until) {
+          last = await pathsFor(query);
+          if (done(last)) {
+            return last;
+          }
+          await delay(win, 100);
+        }
+        throw new Error(
+          `Timed out waiting for ${what}; last results for ${JSON.stringify(
+            query,
+          )}: ${JSON.stringify(last)}`,
+        );
+      };
+      // A parent tag includes its children; a child tag is narrower.
+      await pollPaths(
+        "parent tag finds both drawings",
+        `tag:#${parent}`,
+        (p) => p.includes(first) && p.includes(second),
+      );
+      await pollPaths(
+        "child tag finds only the nested drawing",
+        `tag:#${child}`,
+        (p) => p.includes(first) && !p.includes(second),
+      );
+      const fragmentHits = await pathsFor(`tag:#fragmentnottag${letters}`);
+      if (fragmentHits.length > 0) {
+        throw new Error(
+          `URL fragment matched as a tag: ${JSON.stringify(fragmentHits)}`,
+        );
+      }
+
+      // Editing the tag out of the text removes it from the index.
+      await write(
+        first,
+        scene(
+          "notes without tags",
+          `link https://example.com/page#fragmentnottag${letters}`,
+        ),
+        "smoke-tags-edit",
+        firstWrite.revision,
+      );
+      await pollTags(
+        "removed tag to disappear",
+        (res) =>
+          countOf(res.tags, child) === 0 && countOf(res.tags, parent) === 1,
+      );
+      await pollPaths(
+        "tag filter to drop the edited drawing",
+        `tag:#${parent}`,
+        (p) => !p.includes(first) && p.includes(second),
+      );
+      return { dir, tag: parent, firstTagsMs: tagsMs };
     });
 
     await step("ui-create-drawing-and-open-editor", async () => {
