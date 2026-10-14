@@ -105,6 +105,25 @@ describe("renderBackgroundPattern", () => {
     }
   });
 
+  it("draws a line centred just outside the canvas that still covers its edge pixel", () => {
+    const ctx = makeContext();
+    // the x = 0 line lands at device x = -0.4: off canvas by its centre, but
+    // its 2 px rect covers device pixel 0 (a tile edge relies on this)
+    renderBackgroundPattern(
+      ctx,
+      { ...createBackgroundPattern("grid"), spacing: 20, majorEvery: 5 },
+      view({ scale: 2, scrollX: -0.2 }),
+    );
+    const edge = ctx.fillRects.filter(
+      ([x, , w, h]: number[]) => h === 100 && x < 0 && x + w > 0,
+    );
+    expect(edge.length).toBe(1);
+    // and nothing that doesn't reach the canvas
+    for (const [x, y, w, h] of ctx.fillRects) {
+      expect(x + w > 0 && y + h > 0).toBe(true);
+    }
+  });
+
   it("lines cover the pixels a centred, device-snapped stroke covers", () => {
     for (const scale of [1, 2, 3]) {
       const ctx = makeContext();

@@ -104,17 +104,21 @@ const fillLevel = (
   if (last - first + 1 > MAX_PATTERN_LINES) {
     return;
   }
-  for (let k = first; k <= last; k++) {
+  // Vaultdraw: also the line just past each edge when its whole-pixel rect
+  // still reaches into the canvas (centred just outside, it covers the
+  // first/last device pixel; a tile's edge must match the full canvas there)
+  for (let k = first - 1; k <= last + 1; k++) {
     if (skipEvery && k % skipEvery === 0) {
       continue;
     }
-    fillLine(
-      context,
-      vertical,
-      (k * step + origin) * zoomScale,
-      lineWidth,
-      length,
-    );
+    const position = (k * step + origin) * zoomScale;
+    if (k < first || k > last) {
+      const start = Math.round(position - lineWidth / 2);
+      if (start + lineWidth <= 0 || start >= extent) {
+        continue;
+      }
+    }
+    fillLine(context, vertical, position, lineWidth, length);
   }
 };
 
