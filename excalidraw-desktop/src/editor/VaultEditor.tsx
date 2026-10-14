@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CaptureUpdateAction,
@@ -95,6 +95,8 @@ const VaultEditorComponent = ({
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const callbackRef = useRef(onChange);
   const exportRef = useRef(onExport);
+  const nameRef = useRef(name);
+  const openSettingsRef = useRef(onOpenSettings);
   const ready = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,6 +106,7 @@ const VaultEditorComponent = ({
   const fileRefs = useRef<BinaryFiles>({});
   const releasePreview = useRef<(() => void) | null>(null);
   const [exporting, setExporting] = useState(false);
+  const exportingRef = useRef(false);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
   const [paperDialogOpen, setPaperDialogOpen] = useState(false);
@@ -148,6 +151,10 @@ const VaultEditorComponent = ({
   }, []);
   callbackRef.current = onChange;
   exportRef.current = onExport;
+  nameRef.current = name;
+  openSettingsRef.current = onOpenSettings;
+  const canExport = !!onExport;
+  const canOpenSettings = !!onOpenSettings;
 
   const initialData = useCallback(async () => {
     const doc = host.current?.ownerDocument;
@@ -343,14 +350,21 @@ const VaultEditorComponent = ({
     [documentId],
   );
 
-  const saveCopy = async () => {
+  const onExcalidrawAPI = useCallback((api: ExcalidrawImperativeAPI | null) => {
+    if (!api) {
+      apiRef.current = null;
+    }
+  }, []);
+
+  const saveCopy = useCallback(async () => {
     const api = apiRef.current;
     const mounted = host.current;
-    if (!api || !mounted || !exportRef.current || exporting) {
+    if (!api || !mounted || !exportRef.current || exportingRef.current) {
       return;
     }
     const ownerDocument = mounted.ownerDocument;
-    const baseName = name.replace(/\.excalidraw$/i, "") || "Drawing";
+    const baseName = nameRef.current.replace(/\.excalidraw$/i, "") || "Drawing";
+    exportingRef.current = true;
     setExporting(true);
     try {
       const json = serializeAsJSON(
@@ -370,9 +384,10 @@ const VaultEditorComponent = ({
     } catch (cause) {
       setEditorError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
-  };
+  }, []);
 
   // Every image export (dialog, shortcuts, context menu copy) lands here.
   // Throwing makes the editor show its own error.
@@ -406,6 +421,56 @@ const VaultEditorComponent = ({
     );
   }, []);
 
+  // Excalidraw's memo bails out only when `children` is the same element tree,
+  // so rebuild it only when something it shows changes (not on every
+  // VaultApp render, e.g. each autosave status change).
+  const editorChildren = useMemo(
+    () => (
+      <>
+        {/* A book, not Excalidraw's "panel" glyph, which reads as a sidebar toggle. */}
+        <DefaultSidebar.Trigger
+          icon={<IconLibrary />}
+          title="Library"
+          tab={DEFAULT_SIDEBAR.defaultTab}
+        />
+        {/* Mirrors excalidraw.com's menu, with vault-safe export actions
+              instead of open/save-as (the vault file is always the source). */}
+        <MainMenu>
+          <MainMenu.DefaultItems.SaveAsImage />
+          <MainMenu.Item
+            icon={saveAs}
+            onSelect={() => void saveCopy()}
+            disabled={exporting || !canExport}
+          >
+            Save a copy…
+          </MainMenu.Item>
+          <MainMenu.DefaultItems.SearchMenu />
+          <MainMenu.DefaultItems.Help />
+          <MainMenu.DefaultItems.ClearCanvas />
+          <MainMenu.Separator />
+          {canOpenSettings && (
+            <MainMenu.Item
+              icon={settingsIcon}
+              onSelect={() => openSettingsRef.current?.()}
+            >
+              Vault settings
+            </MainMenu.Item>
+          )}
+          <MainMenu.DefaultItems.ToggleTheme allowSystemTheme={false} />
+          <MainMenu.DefaultItems.ChangeCanvasBackground />
+          <PaperMenuItem onOpenSettings={() => setPaperDialogOpen(true)} />
+        </MainMenu>
+        {paperDialogOpen && (
+          <PaperDialog
+            onClose={() => setPaperDialogOpen(false)}
+            ownerDocument={host.current?.ownerDocument}
+          />
+        )}
+      </>
+    ),
+    [exporting, canExport, canOpenSettings, saveCopy, paperDialogOpen],
+  );
+
   return (
     <div
       ref={host}
@@ -423,11 +488,7 @@ const VaultEditorComponent = ({
         initialData={initialData}
         onChange={onEditorChange}
         onInitialize={onInitialize}
-        onExcalidrawAPI={(api) => {
-          if (!api) {
-            apiRef.current = null;
-          }
-        }}
+        onExcalidrawAPI={onExcalidrawAPI}
         validateEmbeddable={false}
         viewModeEnabled={readOnly}
         interaction={disabled ? false : undefined}
@@ -446,45 +507,7 @@ const VaultEditorComponent = ({
           },
         }}
       >
-        {/* A book, not Excalidraw's "panel" glyph, which reads as a sidebar toggle. */}
-        <DefaultSidebar.Trigger
-          icon={<IconLibrary />}
-          title="Library"
-          tab={DEFAULT_SIDEBAR.defaultTab}
-        />
-        {/* Mirrors excalidraw.com's menu, with vault-safe export actions
-            instead of open/save-as (the vault file is always the source). */}
-        <MainMenu>
-          <MainMenu.DefaultItems.SaveAsImage />
-          <MainMenu.Item
-            icon={saveAs}
-            onSelect={() => void saveCopy()}
-            disabled={exporting || !onExport}
-          >
-            Save a copy…
-          </MainMenu.Item>
-          <MainMenu.DefaultItems.SearchMenu />
-          <MainMenu.DefaultItems.Help />
-          <MainMenu.DefaultItems.ClearCanvas />
-          <MainMenu.Separator />
-          {onOpenSettings && (
-            <MainMenu.Item
-              icon={settingsIcon}
-              onSelect={() => onOpenSettings()}
-            >
-              Vault settings
-            </MainMenu.Item>
-          )}
-          <MainMenu.DefaultItems.ToggleTheme allowSystemTheme={false} />
-          <MainMenu.DefaultItems.ChangeCanvasBackground />
-          <PaperMenuItem onOpenSettings={() => setPaperDialogOpen(true)} />
-        </MainMenu>
-        {paperDialogOpen && (
-          <PaperDialog
-            onClose={() => setPaperDialogOpen(false)}
-            ownerDocument={host.current?.ownerDocument}
-          />
-        )}
+        {editorChildren}
       </Excalidraw>
       {pens.freedrawActive && !readOnly && !disabled && (
         <PenBar
