@@ -237,6 +237,42 @@ export async function scanVaultMetadata(
   return all;
 }
 
+/** Default spacing between partial-scan snapshots handed to React state. */
+export const SCAN_PROGRESS_INTERVAL_MS = 300;
+
+/**
+ * Coalesces scan progress: `push` remembers the latest (still growing) list
+ * and emits one snapshot copy per `intervalMs` (trailing). `cancel` drops a
+ * pending emit, so the caller's final set is the last update.
+ */
+export function createProgressThrottle(
+  emit: (snapshot: VaultEntry[]) => void,
+  intervalMs = SCAN_PROGRESS_INTERVAL_MS,
+) {
+  let latest: VaultEntry[] | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return {
+    push(list: VaultEntry[]) {
+      latest = list;
+      if (timer === null) {
+        timer = setTimeout(() => {
+          timer = null;
+          if (latest) {
+            emit(latest.slice());
+          }
+        }, intervalMs);
+      }
+    },
+    cancel() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      latest = null;
+    },
+  };
+}
+
 /**
  * Builds a hierarchical tree node from a map of directory entries.
  */

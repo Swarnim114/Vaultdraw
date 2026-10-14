@@ -49,6 +49,7 @@ import {
 } from "./vault/settingsSync";
 import {
   buildTree,
+  createProgressThrottle,
   duplicateName,
   getBaseName,
   getParentPath,
@@ -617,18 +618,25 @@ export const VaultApp = ({
       }
       const gen = expectedGen ?? vaultGeneration.current;
       setIsIndexing(true);
-      scanVaultMetadata(repository, vault.handle, signal, (progress) => {
-        if (gen === vaultGeneration.current && !signal?.aborted) {
-          setAllIndexedEntries([...progress]);
+      const isCurrent = () =>
+        gen === vaultGeneration.current && !signal?.aborted;
+      const throttle = createProgressThrottle((snapshot) => {
+        if (isCurrent()) {
+          setAllIndexedEntries(snapshot);
         }
-      })
+      });
+      scanVaultMetadata(repository, vault.handle, signal, (progress) =>
+        throttle.push(progress),
+      )
         .then((finalList) => {
-          if (gen === vaultGeneration.current && !signal?.aborted) {
+          throttle.cancel();
+          if (isCurrent()) {
             setAllIndexedEntries(finalList);
           }
           setIsIndexing(false);
         })
         .catch(() => {
+          throttle.cancel();
           setIsIndexing(false);
         });
     },

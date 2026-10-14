@@ -300,13 +300,17 @@ export const VaultNavigator = ({
   });
 
   // Collect all known folders for move destination picker
-  const allFolderPaths = Array.from(
-    new Set([
-      "",
-      ...allIndexedEntries
-        .filter((e) => e.kind === "folder")
-        .map((e) => e.path),
-    ]),
+  const allFolderPaths = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "",
+          ...allIndexedEntries
+            .filter((e) => e.kind === "folder")
+            .map((e) => e.path),
+        ]),
+      ),
+    [allIndexedEntries],
   );
 
   const isSearching = searchQuery.trim() !== "";
