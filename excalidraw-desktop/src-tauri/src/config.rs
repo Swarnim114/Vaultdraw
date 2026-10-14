@@ -77,6 +77,18 @@ autosave_delay_ms = 500
 [hotkeys]
 # Override a command's keys; [] removes them. Example:
 # "vault.newDrawing" = ["Mod+N"]
+
+[pens]
+# Saved pens of the freedraw tool (Alt+1 .. Alt+9 while drawing). width: 0.5 thin, 1 medium, 2 bold, ~10 highlighter.
+# pressure = variable width; smoothing 0 (raw) to 1 (smooth); highlighter = drawn behind everything.
+# presets = [ { name = "Fine liner", color = "#1e1e1e", width = 0.5, opacity = 100, pressure = false, smoothing = 0.3, highlighter = false } ]
+
+[laser]
+# Laser pointer trail
+# color = "red"
+# size = 2          # trail thickness in pixels, 1 to 24
+# decay_ms = 1000   # time until the trail fades, 200 to 5000
+# length = 50       # tail length in points, 5 to 200
 "##;
 
 /// Serializes every config/state write within the process.
@@ -350,10 +362,30 @@ fn json_to_toml(key: &str, v: &Json, nested: bool) -> Result<toml_edit::Value> {
             for item in items {
                 arr.push(json_to_toml(key, item, true)?);
             }
+            if arr.iter().any(toml_edit::Value::is_inline_table) {
+                // One inline table per line, so a long list stays hand-editable.
+                arr.set_trailing_comma(true);
+                arr.set_trailing("\n");
+                for item in arr.iter_mut() {
+                    item.decor_mut().set_prefix("\n  ");
+                    item.decor_mut().set_suffix("");
+                }
+            }
             arr.into()
         }
         Json::Array(_) => return Err(bad("nested arrays")),
-        Json::Object(_) => return Err(bad("objects")),
+        // Flat only, and only as an array item: an inline table of scalars (a pen preset).
+        Json::Object(_) if !nested => return Err(bad("objects outside an array")),
+        Json::Object(fields) => {
+            let mut table = toml_edit::InlineTable::new();
+            for (k, field) in fields {
+                if matches!(field, Json::Array(_) | Json::Object(_)) {
+                    return Err(bad("nested arrays or objects inside an object"));
+                }
+                table.insert(k, json_to_toml(key, field, true)?);
+            }
+            table.into()
+        }
         Json::Null => return Err(bad("null inside an array")),
     })
 }
@@ -940,11 +972,61 @@ mod tests {
 
     #[test]
     fn rejects_bad_keys_and_values_without_partial_application() {
-        for (k, v) in [("a.b..c", json!(1)), ("a.b.", json!(1)), (".a", json!(1)), ("a.", json!(1)), ("a.b c", json!(1)), ("a.b\"c", json!(1)), ("a.b/c", json!(1)), ("", json!(1)), ("a b.c", json!(1)), ("a.b", json!({"x": 1})), ("a.b", json!([[1]])), ("a.b", json!(u64::MAX))] {
+        for (k, v) in [("a.b..c", json!(1)), ("a.b.", json!(1)), (".a", json!(1)), ("a.", json!(1)), ("a.b c", json!(1)), ("a.b\"c", json!(1)), ("a.b/c", json!(1)), ("", json!(1)), ("a b.c", json!(1)), ("a.b", json!({"x": {"y": 1}})), ("a.b", json!([[1]])), ("a.b", json!(u64::MAX))] {
             let e = apply_changes(DEFAULT_CONFIG, &[change("appearance.mode", json!("dark")), change(k, v)]).unwrap_err();
             assert_eq!(e.code, "INVALID_ARGUMENT", "{k}");
         }
         assert_eq!(apply_changes("[editor]\n", &[change("editor", json!(1))]).unwrap_err().code, "INVALID_ARGUMENT");
+    }
+
+    fn presets() -> Json {
+        json!([
+            {"name": "Fine liner", "color": "#1e1e1e", "width": 0.5, "opacity": 100, "pressure": false, "smoothing": 0.3, "highlighter": false},
+            {"name": "Marker", "color": "#ffd43b", "width": 1.5, "opacity": 40, "pressure": true, "smoothing": 1, "highlighter": true}
+        ])
+    }
+
+    #[test]
+    fn pen_presets_round_trip_as_multiline_inline_tables() {
+        let out = apply_changes(DEFAULT_CONFIG, &[change("pens.presets", presets())]).unwrap();
+        assert_eq!(parse_config(&out).unwrap()["pens"]["presets"], presets());
+        assert!(
+            // (keys come out alphabetically: serde_json maps are sorted)
+            out.contains("presets = [\n  { color = \"#1e1e1e\", highlighter = false, name = \"Fine liner\", opacity = 100, pressure = false, smoothing = 0.3, width = 0.5 },\n  { color = \"#ffd43b\""),
+            "{out}"
+        );
+        assert!(out.contains("width = 1.5 },\n]\n"), "{out}");
+        // Objects are only accepted as array items (a bare object stays invalid, as in vault settings).
+        assert_eq!(apply_changes(DEFAULT_CONFIG, &[change("pens.one", presets()[0].clone())]).unwrap_err().code, "INVALID_ARGUMENT");
+        // Arrays of scalars keep the single-line form.
+        let out = apply_changes(DEFAULT_CONFIG, &[change("pens.tags", json!(["a", "b"]))]).unwrap();
+        assert!(out.contains("tags = [\"a\", \"b\"]\n"), "{out}");
+    }
+
+    #[test]
+    fn replacing_presets_keeps_surrounding_comments() {
+        let text = "# top\n[pens]\n# my pens\npresets = [ { name = \"Old\" } ] # trailing\nother = 1\n\n# end\n";
+        let out = apply_changes(text, &[change("pens.presets", presets())]).unwrap();
+        assert!(out.starts_with("# top\n[pens]\n# my pens\npresets = [\n  { color = \"#1e1e1e\""), "{out}");
+        assert!(out.contains("# trailing\nother = 1\n\n# end\n"), "{out}");
+        assert_eq!(parse_config(&out).unwrap()["pens"]["presets"], presets());
+    }
+
+    #[test]
+    fn nested_values_in_presets_are_rejected() {
+        for v in [json!([{"a": [1]}]), json!([{"a": {"b": 1}}]), json!({"a": {"b": 1}}), json!([[{"a": 1}]]), json!([{"a": null}])] {
+            let e = apply_changes(DEFAULT_CONFIG, &[change("pens.presets", v.clone())]).unwrap_err();
+            assert!(e.message.contains("Unsupported value"), "{v}: {}", e.message);
+        }
+    }
+
+    #[test]
+    fn removing_presets_restores_the_documented_example() {
+        let set = apply_changes(DEFAULT_CONFIG, &[change("pens.presets", presets())]).unwrap();
+        assert!(!set.contains("# presets = ["));
+        let removed = apply_changes(&set, &[change("pens.presets", Json::Null)]).unwrap();
+        assert!(parse_config(&removed).unwrap()["pens"].get("presets").is_none());
+        assert_eq!(removed, DEFAULT_CONFIG);
     }
 
     #[test]
@@ -992,7 +1074,7 @@ mod tests {
         let text = fs::read_to_string(d.config.join(CONFIG_FILE)).unwrap();
         // The commented example is replaced by the real binding; its explanation stays above it.
         assert!(
-            text.ends_with("[hotkeys]\n# Override a command's keys; [] removes them. Example:\n\"vault.newDrawing\" = [\"Mod+N\"]\n\"file.rename\" = []\n"),
+            text.contains("[hotkeys]\n# Override a command's keys; [] removes them. Example:\n\"vault.newDrawing\" = [\"Mod+N\"]\n\"file.rename\" = []\n\n[pens]\n"),
             "{text}"
         );
     }
@@ -1084,7 +1166,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 5, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 10, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
