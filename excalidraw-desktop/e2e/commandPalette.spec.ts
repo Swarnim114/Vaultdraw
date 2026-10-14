@@ -13,7 +13,7 @@ const DRAWING = "DSA/Graphs.excalidraw";
 
 const palette = (page: Page) =>
   page.getByRole("dialog", { name: "Command palette" });
-const input = (page: Page) => page.getByLabel("Search drawings and commands");
+const input = (page: Page) => palette(page).getByRole("combobox");
 const options = (page: Page) => palette(page).getByRole("option");
 
 const rect = (id: string, x: number, y: number) => ({
@@ -75,9 +75,11 @@ const focusCanvas = async (page: Page) => {
 const liveElements = async (page: Page) =>
   (await readScene(page, DRAWING)).elements.filter((el: any) => !el.isDeleted);
 
-const runQuery = async (page: Page, query: string, expectFirst: string) => {
-  await page.keyboard.press("ControlOrMeta+KeyP");
+/** Commands mode (Cmd+Shift+P, input starts as ">"), then type `query`. */
+const runCommand = async (page: Page, query: string, expectFirst: string) => {
+  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
   await expect(palette(page)).toBeVisible();
+  await expect(input(page)).toHaveValue(">");
   await page.keyboard.type(query);
   await expect(options(page).first()).toContainText(expectFirst);
 };
@@ -104,7 +106,7 @@ test.describe("editor, theme and mode commands", () => {
     await focusCanvas(page);
     await page.keyboard.press("ControlOrMeta+KeyA");
 
-    await runQuery(page, ">align left", "Align left");
+    await runCommand(page, "align left", "Align left");
     await page.keyboard.press("Enter");
     await expect(palette(page)).toHaveCount(0);
 
@@ -115,6 +117,7 @@ test.describe("editor, theme and mode commands", () => {
     // Both are still selected: the selection toolbar shows the multi-select
     // alignment actions and Excalidraw reports two selected elements.
     await expect(page.locator(".selected-shape-actions")).toBeVisible();
+    // Typing ">" in files mode switches to commands.
     await page.keyboard.press("ControlOrMeta+KeyP");
     await page.keyboard.type(">align right");
     await expect(options(page).first()).toContainText("Align right");
@@ -126,7 +129,7 @@ test.describe("editor, theme and mode commands", () => {
     const errors = trackErrors(page);
     await openGraphs(page);
     const before = await rootVar(page, "--vault-bg");
-    await runQuery(page, "theme: dracula", "Theme: Dracula");
+    await runCommand(page, "theme: dracula", "Theme: Dracula");
     await page.keyboard.press("Enter");
     await expect(palette(page)).toHaveCount(0);
     await expect.poll(() => rootVar(page, "--vault-bg")).not.toBe(before);
@@ -148,7 +151,7 @@ test.describe("editor, theme and mode commands", () => {
     const isDark = () =>
       page.evaluate(() => document.documentElement.classList.contains("dark"));
     expect(await isDark()).toBe(false);
-    await runQuery(page, ">mode: dark", "Mode: Dark");
+    await runCommand(page, "mode: dark", "Mode: Dark");
     await page.keyboard.press("Enter");
     await expect.poll(isDark).toBe(true);
     await expect(page.locator(".excalidraw.theme--dark").first()).toBeVisible();
@@ -161,7 +164,7 @@ test.describe("editor, theme and mode commands", () => {
     const grid = async () =>
       (await readScene(page, DRAWING)).appState.gridModeEnabled === true;
     expect(await grid()).toBe(false);
-    await runQuery(page, ">toggle grid", "Toggle grid");
+    await runCommand(page, "toggle grid", "Toggle grid");
     await page.keyboard.press("ControlOrMeta+Enter");
     await expect(palette(page)).toBeVisible();
     await expect(input(page)).toBeFocused();
@@ -184,8 +187,6 @@ test.describe("opening, shortcuts and focus", () => {
     await expect(palette(page)).toBeVisible();
     await page.keyboard.type("introduction");
     await expect(options(page).first()).toContainText("01 Introduction");
-    // One merged list: no group headers while querying.
-    await expect(palette(page).getByRole("group")).toHaveCount(0);
     await page.keyboard.press("Enter");
     await expect(palette(page)).toHaveCount(0);
     await expect(
@@ -198,13 +199,16 @@ test.describe("opening, shortcuts and focus", () => {
   });
 
   for (const chord of ["ControlOrMeta+Slash", "ControlOrMeta+Shift+KeyP"]) {
-    test(`${chord} opens our palette, never Excalidraw's`, async ({ page }) => {
+    test(`${chord} opens our commands mode, never Excalidraw's palette`, async ({
+      page,
+    }) => {
       const errors = trackErrors(page);
       await openGraphs(page);
       await focusCanvas(page);
       await page.keyboard.press(chord);
       await expect(palette(page)).toBeVisible();
       await expect(input(page)).toBeFocused();
+      await expect(input(page)).toHaveValue(">");
       await page.waitForTimeout(400);
       await expect(page.locator(".command-palette-dialog")).toHaveCount(0);
       await expect(page.locator(".Toast")).toHaveCount(0);
@@ -235,7 +239,7 @@ test.describe("opening, shortcuts and focus", () => {
 
   test("Tab drills a theme into '>Theme: '", async ({ page }) => {
     await openVault(page);
-    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
     await page.keyboard.type("theme");
     await expect(options(page).first()).toContainText("Theme: ");
     await page.keyboard.press("Tab");
@@ -291,7 +295,7 @@ test("'Insert: <library item>' inserts it on the canvas", async ({ page }) => {
   // The library loads lazily (idle), so retry until the entry is listed.
   await expect(async () => {
     await page.keyboard.press("Escape");
-    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
     await expect(palette(page)).toBeVisible();
     await page.keyboard.type("kanban");
     await expect(options(page).first()).toContainText("Insert: Kanban card", {
@@ -311,6 +315,139 @@ test("'Insert: <library item>' inserts it on the canvas", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test.describe("two modes: Cmd+P files, Cmd+Shift+P commands", () => {
+  const PREFS_KEY = "excalidraw-vault-preferences-v1";
+  const seedHotkeys = (page: Page, hotkeys: Record<string, string[]>) =>
+    page.addInitScript(
+      ([key, value]) => {
+        if (!window.sessionStorage.getItem("palette-seeded")) {
+          window.localStorage.setItem(key, JSON.stringify(value));
+          window.sessionStorage.setItem("palette-seeded", "1");
+        }
+      },
+      [PREFS_KEY, { hotkeys }] as const,
+    );
+  const texts = (page: Page) => options(page).allTextContents();
+
+  test("Cmd+P lists drawings only, '>' switches to commands and back", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openGraphs(page);
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await expect(input(page)).toHaveValue("");
+    await expect(input(page)).toHaveAccessibleName("Go to drawing");
+    await expect(options(page).first()).toBeVisible();
+    expect((await texts(page)).some((t) => t.includes("Save drawing"))).toBe(
+      false,
+    );
+    await page.keyboard.type("save");
+    await expect(
+      palette(page).getByText("Save drawing", { exact: true }),
+    ).toHaveCount(0);
+    // A leading ">" switches to commands for the same text...
+    await input(page).evaluate((el: HTMLInputElement) =>
+      el.setSelectionRange(0, 0),
+    );
+    await page.keyboard.type(">");
+    await expect(input(page)).toHaveValue(">save");
+    await expect(input(page)).toHaveAccessibleName("Run a command");
+    await expect(
+      palette(page).getByText("Save drawing", { exact: true }),
+    ).toBeVisible();
+    // ...and deleting it switches back to drawings.
+    await page.keyboard.press("Backspace");
+    await expect(input(page)).toHaveValue("save");
+    await expect(input(page)).toHaveAccessibleName("Go to drawing");
+    await expect(
+      palette(page).getByText("Save drawing", { exact: true }),
+    ).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("Cmd+Shift+P lists commands only", async ({ page }) => {
+    await openVault(page);
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(input(page)).toHaveValue(">");
+    await expect(palette(page).getByText("Search commands")).toBeVisible();
+    await expect(palette(page).getByText("Open settings")).toBeVisible();
+    await expect(palette(page).getByText("01 Introduction")).toHaveCount(0);
+    await page.keyboard.type("intro");
+    await expect(palette(page).getByText("01 Introduction")).toHaveCount(0);
+  });
+
+  test("the same shortcut closes, the other one switches", async ({ page }) => {
+    await openGraphs(page);
+    await focusCanvas(page);
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.keyboard.type("graphs");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(input(page)).toHaveValue(">");
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await expect(input(page)).toHaveValue("");
+    await expect(input(page)).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await expect(palette(page)).toHaveCount(0);
+
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(input(page)).toHaveValue(">");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(palette(page)).toHaveCount(0);
+
+    await page.keyboard.press("ControlOrMeta+Slash");
+    await expect(input(page)).toHaveValue(">");
+    await page.keyboard.press("ControlOrMeta+Slash");
+    await expect(palette(page)).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document
+            .querySelector(".vault-editor .excalidraw-container")
+            ?.contains(document.activeElement),
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("rebinding palette.files moves files mode to the new key", async ({
+    page,
+  }) => {
+    await seedHotkeys(page, { "palette.files": ["Mod+K"] });
+    await openGraphs(page);
+    await focusCanvas(page);
+    await page.keyboard.press("ControlOrMeta+KeyK");
+    await expect(input(page)).toHaveValue("");
+    await expect(input(page)).toHaveAccessibleName("Go to drawing");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(input(page)).toHaveValue(">");
+    await page.keyboard.press("ControlOrMeta+KeyK");
+    await expect(input(page)).toHaveValue("");
+    await page.keyboard.press("ControlOrMeta+KeyK");
+    await expect(palette(page)).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.waitForTimeout(300);
+    await expect(palette(page)).toHaveCount(0);
+  });
+
+  test("an F41 palette.quickSwitcher entry still applies (to files mode)", async ({
+    page,
+  }) => {
+    await seedHotkeys(page, { "palette.quickSwitcher": ["Mod+K"] });
+    await openGraphs(page);
+    await focusCanvas(page);
+    await page.keyboard.press("ControlOrMeta+KeyK");
+    await expect(palette(page)).toBeVisible();
+    await expect(input(page)).toHaveAccessibleName("Go to drawing");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await expect(input(page)).toHaveValue(">");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.waitForTimeout(300);
+    await expect(palette(page)).toHaveCount(0);
+  });
+});
+
 test.describe("navigator collapsed", () => {
   const collapse = async (page: Page) => {
     await page.keyboard.press("ControlOrMeta+Backslash");
@@ -324,7 +461,7 @@ test.describe("navigator collapsed", () => {
     const errors = trackErrors(page);
     await openGraphs(page);
     await collapse(page);
-    await runQuery(page, ">rename drawing", "Rename drawing");
+    await runCommand(page, "rename drawing", "Rename drawing");
     await page.keyboard.press("Enter");
     // The modal is rendered inside the aria-hidden navigator, so role/label
     // queries cannot see it (an a11y bug); find it by CSS.
@@ -347,7 +484,7 @@ test.describe("navigator collapsed", () => {
     const errors = trackErrors(page);
     await openGraphs(page);
     await collapse(page);
-    await runQuery(page, ">new folder", "New folder");
+    await runCommand(page, "new folder", "New folder");
     await page.keyboard.press("Enter");
     const dialog = page.locator(".vault-modal", { hasText: "New Folder" });
     await expect(dialog).toBeVisible();
@@ -425,7 +562,7 @@ test("perf: palette on 5,000 drawings with an open editor", async ({
       new Promise<void>((r) =>
         requestAnimationFrame(() => requestAnimationFrame(() => r())),
       );
-    const queries = ["dsgndrft53", ">thmdrk", "alignl"];
+    const queries = ["dsgndrft53", ">thmdrk", ">alignl"];
     const commit: number[] = [];
     const paint: number[] = [];
     for (const query of queries) {
@@ -448,6 +585,41 @@ test("perf: palette on 5,000 drawings with an open editor", async ({
     return { commit, paint };
   });
 
+  // Commands mode open (collects ~150 editor items), from the canvas.
+  await page.keyboard.press("Escape");
+  await expect(palette(page)).toHaveCount(0);
+  const openCommands = await page.evaluate(async () => {
+    const t0 = performance.now();
+    let listed: number | undefined;
+    const done = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        const rows = document.querySelectorAll(".vault-quick__row");
+        if (rows.length) {
+          listed = performance.now() - t0;
+          observer.disconnect();
+          resolve();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    const mac = /Mac/i.test(navigator.platform);
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        code: "KeyP",
+        shiftKey: true,
+        metaKey: mac,
+        ctrlKey: !mac,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await Promise.race([done, new Promise((r) => setTimeout(r, 15_000))]);
+    return listed;
+  });
+  await expect(input(page)).toHaveValue(">");
+  expect(openCommands, "commands listed").toBeDefined();
+
   const stat = (values: number[]) => {
     const sorted = [...values].sort((a, b) => a - b);
     const at = (p: number) =>
@@ -463,6 +635,7 @@ test("perf: palette on 5,000 drawings with an open editor", async ({
     openMs: {
       firstRows: +(open.rows ?? 0).toFixed(1),
       names5kRendered: +(open.listed ?? 0).toFixed(1),
+      commandsRendered: +(openCommands ?? 0).toFixed(1),
     },
     keystrokes: samples.commit.length,
     commitMs: stat(samples.commit),

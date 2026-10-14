@@ -13,7 +13,7 @@ const textarea = "textarea.excalidraw-wysiwyg";
 
 const switcher = (page: Page) =>
   page.getByRole("dialog", { name: "Command palette" });
-const input = (page: Page) => page.getByLabel("Search drawings and commands");
+const input = (page: Page) => switcher(page).getByRole("combobox");
 const options = (page: Page) => switcher(page).getByRole("option");
 const activeOption = (page: Page) =>
   switcher(page).locator('[role="option"][aria-selected="true"]');
