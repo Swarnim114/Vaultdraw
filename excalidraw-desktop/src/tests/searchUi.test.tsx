@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SearchResults } from "../components/search/SearchResults";
 import { focusElement } from "../editor/focusElement";
 import { Highlighted, normalizeRanges } from "../search/highlight";
-import { useVaultSearch } from "../search/useVaultSearch";
+import { SEARCH_DEBOUNCE_MS, useVaultSearch } from "../search/useVaultSearch";
 
 import { FakeVaultRepository } from "./fakeVaultRepository";
 import { FakeVaultSearch } from "./fakeVaultSearch";
@@ -371,6 +371,51 @@ describe("useVaultSearch", () => {
       await vi.advanceTimersByTimeAsync(500);
     });
     expect(search.search).toHaveBeenCalledTimes(2);
+  });
+
+  it("an index re-run while typing waits for the typing debounce and is cancelled by the next keystroke", async () => {
+    vi.useFakeTimers();
+    let emit: (s: IndexStatus) => void = () => {};
+    const search: VaultSearch = {
+      search: vi.fn(async () => response()),
+      listNames: async () => ({ paths: [], status: status() }),
+      status: async () => status({ state: "loading", indexed: 0, total: 0 }),
+      tags: async () => NO_TAGS,
+      subscribe: async (l) => {
+        emit = l;
+        return () => {};
+      },
+    };
+    const { rerender } = renderHook(({ q }) => useVaultSearch(search, "h", q), {
+      initialProps: { q: "ze" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(search.search).toHaveBeenCalledTimes(1);
+    // Keystroke, then the index starts building 10 ms later.
+    rerender({ q: "zeb" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    await act(async () => {
+      emit(status({ state: "building", indexed: 0, total: 5000 }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // Not inside the typing burst.
+    expect(search.search).toHaveBeenCalledTimes(1);
+    // The next keystroke cancels it; one search runs after the debounce.
+    rerender({ q: "zebr" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 1);
+    });
+    expect(search.search).toHaveBeenCalledTimes(2);
+    expect(search.search).toHaveBeenLastCalledWith("h", "zebr", {
+      limit: undefined,
+      scope: undefined,
+    });
   });
 });
 

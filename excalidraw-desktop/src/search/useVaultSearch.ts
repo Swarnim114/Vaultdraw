@@ -39,6 +39,8 @@ export function useVaultSearch(
   const [refreshTick, setRefreshTick] = useState(0);
   // Index-driven re-runs skip the typing debounce (the query is unchanged).
   const refreshPending = useRef(false);
+  const lastQuery = useRef(query);
+  const lastTyped = useRef(Number.NEGATIVE_INFINITY);
 
   // Index status: initial value + live updates, with refresh triggers.
   useEffect(() => {
@@ -119,7 +121,17 @@ export function useVaultSearch(
     const trimmed = query.trim();
     // Each run owns its flag; cleanup marks it stale so only the latest wins.
     let stale = false;
-    const delay = refreshPending.current ? 0 : SEARCH_DEBOUNCE_MS;
+    const now = Date.now();
+    if (query !== lastQuery.current) {
+      lastQuery.current = query;
+      lastTyped.current = now;
+    }
+    // An index-driven re-run keeps the typing debounce deadline: immediate
+    // once the user has paused, otherwise the next keystroke cancels it (that
+    // search sees the newest index), so it never lands inside typing frames.
+    const delay = refreshPending.current
+      ? Math.max(0, SEARCH_DEBOUNCE_MS - (now - lastTyped.current))
+      : SEARCH_DEBOUNCE_MS;
     refreshPending.current = false;
     if (!search || !handle || !trimmed) {
       setResponse(null);
