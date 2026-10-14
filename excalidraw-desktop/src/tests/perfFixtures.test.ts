@@ -35,7 +35,12 @@ afterAll(() => {
 
 const load = async (vaultDir: string, rel: string) => {
   const json = fs.readFileSync(path.join(vaultDir, rel), "utf8");
-  return loadFromBlob(new Blob([json], { type: "application/json" }), null, null, null);
+  return loadFromBlob(
+    new Blob([json], { type: "application/json" }),
+    null,
+    null,
+    null,
+  );
 };
 
 describe("perf fixtures", () => {
