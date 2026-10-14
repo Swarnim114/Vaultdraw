@@ -62,23 +62,37 @@
     max-width: 100%;
   }
 
+  // Finder-like tile: thumbnail on the canvas colour, name below
   .library-unit--named {
     width: 100%;
     height: auto;
-    aspect-ratio: 1;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.25rem;
 
     .library-unit__dragger {
-      flex-direction: column;
-      gap: 0.25rem;
-      padding: 0.5rem;
-      box-sizing: border-box;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+    }
+
+    .library-unit__adder {
+      top: calc(50% - 1.25rem);
     }
   }
 
+  // placeholder (not rendered yet): same height as a tile
+  .library-unit--named.library-unit--skeleton:empty {
+    aspect-ratio: 0.82;
+  }
+
   .library-unit__preview {
-    flex: 1 1 0;
-    min-height: 0;
     width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0.375rem;
+    border-radius: var(--border-radius-md);
+    box-shadow: inset 0 0 0 1px var(--default-border-color);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -89,17 +103,68 @@
     }
   }
 
-  .library-unit__name {
+  .library-unit__name,
+  .library-unit__name-input {
     flex: none;
     width: 100%;
+    box-sizing: border-box;
     font-size: 0.75rem;
     line-height: 1rem;
-    height: 1rem;
+    height: 1.25rem;
+    padding: 0.125rem 0.125rem;
     text-align: center;
+    color: var(--text-primary-color);
+  }
+
+  .library-unit__name {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--text-primary-color);
+    cursor: default;
+    user-select: none;
+
+    &--untitled {
+      color: var(--color-gray-50);
+      font-style: italic;
+    }
+  }
+
+  .library-unit__name-input {
+    margin: 0;
+    border: 1px solid var(--color-primary);
+    border-radius: var(--border-radius-md);
+    background: var(--input-bg-color, transparent);
+    outline: none;
+    font-family: inherit;
+  }
+
+  .library-unit__hover-preview {
+    position: absolute;
+    z-index: var(--zIndex-popup, 10);
+    box-sizing: border-box;
+    padding: 0.75rem;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-island),
+      0 0 0 1px var(--default-border-color);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: library-unit__hover-preview-in 0.12s ease-out;
+
+    > svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  @keyframes library-unit__hover-preview-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .library-unit__checkbox-container,

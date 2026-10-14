@@ -1,14 +1,26 @@
 import clsx from "clsx";
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+import {
+  COLOR_PALETTE,
+  KEYS,
+  THEME,
+  applyCanvasBackgroundFilter,
+} from "@excalidraw/common";
 
 import type { Theme } from "@excalidraw/element/types";
 
+import { atom } from "../editor-jotai";
 import {
+  thickenPreviewStrokes,
+  useDisplayColorKey,
   useHasBeenVisible,
   useLibraryItemSvg,
 } from "../hooks/useLibraryItemSvg";
+import { t } from "../i18n";
 
-import { useEditorInterface } from "./App";
+import { useEditorInterface, useExcalidrawContainer } from "./App";
 import { CheckboxItem } from "./CheckboxItem";
 import { PlusIcon } from "./icons";
 import { hideTooltip, showTooltip } from "./Tooltip";
@@ -17,6 +29,129 @@ import "./LibraryUnit.scss";
 
 import type { LibraryItem } from "../types";
 import type { SvgCache } from "../hooks/useLibraryItemSvg";
+
+/** Id of the library item whose name is being edited (named items only). */
+export const libraryItemRenamingAtom = atom<LibraryItem["id"] | null>(null);
+
+export const LIBRARY_ITEM_NAME_MAX_LENGTH = 200;
+const HOVER_PREVIEW_DELAY = 500;
+const HOVER_PREVIEW_SIZE = 240;
+const HOVER_PREVIEW_GAP = 12;
+
+/** On-screen canvas colour, so previews look like the item on the canvas. */
+const useCanvasColor = (theme: Theme) => {
+  // re-render when the host's display colours change
+  useDisplayColorKey();
+  return applyCanvasBackgroundFilter(COLOR_PALETTE.white, theme === THEME.DARK);
+};
+
+/** Places the preview beside the tile (never over it), inside the editor. */
+export const getHoverPreviewPosition = (
+  tile: Pick<DOMRect, "left" | "right" | "top" | "height">,
+  container: Pick<DOMRect, "left" | "right" | "top" | "bottom">,
+  size = HOVER_PREVIEW_SIZE,
+) => {
+  const fitsLeft = tile.left - HOVER_PREVIEW_GAP - size >= container.left;
+  const left = fitsLeft
+    ? tile.left - HOVER_PREVIEW_GAP - size
+    : Math.min(tile.right + HOVER_PREVIEW_GAP, container.right - size);
+  const top = Math.max(
+    container.top + 8,
+    Math.min(
+      tile.top + tile.height / 2 - size / 2,
+      container.bottom - size - 8,
+    ),
+  );
+  return { left: left - container.left, top: top - container.top };
+};
+
+const LibraryUnitHoverPreview = ({
+  svg,
+  tile,
+  canvasColor,
+}: {
+  svg: SVGSVGElement;
+  tile: HTMLElement;
+  canvasColor: string;
+}) => {
+  const { container } = useExcalidrawContainer();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node || !container) {
+      return;
+    }
+    const position = getHoverPreviewPosition(
+      tile.getBoundingClientRect(),
+      container.getBoundingClientRect(),
+    );
+    node.style.left = `${position.left}px`;
+    node.style.top = `${position.top}px`;
+    node.innerHTML = svg.outerHTML;
+    thickenPreviewStrokes(node, 1);
+  }, [svg, tile, container]);
+
+  if (!container) {
+    return null;
+  }
+  return createPortal(
+    <div
+      ref={ref}
+      className="library-unit__hover-preview"
+      data-testid="library-item-hover-preview"
+      style={{
+        width: HOVER_PREVIEW_SIZE,
+        height: HOVER_PREVIEW_SIZE,
+        backgroundColor: canvasColor,
+      }}
+    />,
+    container,
+  );
+};
+
+const LibraryUnitNameInput = ({
+  name,
+  onCommit,
+}: {
+  name: string;
+  /** null: cancelled */
+  onCommit: (name: string | null) => void;
+}) => {
+  const [value, setValue] = useState(name);
+  const done = useRef(false);
+  const finish = (next: string | null) => {
+    if (!done.current) {
+      done.current = true;
+      onCommit(next);
+    }
+  };
+  return (
+    <input
+      className="library-unit__name-input"
+      data-testid="library-item-name-input"
+      aria-label={t("library.itemName")}
+      placeholder={t("library.itemNamePlaceholder")}
+      value={value}
+      maxLength={LIBRARY_ITEM_NAME_MAX_LENGTH}
+      autoFocus
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => finish(value)}
+      onKeyDown={(event) => {
+        // keep keys away from the editor and the sidebar (Esc closes it)
+        event.stopPropagation();
+        if (event.key === KEYS.ENTER) {
+          event.preventDefault();
+          finish(value);
+        } else if (event.key === KEYS.ESCAPE) {
+          event.preventDefault();
+          finish(null);
+        }
+      }}
+    />
+  );
+};
 
 export const LibraryUnit = memo(
   ({
@@ -31,6 +166,10 @@ export const LibraryUnit = memo(
     onDrag,
     svgCache,
     theme,
+    renaming,
+    onRenameStart,
+    onRenameEnd,
+    onContextMenu,
   }: {
     id: LibraryItem["id"] | /** for pending item */ null;
     name?: LibraryItem["name"];
@@ -43,18 +182,46 @@ export const LibraryUnit = memo(
     onToggle: (id: string, event: React.MouseEvent) => void;
     onDrag: (id: string, event: React.DragEvent) => void;
     svgCache: SvgCache;
-    /** previews are rendered in this theme's on-screen colours */
     theme: Theme;
+    /** the name is being edited */
+    renaming?: boolean;
+    /** set (with onRenameEnd): names are editable and tiles get a hover
+     *  preview */
+    onRenameStart?: (id: LibraryItem["id"]) => void;
+    /** name null: cancelled */
+    onRenameEnd?: (id: LibraryItem["id"], name: string | null) => void;
+    onContextMenu?: (id: LibraryItem["id"]) => void;
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
     const tileRef = useRef<HTMLDivElement | null>(null);
-    // render previews lazily, when they come near the viewport
     const visible = useHasBeenVisible(tileRef);
     const svg = useLibraryItemSvg(id, elements, svgCache, ref, theme, visible);
+    const canvasColor = useCanvasColor(theme);
 
     const [isHovered, setIsHovered] = useState(false);
+    const [showPreview, setShowPreview] = useState(false);
+    const previewTimer = useRef(0);
     const isMobile = useEditorInterface().formFactor === "phone";
     const hasName = !!name?.trim();
+    const editable = !!(id && elements && onRenameStart && onRenameEnd);
+    const hoverPreview = editable && showName && !isMobile && !renaming;
+
+    const hidePreview = () => {
+      window.clearTimeout(previewTimer.current);
+      setShowPreview(false);
+    };
+
+    useEffect(() => {
+      if (!showPreview) {
+        return;
+      }
+      // the tile moves away under the preview
+      const hide = () => setShowPreview(false);
+      window.addEventListener("scroll", hide, true);
+      return () => window.removeEventListener("scroll", hide, true);
+    }, [showPreview]);
+
+    useEffect(() => () => window.clearTimeout(previewTimer.current), []);
 
     const adder = isPending && (
       <div className="library-unit__adder">{PlusIcon}</div>
@@ -70,20 +237,23 @@ export const LibraryUnit = memo(
           "library-unit--skeleton": !svg,
           "library-unit--named": showName,
         })}
+        data-testid={id ? `library-unit-${id}` : undefined}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        onContextMenu={
+          id && elements && onContextMenu
+            ? (event) => {
+                event.preventDefault();
+                hidePreview();
+                onContextMenu(id);
+              }
+            : undefined
+        }
         // pointer (not mouse) events so that touch taps don't leave the
         // tooltip behind (pointerdown right after pointerenter cancels it)
         onPointerEnter={
-          hasName
+          hasName && !showName
             ? (event) => {
-                const nameEl = showName
-                  ? event.currentTarget.querySelector(".library-unit__name")
-                  : null;
-                // name is already shown below the item, unless truncated
-                if (nameEl && nameEl.scrollWidth <= nameEl.clientWidth) {
-                  return;
-                }
                 showTooltip(event.currentTarget, name!, {
                   delay: true,
                   position: "top",
@@ -91,8 +261,8 @@ export const LibraryUnit = memo(
               }
             : undefined
         }
-        onPointerLeave={hasName ? hideTooltip : undefined}
-        onPointerDown={hasName ? hideTooltip : undefined}
+        onPointerLeave={hasName && !showName ? hideTooltip : undefined}
+        onPointerDown={hasName && !showName ? hideTooltip : undefined}
       >
         <div
           className={clsx("library-unit__dragger", {
@@ -101,6 +271,19 @@ export const LibraryUnit = memo(
           // svg is rendered into `ref` (replacing its contents)
           ref={showName ? undefined : ref}
           draggable={!!elements}
+          onPointerEnter={
+            hoverPreview
+              ? () => {
+                  window.clearTimeout(previewTimer.current);
+                  previewTimer.current = window.setTimeout(
+                    () => setShowPreview(true),
+                    HOVER_PREVIEW_DELAY,
+                  );
+                }
+              : undefined
+          }
+          onPointerLeave={hoverPreview ? hidePreview : undefined}
+          onPointerDown={hoverPreview ? hidePreview : undefined}
           onClick={
             !!elements || !!isPending
               ? (event) => {
@@ -113,6 +296,7 @@ export const LibraryUnit = memo(
               : undefined
           }
           onDragStart={(event) => {
+            hidePreview();
             if (!id) {
               event.preventDefault();
               return;
@@ -122,18 +306,58 @@ export const LibraryUnit = memo(
           }}
         >
           {showName && (
-            <>
-              <div className="library-unit__preview" ref={ref} />
-              <div className="library-unit__name">{name}</div>
-            </>
+            <div
+              className="library-unit__preview"
+              ref={ref}
+              style={{ backgroundColor: canvasColor }}
+            />
           )}
         </div>
+        {showName &&
+          (renaming && editable ? (
+            <LibraryUnitNameInput
+              name={name ?? ""}
+              onCommit={(next) => onRenameEnd!(id!, next)}
+            />
+          ) : (
+            <div
+              className={clsx("library-unit__name", {
+                "library-unit__name--untitled": !hasName,
+              })}
+              data-testid="library-item-name"
+              onPointerEnter={(event) => {
+                const nameEl = event.currentTarget;
+                // full name in a tooltip when it's ellipsized
+                if (hasName && nameEl.scrollWidth > nameEl.clientWidth) {
+                  showTooltip(nameEl, name!, { delay: true, position: "top" });
+                }
+              }}
+              onPointerLeave={hideTooltip}
+              onDoubleClick={
+                editable
+                  ? () => {
+                      hideTooltip();
+                      onRenameStart!(id!);
+                    }
+                  : undefined
+              }
+            >
+              {isPending ? "" : hasName ? name : t("library.untitledItem")}
+            </div>
+          ))}
         {adder}
         {id && elements && (isHovered || isMobile || selected) && (
           <CheckboxItem
             checked={selected}
             onChange={(checked, event) => onToggle(id, event)}
             className="library-unit__checkbox"
+          />
+        )}
+        {showPreview && svg && tileRef.current && (
+          <LibraryUnitHoverPreview
+            svg={svg}
+            tile={tileRef.current}
+            canvasColor={canvasColor}
           />
         )}
       </div>

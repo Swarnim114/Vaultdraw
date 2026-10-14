@@ -1,6 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { openDrawing, openVault, SHOTS, trackErrors } from "./helpers";
+import {
+  canvasBox,
+  openDrawing,
+  openVault,
+  readScene,
+  SHOTS,
+  trackErrors,
+} from "./helpers";
 
 /** A 19-element tree diagram (7 boxes, 6 connectors, 6 labels) with stock
  *  colours, like the one from the manual test. */
@@ -142,6 +149,26 @@ const seedVault = (page: Page, items: unknown[]) =>
     (window as any).__libraryRepo.setFile("vault", json, handle);
   }, libJson(items));
 
+const fileItems = async (
+  page: Page,
+  scope: "personal" | "vault",
+): Promise<any[]> => {
+  const raw = await page.evaluate((s) => {
+    const h = (window as any).__vaultRepo.handle;
+    return (window as any).__libraryRepo.getJson(
+      s,
+      s === "vault" ? h : undefined,
+    );
+  }, scope);
+  return raw ? JSON.parse(raw).libraryItems : [];
+};
+const nameIn = async (page: Page, scope: "personal" | "vault", id: string) =>
+  (await fileItems(page, scope)).find((item) => item.id === id)?.name;
+
+const tile = (page: Page, id: string) => page.getByTestId(`library-unit-${id}`);
+const tileName = (page: Page, id: string) =>
+  tile(page, id).getByTestId("library-item-name");
+
 const openLibrary = async (page: Page) => {
   if (!(await page.getByTestId("library-section-personal").isVisible())) {
     await page.locator(".default-sidebar-trigger").first().click();
@@ -200,7 +227,210 @@ test("library previews: light, dark, Dracula with sync", async ({ page }) => {
   await expect(dialog).toHaveCount(0);
   await openLibrary(page);
   await shoot(page, "dracula-sync");
+  // hover preview, beside the tile
+  await tile(page, "tree").locator(".library-unit__preview").hover();
+  await expect(page.getByTestId("library-item-hover-preview")).toBeVisible();
+  if (process.env.LIBRARY_SHOTS === "1") {
+    const sidebar = (await page.locator(".default-sidebar").boundingBox())!;
+    await page.screenshot({
+      path: `${SHOTS}/library-names-dracula-hover.png`,
+      clip: {
+        x: sidebar.x - 280,
+        y: sidebar.y,
+        width: sidebar.width + 280,
+        height: 420,
+      },
+    });
+  }
   expect(errors).toEqual([]);
+});
+
+test.describe("library item names", () => {
+  test("names, neutral label for unnamed, ellipsis with full name in the title tooltip", async ({
+    page,
+  }) => {
+    const errors = await setup(page);
+    await expect(tileName(page, "tree")).toHaveText("Binary tree");
+    await expect(tileName(page, "plain")).toHaveText("Untitled");
+    await expect(tileName(page, "plain")).toHaveClass(/--untitled/);
+    // long name is ellipsized
+    const truncated = await tileName(page, "box").evaluate(
+      (el) => el.scrollWidth > el.clientWidth,
+    );
+    expect(truncated).toBe(true);
+    await tileName(page, "box").hover();
+    await expect(page.locator(".excalidraw-tooltip--visible")).toHaveText(
+      "A box with a rather long name that ellipsizes",
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test("rename by double-click saves the name to the item's own file", async ({
+    page,
+  }) => {
+    const errors = await setup(page, [rectItem("v1", undefined, "#2f9e44")]);
+    // Personal item
+    await tileName(page, "plain").dblclick();
+    const input = page.getByTestId("library-item-name-input");
+    await expect(input).toBeFocused();
+    await input.fill("Red box");
+    await input.press("Enter");
+    await expect(tileName(page, "plain")).toHaveText("Red box");
+    await expect.poll(() => nameIn(page, "personal", "plain")).toBe("Red box");
+
+    // Vault item: written to the vault file, personal untouched
+    await tileName(page, "v1").dblclick();
+    await page.getByTestId("library-item-name-input").fill("  Green box  ");
+    await page.getByTestId("library-item-name-input").press("Enter");
+    await expect.poll(() => nameIn(page, "vault", "v1")).toBe("Green box");
+    expect((await fileItems(page, "personal")).map((i) => i.id)).toEqual([
+      "tree",
+      "box",
+      "plain",
+    ]);
+
+    // Escape cancels
+    await tileName(page, "v1").dblclick();
+    await page.getByTestId("library-item-name-input").fill("nope");
+    await page.getByTestId("library-item-name-input").press("Escape");
+    await expect(tileName(page, "v1")).toHaveText("Green box");
+    // ...and doesn't close the sidebar
+    await expect(page.getByTestId("library-section-personal")).toBeVisible();
+
+    // Clearing the name removes it (neutral label again)
+    await tileName(page, "v1").dblclick();
+    await page.getByTestId("library-item-name-input").fill("");
+    await page.getByTestId("library-item-name-input").press("Enter");
+    await expect(tileName(page, "v1")).toHaveText("Untitled");
+    await expect.poll(() => nameIn(page, "vault", "v1")).toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
+  test("right-click opens the item's menu with Rename", async ({ page }) => {
+    const errors = await setup(page);
+    await tile(page, "tree").click({ button: "right" });
+    await page.getByTestId("lib-dropdown--rename").click();
+    const input = page.getByTestId("library-item-name-input");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("Binary tree");
+    await input.fill("Tree");
+    await input.press("Enter");
+    await expect.poll(() => nameIn(page, "personal", "tree")).toBe("Tree");
+    expect(errors).toEqual([]);
+  });
+
+  test("adding an item offers a name field; leaving it empty keeps it unnamed", async ({
+    page,
+  }) => {
+    const errors = await setup(page);
+    const before = (await fileItems(page, "personal")).length;
+    // Select everything on the canvas (sidebar open: the add tile appears)
+    await page
+      .locator(".default-sidebar")
+      .getByRole("button", { name: "Close" })
+      .click();
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 20);
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Meta+a");
+    await openLibrary(page);
+    await page
+      .getByTestId("library-section-personal")
+      .locator("xpath=following-sibling::*[1]")
+      .locator(".library-unit__adder")
+      .click({ force: true });
+    const input = page.getByTestId("library-item-name-input");
+    await expect(input).toBeFocused();
+    await input.fill("Graph");
+    await input.press("Enter");
+    await expect
+      .poll(async () => (await fileItems(page, "personal")).length)
+      .toBe(before + 1);
+    await expect
+      .poll(async () => (await fileItems(page, "personal"))[0].name)
+      .toBe("Graph");
+    expect(errors).toEqual([]);
+  });
+
+  test("search matches names and text inside items", async ({ page }) => {
+    const errors = await setup(page);
+    const search = page.getByPlaceholder("Search library");
+    await search.fill("binary");
+    await expect(page.locator(".library-unit[data-testid]")).toHaveCount(1);
+    await expect(tile(page, "tree")).toBeVisible();
+    // the tree's labels are text elements ("1".."6")
+    await search.fill("4");
+    await expect(tile(page, "tree")).toBeVisible();
+    await search.fill("ellipsizes");
+    await expect(tile(page, "box")).toBeVisible();
+    await expect(page.locator(".library-unit[data-testid]")).toHaveCount(1);
+    await search.fill("zzz");
+    await expect(page.getByText("No matching items found...")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("hover shows a larger preview beside the tile; click and drag still insert", async ({
+    page,
+  }) => {
+    const errors = await setup(page);
+    const preview = page.getByTestId("library-item-hover-preview");
+    await tile(page, "tree").locator(".library-unit__preview").hover();
+    await expect(preview).toBeVisible();
+    await expect(preview.locator("svg")).toHaveCount(1);
+    const p = (await preview.boundingBox())!;
+    const t = (await tile(page, "tree").boundingBox())!;
+    expect(p.width).toBeGreaterThan(t.width * 2);
+    const overlaps =
+      p.x < t.x + t.width &&
+      p.x + p.width > t.x &&
+      p.y < t.y + t.height &&
+      p.y + p.height > t.y;
+    expect(overlaps).toBe(false);
+    await page.mouse.move(5, 5);
+    await expect(preview).toHaveCount(0);
+
+    // drag: the dragger still serialises the item id
+    const dragData = await tile(page, "tree")
+      .locator(".library-unit__dragger")
+      .evaluate((el) => {
+        const dt = new DataTransfer();
+        el.dispatchEvent(
+          new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }),
+        );
+        return dt.getData("application/vnd.excalidrawlib.ids+json");
+      });
+    expect(JSON.parse(dragData).itemIds).toEqual(["tree"]);
+
+    // click inserts the item
+    const before = await page.evaluate(() =>
+      (window as any).__excalidrawAPI
+        ? (window as any).__excalidrawAPI.getSceneElements().length
+        : null,
+    );
+    await tile(page, "box").locator(".library-unit__dragger").click();
+    if (before !== null) {
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => (window as any).__excalidrawAPI.getSceneElements().length,
+          ),
+        )
+        .toBe(before + 1);
+    } else {
+      await expect
+        .poll(
+          async () =>
+            (
+              await readScene(page, "DSA/Graphs.excalidraw")
+            ).elements.some(
+              (e: any) => e.id !== "box-r" && e.backgroundColor === "#a5d8ff",
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true);
+    }
+    expect(errors).toEqual([]);
+  });
 });
 
 // E2E_PERF=1: 2,000-item library, sidebar open. Previews render lazily, so

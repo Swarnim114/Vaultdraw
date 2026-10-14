@@ -219,6 +219,10 @@
     "exportSection": "Export {{label}}…",
     "exportSelected": "Export selected…",
     "clearSection": "Clear {{label}}…",
+    "untitledItem": "Untitled",
+    "itemName": "Item name",
+    "itemNamePlaceholder": "Name",
+    "renameItem": "Rename",
     "confirmClearSection": "This will remove all {{count}} items from {{label}}. Items in other sections are kept.",
     "search": {
       "inputPlaceholder": "Search library",

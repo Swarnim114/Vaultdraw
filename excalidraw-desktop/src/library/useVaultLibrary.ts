@@ -120,6 +120,7 @@ export const useVaultLibrary = (
     ];
     return {
       online: false,
+      namedItems: true,
       sections: {
         list,
         sectionOf: store.sectionOf,

@@ -19,6 +19,7 @@ import clsx from "clsx";
 
 import { resolveLibrarySectionId } from "../data/library";
 import { deburr } from "../deburr";
+import { useAtom, useSetAtom } from "../editor-jotai";
 
 import { useLibraryCache } from "../hooks/useLibraryItemSvg";
 import { useScrollPosition } from "../hooks/useScrollPosition";
@@ -38,7 +39,12 @@ import "./LibraryMenuItems.scss";
 
 import { TextField } from "./TextField";
 
-import { useEditorInterface } from "./App";
+import { useApp, useEditorInterface } from "./App";
+import { isLibraryMenuOpenAtom } from "./LibraryMenu";
+import {
+  LIBRARY_ITEM_NAME_MAX_LENGTH,
+  libraryItemRenamingAtom,
+} from "./LibraryUnit";
 
 import { Button } from "./Button";
 
@@ -57,6 +63,33 @@ const ITEMS_RENDERED_PER_BATCH = 17;
 // when render outputs cached we can render many more items per batch to
 // speed it up
 const CACHED_ITEMS_RENDERED_PER_BATCH = 64;
+
+const searchTextCache = new WeakMap<LibraryItem, string>();
+/** What library search matches: the item's name and the text it contains. */
+const getLibraryItemSearchText = (item: LibraryItem) => {
+  let text = searchTextCache.get(item);
+  if (text === undefined) {
+    const parts = [item.name ?? ""];
+    for (const element of item.elements) {
+      if (element.type === "text") {
+        parts.push(element.originalText || element.text);
+      }
+    }
+    text = deburr(parts.join("\n").toLowerCase());
+    searchTextCache.set(item, text);
+  }
+  return text;
+};
+
+/** The item with `name` (trimmed; empty removes the name). */
+export const withLibraryItemName = (
+  item: LibraryItem,
+  name: string,
+): LibraryItem => {
+  const trimmed = name.trim().slice(0, LIBRARY_ITEM_NAME_MAX_LENGTH);
+  const { name: _previous, ...rest } = item;
+  return trimmed ? { ...rest, name: trimmed } : rest;
+};
 
 export default function LibraryMenuItems({
   isLoading,
@@ -89,6 +122,10 @@ export default function LibraryMenuItems({
   const editorInterface = useEditorInterface();
   const sections = libraryUIOptions?.sections;
   const online = libraryUIOptions?.online !== false;
+  const namedItems = !!libraryUIOptions?.namedItems;
+  const { library } = useApp();
+  const [renamingId, setRenamingId] = useAtom(libraryItemRenamingAtom);
+  const setLibraryMenuOpen = useSetAtom(isLibraryMenuOpenAtom);
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const scrollPosition = useScrollPosition<HTMLDivElement>(libraryContainerRef);
 
@@ -116,12 +153,9 @@ export default function LibraryMenuItems({
       return [];
     }
 
-    return libraryItems.filter((item) => {
-      const itemName = item.name || "";
-      return (
-        itemName.trim() && deburr(itemName.toLowerCase()).includes(searchQuery)
-      );
-    });
+    return libraryItems.filter((item) =>
+      getLibraryItemSearchText(item).includes(searchQuery),
+    );
   }, [libraryItems, searchInputValue]);
 
   const unpublishedItems = useMemo(
@@ -278,6 +312,56 @@ export default function LibraryMenuItems({
     [getInsertedElements, onInsertLibraryItems],
   );
 
+  const onRenameStart = useCallback(
+    (id: LibraryItem["id"]) => setRenamingId(id),
+    [setRenamingId],
+  );
+
+  const onRenameEnd = useCallback(
+    (id: LibraryItem["id"], name: string | null) => {
+      setRenamingId(null);
+      const item = libraryItems.find((item) => item.id === id);
+      if (
+        name === null ||
+        !item ||
+        withLibraryItemName(item, name).name === item.name
+      ) {
+        return;
+      }
+      library
+        .setLibrary((latest) =>
+          latest.map((item) =>
+            item.id === id ? withLibraryItemName(item, name) : item,
+          ),
+        )
+        .catch(console.error);
+    },
+    [library, libraryItems, setRenamingId],
+  );
+
+  // right-click: the item's actions (the library menu) for it
+  const onItemContextMenu = useCallback(
+    (id: LibraryItem["id"]) => {
+      if (!selectedItems.includes(id)) {
+        onSelectItems([id]);
+      }
+      setLibraryMenuOpen(true);
+    },
+    [onSelectItems, selectedItems, setLibraryMenuOpen],
+  );
+
+  const itemProps = {
+    theme,
+    showNames: namedItems,
+    ...(namedItems && {
+      renamingId,
+      onRenameStart,
+      onRenameEnd,
+      onItemContextMenu,
+    }),
+  };
+  const pendingProps = { theme, showNames: namedItems };
+
   const itemsRenderedPerBatch =
     svgCache.size >=
     (filteredItems.length ? filteredItems : libraryItems).length
@@ -311,7 +395,7 @@ export default function LibraryMenuItems({
               </div>
             </div>
           ) : (
-            <LibraryMenuSectionGrid>
+            <LibraryMenuSectionGrid showNames={namedItems}>
               {pendingElements.length > 0 && section.canAdd !== false && (
                 <LibraryMenuSection
                   itemsRenderedPerBatch={itemsRenderedPerBatch}
@@ -321,7 +405,7 @@ export default function LibraryMenuItems({
                   onClick={() => onAddToLibrary(pendingElements, section.id)}
                   isItemSelected={isItemSelected}
                   svgCache={svgCache}
-                  theme={theme}
+                  {...pendingProps}
                 />
               )}
               <LibraryMenuSection
@@ -332,7 +416,7 @@ export default function LibraryMenuItems({
                 onClick={onItemClick}
                 isItemSelected={isItemSelected}
                 svgCache={svgCache}
-                theme={theme}
+                {...itemProps}
               />
             </LibraryMenuSectionGrid>
           )}
@@ -362,7 +446,7 @@ export default function LibraryMenuItems({
           </div>
         </div>
       ) : (
-        <LibraryMenuSectionGrid>
+        <LibraryMenuSectionGrid showNames={namedItems}>
           {pendingElements.length > 0 && (
             <LibraryMenuSection
               itemsRenderedPerBatch={itemsRenderedPerBatch}
@@ -372,7 +456,7 @@ export default function LibraryMenuItems({
               onClick={onAddToLibraryClick}
               isItemSelected={isItemSelected}
               svgCache={svgCache}
-              theme={theme}
+              {...pendingProps}
             />
           )}
           <LibraryMenuSection
@@ -383,7 +467,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
-            theme={theme}
+            {...itemProps}
           />
         </LibraryMenuSectionGrid>
       )}
@@ -397,7 +481,7 @@ export default function LibraryMenuItems({
         </div>
       )}
       {publishedItems.length > 0 && (
-        <LibraryMenuSectionGrid>
+        <LibraryMenuSectionGrid showNames={namedItems}>
           <LibraryMenuSection
             itemsRenderedPerBatch={itemsRenderedPerBatch}
             items={publishedItems}
@@ -406,7 +490,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
-            theme={theme}
+            {...itemProps}
           />
         </LibraryMenuSectionGrid>
       )}
@@ -440,7 +524,7 @@ export default function LibraryMenuItems({
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
-            theme={theme}
+            {...itemProps}
             showNames
           />
         </LibraryMenuSectionGrid>

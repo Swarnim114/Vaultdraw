@@ -29,7 +29,7 @@ import {
   distributeLibraryItemsOnSquareGrid,
   libraryItemsAtom,
 } from "../data/library";
-import { atom, useAtom } from "../editor-jotai";
+import { atom, useAtom, useSetAtom } from "../editor-jotai";
 import { t } from "../i18n";
 
 import { getSelectedElements } from "../scene";
@@ -42,6 +42,7 @@ import {
 } from "./App";
 import { LibraryMenuControlButtons } from "./LibraryMenuControlButtons";
 import LibraryMenuItems from "./LibraryMenuItems";
+import { libraryItemRenamingAtom } from "./LibraryUnit";
 import Spinner from "./Spinner";
 
 import "./LibraryMenu.scss";
@@ -88,6 +89,7 @@ const LibraryMenuContent = memo(
     onSelectItems: (id: LibraryItem["id"][]) => void;
   }) => {
     const [libraryItemsData] = useAtom(libraryItemsAtom);
+    const setRenamingId = useSetAtom(libraryItemRenamingAtom);
 
     const sections = libraryUIOptions?.sections;
 
@@ -111,6 +113,10 @@ const LibraryMenuContent = memo(
           // the host must know the section before the item shows up
           sections.assign([newItem.id], sectionId);
         }
+        if (libraryUIOptions?.namedItems) {
+          // name field right away (optional: leaving it empty is fine)
+          setRenamingId(newItem.id);
+        }
         onAddToLibrary();
         library
           .setLibrary((latestItems) => [newItem, ...latestItems])
@@ -118,7 +124,14 @@ const LibraryMenuContent = memo(
             setAppState({ errorMessage: t("alerts.errorAddingToLibrary") });
           });
       },
-      [onAddToLibrary, library, setAppState, sections],
+      [
+        onAddToLibrary,
+        library,
+        setAppState,
+        sections,
+        libraryUIOptions?.namedItems,
+        setRenamingId,
+      ],
     );
 
     const libraryItems = useMemo(

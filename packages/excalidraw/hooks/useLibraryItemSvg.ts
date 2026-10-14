@@ -58,6 +58,38 @@ const syncCacheColorKey = (svgCache: SvgCache, colorKey: string) => {
   }
 };
 
+/** Thinnest stroke shown in a scaled-down preview, in CSS pixels. */
+export const PREVIEW_MIN_STROKE_PX = 1.25;
+
+/**
+ * Scaled-down previews turn normal strokes into hairlines (a 600px diagram
+ * in a 70px tile draws a 2px line 0.23px wide). Raise strokes of the
+ * rendered copy inside `node` to at least `minPx` on screen, like a
+ * thumbnail would. Only the displayed copy changes, not the cached svg.
+ */
+export const thickenPreviewStrokes = (
+  node: HTMLElement,
+  minPx = PREVIEW_MIN_STROKE_PX,
+) => {
+  const svg = node.querySelector("svg");
+  const viewBox = svg?.viewBox?.baseVal;
+  if (!svg || !viewBox?.width || !viewBox.height) {
+    return;
+  }
+  const { width, height } = svg.getBoundingClientRect();
+  const scale = Math.min(width / viewBox.width, height / viewBox.height);
+  if (!scale || scale * 2 >= minPx) {
+    // not rendered (yet), or default strokes are visible anyway
+    return;
+  }
+  const minWidth = minPx / scale;
+  for (const el of svg.querySelectorAll("[stroke-width]")) {
+    if (parseFloat(el.getAttribute("stroke-width")!) < minWidth) {
+      el.setAttribute("stroke-width", `${minWidth}`);
+    }
+  }
+};
+
 export const useLibraryItemSvg = (
   id: LibraryItem["id"] | null,
   elements: LibraryItem["elements"] | undefined,
@@ -114,6 +146,7 @@ export const useLibraryItemSvg = (
 
     if (svg) {
       node.innerHTML = svg.outerHTML;
+      thickenPreviewStrokes(node);
     }
 
     return () => {

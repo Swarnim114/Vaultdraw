@@ -12,7 +12,7 @@ import {
   libraryItemsAtom,
   resolveLibrarySectionId,
 } from "../data/library";
-import { useAtom } from "../editor-jotai";
+import { useAtom, useSetAtom } from "../editor-jotai";
 import { useLibraryCache } from "../hooks/useLibraryItemSvg";
 import { t } from "../i18n";
 
@@ -20,6 +20,7 @@ import { useApp, useAppProps, useExcalidrawSetAppState } from "./App";
 import ConfirmDialog from "./ConfirmDialog";
 import { Dialog } from "./Dialog";
 import { isLibraryMenuOpenAtom } from "./LibraryMenu";
+import { libraryItemRenamingAtom } from "./LibraryUnit";
 import PublishLibrary from "./PublishLibrary";
 import { IconButton } from "./IconButton";
 import Trans from "./Trans";
@@ -30,6 +31,7 @@ import {
   LoadIcon,
   copyIcon,
   ArrowRightIcon,
+  pencilIcon,
   publishIcon,
   TrashIcon,
 } from "./icons";
@@ -72,6 +74,7 @@ export const LibraryDropdownMenuButton: React.FC<{
   const sections = libraryUIOptions?.sections;
   const online = libraryUIOptions?.online !== false;
   const [clearSectionId, setClearSectionId] = useState<string | null>(null);
+  const setRenamingId = useSetAtom(libraryItemRenamingAtom);
   const [libraryItemsData] = useAtom(libraryItemsAtom);
   const [isLibraryMenuOpen, setIsLibraryMenuOpen] = useAtom(
     isLibraryMenuOpenAtom,
@@ -436,6 +439,15 @@ export const LibraryDropdownMenuButton: React.FC<{
           onSelect={() => setIsLibraryMenuOpen(false)}
           className="library-menu"
         >
+          {libraryUIOptions?.namedItems && selectedItems.length === 1 && (
+            <DropdownMenu.Item
+              onSelect={() => setRenamingId(selectedItems[0])}
+              icon={pencilIcon}
+              data-testid="lib-dropdown--rename"
+            >
+              {t("library.renameItem")}
+            </DropdownMenu.Item>
+          )}
           {sections && renderSectionItems()}
           {!sections && !itemsSelected && (
             <DropdownMenu.Item

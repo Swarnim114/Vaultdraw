@@ -34,6 +34,12 @@ interface Props {
   /** larger items with their name below */
   showNames?: boolean;
   theme: Theme;
+  /** item whose name is being edited */
+  renamingId?: LibraryItem["id"] | null;
+  /** set: names are editable (see LibraryUnit) */
+  onRenameStart?: (id: LibraryItem["id"]) => void;
+  onRenameEnd?: (id: LibraryItem["id"], name: string | null) => void;
+  onItemContextMenu?: (id: LibraryItem["id"]) => void;
 }
 
 export const LibraryMenuSectionGrid = ({
@@ -66,6 +72,10 @@ export const LibraryMenuSection = memo(
     itemsRenderedPerBatch,
     showNames,
     theme,
+    renamingId,
+    onRenameStart,
+    onRenameEnd,
+    onItemContextMenu,
   }: Props) => {
     const [, startTransition] = useTransition();
     const [index, setIndex] = useState(0);
@@ -91,6 +101,10 @@ export const LibraryMenuSection = memo(
               name={"name" in item ? item.name : undefined}
               showName={showNames}
               theme={theme}
+              renaming={!!item.id && item.id === renamingId}
+              onRenameStart={onRenameStart}
+              onRenameEnd={onRenameEnd}
+              onContextMenu={onItemContextMenu}
               selected={isItemSelected(item.id)}
               onToggle={onItemSelectToggle}
               onDrag={onItemDrag}

@@ -680,6 +680,10 @@ export type LibrarySection = {
 export type LibraryUIOptions = {
   /** Online actions: "Browse libraries" link and "Publish". Default true. */
   online?: boolean;
+  /** Finder-like grid: larger tiles with the item name below (unnamed items
+   *  get a neutral label), rename (double-click the name, item menu), a name
+   *  field right after adding, and a larger preview on hover. Default false. */
+  namedItems?: boolean;
   sections?: {
     list: readonly LibrarySection[];
     /** Section of an item; unknown ids render in the first section. */
