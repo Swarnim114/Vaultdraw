@@ -3,10 +3,15 @@
  *
  * Draws in device pixels with an identity transform so lines land on whole
  * pixels and dots stay locked to scene coordinates: scene -> device is
- * `(x + scroll) * zoom * scale`. Steady-state frames allocate nothing: line
- * levels are one path each; dots/isometric use a cached CanvasPattern tile
- * when the gap is a whole number of device px (panning just updates its
- * matrix), otherwise one path with every visible dot.
+ * `(x + scroll) * zoom * scale`. Steady-state frames allocate nothing.
+ *
+ * Zoom gestures redraw every frame at a new, fractional gap, so the per-frame
+ * work stays proportional to rows + columns, never to rows x columns:
+ * - lines: one fillRect per visible line (axis-aligned and pixel-snapped, so
+ *   identical to a stroke, and rect fills are the fast path everywhere);
+ * - dots/isometric: one row of dots is drawn into a few small strip canvases
+ *   (exact x, one per sub-pixel y phase; cached while the columns don't move)
+ *   and copied once per row at a whole-pixel y (no resampling).
  */
 
 import {
@@ -40,10 +45,10 @@ export type BackgroundPatternView = {
 
 /** Levels with more lines than this in one frame are skipped. */
 export const MAX_PATTERN_LINES = 2000;
-/** The dot path draws at most this many dots per frame. */
+/** The dot path (no canvas available for strips) draws at most this many dots. */
 export const MAX_PATTERN_FALLBACK_DOTS = 20000;
-/** Largest tile edge (device px) the CanvasPattern path accepts. */
-export const MAX_PATTERN_TILE_PX = 256;
+/** Dot rows land on 1 / DOT_ROW_PHASES device px (strip path). */
+export const DOT_ROW_PHASES = 2;
 
 // ---------------------------------------------------------------------------
 // colours: memoised per (colour, dark, display transform version)
@@ -78,12 +83,12 @@ const mod = (value: number, divisor: number) =>
 // ---------------------------------------------------------------------------
 
 /**
- * One path with every visible line of a level (scene positions k * step,
- * k in [first, last]), skipping multiples of `skipEvery` (0 = none).
- * `origin` is the scroll on the line's axis, `deviceStep` = step * zoom *
- * scale. Skips the level when it is over the line cap.
+ * Every visible line of a level (scene positions k * step, k in
+ * [first, last]), skipping multiples of `skipEvery` (0 = none), as one
+ * device-pixel-aligned fillRect each. `origin` is the scroll on the line's
+ * axis. Skips the level when it is over the line cap.
  */
-const strokeLevel = (
+const fillLevel = (
   context: CanvasRenderingContext2D,
   vertical: boolean,
   origin: number,
@@ -99,27 +104,36 @@ const strokeLevel = (
   if (last - first + 1 > MAX_PATTERN_LINES) {
     return;
   }
-  const center = lineWidth % 2 ? 0.5 : 0;
-  let drawn = false;
-  context.beginPath();
   for (let k = first; k <= last; k++) {
     if (skipEvery && k % skipEvery === 0) {
       continue;
     }
-    const position =
-      Math.round((k * step + origin) * zoomScale - center) + center;
-    if (vertical) {
-      context.moveTo(position, 0);
-      context.lineTo(position, length);
-    } else {
-      context.moveTo(0, position);
-      context.lineTo(length, position);
-    }
-    drawn = true;
+    fillLine(
+      context,
+      vertical,
+      (k * step + origin) * zoomScale,
+      lineWidth,
+      length,
+    );
   }
-  if (drawn) {
-    context.lineWidth = lineWidth;
-    context.stroke();
+};
+
+/**
+ * A line of `lineWidth` device px centred on the device-pixel-snapped
+ * `position`: whole pixels, so the same pixels a butt-capped stroke covers.
+ */
+const fillLine = (
+  context: CanvasRenderingContext2D,
+  vertical: boolean,
+  position: number,
+  lineWidth: number,
+  length: number,
+) => {
+  const start = Math.round(position - lineWidth / 2);
+  if (vertical) {
+    context.fillRect(start, 0, lineWidth, length);
+  } else {
+    context.fillRect(0, start, length, lineWidth);
   }
 };
 
@@ -138,8 +152,8 @@ const drawLevel = (
   }
   const zoomScale = view.zoom * view.scale;
   context.globalAlpha = alpha;
-  context.strokeStyle = color;
-  strokeLevel(
+  context.fillStyle = color;
+  fillLevel(
     context,
     vertical,
     vertical ? view.scrollX : view.scrollY,
@@ -179,15 +193,9 @@ const renderLines = (
       const zoomScale = view.zoom * view.scale;
       const x = (PATTERN_MARGIN_X + view.scrollX) * zoomScale;
       if (x >= -lineWidth && x <= view.width + lineWidth) {
-        const center = lineWidth % 2 ? 0.5 : 0;
-        const position = Math.round(x - center) + center;
         context.globalAlpha = pattern.opacity;
-        context.strokeStyle = resolveColor(colors.margin, view.isDarkMode);
-        context.lineWidth = lineWidth;
-        context.beginPath();
-        context.moveTo(position, 0);
-        context.lineTo(position, view.height);
-        context.stroke();
+        context.fillStyle = resolveColor(colors.margin, view.isDarkMode);
+        fillLine(context, true, x, lineWidth, view.height);
       }
     }
     return;
@@ -229,28 +237,8 @@ const renderLines = (
 };
 
 // ---------------------------------------------------------------------------
-// dots (dots, isometric): cached CanvasPattern tile or one dot path
+// dots (dots, isometric): dot strips, or one path without a canvas
 // ---------------------------------------------------------------------------
-
-const tileCache: {
-  canvas: HTMLCanvasElement | null;
-  pattern: CanvasPattern | null;
-  matrix: DOMMatrix | null;
-  isometric: boolean;
-  width: number;
-  height: number;
-  radius: number;
-  color: string;
-} = {
-  canvas: null,
-  pattern: null,
-  matrix: null,
-  isometric: false,
-  width: 0,
-  height: 0,
-  radius: 0,
-  color: "",
-};
 
 const dot = (
   context: CanvasRenderingContext2D,
@@ -262,65 +250,105 @@ const dot = (
   context.arc(x, y, radius, 0, Math.PI * 2);
 };
 
-/** Returns the (cached) pattern for the tile, or null when unsupported. */
-const getTilePattern = (
-  context: CanvasRenderingContext2D,
-  isometric: boolean,
+/**
+ * Dot strips: one canvas per sub-pixel row phase
+ * (DOT_ROW_PHASES, plus as many shifted by half a gap for isometric), each
+ * `cell` px tall with one row of dots at y = center + phase / DOT_ROW_PHASES
+ * and at the exact device x of every visible column. Separate canvases, not
+ * one atlas: copying a whole canvas is much faster than a source sub-rect in
+ * Chromium. Depends only on the column layout, so vertical pans reuse them.
+ */
+const stripCache: {
+  canvases: HTMLCanvasElement[];
+  count: number;
+  width: number;
+  gapX: number;
+  phaseX: number;
+  radius: number;
+  color: string;
+  cell: number;
+  center: number;
+} = {
+  canvases: [],
+  count: 0,
+  width: 0,
+  gapX: 0,
+  phaseX: 0,
+  radius: 0,
+  color: "",
+  cell: 0,
+  center: 0,
+};
+
+/** Returns the (cached) dot strips, or null when no canvas is available. */
+const getDotStrips = (
   width: number,
-  height: number,
+  gapX: number,
+  originX: number,
   radius: number,
   color: string,
+  isometric: boolean,
 ) => {
-  if (
-    typeof context.createPattern !== "function" ||
-    typeof DOMMatrix === "undefined" ||
-    typeof document === "undefined"
-  ) {
+  if (typeof document === "undefined") {
     return null;
   }
-  const cache = tileCache;
+  const cache = stripCache;
+  const count = DOT_ROW_PHASES * (isometric ? 2 : 1);
+  const phaseX = mod(originX, gapX);
   if (
-    cache.pattern &&
-    cache.isometric === isometric &&
+    cache.count === count &&
     cache.width === width &&
-    cache.height === height &&
+    cache.gapX === gapX &&
+    cache.phaseX === phaseX &&
     cache.radius === radius &&
     cache.color === color
   ) {
-    return cache.pattern;
+    return cache;
   }
-  const canvas =
-    cache.canvas ?? (cache.canvas = document.createElement("canvas"));
-  canvas.width = width; // also clears
-  canvas.height = height;
-  const tile = canvas.getContext("2d");
-  if (!tile) {
-    return null;
+  cache.count = 0;
+  // the dot spans y in [center - radius, center + 1 + radius] at any phase
+  const center = Math.ceil(radius);
+  const cell = Math.ceil(center + 1 + radius);
+  const columns = Math.ceil(width / gapX) + 1;
+  for (let index = 0; index < count; index++) {
+    const canvas =
+      cache.canvases[index] ??
+      (cache.canvases[index] = document.createElement("canvas"));
+    const strip = canvas.getContext("2d");
+    if (!strip || typeof strip.drawImage !== "function") {
+      return null;
+    }
+    if (canvas.width !== width || canvas.height !== cell) {
+      canvas.width = width; // also clears
+      canvas.height = cell;
+    } else {
+      strip.clearRect(0, 0, width, cell);
+    }
+    const y = center + (index % DOT_ROW_PHASES) / DOT_ROW_PHASES;
+    const shift = index >= DOT_ROW_PHASES ? gapX / 2 : 0;
+    strip.fillStyle = color;
+    strip.beginPath();
+    for (let column = -1; column <= columns; column++) {
+      dot(strip, phaseX + shift + column * gapX, y, radius);
+    }
+    strip.fill();
   }
-  tile.fillStyle = color;
-  tile.beginPath();
-  if (isometric) {
-    // scene (0,0) at (w/2, h/4); the odd row's dots at x = 0 and w, h * 3/4
-    dot(tile, width / 2, height / 4, radius);
-    dot(tile, 0, (height * 3) / 4, radius);
-    dot(tile, width, (height * 3) / 4, radius);
-  } else {
-    dot(tile, width / 2, height / 2, radius);
-  }
-  tile.fill();
-  const pattern = context.createPattern(canvas, "repeat");
-  if (!pattern || typeof pattern.setTransform !== "function") {
-    cache.pattern = null;
-    return null;
-  }
-  cache.pattern = pattern;
-  cache.isometric = isometric;
+  cache.count = count;
   cache.width = width;
-  cache.height = height;
+  cache.gapX = gapX;
+  cache.phaseX = phaseX;
   cache.radius = radius;
   cache.color = color;
-  cache.matrix = cache.matrix ?? new DOMMatrix();
-  return pattern;
+  cache.cell = cell;
+  cache.center = center;
+  return cache;
+};
+
+/** Moves `origin` by at most half a pixel so that `origin - inset` sits on
+ * a whole pixel within its cell. */
+const snapCellCorner = (origin: number, gap: number, inset: number) => {
+  const offset = mod(origin - inset, gap);
+  return origin + Math.round(offset) - offset;
 };
 
 const renderDots = (
@@ -343,59 +371,58 @@ const renderDots = (
     (isometric ? getIsometricRowHeight(pattern.spacing) * 2 : pattern.spacing) *
     zoomScale;
   const radius = getPatternDotRadiusPx(gapPx) * view.scale;
-  const originX = view.scrollX * zoomScale;
-  const originY = view.scrollY * zoomScale;
+  let originX = view.scrollX * zoomScale;
+  let originY = view.scrollY * zoomScale;
+  if (
+    Math.abs(gapX - Math.round(gapX)) < 1e-3 &&
+    Math.abs(gapY - Math.round(gapY)) < 1e-3
+  ) {
+    // whole-pixel gap (e.g. zoom 1): put each cell's corner on a whole pixel,
+    // as the tile-based renderer did, so dots look the same at rest
+    originX = snapCellCorner(originX, gapX, gapX / 2);
+    originY = snapCellCorner(originY, gapY, gapY / (isometric ? 4 : 2));
+  }
 
-  const tileWidth = Math.round(gapX);
-  const tileHeight = Math.round(gapY);
   const rowGap = isometric ? gapY / 2 : gapY;
-  const firstColumn = Math.ceil(-originX / gapX) - 1;
-  const lastColumn = Math.floor((view.width - originX) / gapX) + 1;
   const firstRow = Math.ceil(-originY / rowGap) - 1;
   const lastRow = Math.floor((view.height - originY) / rowGap) + 1;
-  const dotCount = (lastColumn - firstColumn + 1) * (lastRow - firstRow + 1);
-  // A tile repeated at a whole-pixel offset is a plain copy; a scaled or
-  // sub-pixel tile is resampled per pixel (~6x slower than one dot path on a
-  // 2560x1440 canvas). So: whole-pixel gap -> tile at a rounded offset; other
-  // gaps -> one dot path; the resampled tile only when there are too many dots.
-  const wholeGap =
-    Math.abs(gapX - tileWidth) < 1e-3 && Math.abs(gapY - tileHeight) < 1e-3;
   context.globalAlpha = alpha;
   context.fillStyle = color;
-  if (
-    (wholeGap || dotCount > MAX_PATTERN_FALLBACK_DOTS) &&
-    tileWidth >= 1 &&
-    tileHeight >= 1 &&
-    tileWidth <= MAX_PATTERN_TILE_PX &&
-    tileHeight <= MAX_PATTERN_TILE_PX
-  ) {
-    const tile = getTilePattern(
-      context,
-      isometric,
-      tileWidth,
-      tileHeight,
-      radius,
-      color,
-    );
-    if (tile) {
-      const m = tileCache.matrix!;
-      m.a = wholeGap ? 1 : gapX / tileWidth;
-      m.b = 0;
-      m.c = 0;
-      m.d = wholeGap ? 1 : gapY / tileHeight;
-      // tile origin sits half a cell before scene (0, 0)
-      const e = mod(originX - gapX / 2, gapX);
-      const f = mod(originY - gapY / (isometric ? 4 : 2), gapY);
-      m.e = wholeGap ? Math.round(e) : e;
-      m.f = wholeGap ? Math.round(f) : f;
-      tile.setTransform(m);
-      context.fillStyle = tile;
-      context.fillRect(0, 0, view.width, view.height);
-      return;
+
+  const strips = getDotStrips(
+    view.width,
+    gapX,
+    originX,
+    radius,
+    color,
+    isometric,
+  );
+  if (strips) {
+    // one copy per row, at a whole-pixel y with the nearest sub-pixel phase
+    const { canvases, center } = strips;
+    for (let row = firstRow; row <= lastRow; row++) {
+      const y = originY + row * rowGap;
+      let top = Math.floor(y);
+      let phase = Math.round((y - top) * DOT_ROW_PHASES);
+      if (phase === DOT_ROW_PHASES) {
+        top++;
+        phase = 0;
+      }
+      if (isometric && mod(row, 2) === 1) {
+        phase += DOT_ROW_PHASES;
+      }
+      context.drawImage(canvases[phase], 0, top - center);
     }
+    return;
   }
-  // one path with every visible dot
-  if (dotCount > MAX_PATTERN_FALLBACK_DOTS) {
+
+  // no canvas for strips: one path with every visible dot
+  const firstColumn = Math.ceil(-originX / gapX) - 1;
+  const lastColumn = Math.floor((view.width - originX) / gapX) + 1;
+  if (
+    (lastColumn - firstColumn + 1) * (lastRow - firstRow + 1) >
+    MAX_PATTERN_FALLBACK_DOTS
+  ) {
     return;
   }
   context.beginPath();
