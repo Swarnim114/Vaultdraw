@@ -45,6 +45,7 @@ import {
   resolveNewDrawingParent,
 } from "./vault/newDrawing";
 import { COMMANDS } from "./commands/commands";
+import { commitCanvasTextEdit } from "./commands/context";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
   useCommandDispatcher,
@@ -1188,6 +1189,7 @@ export const VaultApp = ({
   };
 
   const focusNavigatorSearch = () => {
+    commitCanvasTextEdit(doc);
     setNavigatorCollapsed((collapsed) => {
       if (collapsed) {
         saveNavigatorCollapsed(false, win);
@@ -1228,7 +1230,10 @@ export const VaultApp = ({
     },
     toggleMode: () =>
       handleCanvasThemeChange(appTheme === "dark" ? "light" : "dark"),
-    toggleQuickSwitcher: () =>
+    toggleQuickSwitcher: () => {
+      if (!switcher) {
+        commitCanvasTextEdit(doc);
+      }
       setSwitcher((open) => {
         if (open) {
           return null;
@@ -1239,7 +1244,8 @@ export const VaultApp = ({
             (c) => c.id !== QUICK_SWITCHER_ID && runner?.isAvailable(c.id),
           ).map((c) => c.id),
         };
-      }),
+      });
+    },
   });
   const commandRunner = useCommandDispatcher(doc, win, {
     handlers: commandHandlers,

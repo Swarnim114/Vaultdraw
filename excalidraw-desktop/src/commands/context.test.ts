@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isTextEditingTarget, readContext, whenHolds } from "./context";
+import {
+  commitCanvasTextEdit,
+  isTextEditingTarget,
+  readContext,
+  whenHolds,
+} from "./context";
 
 import type { CommandContext } from "./types";
 
@@ -79,5 +84,26 @@ describe("whenHolds", () => {
     expect(whenHolds(["drawingOpen"], ctx)).toBe(false);
     expect(whenHolds(["vaultOpen", "!writable"], ctx)).toBe(false);
     expect(whenHolds(["!modalOpen"], { ...ctx, modalOpen: true })).toBe(false);
+  });
+});
+
+describe("commitCanvasTextEdit", () => {
+  it("blurs only Excalidraw's text editor, so it submits before focus moves", () => {
+    add(
+      `<textarea id="ta" class="excalidraw-wysiwyg"></textarea><input id="i">`,
+    );
+    const ta = document.getElementById("ta") as HTMLTextAreaElement;
+    let blurs = 0;
+    ta.addEventListener("blur", () => blurs++);
+    ta.focus();
+    commitCanvasTextEdit(document);
+    expect(blurs).toBe(1);
+    expect(document.activeElement).not.toBe(ta);
+
+    const input = document.getElementById("i") as HTMLInputElement;
+    input.focus();
+    commitCanvasTextEdit(document);
+    expect(document.activeElement).toBe(input);
+    expect(() => commitCanvasTextEdit(null)).not.toThrow();
   });
 });

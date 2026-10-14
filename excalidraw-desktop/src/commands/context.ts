@@ -40,6 +40,20 @@ export function isTextEditingTarget(el: Element | null): boolean {
   return !!editable && editable.getAttribute("contenteditable") !== "false";
 }
 
+/**
+ * Commit an in-progress Excalidraw text edit before a command moves focus
+ * (quick switcher, navigator search; Settings deliberately keeps the edit).
+ * Excalidraw's WYSIWYG submits on blur and then refocuses its canvas
+ * container; blurring first makes that happen now, instead of stealing focus
+ * back from what the command focuses.
+ */
+export function commitCanvasTextEdit(doc: Document | null | undefined): void {
+  const active = doc?.activeElement;
+  if (active?.classList.contains("excalidraw-wysiwyg")) {
+    (active as HTMLElement).blur();
+  }
+}
+
 export function readContext(doc: Document, app: AppContext): CommandContext {
   const active = doc.activeElement;
   const textEditing = isTextEditingTarget(active);
