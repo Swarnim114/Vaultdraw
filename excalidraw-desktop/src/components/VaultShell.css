@@ -2184,3 +2184,38 @@ button.vault-status:hover:not(:disabled) {
   margin-left: auto;
   flex-shrink: 0;
 }
+
+/* Settings: pens & laser */
+.vault-pen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.vault-pen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+}
+
+.vault-pen-row > .vault-input:first-child {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.vault-pen-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--vault-text-muted);
+}
+
+.vault-input--number {
+  width: 5.5em;
+}
