@@ -12,7 +12,7 @@ const DRAWING = "DSA/Graphs.excalidraw";
 const textarea = "textarea.excalidraw-wysiwyg";
 
 const switcher = (page: Page) =>
-  page.getByRole("dialog", { name: "Quick switcher" });
+  page.getByRole("dialog", { name: "Command palette" });
 const input = (page: Page) => page.getByLabel("Search drawings and commands");
 const options = (page: Page) => switcher(page).getByRole("option");
 const activeOption = (page: Page) =>
@@ -138,10 +138,9 @@ test.describe("commands and keyboard", () => {
     page,
   }) => {
     await page.keyboard.press("ControlOrMeta+KeyP");
-    await page.keyboard.type(">settings");
-    await expect(
-      switcher(page).getByRole("group", { name: "Drawings" }),
-    ).toHaveCount(0);
+    await page.keyboard.type(">open settings");
+    // One merged list: no "Drawings" / "Commands" group headers, no drawings.
+    await expect(switcher(page).getByRole("group")).toHaveCount(0);
     await expect(options(page).first()).toContainText("Open settings");
     await page.keyboard.press("Enter");
     await expect(switcher(page)).toHaveCount(0);

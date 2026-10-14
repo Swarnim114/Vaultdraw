@@ -2188,21 +2188,21 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     });
 
-    await step("hotkeys-cmd-p-quick-switcher", async () => {
+    await step("hotkeys-cmd-p-command-palette", async () => {
       const dialog = () =>
         doc.querySelector<HTMLElement>(
-          '[role="dialog"][aria-label="Quick switcher"]',
+          '[role="dialog"][aria-label="Command palette"]',
         );
       if (dialog()) {
-        throw new Error("Quick switcher already open");
+        throw new Error("Command palette already open");
       }
       const startedAt = win.performance.now();
       const event = pressKey({ key: "p", code: "KeyP", metaKey: true });
-      const input = await waitFor("quick switcher input", () =>
+      const input = await waitFor("command palette input", () =>
         dialog()?.querySelector<HTMLInputElement>(".vault-quick__input"),
       );
       await waitFor(
-        "first quick switcher row",
+        "first command palette row",
         () => dialog()?.querySelector(".vault-quick__row"),
         3000,
       );
@@ -2214,13 +2214,13 @@ export async function runDesktopSmoke(): Promise<void> {
         "value",
       )!.set!;
       const keystrokeMs: number[] = [];
-      for (const text of [">", ">s", ">se", ">set"]) {
+      for (const text of [">", ">o", ">op", ">open set"]) {
         setter.call(input, text);
         const t0 = win.performance.now();
         input.dispatchEvent(new win.Event("input", { bubbles: true }));
         keystrokeMs.push(+(win.performance.now() - t0).toFixed(2));
       }
-      const firstRow = await waitFor("command row for >set", () => {
+      const firstRow = await waitFor("command row for >open set", () => {
         const row = dialog()?.querySelector(".vault-quick__row");
         return row?.textContent?.includes("Open settings")
           ? row.textContent
@@ -2228,12 +2228,12 @@ export async function runDesktopSmoke(): Promise<void> {
       });
       const toast = !!doc.querySelector(".Toast");
       pressKey({ key: "Escape", code: "Escape" }, input);
-      await waitFor("quick switcher closed", () => (dialog() ? null : true));
+      await waitFor("command palette closed", () => (dialog() ? null : true));
       if (!event.defaultPrevented) {
         throw new Error("Cmd+P was not claimed (the webview would print)");
       }
       if (!inputFocused) {
-        throw new Error("Quick switcher input not focused after Cmd+P");
+        throw new Error("Command palette input not focused after Cmd+P");
       }
       if (toast) {
         throw new Error("Excalidraw's command palette toast appeared");

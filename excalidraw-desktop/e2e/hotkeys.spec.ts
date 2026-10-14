@@ -54,8 +54,8 @@ const rectangleTool = (page: Page) =>
   page.locator(".vault-editor [data-testid='toolbar-rectangle']");
 
 const settingsModal = (page: Page) => page.locator(".vault-settings-modal");
-const switcher = (page: Page) =>
-  page.getByRole("dialog", { name: "Quick switcher" });
+const palette = (page: Page) =>
+  page.getByRole("dialog", { name: "Command palette" });
 const expectNoOverlay = async (page: Page) => {
   await expect(page.locator(".vault-modal-backdrop")).toHaveCount(0);
   await expect(page.locator(".Modal")).toHaveCount(0);
@@ -233,11 +233,13 @@ test.describe("default chords", () => {
     await page.keyboard.press("ControlOrMeta+z");
     await expect.poll(() => liveElementCount(page)).toBe(before);
 
-    // Chords match exactly: Cmd+Shift+P is not the switcher's Cmd+P.
-    // (Vaultdraw doesn't mount Excalidraw's own command palette.)
+    // Cmd+Shift+P (Excalidraw's own palette chord) opens Vaultdraw's palette;
+    // Excalidraw's palette is never mounted.
     await page.keyboard.press("ControlOrMeta+Shift+KeyP");
-    await page.waitForTimeout(300);
-    await expect(switcher(page)).toHaveCount(0);
+    await expect(palette(page)).toBeVisible();
+    await expect(page.locator(".command-palette-dialog")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(palette(page)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 
