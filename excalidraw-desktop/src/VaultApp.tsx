@@ -210,6 +210,12 @@ export const VaultApp = ({
     [win, refreshAppearance],
   );
 
+  // Stable identities keep VaultEditor's memo intact across autosave status ticks.
+  const exportEditorFile = useCallback(
+    (name: string, bytes: Uint8Array) => repository.exportFile(name, bytes),
+    [repository],
+  );
+
   // Live config folder sync: config.toml edits (by hand or another window)
   // reload preferences; re-render so autosave delay and defaults follow
   // (useAppearance re-applies the theme itself).
@@ -1192,10 +1198,10 @@ export const VaultApp = ({
     }
   };
 
-  const openSettings = (page?: SettingsPageId) => {
+  const openSettings = useCallback((page?: SettingsPageId) => {
     setSettingsPage(page);
     setShowSettingsModal(true);
-  };
+  }, []);
 
   const showNavigator = () => {
     commitCanvasTextEdit(doc);
@@ -1598,14 +1604,14 @@ export const VaultApp = ({
                 initialJson={activeDoc.json}
                 name={getBaseName(activeDoc.path)}
                 onChange={changeDoc}
-                onExport={(name, bytes) => repository.exportFile(name, bytes)}
+                onExport={exportEditorFile}
                 readOnly={
                   vault.readOnly || isBusy || isClosing || docHook.loading
                 }
                 disabled={isBusy || isClosing || docHook.loading}
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
-                onOpenSettings={(page) => openSettings(page)}
+                onOpenSettings={openSettings}
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
