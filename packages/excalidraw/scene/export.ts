@@ -55,6 +55,7 @@ import { serializeAsJSON } from "../data/json";
 
 import { Fonts } from "../fonts";
 
+import { appendBackgroundPatternSvg } from "../renderer/backgroundPatternSvg";
 import { renderStaticScene } from "../renderer/staticScene";
 import { renderSceneToSvg } from "../renderer/staticSvgScene";
 
@@ -300,6 +301,8 @@ export const exportToSvg = async (
     exportWithDarkMode?: boolean;
     exportEmbedScene?: boolean;
     frameRendering?: AppState["frameRendering"];
+    viewBackgroundPattern?: AppState["viewBackgroundPattern"];
+    exportBackgroundPattern?: AppState["exportBackgroundPattern"];
   },
   files: BinaryFiles | null,
   opts?: {
@@ -466,6 +469,18 @@ export const exportToSvg = async (
       applyDarkModeFilter(viewBackgroundColor, exportWithDarkMode),
     );
     svgRoot.appendChild(rect);
+
+    if (
+      appState.viewBackgroundPattern &&
+      appState.exportBackgroundPattern !== false
+    ) {
+      appendBackgroundPatternSvg(
+        svgRoot,
+        defsElement,
+        appState.viewBackgroundPattern,
+        { width, height, offsetX, offsetY, isDarkMode: exportWithDarkMode },
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

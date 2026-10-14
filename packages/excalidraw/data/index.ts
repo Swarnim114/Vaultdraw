@@ -130,6 +130,8 @@ export const exportCanvas = async (
         exportPadding,
         exportScale: appState.exportScale,
         exportEmbedScene: appState.exportEmbedScene && type === "svg",
+        viewBackgroundPattern: appState.viewBackgroundPattern,
+        exportBackgroundPattern: appState.exportBackgroundPattern,
       },
       files,
       { exportingFrame },

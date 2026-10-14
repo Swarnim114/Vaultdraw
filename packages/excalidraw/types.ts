@@ -60,6 +60,7 @@ import type { Action } from "./actions/types";
 import type { Spreadsheet } from "./charts";
 import type { ClipboardData } from "./clipboard";
 import type App from "./components/App";
+import type { BackgroundPattern } from "./data/backgroundPattern";
 import type Library from "./data/library";
 import type { ContextMenuItems } from "./components/ContextMenu";
 import type { SnapLine } from "./snapping";
@@ -211,6 +212,8 @@ export type StaticCanvasAppState = Readonly<
     shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
     /** null indicates transparent bg */
     viewBackgroundColor: AppState["viewBackgroundColor"] | null;
+    viewBackgroundPattern: AppState["viewBackgroundPattern"];
+    exportBackgroundPattern: AppState["exportBackgroundPattern"];
     exportScale: AppState["exportScale"];
     selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
     gridSize: AppState["gridSize"];
@@ -445,6 +448,7 @@ export interface AppState {
   penDetected: boolean;
 
   exportBackground: boolean;
+  exportBackgroundPattern: boolean;
   exportEmbedScene: boolean;
   exportWithDarkMode: boolean;
   exportScale: number;
@@ -467,6 +471,8 @@ export interface AppState {
   currentItemRoundness: StrokeRoundness;
   currentItemArrowType: "sharp" | "round" | "elbow";
   viewBackgroundColor: string;
+  /** notebook paper behind the drawing; null = plain */
+  viewBackgroundPattern: BackgroundPattern | null;
   scrollX: number;
   scrollY: number;
   scrollConstraints: ScrollConstraints | null;

@@ -39,6 +39,7 @@ export { actionDeselect } from "./actionDeselect";
 export {
   actionChangeProjectName,
   actionChangeExportBackground,
+  actionChangeExportBackgroundPattern,
   actionSaveToActiveFile,
   actionSaveFileToDisk,
   actionLoadScene,

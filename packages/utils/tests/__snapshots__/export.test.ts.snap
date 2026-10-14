@@ -50,6 +50,7 @@ exports[`exportToSvg > with default arguments 1`] = `
   "elementsToHighlight": null,
   "errorMessage": null,
   "exportBackground": true,
+  "exportBackgroundPattern": true,
   "exportEmbedScene": false,
   "exportPadding": undefined,
   "exportScale": 1,
@@ -120,6 +121,7 @@ exports[`exportToSvg > with default arguments 1`] = `
   "theme": "light",
   "toast": null,
   "viewBackgroundColor": "#ffffff",
+  "viewBackgroundPattern": null,
   "viewModeEnabled": false,
   "zenModeEnabled": false,
   "zoom": {

@@ -14,6 +14,7 @@ import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 import {
   actionExportWithDarkMode,
   actionChangeExportBackground,
+  actionChangeExportBackgroundPattern,
   actionChangeExportEmbedScene,
   actionChangeExportScale,
   actionChangeProjectName,
@@ -83,6 +84,9 @@ const ImageExportModal = ({
   const [exportWithBackground, setExportWithBackground] = useState(
     appStateSnapshot.exportBackground,
   );
+  const [exportWithPattern, setExportWithPattern] = useState(
+    appStateSnapshot.exportBackgroundPattern,
+  );
   const [embedScene, setEmbedScene] = useState(
     appStateSnapshot.exportEmbedScene,
   );
@@ -142,6 +146,7 @@ const ImageExportModal = ({
         ...appStateSnapshot,
         name: projectName,
         exportBackground: exportWithBackground,
+        exportBackgroundPattern: exportWithPattern,
         exportWithDarkMode,
         exportScale,
         exportEmbedScene: embedScene,
@@ -193,6 +198,7 @@ const ImageExportModal = ({
     exportingFrame,
     projectName,
     exportWithBackground,
+    exportWithPattern,
     exportWithDarkMode,
     exportScale,
     embedScene,
@@ -257,6 +263,26 @@ const ImageExportModal = ({
             }}
           />
         </ExportSetting>
+        {appStateSnapshot.viewBackgroundPattern && (
+          <ExportSetting
+            label={t("imageExportDialog.label.withBackgroundPattern")}
+            name="exportBackgroundPatternSwitch"
+          >
+            <Switch
+              name="exportBackgroundPatternSwitch"
+              checked={exportWithPattern}
+              disabled={!exportWithBackground}
+              onChange={(checked) => {
+                setExportWithPattern(checked);
+                actionManager.executeAction(
+                  actionChangeExportBackgroundPattern,
+                  "ui",
+                  checked,
+                );
+              }}
+            />
+          </ExportSetting>
+        )}
         <ExportSetting
           label={t("imageExportDialog.label.darkMode")}
           name="exportDarkModeSwitch"

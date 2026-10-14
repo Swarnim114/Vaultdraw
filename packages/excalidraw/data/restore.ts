@@ -115,6 +115,8 @@ import {
   getNormalizedZoom,
 } from "../scene";
 
+import { normalizeBackgroundPattern } from "./backgroundPattern";
+
 import type { AppState, BinaryFiles, LibraryItem } from "../types";
 import type { ImportedDataState, LegacyAppState } from "./types";
 
@@ -1289,6 +1291,15 @@ export const restoreAppState = (
         : localValue !== undefined
         ? localValue
         : defaultValue;
+  }
+
+  // imported data is untrusted: validate/clamp the paper pattern
+  nextAppState.viewBackgroundPattern = normalizeBackgroundPattern(
+    nextAppState.viewBackgroundPattern,
+  );
+  if (typeof nextAppState.exportBackgroundPattern !== "boolean") {
+    nextAppState.exportBackgroundPattern =
+      defaultAppState.exportBackgroundPattern;
   }
 
   const boxSelectionMode =

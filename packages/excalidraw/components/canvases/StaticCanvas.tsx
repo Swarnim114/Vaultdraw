@@ -89,6 +89,8 @@ const getRelevantAppStateProps = (appState: AppState): StaticCanvasAppState => {
     theme: appState.theme,
     shouldCacheIgnoreZoom: appState.shouldCacheIgnoreZoom,
     viewBackgroundColor: appState.viewBackgroundColor,
+    viewBackgroundPattern: appState.viewBackgroundPattern,
+    exportBackgroundPattern: appState.exportBackgroundPattern,
     exportScale: appState.exportScale,
     selectedElementsAreBeingDragged: appState.selectedElementsAreBeingDragged,
     gridSize: appState.gridSize,

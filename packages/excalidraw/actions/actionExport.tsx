@@ -88,6 +88,28 @@ export const actionChangeExportBackground = register<
   ),
 });
 
+export const actionChangeExportBackgroundPattern = register<
+  AppState["exportBackgroundPattern"]
+>({
+  name: "changeExportBackgroundPattern",
+  label: "imageExportDialog.label.withBackgroundPattern",
+  trackEvent: { category: "export", action: "toggleBackgroundPattern" },
+  perform: (_elements, appState, value) => {
+    return {
+      appState: { ...appState, exportBackgroundPattern: value },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+  PanelComponent: ({ appState, updateData }) => (
+    <CheckboxItem
+      checked={appState.exportBackgroundPattern}
+      onChange={(checked) => updateData(checked)}
+    >
+      {t("imageExportDialog.label.withBackgroundPattern")}
+    </CheckboxItem>
+  ),
+});
+
 export const actionChangeExportEmbedScene = register<
   AppState["exportEmbedScene"]
 >({

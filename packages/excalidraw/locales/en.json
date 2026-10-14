@@ -538,6 +538,7 @@
     "header": "Export image",
     "label": {
       "withBackground": "Background",
+      "withBackgroundPattern": "Background pattern",
       "onlySelected": "Only selected",
       "darkMode": "Dark mode",
       "embedScene": "Embed scene",

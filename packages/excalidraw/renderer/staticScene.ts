@@ -42,6 +42,8 @@ import {
   getLinkHandleFromCoords,
 } from "../components/hyperlink/helpers";
 
+import { renderBackgroundPattern } from "./backgroundPattern";
+
 import {
   bootstrapCanvas,
   getNormalizedCanvasDimensions,
@@ -305,6 +307,25 @@ const _renderStaticScene = ({
     isExporting,
     viewBackgroundColor: appState.viewBackgroundColor,
   });
+
+  // Notebook paper: the snap grid replaces it; exports need the background
+  if (
+    appState.viewBackgroundPattern &&
+    !renderGrid &&
+    (!isExporting ||
+      (appState.exportBackgroundPattern !== false &&
+        appState.viewBackgroundColor !== null))
+  ) {
+    renderBackgroundPattern(context, appState.viewBackgroundPattern, {
+      scrollX: appState.scrollX,
+      scrollY: appState.scrollY,
+      zoom: appState.zoom.value,
+      scale,
+      width: canvas.width,
+      height: canvas.height,
+      isDarkMode: renderConfig.theme === THEME.DARK,
+    });
+  }
 
   // Apply zoom
   context.scale(appState.zoom.value, appState.zoom.value);

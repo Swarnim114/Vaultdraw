@@ -578,3 +578,17 @@ export {
   setDisplayColorTransform,
 };
 export type { DisplayColorTransform } from "@excalidraw/common";
+
+export { renderBackgroundPattern } from "./renderer/backgroundPattern";
+export {
+  BACKGROUND_PATTERN_TYPES,
+  DEFAULT_BACKGROUND_PATTERNS,
+  createBackgroundPattern,
+  normalizeBackgroundPattern,
+  backgroundPatternKey,
+  isSameBackgroundPattern,
+} from "./data/backgroundPattern";
+export type {
+  BackgroundPattern,
+  BackgroundPatternType,
+} from "./data/backgroundPattern";
