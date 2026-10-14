@@ -2719,7 +2719,6 @@ export async function runDesktopSmoke(): Promise<void> {
           key: "n",
           code: "KeyN",
           metaKey: true,
-          ctrlKey: true,
           altKey: true,
           bubbles: true,
           cancelable: true,

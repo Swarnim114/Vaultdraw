@@ -39,6 +39,11 @@ describe("commands registry", () => {
       "Ctrl+Shift+F",
     ]);
     expect(keys("navigator.focusSearch", "win")).toEqual(["Mod+Shift+F"]);
+    expect(keys("vault.newFromTemplate", "mac")).toEqual([
+      "Mod+Alt+N",
+      "Ctrl+Alt+N",
+    ]);
+    expect(keys("vault.newFromTemplate", "win")).toEqual(["Mod+Alt+N"]);
   });
 
   it("uses platform keys over the default", () => {

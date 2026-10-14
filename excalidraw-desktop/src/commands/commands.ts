@@ -67,6 +67,14 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen", "writable", "!modalOpen"],
   },
   {
+    id: "vault.newFromTemplate",
+    title: "New drawing from template",
+    category: "Vault",
+    // Matched by code: Option+N types a dead key on macOS.
+    keys: { default: ["Mod+Alt+N"], mac: ["Mod+Alt+N", "Ctrl+Alt+N"] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
     id: "view.toggleNavigator",
     title: "Toggle navigator",
     category: "Navigator",

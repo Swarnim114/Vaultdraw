@@ -270,6 +270,13 @@ test.describe("default chords", () => {
     await expect.poll(width).toBeGreaterThan(100);
   });
 
+  test("Cmd/Ctrl+Alt+N opens the template picker", async ({ page }) => {
+    await page.keyboard.press("ControlOrMeta+Alt+KeyN");
+    await expect(page.locator(".template-picker")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".template-picker")).toHaveCount(0);
+  });
+
   test("Cmd/Ctrl+Shift+= / - / 0 change the interface zoom", async ({
     page,
   }) => {
@@ -393,7 +400,10 @@ test.describe("Hotkeys settings page", () => {
   const chips = (page: Page, id: string) =>
     row(page, id).locator(".vault-hotkeys__chip-key");
   const add = (page: Page, title: string) =>
-    page.getByRole("button", { name: `Add hotkey for ${title}` });
+    page.getByRole("button", {
+      name: `Add hotkey for ${title}`,
+      exact: true,
+    });
 
   test("rebinds New drawing live: the new chord works, the default still does, x removes it, reset restores it", async ({
     page,

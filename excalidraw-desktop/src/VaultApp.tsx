@@ -933,33 +933,6 @@ export const VaultApp = ({
   });
   const { openPicker: openTemplatePicker } = templates;
 
-  // Cmd+Option+N (Ctrl+Alt+N): new drawing from a template. Hard-wired until
-  // the command registry lands; matched by code because Option+N types a
-  // dead key on macOS. Excalidraw has no Alt+N binding.
-  useEffect(() => {
-    if (!doc || !hasVault) {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        !(e.metaKey || e.ctrlKey) ||
-        !e.altKey ||
-        e.shiftKey ||
-        e.code !== "KeyN"
-      ) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      if (doc.querySelector(".vault-modal-backdrop")) {
-        return;
-      }
-      void openTemplatePicker();
-    };
-    doc.addEventListener("keydown", onKeyDown, true);
-    return () => doc.removeEventListener("keydown", onKeyDown, true);
-  }, [doc, hasVault, openTemplatePicker]);
-
   // Create folder
   const handleCreateFolder = async (parentPath: string, name: string) => {
     if (!vault) {
@@ -1220,6 +1193,7 @@ export const VaultApp = ({
         return handleNewDrawing();
       }
     },
+    newFromTemplate: () => openTemplatePicker(),
     switchVault: () => {
       if (idle) {
         return handleSwitchVault();

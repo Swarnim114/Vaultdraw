@@ -12,6 +12,7 @@ export interface AppCommandActions {
   zoom(command: "in" | "out" | "reset"): void;
   toggleNavigator(): void;
   newDrawing(): void | Promise<void>;
+  newFromTemplate(): void | Promise<void>;
   switchVault(): void | Promise<void>;
   revealActive(): void | Promise<void>;
   duplicateActive(): void | Promise<void>;
@@ -32,6 +33,7 @@ export function appCommandHandlers(
     "view.zoomReset": () => actions.zoom("reset"),
     "view.toggleNavigator": actions.toggleNavigator,
     "vault.newDrawing": actions.newDrawing,
+    "vault.newFromTemplate": actions.newFromTemplate,
     "vault.switch": actions.switchVault,
     "file.revealInFinder": actions.revealActive,
     "file.duplicate": actions.duplicateActive,

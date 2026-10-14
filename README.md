@@ -196,6 +196,7 @@ The page lists all commands with their keys as chips. Type in the filter to narr
 | `view.zoomReset` | Reset interface zoom | ⇧⌘0, ⇧⌘Num 0 | Ctrl+Shift+0, Ctrl+Shift+Num 0 |
 | `palette.quickSwitcher` | Quick switcher | ⌘P | Ctrl+P |
 | `vault.newDrawing` | New drawing | ⌘N | Ctrl+N |
+| `vault.newFromTemplate` | New drawing from template | ⌥⌘N, ⌃⌥N | Ctrl+Alt+N |
 | `view.toggleNavigator` | Toggle navigator | ⌘\  | Ctrl+\  |
 | `vault.switch` | Open another vault | — | — |
 | `file.revealInFinder` | Reveal drawing in Finder | — | — |
