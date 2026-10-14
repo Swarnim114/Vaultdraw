@@ -75,3 +75,34 @@ describe("getCommandPaletteItems (imperative API)", () => {
     expect(h.state.activeTool.type).toBe("rectangle");
   });
 });
+
+describe("insertLibraryItems (imperative API)", () => {
+  beforeEach(async () => {
+    await render(<Excalidraw handleKeyboardGlobally={true} />);
+  });
+
+  it("inserts copies of the item's elements and selects them", () => {
+    const rect = API.createElement({ type: "rectangle", x: 0, y: 0 });
+    act(() => {
+      h.app.api.insertLibraryItems([
+        {
+          id: "lib-1",
+          status: "unpublished",
+          elements: [rect],
+          created: 1,
+          name: "Box",
+        },
+      ]);
+    });
+    const elements = h.elements.filter((el) => !el.isDeleted);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("rectangle");
+    expect(elements[0].id).not.toBe(rect.id);
+    expect(h.state.selectedElementIds[elements[0].id]).toBe(true);
+  });
+
+  it("does nothing for an empty list", () => {
+    act(() => h.app.api.insertLibraryItems([]));
+    expect(h.elements).toHaveLength(0);
+  });
+});

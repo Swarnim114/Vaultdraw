@@ -845,6 +845,11 @@ class App extends React.Component<AppProps, AppState> {
             }),
         }));
       },
+      insertLibraryItems: (items) => {
+        if (items.length) {
+          this.onInsertElements(distributeLibraryItemsOnSquareGrid(items));
+        }
+      },
       getFiles: () => this.files,
       getName: this.getName,
       registerAction: (action: Action) => {

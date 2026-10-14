@@ -1470,6 +1470,11 @@ export interface ExcalidrawImperativeAPI {
    * items), in palette order. Built on each call (cheap, nothing cached).
    */
   getCommandPaletteItems: () => EditorPaletteCommand[];
+  /**
+   * Insert library items at the viewport centre (laid out on a grid, new ids,
+   * selected), exactly like picking them in the library or palette.
+   */
+  insertLibraryItems: (items: LibraryItems) => void;
   getFiles: () => InstanceType<typeof App>["files"];
   getName: InstanceType<typeof App>["getName"];
   setViewport: InstanceType<typeof App>["viewport"]["setViewport"];
