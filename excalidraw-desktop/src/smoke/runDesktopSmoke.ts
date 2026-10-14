@@ -19,6 +19,7 @@ import {
   perfExportMermaidStep,
 } from "./exportSmoke";
 import { runLibrarySmoke } from "./librarySmoke";
+import { runPensSmoke } from "./pensSmoke";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
 
@@ -2221,6 +2222,18 @@ export async function runDesktopSmoke(): Promise<void> {
         await resetPhase2Config();
         await delay(win, 400);
       }
+    });
+
+    // ---- Pens and laser (F17): config -> pen bar, laser colour, highlighter ----
+    await runPensSmoke({
+      root,
+      doc,
+      win,
+      handle: activeVault.handle,
+      path: `${nested}/ui-edited.excalidraw`,
+      step,
+      waitFor,
+      invoke: (command, args) => invoke(command, args),
     });
 
     await step("interface-zoom", async () => {
