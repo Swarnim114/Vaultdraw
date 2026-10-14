@@ -14,6 +14,17 @@ type Alert = { message: string; type: "error" | "info" } | null;
 
 /** Show "Exporting…" only when a render is slow enough to notice. */
 export const BUSY_NOTICE_MS = 200;
+/**
+ * Files this big render in one long main-thread task (~300 ms for 2000
+ * elements), during which a timer can't fire: show the notice up front and
+ * let it paint first.
+ */
+export const LARGE_DRAWING_CHARS = 256 * 1024;
+
+const nextPaint = (win: Window) =>
+  new Promise<void>((resolve) =>
+    win.requestAnimationFrame(() => win.setTimeout(resolve, 0)),
+  );
 
 export const useExplorerExport = (input: {
   repository: VaultRepository;
@@ -39,10 +50,14 @@ export const useExplorerExport = (input: {
     const name = path.slice(path.lastIndexOf("/") + 1);
     // Busy notice for slow renders only: never while the save dialog is up.
     let noticeShown = false;
-    const notice = win.setTimeout(() => {
-      noticeShown = true;
-      setAlert({ message: `Exporting ${name}…`, type: "info" });
-    }, BUSY_NOTICE_MS);
+    const showNotice = () => {
+      win.clearTimeout(notice);
+      if (!noticeShown) {
+        noticeShown = true;
+        setAlert({ message: `Exporting ${name}…`, type: "info" });
+      }
+    };
+    const notice = win.setTimeout(showNotice, BUSY_NOTICE_MS);
     const endNotice = () => {
       win.clearTimeout(notice);
       if (noticeShown) {
@@ -60,6 +75,12 @@ export const useExplorerExport = (input: {
         format,
         options: { scale, background, embedScene, dark },
         win,
+        beforeRender: async (json) => {
+          if (json.length > LARGE_DRAWING_CHARS) {
+            showNotice();
+            await nextPaint(win);
+          }
+        },
         onRendered: endNotice,
       });
       endNotice();

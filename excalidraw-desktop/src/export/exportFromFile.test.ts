@@ -78,6 +78,8 @@ describe("exportDrawingFromVault", () => {
       fileName: "Graphs.png",
       mime: "image/png",
     });
+    const beforeRender = vi.fn();
+    const onRendered = vi.fn();
     await expect(
       exportDrawingFromVault({
         repository: repo,
@@ -86,8 +88,12 @@ describe("exportDrawingFromVault", () => {
         format: "png",
         options,
         win,
+        beforeRender,
+        onRendered,
       }),
     ).resolves.toBe(true);
+    expect(beforeRender).toHaveBeenCalledWith(SAMPLE_SCENE);
+    expect(onRendered).toHaveBeenCalledTimes(1);
     expect(renderImageExport).toHaveBeenCalledTimes(1);
     expect(renderImageExport.mock.calls[0][0]).toMatchObject({
       type: "png",

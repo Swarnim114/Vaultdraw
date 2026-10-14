@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FakeVaultRepository } from "../tests/fakeVaultRepository";
 import { SAMPLE_SCENE } from "../tests/fixtures";
 
-import { useExplorerExport } from "./useExplorerExport";
+import { LARGE_DRAWING_CHARS, useExplorerExport } from "./useExplorerExport";
 
 const exportDrawingFromVault = vi.fn();
 vi.mock("./exportFromFile", () => ({
@@ -84,6 +84,21 @@ describe("useExplorerExport", () => {
       await done;
     });
     expect(setAlert).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the notice before rendering a large drawing", async () => {
+    const { result, setAlert } = await setup();
+    let alertsBeforeRender = -1;
+    exportDrawingFromVault.mockImplementation(async (input: any) => {
+      await input.beforeRender("x".repeat(LARGE_DRAWING_CHARS + 1));
+      alertsBeforeRender = setAlert.mock.calls.length;
+      input.onRendered();
+      return true;
+    });
+    await act(() => result.current("A/Graphs.excalidraw", "png"));
+    expect(alertsBeforeRender).toBe(1);
+    expect(setAlert.mock.calls[0][0]).toMatchObject({ type: "info" });
+    expect(setAlert).toHaveBeenLastCalledWith(null);
   });
 
   it("reports failures as an error alert", async () => {

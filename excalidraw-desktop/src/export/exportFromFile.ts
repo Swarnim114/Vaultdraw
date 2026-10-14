@@ -84,6 +84,8 @@ export const exportDrawingFromVault = async (input: {
   format: ExplorerExportFormat;
   options: ExplorerExportOptions;
   win: Window & typeof globalThis;
+  /** Called with the file's JSON before the (main-thread) render starts. */
+  beforeRender?: (json: string) => void | Promise<void>;
   /** Called after rendering, right before the save dialog opens. */
   onRendered?: () => void;
 }): Promise<boolean> => {
@@ -93,6 +95,7 @@ export const exportDrawingFromVault = async (input: {
     return repository.saveDrawingCopy(handle, path);
   }
   const json = await readDrawingJson(repository, handle, path);
+  await input.beforeRender?.(json);
   const request = await sceneToExportRequest(
     json,
     baseName(path),
