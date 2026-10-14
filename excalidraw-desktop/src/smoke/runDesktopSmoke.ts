@@ -1,10 +1,22 @@
 import { desktopRepository } from "../vault/DesktopVaultRepository";
+
 import { DEFAULT_PREFERENCES, getPreferences } from "../vault/preferences";
+
 import {
   getSettingsStatus,
   PREFERENCES_CHANGED_EVENT,
   SETTINGS_STATUS_EVENT,
 } from "../vault/settingsSync";
+
+import {
+  clipboardCopyStep,
+  exportDialogOptionsStep,
+  exportViaDialog,
+  mermaidOfflineStep,
+  perfExportMermaidStep,
+} from "./exportSmoke";
+
+import type { ExportSmokeContext } from "./exportSmoke";
 
 import type {
   ConfigChange,
@@ -15,7 +27,12 @@ import type { VaultPreferences } from "../vault/preferences";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
-type SmokeRecord = { step: string; ok: boolean; details?: unknown };
+type SmokeRecord = {
+  step: string;
+  ok: boolean;
+  ms?: number;
+  details?: unknown;
+};
 type SmokeEnvironment = {
   enabled: boolean;
   vaultPath: string;
@@ -41,7 +58,6 @@ type Native = {
     handle: string;
     path: string;
   }) => Promise<{ json: string; revision: string }>;
-  export_file: (args: { name: string; bytes: number[] }) => Promise<boolean>;
   move_entry: (args: {
     handle: string;
     from: string;
@@ -203,7 +219,35 @@ export async function runDesktopSmoke(): Promise<void> {
     }
     return;
   }
+  // A locked screen or occluded window hides the WebView: requestAnimationFrame
+  // never fires and the editor cannot render, so the run would hang. Fail fast.
+  const visibleUntil = win.performance.now() + 15_000;
+  while (
+    doc.visibilityState !== "visible" &&
+    win.performance.now() < visibleUntil
+  ) {
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 250));
+  }
+  if (doc.visibilityState !== "visible") {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("smoke_finish", {
+        status: 1,
+        details: {
+          startupFailure: `WebView is ${doc.visibilityState} (screen locked or window occluded): the packaged smoke test needs a visible window`,
+        },
+      });
+    } catch (finishError) {
+      console.error(
+        "Desktop smoke could not report hidden WebView",
+        finishError,
+      );
+    }
+    return;
+  }
   const startedAt = win.performance.now();
+  // Time from navigation start to the app being mounted and the runner starting.
+  const mountedAtMs = Math.round(startedAt);
   const records: SmokeRecord[] = [];
   const pageErrors: Array<{ type: string; message: string }> = [];
   // VaultApp stores recent paths in localStorage; suppress that preference write for this run.
@@ -286,13 +330,35 @@ export async function runDesktopSmoke(): Promise<void> {
     }
     throw new Error(`Timed out after ${ms}ms waiting for ${label}`);
   };
+  // Progress marks go straight to smoke-progress.log (see smoke.rs).
+  const mark = (label: string) =>
+    call("smoke_log", { step: `~${label}`, ok: true }).catch(() => {});
+  const STEP_TIMEOUT_MS = 300_000;
   const step = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    const started = win.performance.now();
+    void mark(`start ${name}`);
+    const ms = () => Math.round(win.performance.now() - started);
     try {
-      const details = await work();
-      records.push({ step: name, ok: true, details });
+      // A hung IPC call must fail the step, not the whole run.
+      let timer = 0;
+      const details = await Promise.race([
+        work(),
+        new Promise<never>((_, reject) => {
+          timer = win.setTimeout(
+            () =>
+              reject(
+                new Error(`Step timed out after ${STEP_TIMEOUT_MS / 1000}s`),
+              ),
+            STEP_TIMEOUT_MS,
+          );
+        }),
+      ]).finally(() => win.clearTimeout(timer));
+      records.push({ step: name, ok: true, ms: ms(), details });
+      void mark(`ok ${name} ${ms()}ms`);
       return details;
     } catch (error) {
-      records.push({ step: name, ok: false, details: String(error) });
+      records.push({ step: name, ok: false, ms: ms(), details: String(error) });
+      void mark(`FAILED ${name} ${ms()}ms ${String(error).slice(0, 200)}`);
       throw error;
     }
   };
@@ -469,10 +535,9 @@ export async function runDesktopSmoke(): Promise<void> {
     });
     await step("native-export-sandbox", async () => {
       const name = `smoke-export-${runId}.txt`;
-      const bytes = Array.from("offline smoke export", (character) =>
-        character.charCodeAt(0),
-      );
-      const exported = await call("export_file", { name, bytes });
+      // Same raw-body IPC the editor uses (bytes + x-file-name header).
+      const bytes = new TextEncoder().encode("offline smoke export");
+      const exported = await desktopRepository.exportFile(name, bytes);
       if (!exported) {
         throw new Error(
           "Smoke export was canceled instead of writing inside the sandbox",
@@ -2402,6 +2467,34 @@ export async function runDesktopSmoke(): Promise<void> {
       mPrimary: "#ec5f67",
     };
 
+    const exportCtx: ExportSmokeContext = {
+      doc,
+      win,
+      root,
+      waitFor,
+      delay: (ms) => delay(win, ms),
+      mark,
+      call: (command, args) => invoke(command, args) as Promise<any>,
+      vaultHandle: activeVault.handle,
+      drawingPath: `${nested}/ui-edited.excalidraw`,
+      staticCanvasPixel,
+      hexToRgb,
+      near,
+      rgbHex,
+      withSvgCsp: async (work) => {
+        svgExportInFlight = true;
+        try {
+          return await work();
+        } finally {
+          // CSP reports arrive asynchronously, after the work resolves.
+          await delay(win, 200);
+          svgExportInFlight = false;
+        }
+      },
+      themeColours: new Set<string>(),
+      darkCanvas: DARK_CANVAS,
+    };
+
     await themeStep("theme-user-palette-loaded", async () => {
       const { getThemeRegistry, findTheme } = await import("../theme/registry");
       const registry = getThemeRegistry();
@@ -2620,68 +2713,12 @@ export async function runDesktopSmoke(): Promise<void> {
       );
       const drawingPath = `${nested}/ui-edited.excalidraw`;
 
-      // Real menu path: Main menu > Export as … (VaultEditor wraps it in
-      // withStandardCanvasColors). Capture the bytes; still write natively.
-      let exportCount = 0;
-      const exportViaMenu = async (label: string) => {
-        const originalExport = desktopRepository.exportFile;
-        let captured: { name: string; bytes: Uint8Array } | null = null;
-        let nativeResult: boolean | null = null;
-        let nativeError: string | null = null;
-        desktopRepository.exportFile = async (
-          name: string,
-          bytes: Uint8Array,
-        ) => {
-          captured = { name, bytes };
-          // The smoke sandbox refuses to overwrite: give each export its own
-          // name (the menu always proposes "<drawing>.<ext>").
-          exportCount += 1;
-          try {
-            nativeResult = await originalExport.call(
-              desktopRepository,
-              `theme-${exportCount}-${name}`,
-              bytes,
-            );
-          } catch (error) {
-            nativeError = String(error);
-            throw error;
-          }
-          return nativeResult;
-        };
-        try {
-          const trigger = await waitFor("main menu trigger", () =>
-            root.querySelector<HTMLElement>(
-              '.vault-editor [data-testid="main-menu-trigger"]',
-            ),
-          );
-          trigger.click();
-          const item = await waitFor(`${label} menu item`, () =>
-            Array.from(
-              doc.querySelectorAll<HTMLElement>(
-                ".excalidraw .dropdown-menu-item",
-              ),
-            ).find((el) => el.textContent?.includes(label)),
-          );
-          item.click();
-          await waitFor(`${label} captured`, () => captured, 8000);
-          await waitFor(
-            `${label} native write`,
-            () => {
-              if (nativeError) {
-                throw new Error(`${label} native write failed: ${nativeError}`);
-              }
-              return nativeResult;
-            },
-            8000,
-          );
-        } finally {
-          desktopRepository.exportFile = originalExport;
-        }
-        const result = captured as unknown as {
-          name: string;
-          bytes: Uint8Array;
-        };
-        return { ...result, nativeWritten: nativeResult };
+      // Real UI path: Main menu > Export image... > the dialog's PNG / SVG
+      // button (VaultEditor renders under withStandardCanvasColors). The
+      // bytes are captured and still written natively.
+      const exportViaMenu = async (label: "PNG" | "SVG") => {
+        const result = await exportViaDialog(exportCtx, label);
+        return { ...result, nativeWritten: result.nativeWritten };
       };
       const pngCornerPixel = async (bytes: Uint8Array) => {
         const signature = Array.from(bytes.slice(0, 4));
@@ -2729,11 +2766,11 @@ export async function runDesktopSmoke(): Promise<void> {
       //    off, then with sync on: must be identical, never Dracula.
       await setSyncCanvas(false);
       await waitForCanvasPixel("sync off baseline", DARK_CANVAS);
-      const baseline = await exportViaMenu("Export as PNG");
+      const baseline = await exportViaMenu("PNG");
       const baselinePng = await pngCornerPixel(baseline.bytes);
       await setSyncCanvas(true);
       await waitForCanvasPixel("sync on before export", DRACULA_SURFACE);
-      const darkExport = await exportViaMenu("Export as PNG");
+      const darkExport = await exportViaMenu("PNG");
       const darkPng = await pngCornerPixel(darkExport.bytes);
       if (
         !near(darkPng.pixel, baselinePng.pixel, 0) ||
@@ -2760,7 +2797,7 @@ export async function runDesktopSmoke(): Promise<void> {
         "sync on light: canvas = Dracula light surface",
         dracula.theme.light.mSurface,
       );
-      const lightExport = await exportViaMenu("Export as PNG");
+      const lightExport = await exportViaMenu("PNG");
       const lightPng = await pngCornerPixel(lightExport.bytes);
       if (
         !near(lightPng.pixel, hexToRgb("#ffffff")) ||
@@ -2774,12 +2811,7 @@ export async function runDesktopSmoke(): Promise<void> {
           })`,
         );
       }
-      svgExportInFlight = true;
-      const svgExport = await exportViaMenu("Export as SVG").finally(() =>
-        delay(win, 200).then(() => {
-          svgExportInFlight = false;
-        }),
-      );
+      const svgExport = await exportViaMenu("SVG");
       const svgText = new win.TextDecoder().decode(svgExport.bytes);
       const svgColours = Array.from(
         new Set(
@@ -2899,6 +2931,40 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // F27 / F16 steps. Run while the Dracula theme and canvas sync are on
+    // (set up by the theme steps above), so they also prove exports and
+    // clipboard copies never carry the theme's on-screen colours.
+    {
+      const { getThemeRegistry, findTheme } = await import("../theme/registry");
+      const dracula = findTheme(getThemeRegistry(), "Dracula");
+      for (const c of dracula
+        ? [
+            dracula.theme.dark.mSurface,
+            dracula.theme.dark.mOnSurface,
+            dracula.theme.light.mSurface,
+            dracula.theme.light.mOnSurface,
+          ]
+        : []) {
+        exportCtx.themeColours.add(c.toLowerCase());
+      }
+    }
+    const exportStep = <T>(name: string, work: () => Promise<T>) =>
+      step(name, work).catch(async () => {
+        // Leave no dialog open for the next step.
+        doc.querySelector<HTMLElement>(".Modal__background")?.click();
+        await delay(win, 200);
+      });
+    await exportStep("export-dialog-options", () =>
+      exportDialogOptionsStep(exportCtx),
+    );
+    await exportStep("clipboard-copy-png-svg", () =>
+      clipboardCopyStep(exportCtx),
+    );
+    await exportStep("mermaid-offline", () => mermaidOfflineStep(exportCtx));
+    await exportStep("perf-export-mermaid", () =>
+      perfExportMermaidStep(exportCtx),
+    );
+
     await themeStep("theme-user-palette-applies", async () => {
       const modal = await openAppearanceSettings();
       (await searchThemeCard(modal, TEST_PALETTE.key)).click();
@@ -3002,6 +3068,7 @@ export async function runDesktopSmoke(): Promise<void> {
     const elapsedMs = Math.round(win.performance.now() - startedAt);
     const report = {
       elapsedMs,
+      mountedAtMs,
       records,
       pageErrors,
       knownCspReports,

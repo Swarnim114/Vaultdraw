@@ -68,3 +68,28 @@ export const clickMainMenuItem = async (page: Page, label: string) => {
   await page.getByTestId("main-menu-trigger").click();
   await page.getByRole("menuitem", { name: label }).click();
 };
+
+/** Main menu > Export image... opens the package's export dialog. */
+export const openExportDialogFromMenu = async (page: Page) => {
+  await page.getByTestId("main-menu-trigger").click();
+  await page.getByTestId("image-export-button").click();
+  await expect(page.locator(".ImageExportModal")).toBeVisible();
+};
+
+/** Names of the files handed to the repository's exportFile so far. */
+export const exportedNames = (page: Page) =>
+  page.evaluate(() =>
+    (window as any).__vaultRepo.exported.map((e: any) => e.name as string),
+  );
+
+/** A button of the export dialog by its visible text (aria-label differs). */
+export const exportDialogButton = (page: Page, label: string) =>
+  page.locator(".ImageExportModal button", {
+    hasText: new RegExp(`^${label}$`),
+  });
+
+/** Closes the top dialog by clicking its backdrop (large dialogs have no X). */
+export const closeTopDialog = async (page: Page) => {
+  await page.locator(".Modal__background").click({ position: { x: 4, y: 4 } });
+  await expect(page.locator(".Modal")).toHaveCount(0);
+};

@@ -105,6 +105,27 @@ describe("renderImageExport", () => {
     expect(setTransform.mock.calls.at(-1)?.[0]).toBeTypeOf("function");
   });
 
+  it("png honours the export scale (public exportToBlob ignores it alone)", async () => {
+    exportToBlob.mockResolvedValue(new Blob([new Uint8Array([1])]));
+    await renderImageExport(
+      req({ type: "png", appState: { exportScale: 3 } }),
+      win,
+    );
+    const { getDimensions } = exportToBlob.mock.calls[0][0];
+    expect(getDimensions(100, 50)).toEqual({
+      width: 300,
+      height: 150,
+      scale: 3,
+    });
+    exportToBlob.mockClear();
+    await renderImageExport(req({ type: "png" }), win);
+    expect(exportToBlob.mock.calls[0][0].getDimensions(100, 50)).toEqual({
+      width: 100,
+      height: 50,
+      scale: 1,
+    });
+  });
+
   it("clipboard never embeds the scene", async () => {
     exportToBlob.mockResolvedValue(new Blob([new Uint8Array([9])]));
     const out = await renderImageExport(

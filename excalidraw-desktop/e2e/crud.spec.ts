@@ -2,7 +2,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
   canvasBox,
-  clickMainMenuItem,
+  exportDialogButton,
+  openExportDialogFromMenu,
   openVault,
   readScene,
   screenshot,
@@ -341,7 +342,8 @@ test("9. PNG and SVG export go through the repository", async ({
   await expandFolder(page, "DSA");
   await openFromTree(page, "Graphs");
 
-  await clickMainMenuItem(page, "Export as PNG…");
+  await openExportDialogFromMenu(page);
+  await exportDialogButton(page, "PNG").click();
   await expect
     .poll(
       () =>
@@ -352,7 +354,7 @@ test("9. PNG and SVG export go through the repository", async ({
     )
     .toContainEqual(expect.stringMatching(/\.png$/));
 
-  await clickMainMenuItem(page, "Export as SVG…");
+  await exportDialogButton(page, "SVG").click();
   await expect
     .poll(
       () =>

@@ -48,6 +48,16 @@ pub fn smoke_environment() -> Result<Value, String> {
 
 #[tauri::command]
 pub fn smoke_log(step: String, ok: bool, details: Option<Value>) -> Result<(), String> {
+    // "~label" entries are progress marks: appended to smoke-progress.log
+    // right away (so a hung run can be diagnosed) and kept out of the report.
+    if let Some(label) = step.strip_prefix('~') {
+        use std::io::Write;
+        let path = test_dir()?.join("smoke-progress.log");
+        let mut file = fs::OpenOptions::new().create(true).append(true).open(path).map_err(|e| e.to_string())?;
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        writeln!(file, "{ms} {label}").map_err(|e| e.to_string())?;
+        return Ok(());
+    }
     let record = json!({ "step": step, "ok": ok, "details": details });
     // Live line for external runners; one line per record, flushed immediately.
     {

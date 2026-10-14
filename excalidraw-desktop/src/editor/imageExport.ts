@@ -64,7 +64,18 @@ export const renderImageExport = (
         mime: "image/svg+xml" as const,
       };
     }
-    const blob = await exportToBlob({ ...options, mimeType: "image/png" });
+    // The public exportToBlob ignores appState.exportScale unless it gets
+    // getDimensions (the editor's own export path sizes the canvas itself).
+    const scale = request.appState.exportScale || 1;
+    const blob = await exportToBlob({
+      ...options,
+      mimeType: "image/png",
+      getDimensions: (width, height) => ({
+        width: width * scale,
+        height: height * scale,
+        scale,
+      }),
+    });
     return {
       bytes: new Uint8Array(await blob.arrayBuffer()),
       fileName: exportFileName(request.name, "png", embedScene),
