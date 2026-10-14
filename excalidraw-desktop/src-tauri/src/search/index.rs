@@ -214,6 +214,43 @@ fn build_snippet(text: &str, terms: &[Term]) -> Option<(String, Vec<[u32; 2]>)> 
     Some((snippet, to_utf16(&folded.chars, (start, end), base, ranges)))
 }
 
+/// UTF-16 `[start, end)` ranges of the matched terms in the stem of `name`, relative to the
+/// original (uncollapsed) file name: a run of whitespace in the name counts as it is written.
+fn name_highlights(name: &str, terms: &[Term]) -> Vec<[u32; 2]> {
+    let stem_src = file_stem(name);
+    let stem = fold_with_map(stem_src);
+    let mut ranges = term_ranges(&stem, terms, 64);
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    // Original UTF-16 span of every folded char (a whitespace run folds to one space).
+    let mut spans: Vec<(u32, u32)> = Vec::with_capacity(stem.chars.len());
+    let (mut pos, mut run_start) = (0u32, None::<u32>);
+    for c in stem_src.chars() {
+        let w = c.len_utf16() as u32;
+        if c.is_whitespace() {
+            run_start.get_or_insert(pos);
+        } else {
+            if let Some(start) = run_start.take() {
+                if !spans.is_empty() {
+                    spans.push((start, pos));
+                }
+            }
+            spans.push((pos, pos + w));
+        }
+        pos += w;
+    }
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (a, b) in ranges {
+        match merged.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    merged.into_iter().filter_map(|(a, b)| Some([spans.get(a)?.0, spans.get(b.checked_sub(1)?)?.1])).collect()
+}
+
 struct ItemHit {
     idx: usize,
     mask: u8,
@@ -345,14 +382,7 @@ impl Index {
 
     fn build_hit(&self, path: &str, d: &DocEntry, score: f32, terms: &[Term], scope: Scope) -> SearchHit {
         let name = split_path(path).1.to_string();
-        let name_highlights = if scope == Scope::Content {
-            Vec::new()
-        } else {
-            let stem = fold_with_map(file_stem(&name));
-            let ranges = term_ranges(&stem, terms, 64);
-            let n = stem.chars.len();
-            to_utf16(&stem.chars, (0, n), 0, ranges)
-        };
+        let name_highlights = if scope == Scope::Content { Vec::new() } else { name_highlights(&name, terms) };
         let mut matches = Vec::new();
         let mut match_count = 0;
         if scope != Scope::Names && !d.items.is_empty() {
