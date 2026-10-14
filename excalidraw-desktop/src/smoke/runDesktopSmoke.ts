@@ -15,6 +15,7 @@ import {
   mermaidOfflineStep,
   perfExportMermaidStep,
 } from "./exportSmoke";
+import { runLibrarySmoke } from "./librarySmoke";
 
 import type { ExportSmokeContext } from "./exportSmoke";
 
@@ -293,7 +294,9 @@ export async function runDesktopSmoke(): Promise<void> {
   const knownCspReports: unknown[] = [];
   let svgExportInFlight = false;
   const onCsp = (event: SecurityPolicyViolationEvent) =>
-    (svgExportInFlight && event.violatedDirective === "style-src-attr"
+    (svgExportInFlight &&
+    (event.violatedDirective === "style-src-attr" ||
+      event.violatedDirective === "style-src-elem")
       ? knownCspReports
       : pageErrors
     ).push({
@@ -1366,6 +1369,22 @@ export async function runDesktopSmoke(): Promise<void> {
         method:
           "synthetic HTML5 drop events with DataTransfer files; native dragDropEnabled=false verified in tauri.conf.json",
       };
+    });
+
+    // ---- Persisted library (F10): phase decided by the personal file, see librarySmoke.ts ----
+    // Library item previews are SVG exports too: same known inline-style CSP reports.
+    svgExportInFlight = true;
+    await runLibrarySmoke({
+      root,
+      doc,
+      win,
+      handle: activeVault.handle,
+      startedAt,
+      step,
+      waitFor,
+      invoke: (command, args) => invoke(command, args),
+    }).finally(() => {
+      svgExportInFlight = false;
     });
 
     // ---- Config folder (personal/planning/config.md) ----
