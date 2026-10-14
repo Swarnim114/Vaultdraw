@@ -28,6 +28,8 @@ export type UseVaultDocumentResult = {
     parent: string,
     name: string,
     initialAppState?: Record<string, unknown>,
+    /** Full scene JSON to start from (templates); wins over `initialAppState`. */
+    initialJson?: string,
   ) => Promise<void>;
   change: (json: string) => void;
   /** Persist pending edits. `commitText` (default true) also ends text editing. */
@@ -245,6 +247,7 @@ export const useVaultDocument = (
       parent: string,
       name: string,
       initialAppState?: Record<string, unknown>,
+      initialJson?: string,
     ) => {
       const currentVault = vaultRef.current;
       if (!currentVault) {
@@ -264,7 +267,8 @@ export const useVaultDocument = (
         return;
       }
       const path = parent ? `${parent}/${name}` : name;
-      const initial = serializeAsJSON([], initialAppState ?? {}, {}, "local");
+      const initial =
+        initialJson ?? serializeAsJSON([], initialAppState ?? {}, {}, "local");
       const created = await repositoryRef.current.writeDrawing({
         handle: currentVault.handle,
         path,
