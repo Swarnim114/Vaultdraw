@@ -446,6 +446,8 @@ function openTargetScene(rng, tag, spec, typingTarget, imageCount, imageTotalMB)
 const PAPER = {
   plain: null,
   grid: { type: "grid", spacing: 20, color: null, opacity: 1, majorEvery: 5, marginLine: false },
+  lines: { type: "lines", spacing: 32, color: null, opacity: 1, majorEvery: 1, marginLine: true },
+  graph: { type: "graph", spacing: 16, color: null, opacity: 1, majorEvery: 5, marginLine: false },
   dots: { type: "dots", spacing: 20, color: null, opacity: 1, majorEvery: 1, marginLine: false },
   isometric: { type: "isometric", spacing: 24, color: null, opacity: 1, majorEvery: 1, marginLine: false },
 };

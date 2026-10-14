@@ -15,6 +15,8 @@ export type FrameSample = {
   renders: number;
   /** input events (wheel / gesturechange) since the previous frame */
   inputs: number;
+  /** script time of the static renders since the previous frame, ms */
+  scriptMs?: number;
 };
 
 export type PassStats = {
@@ -40,6 +42,11 @@ export type PassStats = {
   multiRenderFrames: number;
   /** frames that drew nothing although input arrived in that interval */
   inputWithoutRenderFrames: number;
+  /** static-render script time per frame (frames that rendered), ms */
+  scriptMsP50: number;
+  scriptMsP95: number;
+  /** share of the pass spent in static-render script */
+  scriptBusyPct: number;
 };
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -88,6 +95,11 @@ export function passStats(
   const pct = (n: number) =>
     intervals.length ? round1((n * 100) / intervals.length) : 0;
   const sorted = [...intervals].sort((a, b) => a - b);
+  const script = counted
+    .filter((s) => s.renders > 0)
+    .map((s) => s.scriptMs ?? 0)
+    .sort((a, b) => a - b);
+  const scriptTotal = counted.reduce((sum, s) => sum + (s.scriptMs ?? 0), 0);
   return {
     frames: samples.length,
     durationMs: round1(durationMs),
@@ -109,5 +121,9 @@ export function passStats(
     inputWithoutRenderFrames: counted.filter(
       (s) => s.inputs > 0 && s.renders === 0,
     ).length,
+    scriptMsP50: round1(percentile(script, 50)),
+    scriptMsP95: round1(percentile(script, 95)),
+    scriptBusyPct:
+      durationMs > 0 ? round1((scriptTotal * 100) / durationMs) : 0,
   };
 }

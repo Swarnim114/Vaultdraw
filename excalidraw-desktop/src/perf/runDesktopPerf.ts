@@ -10,40 +10,76 @@ import type { NativeProbe, RefreshRateInput } from "./refreshRate";
 
 const IDLE_MS = 10_000;
 
+/** pid -> role (app, webContent, gpu, network), resolved once. */
+let processRoles: Map<string, string> | null = null;
+
 /** Native side of the refresh-rate probe (smoke-test build commands). */
-const nativeProbe: NativeProbe = {
+const nativeProbe = (maximize: boolean): NativeProbe => ({
   displayInfo: () =>
     invoke<Record<string, unknown>>("perf_display_info", { sampleMs: 500 }),
   input: (args) => invoke<Record<string, unknown>>("perf_native_input", args),
-};
+  processCpu: async () => {
+    if (!processRoles) {
+      const ids = await invoke<Record<string, number | null>>(
+        "perf_process_ids",
+      );
+      processRoles = new Map(
+        Object.entries(ids)
+          .filter(([, pid]) => typeof pid === "number" && pid > 0)
+          .map(([role, pid]) => [String(pid), role]),
+      );
+    }
+    const cpu = await invoke<Record<string, number>>("perf_process_cpu", {
+      pids: [...processRoles.keys()].map(Number),
+    });
+    return Object.fromEntries(
+      Object.entries(cpu).map(([pid, seconds]) => [
+        processRoles?.get(pid) ?? pid,
+        seconds,
+      ]),
+    );
+  },
+  maximize: maximize ? () => invoke("perf_window_maximize") : undefined,
+});
 
-const REFRESH_RATE_INPUTS: RefreshRateInput[] = [
+const SUITE_INPUTS: RefreshRateInput[] = [
   "idle",
   "zoom.native",
-  "zoom.gesture",
-  "zoom.wheel",
+  "zoom.native.out",
   "pan.native",
-  "pan.wheel",
+  "pan.native.out",
 ];
 
-/** Refresh-rate drawings: all of them for the standalone suite, the harness subset otherwise. */
+/**
+ * Refresh-rate drawings. Standalone suite: every paper style with 0 and 200
+ * elements, plus the large drawings for the first two styles; full screen.
+ * Harness: the small subset in fixtures.config.json, default window.
+ */
 const refreshRateOptions = (only: boolean) => {
   const spec = fixturesConfig.refreshRate;
-  const patterns = only ? spec.patterns : spec.harness.patterns;
-  const sizes = only ? spec.elements : [spec.harness.elements];
+  const drawing = (pattern: string, elements: number) => ({
+    path: `hz-${pattern}-${elements}.excalidraw`,
+    pattern,
+    elements,
+  });
+  const large = Math.max(...spec.elements);
+  const small = spec.elements.filter((n) => n !== large);
   return {
-    native: nativeProbe,
+    native: nativeProbe(only),
     only,
     inputs: only
-      ? REFRESH_RATE_INPUTS
-      : (["zoom.native", "zoom.gesture", "pan.native"] as RefreshRateInput[]),
-    drawings: patterns.flatMap((pattern) =>
-      sizes.map((elements) => ({
-        path: `hz-${pattern}-${elements}.excalidraw`,
-        pattern,
-        elements,
-      })),
-    ),
+      ? SUITE_INPUTS
+      : ([
+          "zoom.native",
+          "zoom.native.out",
+          "pan.native",
+        ] as RefreshRateInput[]),
+    drawings: only
+      ? [
+          ...spec.patterns.flatMap((p) => small.map((n) => drawing(p, n))),
+          ...spec.harness.patterns.map((p) => drawing(p, large)),
+        ]
+      : spec.harness.patterns.map((p) => drawing(p, spec.harness.elements)),
   };
 };
 

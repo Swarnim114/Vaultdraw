@@ -86,13 +86,13 @@ async function ensureProbeVault() {
 const pad = (v, n) => String(v).padStart(n);
 function table(passes) {
   const lines = [
-    `${"drawing".padEnd(24)} ${"input".padEnd(13)} ${pad("fps", 6)} ${pad("drawnHz", 7)} ${pad("<=9ms%", 6)} ${pad("p95ms", 6)} ${pad("drop", 5)} ${pad("inHz", 6)} ${pad("multi", 5)}  note`,
+    `${"drawing".padEnd(20)} ${"input".padEnd(15)} ${pad("fps", 6)} ${pad("drawnHz", 7)} ${pad("<=9ms%", 6)} ${pad("p95ms", 6)} ${pad("drop", 5)} ${pad("inHz", 6)} ${pad("multi", 5)} ${pad("jsP50", 6)} ${pad("jsP95", 6)} ${pad("js%", 5)} ${pad("cpuWC", 6)} ${pad("cpuGPU", 6)} ${pad("cpuApp", 6)}  note`,
   ];
   for (const p of passes) {
     const s = p.stats;
     const note = p.error ?? (p.noEffect ? "NO EFFECT (input did not reach the editor)" : "");
     lines.push(
-      `${p.drawing.replace(/\.excalidraw$/, "").padEnd(24)} ${p.input.padEnd(13)} ${pad(s.fps, 6)} ${pad(p.input === "idle" ? "-" : s.renderHz, 7)} ${pad(s.framesLe9msPct, 6)} ${pad(s.intervalP95, 6)} ${pad(s.droppedFrames, 5)} ${pad(s.inputHz, 6)} ${pad(s.multiRenderFrames, 5)}  ${note}`,
+      `${p.drawing.replace(/\.excalidraw$/, "").padEnd(20)} ${p.input.padEnd(15)} ${pad(s.fps, 6)} ${pad(p.input === "idle" ? "-" : s.renderHz, 7)} ${pad(s.framesLe9msPct, 6)} ${pad(s.intervalP95, 6)} ${pad(s.droppedFrames, 5)} ${pad(s.inputHz, 6)} ${pad(s.multiRenderFrames, 5)} ${pad(s.scriptMsP50 ?? "-", 6)} ${pad(s.scriptMsP95 ?? "-", 6)} ${pad(s.scriptBusyPct ?? "-", 5)} ${pad(p.cpuPct?.webContent ?? "-", 6)} ${pad(p.cpuPct?.gpu ?? "-", 6)} ${pad(p.cpuPct?.app ?? "-", 6)}  ${note}`,
     );
   }
   return lines.join("\n");
@@ -134,11 +134,13 @@ console.log(`screen: ${d.display?.screenName ?? "?"} max ${d.display?.screenMaxF
 console.log(`60 fps cap flag: ${JSON.stringify(d.flag ?? null)}; live: near60fps enabled=${d.display?.liveNear60fpsEnabled}`);
 console.log("");
 console.log(table(result.passes));
-console.log(`\nfps = rendering updates/s; drawnHz = frames/s that showed a new canvas render; multi = frames that drew the scene 2+ times.`);
+console.log(`window ${JSON.stringify(d.window ?? null)}; static canvas ${result.passes.find((p) => p.canvas)?.canvas ?? "?"} device px`);
+console.log(`\nfps = rendering updates/s; drawnHz = frames/s that showed a new canvas render; multi = frames that drew the scene 2+ times;`);
+console.log(`jsP50/P95 = static-render script ms per rendering frame; js% = share of the pass in that script; cpu* = % of a core (WebContent, GPU, app processes).`);
 console.log(`JSON: ${out}`);
 for (const e of run.errors) log(`error: ${e}`);
 
-const gated = result.passes.filter((p) => (p.input === "zoom.native" || p.input === "pan.native") && !p.error && !p.noEffect);
+const gated = result.passes.filter((p) => p.input !== "idle" && p.input.endsWith(".native") || p.input.endsWith(".native.out")).filter((p) => !p.error && !p.noEffect);
 const failing = (result.displayHz ?? 0) >= 120 ? gated.filter((p) => p.stats.fps < BUDGET_FPS || p.stats.renderHz < BUDGET_FPS) : [];
 if (failing.length) log(`${failing.length} native zoom/pan passes below ${BUDGET_FPS} fps or drawn Hz`);
 process.exit(run.errors.length || failing.length || !result.passes.length ? 1 : 0);

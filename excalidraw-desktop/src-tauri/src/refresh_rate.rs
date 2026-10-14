@@ -112,6 +112,14 @@ pub mod probes {
     pub async fn perf_native_input() -> Result<serde_json::Value, String> {
         Err("refresh-rate probes are macOS only".into())
     }
+    #[tauri::command]
+    pub fn perf_window_maximize() -> Result<serde_json::Value, String> {
+        Err("refresh-rate probes are macOS only".into())
+    }
+    #[tauri::command]
+    pub fn perf_process_cpu() -> Result<serde_json::Value, String> {
+        Err("refresh-rate probes are macOS only".into())
+    }
 }
 
 /// Test-build probes. Every private or unusual call is guarded and reported, never fatal.
@@ -328,6 +336,38 @@ pub mod probes {
         Ok(json!({ "flag": flag_status(), "display": facts, "displayLink": link }))
     }
 
+    /// Fills the screen's visible area (the user's usual full-size window); returns the inner size.
+    #[tauri::command]
+    pub fn perf_window_maximize(window: tauri::WebviewWindow) -> Result<Value, String> {
+        window.maximize().map_err(|e| e.to_string())?;
+        let size = window.inner_size().map_err(|e| e.to_string())?;
+        Ok(json!({ "width": size.width, "height": size.height }))
+    }
+
+    /// Cumulative CPU seconds per pid (`ps` TIME), to attribute a pass's cost to the app,
+    /// WebContent and GPU processes.
+    #[tauri::command]
+    pub fn perf_process_cpu(pids: Vec<i32>) -> Result<Value, String> {
+        let list: Vec<String> = pids.iter().filter(|p| **p > 0).map(|p| p.to_string()).collect();
+        if list.is_empty() {
+            return Ok(json!({}));
+        }
+        let out = std::process::Command::new("/bin/ps")
+            .args(["-o", "pid=,time=", "-p", &list.join(",")])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let mut map = serde_json::Map::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let mut parts = line.split_whitespace();
+            if let (Some(pid), Some(time)) = (parts.next(), parts.next()) {
+                if let Some(secs) = parse_cpu_time(time) {
+                    map.insert(pid.to_string(), json!(secs));
+                }
+            }
+        }
+        Ok(Value::Object(map))
+    }
+
     #[derive(Clone, Copy, PartialEq)]
     enum Kind {
         Scroll,
@@ -496,9 +536,31 @@ pub mod probes {
     }
 }
 
+/// `ps` TIME ("[[dd-]hh:]mm:ss.cc") in seconds.
+#[cfg_attr(not(feature = "smoke-test"), allow(dead_code))]
+fn parse_cpu_time(text: &str) -> Option<f64> {
+    let (days, rest) = match text.split_once('-') {
+        Some((d, r)) => (d.parse::<f64>().ok()?, r),
+        None => (0.0, text),
+    };
+    let mut secs = 0.0;
+    for part in rest.split(':') {
+        secs = secs * 60.0 + part.parse::<f64>().ok()?;
+    }
+    Some(days * 86400.0 + secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_ps_cpu_time() {
+        assert_eq!(parse_cpu_time("0:01.25"), Some(1.25));
+        assert_eq!(parse_cpu_time("1:02:03.50"), Some(3723.5));
+        assert_eq!(parse_cpu_time("1-00:00:01.00"), Some(86401.0));
+        assert_eq!(parse_cpu_time("x"), None);
+    }
 
     #[test]
     fn related_keys_match_frame_rate_features() {

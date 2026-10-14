@@ -11,7 +11,14 @@
  *   trackpad takes (UI process, IPC, WebKit event dispatch, coalescing)
  * - zoom.gesture / zoom.wheel / pan.wheel: the same motions as synthetic DOM
  *   events (Safari gesture events, ctrl+wheel, plain wheel)
+ * - zoom.native.out / pan.native.out: pinch out to ~0.3x and back (through
+ *   the paper patterns' fade bands), and two-finger pan at 0.5x (dense paper)
  * - idle: no input; shows whether rAF itself runs at the display rate
+ *
+ * Per pass it also records the script time of each static render (render
+ * start to the end of its task) and, in the packaged app, the CPU used by the
+ * app, WebContent and GPU processes: high fps loss with little script time
+ * points at painting/compositing in the GPU process.
  *
  * Environment-agnostic: native input and display facts come in through
  * `native` (null outside the packaged app).
@@ -23,7 +30,9 @@ import type { FrameSample, PassStats } from "./refreshRateStats";
 export type RefreshRateInput =
   | "idle"
   | "zoom.native"
+  | "zoom.native.out"
   | "pan.native"
+  | "pan.native.out"
   | "zoom.gesture"
   | "zoom.wheel"
   | "pan.wheel";
@@ -46,6 +55,10 @@ export type NativeInputArgs = {
 export type NativeProbe = {
   displayInfo: () => Promise<Record<string, unknown>>;
   input: (args: NativeInputArgs) => Promise<Record<string, unknown>>;
+  /** Cumulative CPU seconds per process role (app, webContent, gpu). */
+  processCpu?: () => Promise<Record<string, number>>;
+  /** Fills the screen (the user's usual window size). */
+  maximize?: () => Promise<unknown>;
 };
 
 export type RefreshRatePass = {
@@ -57,6 +70,10 @@ export type RefreshRatePass = {
   /** no static render during an input pass: the input never reached the editor */
   noEffect?: boolean;
   native?: Record<string, unknown>;
+  /** static canvas size in device px */
+  canvas?: string;
+  /** CPU % per process role during the pass (100 = one core) */
+  cpuPct?: Record<string, number>;
   error?: string;
 };
 
@@ -106,6 +123,15 @@ export async function runRefreshRateProbe(
     (display?.display as Record<string, unknown> | undefined)?.screenMaxFps,
   );
   const displayHz = screenMaxFps > 0 ? screenMaxFps : 60;
+  if (ctx.native?.maximize) {
+    try {
+      const size = await ctx.native.maximize();
+      display = { ...display, window: size };
+      await sleep(600);
+    } catch (error) {
+      display = { ...display, maximizeError: String(error) };
+    }
+  }
 
   const staticCanvas = () =>
     root.querySelector<HTMLCanvasElement>(".vault-editor canvas.static");
@@ -136,11 +162,21 @@ export async function runRefreshRateProbe(
     }
     let renders = 0;
     let inputs = 0;
+    let scriptMs = 0;
+    let renderStart: number | null = null;
     const onInput = () => {
       inputs++;
     };
     const restore = countRenders(canvas, () => {
       renders++;
+      if (renderStart === null) {
+        // The render runs synchronously; the microtask fires when its task ends.
+        renderStart = win.performance.now();
+        win.queueMicrotask(() => {
+          scriptMs += win.performance.now() - (renderStart ?? 0);
+          renderStart = null;
+        });
+      }
     });
     const opts = { capture: true, passive: true } as const;
     win.addEventListener("wheel", onInput, opts);
@@ -151,9 +187,10 @@ export async function runRefreshRateProbe(
       if (!running) {
         return;
       }
-      samples.push({ t, renders, inputs });
+      samples.push({ t, renders, inputs, scriptMs });
       renders = 0;
       inputs = 0;
+      scriptMs = 0;
       win.requestAnimationFrame(tick);
     };
     win.requestAnimationFrame(tick);
@@ -208,6 +245,7 @@ export async function runRefreshRateProbe(
       canvas.dispatchEvent(event);
     };
     const native = (kind: NativeInputArgs["kind"], delta: number) => () => {
+      // a negative delta runs the first half in the other direction
       if (!ctx.native) {
         throw new Error("native input unavailable");
       }
@@ -225,7 +263,9 @@ export async function runRefreshRateProbe(
     return {
       idle: () => sleep(passMs),
       "zoom.native": native("magnify", 0.008),
+      "zoom.native.out": native("magnify", -0.01),
       "pan.native": native("scroll", 6),
+      "pan.native.out": native("scroll", 6),
       "zoom.wheel": () =>
         timed((p) => wheel({ deltaY: -4 * there(p), ctrlKey: true })),
       "pan.wheel": () =>
@@ -239,6 +279,28 @@ export async function runRefreshRateProbe(
         gesture("gestureend", 1);
       },
     };
+  };
+
+  /** Sets the zoom to `factor` x the current one with a one-step pinch, then lets the bitmap cache settle. */
+  const zoomBy = async (canvas: HTMLCanvasElement, factor: number) => {
+    for (const [type, scale] of [
+      ["gesturestart", 1],
+      ["gesturechange", factor],
+      ["gestureend", factor],
+    ] as const) {
+      const event = new win.Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "scale", { value: scale });
+      canvas.dispatchEvent(event);
+    }
+    await sleep(450);
+  };
+
+  const cpuSnapshot = async () => {
+    try {
+      return (await ctx.native?.processCpu?.()) ?? null;
+    } catch {
+      return null;
+    }
   };
 
   const passes: RefreshRatePass[] = [];
@@ -289,7 +351,32 @@ export async function runRefreshRateProbe(
         );
         await frame();
         await frame();
+        const zoomedOut = input === "pan.native.out";
+        if (zoomedOut) {
+          await zoomBy(canvas, 0.5);
+        }
+        const cpuBefore = await cpuSnapshot();
+        const started = win.performance.now();
         const { samples, result } = await record(drivers(canvas, x, y)[input]);
+        const seconds = (win.performance.now() - started) / 1000;
+        const cpuAfter = await cpuSnapshot();
+        if (cpuBefore && cpuAfter && seconds > 0) {
+          pass.cpuPct = Object.fromEntries(
+            Object.keys(cpuAfter)
+              .filter((role) => role in cpuBefore)
+              .map((role) => [
+                role,
+                Math.round(
+                  ((cpuAfter[role] - cpuBefore[role]) / seconds) * 1000,
+                ) / 10,
+              ]),
+          );
+        }
+        const surface = staticCanvas();
+        pass.canvas = surface ? `${surface.width}x${surface.height}` : "";
+        if (zoomedOut) {
+          await zoomBy(canvas, 2);
+        }
         pass.stats = passStats(samples, displayHz);
         if (input !== "idle" && pass.stats.rendersPerSec === 0) {
           pass.noEffect = true;

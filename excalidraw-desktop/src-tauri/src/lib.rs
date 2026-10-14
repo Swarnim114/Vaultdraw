@@ -1330,6 +1330,7 @@ pub fn run() {
                 templates::write_global_template, templates::open_global_templates_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 refresh_rate::probes::perf_display_info, refresh_rate::probes::perf_native_input,
+                refresh_rate::probes::perf_window_maximize, refresh_rate::probes::perf_process_cpu,
                 clipboard::smoke_read_clipboard
             ])
         } else {

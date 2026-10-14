@@ -79,6 +79,18 @@ describe("passStats", () => {
     expect(s.inputHz).toBe(0);
   });
 
+  it("script time per rendering frame and busy share", () => {
+    const samples = frames(11, 10).map((s, i) => ({
+      ...s,
+      scriptMs: i % 2 ? 4 : 2,
+    }));
+    const s = passStats(samples, 120);
+    expect(s.scriptMsP50).toBe(3);
+    expect(s.scriptMsP95).toBe(4);
+    // 5 x 4 + 5 x 2 over 100 ms
+    expect(s.scriptBusyPct).toBe(30);
+  });
+
   it("empty input", () => {
     const s = passStats([], 120);
     expect(s.fps).toBe(0);
