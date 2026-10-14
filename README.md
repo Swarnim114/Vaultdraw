@@ -13,7 +13,7 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - Copy PNG or SVG to the clipboard, from the export dialog or the right-click menu. On macOS the image goes to the native clipboard
 - Insert Mermaid diagrams from the main menu or More tools. Conversion runs fully offline, with no AI
 - Works fully offline (fonts and assets are bundled)
-- Customisable hotkeys (Settings → Hotkeys) and a Cmd/Ctrl+P quick switcher for drawings and commands
+- Keyboard first: one Cmd/Ctrl+P command palette for drawings, every editor action and every Vaultdraw feature, with customisable hotkeys (Settings → Hotkeys)
 - Plain-text config folder, editable by hand or in Settings, reloaded live
 - Colour themes in Noctalia format, nine built in, light and dark (in progress)
 
@@ -198,19 +198,21 @@ The page lists all commands with their keys as chips. Type in the filter to narr
 | --- | --- | --- | --- |
 | `file.save` | Save drawing | ⌘S, ⇧⌘S, ⌃S | Ctrl+S, Ctrl+Shift+S |
 | `settings.open` | Open settings | ⌘,, ⌃, | Ctrl+, |
-| `navigator.focusSearch` | Search drawings | ⇧⌘F, ⌃⇧F | Ctrl+Shift+F |
+| `navigator.focusSearch` | Search vault | ⇧⌘F, ⌃⇧F | Ctrl+Shift+F |
 | `view.zoomIn` | Zoom in (interface) | ⇧⌘=, ⇧⌘Num + | Ctrl+Shift+=, Ctrl+Shift+Num + |
 | `view.zoomOut` | Zoom out (interface) | ⇧⌘-, ⇧⌘Num - | Ctrl+Shift+-, Ctrl+Shift+Num - |
 | `view.zoomReset` | Reset interface zoom | ⇧⌘0, ⇧⌘Num 0 | Ctrl+Shift+0, Ctrl+Shift+Num 0 |
-| `palette.quickSwitcher` | Quick switcher | ⌘P | Ctrl+P |
+| `palette.quickSwitcher` | Command palette | ⌘P, ⌘/, ⇧⌘P | Ctrl+P, Ctrl+/, Ctrl+Shift+P |
 | `vault.newDrawing` | New drawing | ⌘N | Ctrl+N |
-| `vault.newFromTemplate` | New drawing from template | ⌥⌘N, ⌃⌥N | Ctrl+Alt+N |
+| `vault.newFromTemplate` | Templates: New drawing from template | ⌥⌘N, ⌃⌥N | Ctrl+Alt+N |
 | `view.toggleNavigator` | Toggle navigator | ⌘\  | Ctrl+\  |
 | `vault.switch` | Open another vault | — | — |
 | `file.revealInFinder` | Reveal drawing in Finder | — | — |
 | `file.duplicate` | Duplicate drawing | — | — |
 | `appearance.toggleMode` | Toggle light/dark mode | — | — |
-| `settings.openHotkeys` | Open hotkey settings | — | — |
+| `settings.openHotkeys` | Settings: Hotkeys | — | — |
+
+Every other palette entry with a fixed name (Mode: Dark, Paper: Grid, Settings: Files, Export: PNG, Sort: …, Rename drawing, …) is listed on the Hotkeys page too, unassigned by default.
 
 Canvas zoom is Excalidraw's own: **Cmd/Ctrl + `+`**, **`-`** and **`0`**. Interface zoom adds Shift.
 
@@ -240,11 +242,18 @@ Mistakes never break the app. They show as a warning banner in Settings and the 
 - A key that can't be parsed is ignored.
 - A value that isn't a list keeps the command's defaults.
 
-### Quick switcher
+### Command palette
 
-**Cmd/Ctrl+P** opens a list of drawings and commands. Type a few letters of a drawing name, in order and not necessarily next to each other (`vdg` finds `vault-design`), or of a command. Start with `>` to see commands only. Use Up and Down to move, Enter to open or run, and Esc to close.
+**Cmd/Ctrl+P** (also Cmd/Ctrl+/ and Cmd/Ctrl+Shift+P) opens one list of drawings and commands. Type a few letters, in order and not necessarily next to each other (`vdg` finds `vault-design`). Commands whose name starts with what you typed come first, then things you used recently, then the best fuzzy matches. Start with `>` to see commands only.
 
-Excalidraw's own command palette is still on Cmd/Ctrl+/ and Cmd/Ctrl+Shift+P.
+- **Up/Down** move, **Enter** opens or runs and puts focus back on the canvas, **Esc** closes.
+- **Cmd/Ctrl+Enter** runs a command and keeps the palette open (handy for toggles such as Toggle grid).
+- **Tab** (or **→** at the end of the text) narrows to a family: on "Theme: Dracula" it shows every `Theme: …` entry.
+- With nothing typed, recent commands and drawings come first.
+
+It lists Excalidraw's editor actions (tools, align, group, layers, flip, lock, grid, zen mode, canvas background, export image, clear canvas, …) with their shortcuts, and every Vaultdraw feature as a direct entry: `Theme: <name>`, `Mode: Light/Dark/System`, `Sync canvas with theme: On/Off`, `Paper: <style>`, `Pen: <name>`, `Settings: <page>`, `Export: PNG/SVG`, `Save a copy`, `Templates: …`, `Sort: …`, new drawing or folder, rename, move, trash and more. Entries that can't run right now (nothing selected, read-only vault, no drawing open) are hidden.
+
+Excalidraw's separate command palette is not used.
 
 ## Notebook backgrounds
 
@@ -307,6 +316,14 @@ yarn test:typecheck      # TypeScript
 yarn test:app            # all unit tests (editor + desktop)
 yarn --cwd excalidraw-desktop test:e2e   # Playwright browser tests
 ```
+
+### Adding a command
+
+Every feature registers its actions so they show in the palette and on the Hotkeys page:
+
+1. Add an entry (metadata only: `id`, `title`, `category`, `keys`, `when`) to `COMMANDS` in `excalidraw-desktop/src/commands/commands.ts`, or to `editorCommands.ts` if the open editor owns it. Name choices `"Family: Choice"` so Tab can narrow to the family.
+2. Bind the handler: app-shell actions in `useAppCommands.ts`; anything else with `registerCommandHandlers({ [id]: run })` while it is mounted.
+3. Entries that depend on data (one per theme, pen, library item) are a provider: `registerPaletteProvider({ id, items: () => [...] })` from `src/palette/registry.ts`. `items()` runs only when the palette opens.
 
 ## License and credits
 
