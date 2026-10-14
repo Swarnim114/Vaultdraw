@@ -1342,6 +1342,9 @@ pub fn run() {
                 }
                 Ok(())
             });
+        // Test runs must not take focus at launch (a window manager would follow it).
+        #[cfg(all(feature = "smoke-test", target_os = "macos"))]
+        let builder = builder.activate_ignoring_other_apps(!smoke::test_run());
         #[cfg(feature = "smoke-test")]
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
