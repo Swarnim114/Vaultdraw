@@ -1,0 +1,138 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  canvasBox,
+  openDrawing,
+  openVault,
+  readScene,
+  trackErrors,
+} from "./helpers";
+
+const DRAWING = "DSA/Graphs.excalidraw";
+
+const live = async (page: Page) =>
+  (await readScene(page, DRAWING)).elements.filter((el: any) => !el.isDeleted);
+
+/** Waits for the autosave to contain a stroke matching `pick`. */
+const savedStroke = async (page: Page, pick: (el: any) => boolean) => {
+  await expect
+    .poll(async () => (await live(page)).some(pick), { timeout: 8000 })
+    .toBe(true);
+  return (await live(page)).find(pick);
+};
+
+/** Drags from (fx, fy) by dx, ending dy lower (0: a stroke-like gesture). */
+const drag = async (page: Page, fx: number, fy: number, dx: number, dy = 0) => {
+  const box = await canvasBox(page);
+  const x = box.x + box.width * fx;
+  const y = box.y + box.height * fy;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx / 2, y + 30, { steps: 6 });
+  await page.mouse.move(x + dx, y + dy, { steps: 6 });
+  await page.mouse.up();
+};
+
+const pensBar = (page: Page) => page.getByRole("toolbar", { name: "Pens" });
+
+test.beforeEach(async ({ page }) => {
+  await openVault(page);
+  await page
+    .locator(".vault-tree-item__name", { hasText: "DSA" })
+    .first()
+    .click();
+  await openDrawing(page, "Graphs");
+});
+
+test("pen bar shows only with the freedraw tool", async ({ page }) => {
+  const errors = trackErrors(page);
+  await expect(pensBar(page)).toHaveCount(0);
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await expect(pensBar(page)).toBeVisible();
+  await page.locator(".vault-editor [data-testid='toolbar-rectangle']").click();
+  await expect(pensBar(page)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a pen chosen in the bar styles the stroke", async ({ page }) => {
+  const errors = trackErrors(page);
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await pensBar(page).getByRole("button", { name: "Red pen" }).click();
+  await expect(
+    pensBar(page).getByRole("button", { name: "Red pen" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await drag(page, 0.3, 0.8, 160);
+  const stroke = await savedStroke(page, (el) => el.type === "freedraw");
+  expect(stroke.strokeColor).toBe("#e03131");
+  expect(stroke.opacity).toBe(100);
+  expect(stroke.strokeWidth).toBeCloseTo(1 / 1.4, 1);
+  expect(stroke.strokeOptions).toEqual({
+    variability: "constant",
+    streamline: 0.4,
+  });
+  expect(errors).toEqual([]);
+});
+
+test("Alt+2 selects the marker while drawing", async ({ page }) => {
+  const errors = trackErrors(page);
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await page.keyboard.press("Alt+Digit2");
+  await expect(
+    pensBar(page).getByRole("button", { name: "Marker" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await drag(page, 0.3, 0.85, 160);
+  const stroke = await savedStroke(page, (el) => el.type === "freedraw");
+  expect(stroke.strokeWidth).toBeCloseTo(2 / 1.4, 1);
+  expect(stroke.strokeOptions).toEqual({
+    variability: "constant",
+    streamline: 0.5,
+  });
+  expect(errors).toEqual([]);
+});
+
+test("highlighter lands beneath the ink and shapes drawn before it", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  const before = new Set((await live(page)).map((el: any) => el.id));
+  await page.locator(".vault-editor [data-testid='toolbar-rectangle']").click();
+  // A zero-height rectangle would be discarded, so end it lower.
+  await drag(page, 0.3, 0.5, 200, 60);
+  await page.keyboard.press("Escape");
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await page.keyboard.press("Alt+Digit4");
+  await drag(page, 0.3, 0.7, 200);
+  await page.keyboard.press("Alt+Digit5");
+  await drag(page, 0.3, 0.52, 200);
+  const stroke = await savedStroke(
+    page,
+    (el) => el.type === "freedraw" && el.opacity < 100,
+  );
+  const elements = await live(page);
+  const at = (pick: (el: any) => boolean) => elements.findIndex(pick);
+  const mine = (el: any) => !before.has(el.id);
+  expect(stroke.strokeColor).toBe("#ffd43b");
+  expect(stroke.opacity).toBe(40);
+  const highlighter = at((el) => el.id === stroke.id);
+  const pen = at(
+    (el) => mine(el) && el.type === "freedraw" && el.opacity === 100,
+  );
+  const rect = at((el) => mine(el) && el.type === "rectangle");
+  expect(pen).toBeGreaterThan(highlighter);
+  expect(rect).toBeGreaterThan(highlighter);
+  expect(errors).toEqual([]);
+});
+
+test("the pen bar's settings link opens the Pens & laser page", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await pensBar(page).getByRole("button", { name: "Pens settings" }).click();
+  await expect(page.locator("#settings-title")).toHaveText("Pens & laser");
+  await page.getByRole("button", { name: "Close Settings" }).click();
+  // Opening Settings another way starts on the default page again.
+  await page.keyboard.press("Meta+Comma");
+  await expect(page.locator("#settings-title")).not.toHaveText("Pens & laser");
+  expect(errors).toEqual([]);
+});

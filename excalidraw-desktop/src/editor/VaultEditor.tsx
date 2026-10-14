@@ -24,6 +24,10 @@ import type {
 import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
 
+import { PenBar } from "../pens/PenBar";
+
+import { usePens } from "../pens/usePens";
+
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
 import {
@@ -34,6 +38,7 @@ import {
 import { focusElement } from "./focusElement";
 import { renderImageExport } from "./imageExport";
 
+import type { SettingsPageId } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
 import type { LibraryRepository } from "../library/types";
 
@@ -51,7 +56,8 @@ type Props = {
   disabled?: boolean;
   theme?: "light" | "dark";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
-  onOpenSettings?: () => void;
+  /** Opens Settings, on `page` when given (the pen bar opens "pens"). */
+  onOpenSettings?: (page?: SettingsPageId) => void;
   /** Select + scroll to an element once the scene is loaded (search results). */
   focusRequest?: {
     elementId: string;
@@ -103,6 +109,8 @@ const VaultEditorComponent = ({
     null,
   );
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
+  const pens = usePens(apiRef, host, !readOnly && !disabled);
+  const onPenAppState = pens.onAppState;
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
@@ -229,6 +237,7 @@ const VaultEditorComponent = ({
     (elements: Snapshot[0], appState: Snapshot[1], files: Snapshot[2]) => {
       latest.current = [elements, appState, files];
       onAppState(appState);
+      onPenAppState(appState);
       if (!ready.current) {
         return;
       }
@@ -261,7 +270,7 @@ const VaultEditorComponent = ({
         maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
       }
     },
-    [serializePending, onAppState],
+    [serializePending, onAppState, onPenAppState],
   );
 
   const onInitialize = useCallback((api: ExcalidrawImperativeAPI) => {
@@ -416,6 +425,8 @@ const VaultEditorComponent = ({
         interaction={disabled ? false : undefined}
         onExportImage={handleExportImage}
         aiEnabled={false}
+        freedrawPen={pens.freedrawPen}
+        laserPointerOptions={pens.laserPointerOptions}
         libraryUIOptions={libraryUIOptions}
         UIOptions={{
           canvasActions: {
@@ -454,7 +465,10 @@ const VaultEditorComponent = ({
           <MainMenu.DefaultItems.ClearCanvas />
           <MainMenu.Separator />
           {onOpenSettings && (
-            <MainMenu.Item icon={settingsIcon} onSelect={onOpenSettings}>
+            <MainMenu.Item
+              icon={settingsIcon}
+              onSelect={() => onOpenSettings()}
+            >
               Vault settings
             </MainMenu.Item>
           )}
@@ -462,6 +476,14 @@ const VaultEditorComponent = ({
           <MainMenu.DefaultItems.ChangeCanvasBackground />
         </MainMenu>
       </Excalidraw>
+      {pens.freedrawActive && !readOnly && !disabled && (
+        <PenBar
+          presets={pens.presets}
+          active={pens.active}
+          onSelect={pens.selectPen}
+          onOpenSettings={onOpenSettings && (() => onOpenSettings("pens"))}
+        />
+      )}
     </div>
   );
 };

@@ -1,0 +1,59 @@
+/* Sits under Excalidraw's top toolbar; only its chips take pointer events. */
+.pen-bar {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  padding: 3px;
+  overflow-x: auto;
+  pointer-events: none;
+  background: var(--vault-surface);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.pen-bar__chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--vault-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--vault-radius-sm);
+  cursor: pointer;
+}
+
+.pen-bar__chip:hover {
+  background: var(--vault-surface-hover);
+}
+
+.pen-bar__chip:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 1px;
+}
+
+.pen-bar__chip[aria-pressed="true"] {
+  background: var(--vault-primary-light);
+  border-color: var(--vault-primary-border);
+}
+
+.pen-bar__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--vault-border-strong);
+}
+
+.pen-bar__settings {
+  color: var(--vault-text-muted);
+}

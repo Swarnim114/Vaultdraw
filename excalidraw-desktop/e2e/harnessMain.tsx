@@ -5,7 +5,10 @@ import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
-import { setAutosaveDelayMs } from "../src/vault/preferences";
+import {
+  setAutosaveDelayMs,
+  updatePreferences,
+} from "../src/vault/preferences";
 
 import "../src/desktop.css";
 
@@ -169,6 +172,7 @@ for (let i = 0; i < templateCount; i++) {
 const libraryRepository = new FakeLibraryRepository();
 
 (ownerWindow as any).__vaultRepo = repository;
+(ownerWindow as any).__updatePreferences = updatePreferences;
 (ownerWindow as any).__libraryRepo = libraryRepository;
 
 void import("../src/VaultApp").then(({ default: VaultApp }) => {

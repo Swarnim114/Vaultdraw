@@ -1444,7 +1444,7 @@ export const VaultApp = ({
                 disabled={isBusy || isClosing || docHook.loading}
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
-                onOpenSettings={() => openSettings()}
+                onOpenSettings={(page) => openSettings(page)}
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
