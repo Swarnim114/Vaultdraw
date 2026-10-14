@@ -126,7 +126,22 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
         return found;
       },
       8000,
-    );
+    ).catch((err: unknown) => {
+      // Say why select-all produced no pending tile, so one packaged run is enough.
+      const active = doc.activeElement;
+      throw new Error(
+        `${String(err)}; ${JSON.stringify({
+          activeElement: active
+            ? `${active.tagName}.${active.className}`.slice(0, 120)
+            : null,
+          dialogOpen: !!root.querySelector(".Modal, .Dialog, [role=dialog]"),
+          selectedHandles: root.querySelectorAll(
+            ".excalidraw .selected-shape-actions",
+          ).length,
+          personalTiles: tiles(id),
+        })}`,
+      );
+    });
     const before = tiles(id);
     tile.click();
     await waitFor(
