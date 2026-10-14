@@ -39,6 +39,13 @@ const StaticCanvas = (props: StaticCanvasProps) => {
     props.canvas.style.height = `${props.appState.height}px`;
     props.canvas.width = props.appState.width * props.scale;
     props.canvas.height = props.appState.height * props.scale;
+    // free the backing store on unmount (WebKit holds it until GC); StrictMode
+    // re-runs this effect, which restores the size
+    const canvas = props.canvas;
+    return () => {
+      canvas.width = 0;
+      canvas.height = 0;
+    };
   }, [props.appState.height, props.appState.width, props.canvas, props.scale]);
 
   useEffect(() => {

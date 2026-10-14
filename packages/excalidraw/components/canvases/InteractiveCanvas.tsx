@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 
 import {
   isShallowEqual,
@@ -24,6 +24,8 @@ import { getSelectionColor } from "../../renderer/helpers";
 import { renderInteractiveScene } from "../../renderer/interactiveScene";
 
 import { AnimationController } from "../../renderer/animation";
+
+import { useCanvasBackingStore } from "./useCanvasBackingStore";
 
 import type {
   AppClassProperties,
@@ -88,6 +90,13 @@ export const INTERACTIVE_SCENE_ANIMATION_KEY = "animateInteractiveScene";
 const InteractiveCanvas = (props: InteractiveCanvasProps) => {
   const isComponentMounted = useRef(false);
   const rendererParams = useRef(null as InteractiveSceneRenderConfig | null);
+  const { app } = props;
+  const getCanvas = useCallback(() => app.interactiveCanvas, [app]);
+  useCanvasBackingStore(
+    getCanvas,
+    props.appState.width * props.scale,
+    props.appState.height * props.scale,
+  );
 
   useEffect(() => {
     if (!isComponentMounted.current) {

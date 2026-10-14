@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import type { NonDeletedSceneElementsMap } from "@excalidraw/element/types";
 
 import { isRenderThrottlingEnabled } from "../../reactUtils";
 import { renderNewElementScene } from "../../renderer/renderNewElementScene";
+
+import { useCanvasBackingStore } from "./useCanvasBackingStore";
 
 import type {
   RenderableElementsMap,
@@ -26,6 +28,12 @@ interface NewElementCanvasProps {
 
 const NewElementCanvas = (props: NewElementCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const getCanvas = useCallback(() => canvasRef.current, []);
+  useCanvasBackingStore(
+    getCanvas,
+    props.appState.width * props.scale,
+    props.appState.height * props.scale,
+  );
   useEffect(() => {
     if (!canvasRef.current) {
       return;
