@@ -236,6 +236,14 @@ const BlankRow = memo(
 
 /* ---- Picker ---- */
 
+/**
+ * Rows are mounted progressively: a screenful first, then the rest in small
+ * chunks, one per task, so opening a large picker never blocks the UI thread
+ * in one long commit (low-end Macs).
+ */
+const INITIAL_ROWS = 30;
+const ROW_CHUNK = 50;
+
 export const TemplatePicker = ({
   ownerDocument,
   vaultName,
@@ -277,6 +285,17 @@ export const TemplatePicker = ({
   const total = blankCount + vaultList.length + globalList.length;
   const active = total === 0 ? -1 : Math.min(activeIndex, total - 1);
   const optionId = (i: number) => `${uid}-opt-${i}`;
+
+  const [rowLimit, setRowLimit] = useState(INITIAL_ROWS);
+  useEffect(() => {
+    if (rowLimit >= total) {
+      return undefined;
+    }
+    const id = setTimeout(() => setRowLimit((n) => n + ROW_CHUNK), 0);
+    return () => clearTimeout(id);
+  }, [rowLimit, total]);
+  // Always render up to the active row (e.g. End pressed before all mounted).
+  const shownRows = Math.max(rowLimit, active + 1);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -381,7 +400,7 @@ export const TemplatePicker = ({
         >
           {label}
         </div>
-        {items.map((t, i) => (
+        {items.slice(0, Math.max(0, shownRows - offset)).map((t, i) => (
           <Row
             key={templateKey(t)}
             entry={t}

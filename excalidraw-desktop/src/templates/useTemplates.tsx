@@ -13,10 +13,13 @@ import {
 
 import { createGlobalTemplateStore } from "./globalTemplates";
 import { instantiateTemplate } from "./instantiate";
-import { listTemplates, readTemplateJson } from "./listTemplates";
+import { readTemplateJson } from "./listTemplates";
 import { saveAsTemplate } from "./saveTemplate";
 import { SaveTemplateModal, type TemplateScope } from "./SaveTemplateModal";
-import { TemplatePicker } from "./TemplatePicker";
+import {
+  TemplatePickerHost,
+  type TemplatePickerHandle,
+} from "./TemplatePickerHost";
 import { createThumbnailRenderer } from "./thumbnails";
 import { templateKey, type TemplateEntry } from "./types";
 
@@ -37,12 +40,6 @@ interface Options {
   onError: (message: string) => void;
 }
 
-interface Listing {
-  vault: TemplateEntry[];
-  global: TemplateEntry[];
-  error?: string;
-}
-
 export function useTemplates(o: Options) {
   const globalStore = useRef<GlobalTemplateStore | null>(null);
   globalStore.current ??= createGlobalTemplateStore();
@@ -51,12 +48,8 @@ export function useTemplates(o: Options) {
   );
   renderer.current ??= createThumbnailRenderer();
 
-  const [picker, setPicker] = useState<{
-    loading: boolean;
-    data: Listing;
-  } | null>(null);
+  const pickerRef = useRef<TemplatePickerHandle>(null);
   const [saveTarget, setSaveTarget] = useState<string | null>(null);
-  const generation = useRef(0);
   const { vault, folder, repository } = o;
 
   const deps = useMemo(
@@ -72,41 +65,13 @@ export function useTemplates(o: Options) {
     [vault, folder, repository],
   );
 
-  const openPicker = useCallback(async () => {
-    if (!deps) {
-      return;
-    }
-    const mine = ++generation.current;
-    setPicker({ loading: true, data: { vault: [], global: [] } });
-    try {
-      const r = await listTemplates(deps);
-      if (mine === generation.current) {
-        setPicker({
-          loading: false,
-          data: { vault: r.vault, global: r.global, error: r.vaultError },
-        });
-      }
-    } catch (err) {
-      if (mine === generation.current) {
-        setPicker({
-          loading: false,
-          data: { vault: [], global: [], error: errorMessage(err) },
-        });
-      }
-    }
-  }, [deps]);
-
-  const closePicker = useCallback(() => {
-    generation.current++;
-    setPicker(null);
-  }, []);
+  const openPicker = useCallback(() => pickerRef.current?.open(), []);
 
   const pick = useCallback(
     async (entry: TemplateEntry) => {
       if (!deps) {
         return;
       }
-      closePicker();
       try {
         const json = instantiateTemplate(await readTemplateJson(entry, deps), {
           theme: o.theme,
@@ -126,7 +91,7 @@ export function useTemplates(o: Options) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deps, closePicker, o.theme, o.prepareParent, o.createFromJson, o.onError],
+    [deps, o.theme, o.prepareParent, o.createFromJson, o.onError],
   );
 
   const requestSave = useCallback((path: string | null) => {
@@ -149,31 +114,21 @@ export function useTemplates(o: Options) {
 
   const dialogs: ReactNode = (
     <>
-      {picker && o.doc && vault && (
-        <TemplatePicker
+      {deps && o.doc && vault && (
+        <TemplatePickerHost
+          ref={pickerRef}
+          deps={deps}
           ownerDocument={o.doc}
           vaultName={vault.name}
-          vaultTemplates={picker.data.vault}
-          globalTemplates={picker.data.global}
-          loading={picker.loading}
-          error={picker.data.error}
           templatesFolder={folder}
           renderThumbnail={(t) =>
             renderer.current!.request(templateKey(t), () =>
-              readTemplateJson(t, deps!),
+              readTemplateJson(t, deps),
             )
           }
           cancelThumbnail={(t) => renderer.current!.cancel(templateKey(t))}
           onPick={(t) => void pick(t)}
-          onBlank={
-            vault.readOnly
-              ? undefined
-              : () => {
-                  closePicker();
-                  o.newBlank();
-                }
-          }
-          onClose={closePicker}
+          onBlank={vault.readOnly ? undefined : o.newBlank}
           onRevealGlobal={() => void globalStore.current!.reveal()}
         />
       )}
@@ -192,5 +147,5 @@ export function useTemplates(o: Options) {
     </>
   );
 
-  return { openPicker, requestSave, dialogs, pickerOpen: picker !== null };
+  return { openPicker, requestSave, dialogs };
 }

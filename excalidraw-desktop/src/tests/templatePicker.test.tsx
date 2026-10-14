@@ -161,4 +161,16 @@ describe("TemplatePicker", () => {
       "data:image/svg+xml,x",
     );
   });
+
+  it("mounts long lists progressively but always renders the active row", async () => {
+    const many = Array.from({ length: 120 }, (_, i) =>
+      entry(`T${String(i).padStart(3, "0")}`),
+    );
+    setup({ vaultTemplates: many, globalTemplates: [] });
+    const rows = () => screen.getAllByRole("option").length;
+    expect(rows()).toBeLessThan(120);
+    fireEvent.keyDown(input(), { key: "End" });
+    expect(activeName()).toContain("T119");
+    await vi.waitFor(() => expect(rows()).toBe(120));
+  });
 });
