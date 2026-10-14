@@ -2,6 +2,7 @@ import {
   getCommonFrameId,
   getFrameChildrenInsertionIndex,
   getContainerElement,
+  getElementBounds,
   isElementInViewport,
   isTextElement,
 } from "@excalidraw/element";
@@ -216,23 +217,17 @@ export class Renderer {
     height: AppState["height"];
     width: AppState["width"];
   }): readonly NonDeletedExcalidrawElement[] {
+    // Vaultdraw: same test as `isElementInViewport`, with the viewport's
+    // scene rect computed once instead of twice per element (two object
+    // allocations per element per pan/zoom frame on large scenes)
+    const minX = -scrollX;
+    const minY = -scrollY;
+    const maxX = width / zoom.value - scrollX;
+    const maxY = height / zoom.value - scrollY;
     const visibleElements: NonDeletedExcalidrawElement[] = [];
     for (const element of elementsMap.values()) {
-      if (
-        isElementInViewport(
-          element,
-          width,
-          height,
-          {
-            zoom,
-            offsetLeft,
-            offsetTop,
-            scrollX,
-            scrollY,
-          },
-          elementsMap,
-        )
-      ) {
+      const [x1, y1, x2, y2] = getElementBounds(element, elementsMap);
+      if (minX <= x2 && minY <= y2 && maxX >= x1 && maxY >= y1) {
         visibleElements.push(element);
       }
     }
@@ -309,6 +304,26 @@ export class Renderer {
     ] as readonly T[];
   }
 
+  // Vaultdraw: the renderable map depends only on the scene and the
+  // editing/new element, not on the viewport. Memoized separately so pan and
+  // zoom frames don't rebuild a Map of every element (and the canvases see a
+  // stable `elementsMap`).
+  private _getRenderableElementsMap = memoize(
+    ({
+      editingTextElement,
+      newElement,
+    }: {
+      canvasNonce: string;
+      editingTextElement: AppState["editingTextElement"];
+      newElement: AppState["newElement"];
+    }) =>
+      this.getRenderableElementsMap({
+        elements: this.scene.getNonDeletedElements(),
+        editingTextElement,
+        newElement,
+      }),
+  );
+
   private _getRenderableElements = memoize(
     ({
       canvasNonce,
@@ -329,11 +344,9 @@ export class Renderer {
     > & {
       canvasNonce: string;
     }) => {
-      const elements = this.scene.getNonDeletedElements();
-
       const { elementsMap, newElementCanvasElement } =
-        this.getRenderableElementsMap({
-          elements,
+        this._getRenderableElementsMap({
+          canvasNonce,
           editingTextElement,
           newElement,
         });
@@ -419,6 +432,7 @@ export class Renderer {
   public destroy() {
     renderStaticSceneThrottled.cancel();
     this._getRenderableElements.clear();
+    this._getRenderableElementsMap.clear();
     this._getVisibleElementsWithRenderOffsets.clear();
   }
 }
