@@ -154,13 +154,29 @@ pub async fn perf_process_ids(window: tauri::WebviewWindow) -> Result<Value, Str
     Ok(json!({ "app": std::process::id(), "webContent": web, "network": network, "gpu": gpu }))
 }
 
-/// Perf runs only (VAULTDRAW_PERF=1): keep the WebView rendering while the window is occluded or the
-/// screen is locked, and keep the process out of App Nap. Every private selector is guarded.
-pub fn perf_harden_webview(window: &tauri::WebviewWindow) {
-    if env::var("VAULTDRAW_PERF").ok().as_deref() != Some("1") {
+/// A smoke or perf run (as opposed to the smoke-test build launched by hand).
+pub fn test_run() -> bool {
+    enabled() || env::var("VAULTDRAW_PERF").ok().as_deref() == Some("1")
+}
+
+/// Test runs stay in the background: no Dock icon, never the active app. A window manager
+/// then has no activation to follow, so test windows never pull the user to another workspace.
+pub fn background_test_app(app: &mut tauri::App) {
+    #[cfg(target_os = "macos")]
+    if test_run() {
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+/// Test runs only: keep the WebView rendering while the window is hidden (another workspace,
+/// occluded, screen locked), and keep the process out of App Nap. Never takes focus.
+/// Every private selector is guarded.
+pub fn harden_test_webview(window: &tauri::WebviewWindow) {
+    if !test_run() {
         return;
     }
-    let _ = window.set_focus();
     #[cfg(target_os = "macos")]
     {
         let _ = window.with_webview(|webview| unsafe {

@@ -1317,7 +1317,11 @@ pub fn run() {
                     .first()
                     .cloned()
                     .ok_or("missing main window config")?;
+                #[cfg(feature = "smoke-test")]
+                smoke::background_test_app(app);
                 let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?;
+                #[cfg(feature = "smoke-test")]
+                let builder = builder.focused(!smoke::test_run());
                 #[cfg(target_os = "macos")]
                 let builder = {
                     let mtm = objc2::MainThreadMarker::new()
@@ -1326,7 +1330,7 @@ pub fn run() {
                 };
                 let main_window = builder.build()?;
                 #[cfg(feature = "smoke-test")]
-                smoke::perf_harden_webview(&main_window);
+                smoke::harden_test_webview(&main_window);
                 #[cfg(not(feature = "smoke-test"))]
                 let _ = main_window;
                 // Live-reload of the config folder; a failure only disables live reload.
