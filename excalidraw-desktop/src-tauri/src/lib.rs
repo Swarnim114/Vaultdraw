@@ -22,6 +22,7 @@ mod search;
 mod library;
 mod memory;
 mod pdf_import;
+mod pressure;
 mod refresh_rate;
 mod templates;
 mod themes;
@@ -1481,6 +1482,8 @@ pub fn run() {
                 smoke::harden_test_webview(&main_window);
                 #[cfg(not(feature = "smoke-test"))]
                 let _ = main_window;
+                // Memory pressure: return free pages and let the webview purge its caches.
+                pressure::start(app.handle());
                 // Live-reload of the config folder, started off the setup path (it creates the
                 // config files and registers an FSEvents stream); a failure only disables live reload.
                 let handle = app.handle().clone();
@@ -1507,7 +1510,7 @@ pub fn run() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
-                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, pressure::release_memory, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
@@ -1528,7 +1531,7 @@ pub fn run() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
-                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+                export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, pressure::release_memory, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
@@ -1546,7 +1549,7 @@ pub fn run() {
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
             write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
-            export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
+            export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, pressure::release_memory, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { installMemoryManagement } from "./memory/install";
 import { getPreferences, getTheme, resolveTheme } from "./vault/preferences";
 import { initSettings } from "./vault/settingsSync";
 
@@ -88,6 +89,7 @@ void initSettings(ownerWindow)
         <VaultApp ownerDocument={ownerDocument} ownerWindow={ownerWindow} />
       </StrictMode>,
     );
+    installMemoryManagement(ownerWindow);
     mark("render-called");
     ownerWindow.requestAnimationFrame(() => mark("first-frame"));
     if (import.meta.env.VITE_APP_PERF_TEST === "true") {
