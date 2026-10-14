@@ -1,3 +1,6 @@
+import { createGlobalTemplateStore } from "../templates/globalTemplates";
+import { instantiateTemplate } from "../templates/instantiate";
+import { listTemplates, readTemplateJson } from "../templates/listTemplates";
 import { desktopRepository } from "../vault/DesktopVaultRepository";
 
 import { DEFAULT_PREFERENCES, getPreferences } from "../vault/preferences";
@@ -16,6 +19,8 @@ import {
   perfExportMermaidStep,
 } from "./exportSmoke";
 import { runLibrarySmoke } from "./librarySmoke";
+
+import type { InvokeFn } from "../vault/DesktopVaultRepository";
 
 import type { ExportSmokeContext } from "./exportSmoke";
 
@@ -2488,6 +2493,197 @@ export async function runDesktopSmoke(): Promise<void> {
         }).catch(() => {});
       }
     });
+
+    // ---- Templates (F9): real native commands, not run in CI ----
+    // The reveal command opens a file manager window; spy on the real IPC
+    // bridge to prove no template step ever calls it.
+    const templateIpc: string[] = [];
+    const internals = (
+      win as unknown as {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string, ...r: unknown[]) => unknown;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const originalInternalInvoke = internals?.invoke;
+    if (internals && originalInternalInvoke) {
+      internals.invoke = (cmd: string, ...rest: unknown[]) => {
+        templateIpc.push(cmd);
+        return originalInternalInvoke.call(internals, cmd, ...rest);
+      };
+    }
+    const templateScene = (marker: string) =>
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        source: "desktop-smoke",
+        elements: [
+          {
+            id: `tpl-rect-${marker}`,
+            type: "rectangle",
+            x: 10,
+            y: 10,
+            width: 120,
+            height: 60,
+            angle: 0,
+            strokeColor: "#1e1e1e",
+            backgroundColor: "#a5d8ff",
+            fillStyle: "solid",
+            strokeWidth: 2,
+            strokeStyle: "solid",
+            roughness: 1,
+            opacity: 100,
+            groupIds: [`tpl-group-${marker}`],
+            frameId: null,
+            roundness: null,
+            seed: 7,
+            version: 1,
+            versionNonce: 7,
+            isDeleted: false,
+            boundElements: null,
+            updated: 1,
+            link: null,
+            locked: false,
+          },
+        ],
+        appState: { viewBackgroundColor: "#fff4e6" },
+        files: {},
+      });
+    const templateDeps = () => ({
+      repository: desktopRepository,
+      handle: activeVault.handle,
+      folder: "Templates",
+      global: createGlobalTemplateStore({ invoke: invoke as InvokeFn }),
+    });
+
+    await step("templates-vault-create-list-instantiate", async () => {
+      const marker = `${runId}-v`;
+      const name = `Smoke Tpl ${marker}`;
+      await call("create_folder", {
+        handle: activeVault.handle,
+        path: "Templates",
+      }).catch(() => {}); // may exist from an earlier run
+      await call("write_drawing", {
+        handle: activeVault.handle,
+        path: `Templates/${name}.excalidraw`,
+        json: templateScene(marker),
+        expectedRevision: null,
+        operationId: `tpl-${marker}`,
+      });
+      const deps = templateDeps();
+      const listed = await listTemplates(deps);
+      const entry = listed.vault.find((t) => t.name === name);
+      if (!entry) {
+        throw new Error(
+          `listTemplates missed ${name}: ${JSON.stringify(listed.vault)}`,
+        );
+      }
+      const source = await readTemplateJson(entry, deps);
+      const made = JSON.parse(instantiateTemplate(source, { theme: "light" }));
+      const [el] = made.elements;
+      if (
+        made.elements.length !== 1 ||
+        el.type !== "rectangle" ||
+        el.id === `tpl-rect-${marker}` ||
+        el.groupIds[0] === `tpl-group-${marker}` ||
+        el.backgroundColor !== "#a5d8ff" ||
+        made.appState.viewBackgroundColor !== "#fff4e6"
+      ) {
+        throw new Error(`Bad instantiation: ${JSON.stringify(made)}`);
+      }
+      return { listed: listed.vault.length, newId: el.id };
+    });
+
+    await step("templates-picker-creates-drawing", async () => {
+      const marker = `${runId}-v`;
+      const name = `Smoke Tpl ${marker}`;
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          key: "n",
+          code: "KeyN",
+          metaKey: true,
+          ctrlKey: true,
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      const row = await waitFor("picker row", () =>
+        Array.from(
+          doc.querySelectorAll<HTMLElement>(".template-picker__row"),
+        ).find((r) => r.textContent?.includes(name)),
+      );
+      const revealShown = !!doc.querySelector(".template-picker__state button");
+      row.click();
+      const created = await pollAsync(
+        `drawing created from ${name}`,
+        async () => {
+          const entries = await call("list_directory", {
+            handle: activeVault.handle,
+            path: "",
+          }).catch(() => [] as VaultEntry[]);
+          return (
+            entries.find(
+              (e) => e.kind === "drawing" && e.name.startsWith(`${name}-`),
+            )?.path ?? null
+          );
+        },
+        8000,
+      );
+      const file = await call("read_drawing", {
+        handle: activeVault.handle,
+        path: created,
+      });
+      const scene = JSON.parse(file.json);
+      if (
+        scene.elements.length !== 1 ||
+        scene.elements[0].id === `tpl-rect-${marker}` ||
+        scene.appState?.viewBackgroundColor !== "#fff4e6"
+      ) {
+        throw new Error(`Created drawing is wrong: ${file.json.slice(0, 300)}`);
+      }
+      return { created, revealShown };
+    });
+
+    await step("templates-global-write-list-read", async () => {
+      const marker = `${runId}-g`;
+      const file = `Smoke Global ${marker}.excalidraw`;
+      const json = templateScene(marker);
+      await invoke("write_global_template", { name: file, json });
+      const listed = (await invoke("list_global_templates")) as Array<{
+        name: string;
+        size: number;
+      }>;
+      if (!listed.some((t) => t.name === file)) {
+        throw new Error(`list_global_templates missed ${file}`);
+      }
+      const read = (await invoke("read_global_template", {
+        name: file,
+      })) as { json: string };
+      if (read.json !== json) {
+        throw new Error("read_global_template did not round-trip the JSON");
+      }
+      let collision = "";
+      try {
+        await invoke("write_global_template", { name: file, json });
+      } catch (error) {
+        collision = JSON.stringify(error);
+      }
+      if (!/NAME_COLLISION|exist/i.test(collision)) {
+        throw new Error(`Overwrite was not refused: ${collision}`);
+      }
+      const viaStore = await listTemplates(templateDeps());
+      if (!viaStore.global.some((t) => t.path === file)) {
+        throw new Error("listTemplates did not include the global template");
+      }
+      if (templateIpc.includes("open_global_templates_dir")) {
+        throw new Error("open_global_templates_dir was invoked");
+      }
+      return { listed: listed.length, ipc: templateIpc.length };
+    });
+    if (internals && originalInternalInvoke) {
+      internals.invoke = originalInternalInvoke;
+    }
 
     // ---- Colour themes (personal/planning/themes.md "Final decisions") ----
     type Rgba = [number, number, number, number];
