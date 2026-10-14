@@ -30,9 +30,11 @@ export class LaserTrails implements Trail {
 
   private settings = DEFAULT_LASER_SETTINGS;
 
-  private getTrailOptions(
-    { size, decayMs, length }: LaserPointerSettings = DEFAULT_LASER_SETTINGS,
-  ) {
+  private getTrailOptions({
+    size,
+    decayMs,
+    length,
+  }: LaserPointerSettings = DEFAULT_LASER_SETTINGS) {
     return {
       size,
       simplify: 0,

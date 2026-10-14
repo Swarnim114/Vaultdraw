@@ -161,21 +161,25 @@ export class AnimatedTrail implements Trail {
 
   private onFrame() {
     const paths: string[] = [];
+    const alive: LaserPointer[] = [];
 
+    // one outline per trail per frame: it is the expensive part
     for (const trail of this.pastTrails) {
-      paths.push(this.drawTrail(trail, this.app.state));
+      const outline = this.getViewportOutline(trail, this.app.state);
+      if (outline.length !== 0) {
+        alive.push(trail);
+        paths.push(this.toSvgPath(outline));
+      }
     }
+    this.pastTrails = alive;
 
     if (this.currentTrail) {
-      const currentPath = this.drawTrail(this.currentTrail, this.app.state);
-      paths.push(currentPath);
+      paths.push(
+        this.toSvgPath(
+          this.getViewportOutline(this.currentTrail, this.app.state),
+        ),
+      );
     }
-
-    this.pastTrails = this.pastTrails.filter(
-      (t) =>
-        t.getStrokeOutline(t.options.size / this.app.state.zoom.value)
-          .length !== 0,
-    );
 
     if (paths.length === 0) {
       // Clean up the SVG path if there are no trails to render
@@ -206,8 +210,8 @@ export class AnimatedTrail implements Trail {
     return true;
   }
 
-  private drawTrail(trail: LaserPointer, state: AppState): string {
-    const _stroke = trail
+  private getViewportOutline(trail: LaserPointer, state: AppState) {
+    return trail
       .getStrokeOutline(trail.options.size / state.zoom.value)
       .map(([x, y]) => {
         const result = sceneCoordsToViewportCoords(
@@ -217,10 +221,12 @@ export class AnimatedTrail implements Trail {
 
         return [result.x, result.y];
       });
+  }
 
+  private toSvgPath(outline: number[][]): string {
     const stroke = this.trailAnimation
-      ? _stroke.slice(0, _stroke.length / 2)
-      : _stroke;
+      ? outline.slice(0, outline.length / 2)
+      : outline;
 
     return getSvgPathFromStroke(stroke, true);
   }
