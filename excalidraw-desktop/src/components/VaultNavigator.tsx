@@ -239,6 +239,8 @@ export const VaultNavigator = ({
   const isSearching = searchQuery.trim() !== "";
   const { tags, byPath: tagsByPath } = useVaultTags(search, vault.handle);
   const filterByTag = (key: string) => setSearchQuery(tagQuery(key));
+  // Keep the panel during a plain tag filter so the active tag can be toggled off.
+  const isTagFilter = tags.some((t) => tagQuery(t.tag) === searchQuery.trim());
 
   useEffect(() => {
     if (searchFocusNonce > 0) {
@@ -504,7 +506,7 @@ export const VaultNavigator = ({
         </div>
       </div>
 
-      {!isSearching && (
+      {(!isSearching || isTagFilter) && (
         <TagsPanel
           tags={tags}
           query={searchQuery}

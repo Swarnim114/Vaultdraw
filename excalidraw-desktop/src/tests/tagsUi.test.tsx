@@ -88,21 +88,34 @@ describe("TagsPanel", () => {
       fireEvent.click(panel.getByRole("button", { name: /^Tag misc/ }));
     });
     expect(input()).toHaveValue("tag:#misc");
-    // Panel hides while searching; results show the tagged drawing only.
+    // A plain tag filter keeps the panel; results show the tagged drawing only.
     const rows = (await screen.findAllByRole("option")).filter(
       (r) => r.getAttribute("data-kind") === "drawing",
     );
     expect(rows.map((r) => r.getAttribute("data-path"))).toEqual([
       "A.excalidraw",
     ]);
+    const active = within(screen.getByRole("region", { name: "Tags" }));
+    const misc = active.getByRole("button", { name: /^Tag misc/ });
+    expect(misc).toHaveAttribute("aria-pressed", "true");
     await act(async () => {
-      fireEvent.change(input(), { target: { value: "" } });
+      fireEvent.click(misc);
     });
-    const again = within(await screen.findByRole("region", { name: "Tags" }));
-    expect(again.getByRole("button", { name: /^Tag misc/ })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(input()).toHaveValue("");
+    expect(
+      within(screen.getByRole("region", { name: "Tags" })).getByRole("button", {
+        name: /^Tag misc/,
+      }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("hides the panel during a free-text search", async () => {
+    setup(TAGGED);
+    await screen.findByRole("region", { name: "Tags" });
+    await act(async () => {
+      fireEvent.change(input(), { target: { value: "tag:#misc plain" } });
+    });
+    expect(screen.queryByRole("region", { name: "Tags" })).toBeNull();
   });
 
   it("toggles the whole section", async () => {

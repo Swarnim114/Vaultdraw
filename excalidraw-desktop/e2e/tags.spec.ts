@@ -59,13 +59,16 @@ test("clicking a tag filters drawings; clearing the search restores the tree", a
   await expect(drawingRow(page, "Tagged Graphs")).toBeVisible();
   await expect(drawingRow(page, "Tagged Arrays")).toBeVisible();
   await expect(drawingRow(page, "Not Tags")).toHaveCount(0);
-  // The panel is hidden while a search is active (by design).
-  await expect(panel(page)).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Clear search" }).click();
+  // A plain tag filter keeps the panel; clicking the active tag clears it.
+  await expect(tagButton(page, "dsa")).toHaveAttribute("aria-pressed", "true");
+  await tagButton(page, "dsa").click();
   await expect(searchBox(page)).toHaveValue("");
   await expect(drawingRow(page, "Tagged Graphs")).toHaveCount(0);
   await expect(tagButton(page, "dsa")).toHaveAttribute("aria-pressed", "false");
+
+  await tagButton(page, "dsa").click();
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(searchBox(page)).toHaveValue("");
 
   await tagButton(page, "dsa/graphs").click();
   await expect(searchBox(page)).toHaveValue("tag:#dsa/graphs");
@@ -95,6 +98,8 @@ test("typing 'tag:#dsa graph' combines the tag filter with text", async ({
   const errors = trackErrors(page);
   await searchBox(page).fill("tag:#dsa graph");
   await expect(drawingRow(page, "Tagged Graphs")).toBeVisible();
+  // Free-text searches give the results the room: no Tags panel.
+  await expect(panel(page)).toHaveCount(0);
   await expect(drawingRow(page, "Tagged Arrays")).toHaveCount(0);
   await expect(drawingRow(page, "Not Tags")).toHaveCount(0);
   expect(errors).toEqual([]);
