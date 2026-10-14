@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../vault/types";
 
@@ -58,7 +58,9 @@ export function useVaultSearch(
       timer = null;
       lastRefresh = Date.now();
       refreshPending.current = true;
-      setRefreshTick((t) => t + 1);
+      // Index-driven updates are transitions: React yields to keystroke
+      // renders instead of painting them inside a typing frame.
+      startTransition(() => setRefreshTick((t) => t + 1));
     };
     const onStatus = (next: IndexStatus) => {
       if (cancelled || next.handle !== handle) {
@@ -66,7 +68,7 @@ export function useVaultSearch(
       }
       const prev = previous;
       previous = next.state;
-      setStatus(next);
+      startTransition(() => setStatus(next));
       // Entering "building" means the crawl has made every name searchable (it
       // parses contents afterwards), so a query typed during the walk is
       // answered right away instead of after the throttle.
