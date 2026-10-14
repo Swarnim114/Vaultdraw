@@ -2,6 +2,7 @@
 
 use super::extract::ItemKind;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -69,6 +70,35 @@ pub(crate) struct SearchResponse {
     pub query: String,
     pub results: Vec<SearchHit>,
     pub total_matches: u32,
+    pub status: IndexStatus,
+    pub took_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TagCount {
+    /// Case/accent-folded key (`dsa/graphs`); what `tag:#...` filters on.
+    pub tag: String,
+    /// Spelling shown in the UI (`DSA/Graphs`).
+    pub display: String,
+    /// Drawings with this tag or a child tag.
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TagSummary {
+    /// Sorted by key; includes every ancestor of a nested tag.
+    pub tags: Vec<TagCount>,
+    /// Vault-relative path to the display spellings of its tags (tagged drawings only).
+    pub by_path: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TagsResponse {
+    #[serde(flatten)]
+    pub summary: TagSummary,
     pub status: IndexStatus,
     pub took_ms: f64,
 }

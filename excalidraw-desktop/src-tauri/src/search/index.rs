@@ -2,7 +2,8 @@
 
 use super::extract::TextItem;
 use super::normalize::{fold_with_map, normalize, Folded};
-use super::types::{ElementMatch, Scope, SearchHit};
+use super::tags::{doc_tags, key_under, split_tag_filters, DocTag};
+use super::types::{ElementMatch, Scope, SearchHit, TagCount, TagSummary};
 use memchr::memmem::Finder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -48,12 +49,15 @@ pub(crate) struct DocEntry {
     stem_off: u32,
     #[serde(skip)]
     bounds: Vec<u32>,
+    /// Distinct `#tags` of the drawing, derived from `items`.
+    #[serde(skip)]
+    tags: Vec<DocTag>,
 }
 
 impl DocEntry {
     /// Name-only entry: searchable by path immediately, content fills in later.
     pub(crate) fn name_only(path: &str) -> DocEntry {
-        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new() };
+        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new(), tags: Vec::new() };
         d.derive_name(path);
         d
     }
@@ -76,7 +80,8 @@ impl DocEntry {
             kept.push(item);
         }
         buf.shrink_to_fit();
-        let mut d = DocEntry { stat, parsed: true, items: kept, buf, name_norm: String::new(), stem_off: 0, bounds };
+        let tags = doc_tags(kept.iter().map(|i| &*i.text));
+        let mut d = DocEntry { stat, parsed: true, items: kept, buf, name_norm: String::new(), stem_off: 0, bounds, tags };
         d.derive_name(path);
         d
     }
@@ -92,6 +97,7 @@ impl DocEntry {
     /// Rebuilds derived fields after deserialisation; false if the entry is inconsistent.
     pub(crate) fn rebuild(&mut self, path: &str) -> bool {
         self.derive_name(path);
+        self.tags = doc_tags(self.items.iter().map(|i| &*i.text));
         self.bounds.clear();
         if !self.buf.is_empty() {
             self.bounds.push(0);
@@ -406,17 +412,30 @@ impl Index {
         SearchHit { path: path.to_string(), name, score, name_highlights, matches, match_count }
     }
 
-    /// Drawings whose name/path or text contains every whitespace-separated term,
-    /// best first, at most `limit`; also the total number of matching drawings.
+    /// Drawings whose name/path or text contains every whitespace-separated term and that carry
+    /// every `tag:#word` filter (a parent tag matches its children), best first, at most
+    /// `limit`; also the total number of matching drawings. Tag-only queries list by path.
     pub(crate) fn query(&self, q: &str, scope: Scope, limit: usize) -> (Vec<SearchHit>, usize) {
-        let terms = parse_terms(q);
-        if terms.is_empty() || limit == 0 {
+        let (text, filters) = split_tag_filters(q);
+        let mut terms = parse_terms(&text);
+        if (terms.is_empty() && filters.is_empty()) || limit == 0 {
             return (Vec::new(), 0);
         }
+        let text_terms = terms.len();
+        // Filters also act as highlight terms so tag-only results show the lines carrying the tag.
+        for f in filters.iter().take(MAX_TERMS) {
+            let t = format!("#{f}");
+            terms.push(Term { finder: Finder::new(&t).into_owned(), text: t });
+        }
+        let has_filters = |d: &DocEntry| filters.iter().all(|f| d.tags.iter().any(|t| key_under(&t.key, f)));
         let mut scored: Vec<Scored> = self
             .docs
             .iter()
-            .filter_map(|(path, doc)| self.score_doc(doc, &terms, scope).map(|score| Scored { path, doc, score }))
+            .filter(|(_, doc)| has_filters(doc))
+            .filter_map(|(path, doc)| {
+                let score = if text_terms == 0 { Some(0.0) } else { self.score_doc(doc, &terms[..text_terms], scope) };
+                score.map(|score| Scored { path, doc, score })
+            })
             .collect();
         let total = scored.len();
         let cmp = |a: &Scored, b: &Scored| b.score.total_cmp(&a.score).then(a.path.len().cmp(&b.path.len())).then_with(|| a.path.cmp(b.path));
@@ -427,6 +446,40 @@ impl Index {
         scored.sort_by(cmp);
         let hits = scored.iter().map(|s| self.build_hit(s.path, s.doc, s.score, &terms, scope)).collect();
         (hits, total)
+    }
+
+    /// Every tag with the number of drawings carrying it or a child tag, plus each drawing's tags.
+    pub(crate) fn tag_summary(&self) -> TagSummary {
+        let mut counts: HashMap<String, (String, u32)> = HashMap::new();
+        let mut by_path = HashMap::new();
+        for (path, d) in &self.docs {
+            if d.tags.is_empty() {
+                continue;
+            }
+            let mut seen: Vec<&str> = Vec::new();
+            for t in &d.tags {
+                // Self and every ancestor (`a/b/c` -> `a`, `a/b`, `a/b/c`).
+                let ends = t.key.match_indices('/').map(|(i, _)| i).chain(std::iter::once(t.key.len()));
+                let dends = t.display.match_indices('/').map(|(i, _)| i).chain(std::iter::once(t.display.len()));
+                for (ke, de) in ends.zip(dends) {
+                    let key = &t.key[..ke];
+                    if seen.contains(&key) {
+                        continue;
+                    }
+                    seen.push(key);
+                    let display = &t.display[..de];
+                    let e = counts.entry(key.to_string()).or_insert_with(|| (display.to_string(), 0));
+                    e.1 += 1;
+                    if display < e.0.as_str() {
+                        e.0 = display.to_string();
+                    }
+                }
+            }
+            by_path.insert(path.clone(), d.tags.iter().map(|t| t.display.to_string()).collect());
+        }
+        let mut tags: Vec<TagCount> = counts.into_iter().map(|(tag, (display, count))| TagCount { tag, display, count }).collect();
+        tags.sort_by(|a, b| a.tag.cmp(&b.tag));
+        TagSummary { tags, by_path }
     }
 }
 
@@ -569,6 +622,49 @@ mod unit_tests {
         assert_eq!(idx.counts(), (0, 2));
         assert_eq!(idx.remove_prefix("f/"), 1);
         assert!(idx.contains("fx/b.excalidraw"));
+    }
+
+    #[test]
+    fn tag_filter_alone_lists_drawings_with_tagged_lines() {
+        let idx = index(&[("a.excalidraw", &["#DSA notes", "plain"]), ("b/c.excalidraw", &["x #dsa/graphs y"]), ("d.excalidraw", &["#dsabc", "url http://x/#dsa"])]);
+        let (hits, total) = idx.query("tag:#dsa", Scope::All, 10);
+        assert_eq!(total, 2);
+        assert_eq!(paths(&hits), vec!["a.excalidraw", "b/c.excalidraw"]);
+        assert_eq!(hits[0].matches.len(), 1);
+        assert_eq!(hits[0].matches[0].snippet, "#DSA notes");
+        assert_eq!(hits[0].matches[0].highlights, vec![[0, 4]]);
+        // child filter only matches the child
+        assert_eq!(paths(&idx.query("tag:#dsa/graphs", Scope::All, 10).0), vec!["b/c.excalidraw"]);
+        assert_eq!(idx.query("TAG:dsa", Scope::All, 10).1, 2);
+        assert_eq!(idx.query("tag:#nope", Scope::All, 10).1, 0);
+    }
+
+    #[test]
+    fn tag_filter_combines_with_text_and_other_tags() {
+        let idx = index(&[("a.excalidraw", &["#dsa graph", "#todo"]), ("b.excalidraw", &["#dsa tree"]), ("c.excalidraw", &["graph only"])]);
+        assert_eq!(paths(&idx.query("graph tag:#dsa", Scope::All, 10).0), vec!["a.excalidraw"]);
+        assert_eq!(paths(&idx.query("tag:#dsa tag:#todo", Scope::All, 10).0), vec!["a.excalidraw"]);
+        assert_eq!(idx.query("tree tag:#todo", Scope::All, 10).1, 0);
+        assert_eq!(idx.query("tag:#", Scope::All, 10).1, 0);
+    }
+
+    #[test]
+    fn tag_summary_counts_ancestors_once_and_lists_paths() {
+        let idx = index(&[("a.excalidraw", &["#DSA/Graphs #dsa/trees"]), ("b.excalidraw", &["#dsa", "#Café"]), ("c.excalidraw", &["none"])]);
+        let s = idx.tag_summary();
+        let got: Vec<_> = s.tags.iter().map(|t| (t.tag.as_str(), t.display.as_str(), t.count)).collect();
+        assert_eq!(got, vec![("cafe", "Café", 1), ("dsa", "DSA", 2), ("dsa/graphs", "DSA/Graphs", 1), ("dsa/trees", "dsa/trees", 1)]);
+        assert_eq!(s.by_path["a.excalidraw"], vec!["DSA/Graphs", "dsa/trees"]);
+        assert!(!s.by_path.contains_key("c.excalidraw"));
+    }
+
+    #[test]
+    fn tags_survive_snapshot_rebuild() {
+        let mut idx = index(&[("a.excalidraw", &["#x"])]);
+        let mut d = idx.docs.remove("a.excalidraw").unwrap();
+        d.tags.clear();
+        assert!(d.rebuild("a.excalidraw"));
+        assert_eq!(d.tags.len(), 1);
     }
 
     #[test]

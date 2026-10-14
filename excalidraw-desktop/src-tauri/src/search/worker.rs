@@ -246,8 +246,12 @@ impl Worker {
         } else {
             paths.iter().fold(false, |acc, p| self.apply_path(p, racy_before) | acc)
         };
-        if changed && self.dirty_since.is_none() {
-            self.dirty_since = Some(Instant::now());
+        if changed {
+            // Lets the UI refresh derived views (tags) without polling.
+            self.emit(true);
+            if self.dirty_since.is_none() {
+                self.dirty_since = Some(Instant::now());
+            }
         }
         true
     }

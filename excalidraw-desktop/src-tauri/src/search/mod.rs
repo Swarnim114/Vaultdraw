@@ -7,6 +7,7 @@ mod extract;
 mod index;
 mod normalize;
 mod store;
+mod tags;
 mod types;
 mod worker;
 
@@ -22,7 +23,7 @@ pub(crate) use index::Index;
 #[allow(unused_imports)]
 pub(crate) use normalize::{normalize, NORMALIZER_VERSION};
 #[allow(unused_imports)]
-pub(crate) use types::{ElementMatch, IndexState, IndexStatus, Scope, SearchHit, SearchResponse};
+pub(crate) use types::{ElementMatch, IndexState, IndexStatus, Scope, SearchHit, SearchResponse, TagsResponse};
 
 use crate::{err, Result};
 use std::{
@@ -151,6 +152,14 @@ impl SearchService {
         Ok(self.vault(handle)?.status(handle))
     }
 
+    pub(crate) fn tags(&self, handle: &str) -> Result<TagsResponse> {
+        let v = self.vault(handle)?;
+        let started = Instant::now();
+        let summary = v.read().tag_summary();
+        let took_ms = (started.elapsed().as_secs_f64() * 1000.0 * 100.0).round() / 100.0;
+        Ok(TagsResponse { summary, status: v.status(handle), took_ms })
+    }
+
     pub(crate) fn search(&self, handle: &str, query: &str, limit: Option<u32>, scope: Option<&str>) -> Result<SearchResponse> {
         if query.chars().count() > MAX_QUERY_CHARS {
             return Err(err("INVALID_QUERY", format!("Query is longer than {MAX_QUERY_CHARS} characters")));
@@ -175,6 +184,12 @@ pub(crate) async fn search_vault(handle: String, query: String, limit: Option<u3
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) async fn search_index_status(handle: String, state: State<'_, SearchService>) -> Result<IndexStatus> {
     state.status(&handle)
+}
+
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn vault_tags(handle: String, state: State<'_, SearchService>) -> Result<TagsResponse> {
+    state.tags(&handle)
 }
 
 #[cfg(test)]
@@ -334,6 +349,39 @@ mod unit_tests {
         assert_eq!(m["kind"], "text");
         assert!(m["containerId"].is_null());
         assert_eq!(m["highlights"], serde_json::json!([[0, 3]]));
+        assert!(v["tookMs"].is_number());
+    }
+
+    #[test]
+    fn tags_follow_watcher_updates_and_tag_search_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "a.excalidraw", &["#todo fix"]);
+        let svc = started(root);
+        assert_eq!(svc.tags("h").unwrap().summary.tags[0].tag, "todo");
+        assert_eq!(paths(&svc, "tag:#todo"), vec!["a.excalidraw"]);
+
+        write(root, "b.excalidraw", &["#todo #Done"]);
+        svc.notify("h", &["b.excalidraw".into()], false);
+        wait_until("b tagged", || svc.tags("h").unwrap().summary.tags.len() == 2);
+        write(root, "a.excalidraw", &["no tags now"]);
+        svc.notify("h", &["a.excalidraw".into()], false);
+        wait_until("a untagged", || paths(&svc, "tag:#todo") == ["b.excalidraw"]);
+        fs::remove_file(root.join("b.excalidraw")).unwrap();
+        svc.notify("h", &["b.excalidraw".into()], false);
+        wait_until("all gone", || svc.tags("h").unwrap().summary.tags.is_empty());
+        assert_eq!(svc.tags("nope").unwrap_err().code, "NOT_FOUND");
+    }
+
+    #[test]
+    fn tags_response_serialises_camel_case() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.excalidraw", &["#Dsa/Graphs"]);
+        let svc = started(dir.path());
+        let v = serde_json::to_value(svc.tags("h").unwrap()).unwrap();
+        assert_eq!(v["tags"][1], serde_json::json!({"tag": "dsa/graphs", "display": "Dsa/Graphs", "count": 1}));
+        assert_eq!(v["byPath"]["a.excalidraw"], serde_json::json!(["Dsa/Graphs"]));
+        assert_eq!(v["status"]["state"], "ready");
         assert!(v["tookMs"].is_number());
     }
 

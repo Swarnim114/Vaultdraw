@@ -28,13 +28,15 @@ const WORDS: &[&str] = &[
 
 const CJK: &[&str] = &["数据库设计", "服务认证流程", "用户登录", "支付网关", "消息队列", "缓存策略", "系统架构图", "データベース", "カフェメニュー", "ひらがな", "한국어 문서", "검색 기능"];
 
+const TAGS: &[&str] = &["dsa", "dsa/graphs", "dsa/trees", "dsa/dp", "interview", "interview/prep", "Interview/Behavioural", "todo", "idea", "systems/design", "systems/networking", "work/q3", "work/q4", "review", "diagram", "meeting", "research", "café", "数据库", "archive"];
+
 const FOLDERS: &[&str] = &["Work", "Personal", "DSA", "Systems", "Ideas", "Archive", "Meetings", "Design", "Research", "Learning"];
 
 fn sentence(r: &mut Rng, n: usize) -> String {
     (0..n).map(|_| WORDS[r.below(WORDS.len())]).collect::<Vec<_>>().join(" ")
 }
 
-fn make_drawing(r: &mut Rng, blob: Option<&str>) -> String {
+fn make_drawing(r: &mut Rng, blob: Option<&str>, d: usize) -> String {
     let n_text = r.range(5, 60);
     let mut els: Vec<String> = Vec::new();
     for i in 0..n_text {
@@ -61,6 +63,12 @@ fn make_drawing(r: &mut Rng, blob: Option<&str>) -> String {
     for f in 0..r.below(4) {
         els.push(format!(r#"{{"id":"frame{f}","type":"frame","name":"{}","x":0,"y":0,"width":500,"height":400,"isDeleted":false}}"#, sentence(r, 2)));
     }
+    // Tags use their own generator so the text corpus (and the F1 baselines) stay unchanged.
+    let mut tr = Rng(0xD1B54A32D192ED03 ^ (d as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15));
+    if tr.below(10) < 6 {
+        let tags: Vec<String> = (0..tr.range(1, 3)).map(|_| format!("#{}", TAGS[tr.below(TAGS.len())])).collect();
+        els.push(format!(r#"{{"id":"tags","type":"text","text":"{0}","originalText":"{0}","isDeleted":false}}"#, tags.join(" ")));
+    }
     let files = match blob {
         Some(b) => format!(r#"{{"file1":{{"mimeType":"image/png","id":"file1","dataURL":"data:image/png;base64,{b}","created":1}}}}"#),
         None => "{}".into(),
@@ -81,7 +89,7 @@ fn generate(root: &Path) -> (usize, usize) {
         } else {
             None
         };
-        let json = make_drawing(&mut r, blob);
+        let json = make_drawing(&mut r, blob, d);
         bytes += json.len();
         let top = FOLDERS[r.below(FOLDERS.len())];
         let sub = r.below(20);
@@ -191,6 +199,28 @@ fn bench_5k() {
         times.sort_by(f64::total_cmp);
         rows.push(("names scope", q, total, pct(&times, 0.5), pct(&times, 0.95), *times.last().unwrap()));
     }
+    // tag queries and the tag summary (F6; budget 5 ms)
+    let mut tag_rows = Vec::new();
+    for q in ["tag:#dsa", "tag:#dsa/graphs", "tag:#interview tag:#dsa", "graph tag:#dsa", "tag:#CAFÉ", "tag:#数据库", "tag:#nope", "dijkstra tag:#todo"] {
+        let mut times = Vec::new();
+        let mut total = 0;
+        for _ in 0..20 {
+            let t = Instant::now();
+            total = svc.search("h", q, None, None).unwrap().total_matches;
+            times.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(f64::total_cmp);
+        tag_rows.push((q, total, pct(&times, 0.5), pct(&times, 0.95)));
+    }
+    let mut times = Vec::new();
+    let mut summary = svc.tags("h").unwrap();
+    for _ in 0..20 {
+        let t = Instant::now();
+        summary = svc.tags("h").unwrap();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    let summary_p95 = pct(&times, 0.95);
     svc.stop("h");
     std::thread::sleep(Duration::from_millis(300));
 
@@ -216,6 +246,13 @@ fn bench_5k() {
     }
     let all_p95: Vec<f64> = rows.iter().map(|r| r.4).collect();
     println!("\nworst per-query p95: {worst95:.3} ms over {} queries x 20 runs (budget 50 ms)   mean p95 {:.3} ms", rows.len(), all_p95.iter().sum::<f64>() / all_p95.len() as f64);
+    println!("\n{:<26} {:>8} {:>9} {:>9}", "tag query", "matches", "p50 ms", "p95 ms");
+    for (q, total, p50, p95) in &tag_rows {
+        println!("{q:<26} {total:>8} {p50:>9.3} {p95:>9.3}");
+    }
+    println!("tag summary (vault_tags): {} tags, {} tagged drawings, p50 {:.3} ms p95 {summary_p95:.3} ms", summary.summary.tags.len(), summary.summary.by_path.len(), pct(&times, 0.5));
+    let worst_tag = tag_rows.iter().map(|r| r.3).fold(0.0, f64::max).max(summary_p95);
+    assert!(worst_tag < 5.0, "tag query budget broken: {worst_tag}");
     assert!(worst95 < 50.0, "query p95 budget broken: {worst95}");
 }
 

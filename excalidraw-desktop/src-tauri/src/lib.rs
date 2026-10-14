@@ -1156,7 +1156,7 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-                search::search_vault, search::search_index_status,
+                search::search_vault, search::search_index_status, search::vault_tags,
                 library::read_library, library::write_library, library::pick_library_file,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 clipboard::smoke_read_clipboard
@@ -1169,7 +1169,7 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-                search::search_vault, search::search_index_status,
+                search::search_vault, search::search_index_status, search::vault_tags,
                 library::read_library, library::write_library, library::pick_library_file
             ])
         };
@@ -1181,7 +1181,7 @@ pub fn run() {
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
-            search::search_vault, search::search_index_status,
+            search::search_vault, search::search_index_status, search::vault_tags,
             library::read_library, library::write_library, library::pick_library_file
         ]);
         let app = builder
