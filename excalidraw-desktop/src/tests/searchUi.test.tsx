@@ -360,9 +360,9 @@ describe("useVaultSearch", () => {
     await act(async () => {
       emit(status({ state: "building", indexed: 0, total: 5000 }));
     });
-    // Well before the 1 s building throttle.
+    // Right away: no 1 s building throttle and no typing debounce.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(1);
     });
     expect(search.search).toHaveBeenCalledTimes(2);
     // Further progress events stay throttled.

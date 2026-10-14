@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../vault/types";
 
@@ -37,6 +37,8 @@ export function useVaultSearch(
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  // Index-driven re-runs skip the typing debounce (the query is unchanged).
+  const refreshPending = useRef(false);
 
   // Index status: initial value + live updates, with refresh triggers.
   useEffect(() => {
@@ -53,6 +55,7 @@ export function useVaultSearch(
     const refresh = () => {
       timer = null;
       lastRefresh = Date.now();
+      refreshPending.current = true;
       setRefreshTick((t) => t + 1);
     };
     const onStatus = (next: IndexStatus) => {
@@ -116,6 +119,8 @@ export function useVaultSearch(
     const trimmed = query.trim();
     // Each run owns its flag; cleanup marks it stale so only the latest wins.
     let stale = false;
+    const delay = refreshPending.current ? 0 : SEARCH_DEBOUNCE_MS;
+    refreshPending.current = false;
     if (!search || !handle || !trimmed) {
       setResponse(null);
       setLoading(false);
@@ -139,7 +144,7 @@ export function useVaultSearch(
             setLoading(false);
           }
         });
-    }, SEARCH_DEBOUNCE_MS);
+    }, delay);
     return () => {
       clearTimeout(timer);
       stale = true;
