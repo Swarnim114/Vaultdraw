@@ -24,10 +24,21 @@ describe("commands registry", () => {
     expect(getCommand("nope")).toBeUndefined();
   });
 
-  it("only file.save passes the event through", () => {
-    expect(COMMANDS.filter((c) => c.passThrough).map((c) => c.id)).toEqual([
-      "file.save",
+  it("keeps the Ctrl aliases as extra macOS defaults", () => {
+    const keys = (id: string, platform: "mac" | "win") =>
+      defaultKeys(getCommand(id)!, platform);
+    expect(keys("file.save", "mac")).toEqual([
+      "Mod+S",
+      "Mod+Shift+S",
+      "Ctrl+S",
     ]);
+    expect(keys("file.save", "win")).toEqual(["Mod+S", "Mod+Shift+S"]);
+    expect(keys("settings.open", "mac")).toEqual(["Mod+Comma", "Ctrl+Comma"]);
+    expect(keys("navigator.focusSearch", "mac")).toEqual([
+      "Mod+Shift+F",
+      "Ctrl+Shift+F",
+    ]);
+    expect(keys("navigator.focusSearch", "win")).toEqual(["Mod+Shift+F"]);
   });
 
   it("uses platform keys over the default", () => {
@@ -81,9 +92,19 @@ describe("keymap", () => {
   it("isCustomised compares with the defaults", () => {
     const c = cmd("file.save");
     expect(isCustomised(c, {}, "mac")).toBe(false);
-    expect(isCustomised(c, { "file.save": ["Mod+S"] }, "mac")).toBe(false);
-    expect(isCustomised(c, { "file.save": ["Meta+S"] }, "mac")).toBe(false);
-    expect(isCustomised(c, { "file.save": ["Mod+Shift+S"] }, "mac")).toBe(true);
+    const all = ["Mod+S", "Mod+Shift+S", "Ctrl+S"];
+    expect(isCustomised(c, { "file.save": all }, "mac")).toBe(false);
+    expect(
+      isCustomised(
+        c,
+        { "file.save": ["Ctrl+S", "Meta+S", "Shift+Meta+S"] },
+        "mac",
+      ),
+    ).toBe(false);
+    expect(isCustomised(c, { "file.save": ["Mod+S"] }, "mac")).toBe(true);
+    expect(
+      isCustomised(c, { "file.save": ["Mod+S", "Mod+Shift+S"] }, "win"),
+    ).toBe(false);
     expect(isCustomised(c, { "file.save": [] }, "mac")).toBe(true);
   });
 

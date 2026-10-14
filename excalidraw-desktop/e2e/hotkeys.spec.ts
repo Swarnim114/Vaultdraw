@@ -307,6 +307,79 @@ test("Cmd/Ctrl+S outside the text editor saves immediately", async ({
   expect(errors).toEqual([]);
 });
 
+/** Counts vault writes of DRAWING and browser downloads from now on. */
+const trackSaves = async (page: Page) => {
+  const downloads: string[] = [];
+  page.on("download", (d) => downloads.push(d.suggestedFilename()));
+  await page.evaluate((path) => {
+    const repo = (window as any).__vaultRepo;
+    const w = window as any;
+    w.__saves = 0;
+    if (!w.__savesWrapped) {
+      w.__savesWrapped = true;
+      const write = repo.writeDrawing.bind(repo);
+      repo.writeDrawing = (input: { path: string }, ...rest: unknown[]) => {
+        if (input?.path === path) {
+          w.__saves++;
+        }
+        return write(input, ...rest);
+      };
+    }
+  }, DRAWING);
+  return {
+    downloads,
+    saves: () => page.evaluate(() => (window as any).__saves as number),
+    reset: () => page.evaluate(() => ((window as any).__saves = 0)),
+  };
+};
+
+test("Cmd/Ctrl+Shift+S saves to the vault once, without Excalidraw's download", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await openGraphs(page, "?autosave=60000");
+  const tracked = await trackSaves(page);
+  const before = await liveElementCount(page);
+  await drawRectangle(page);
+  await tracked.reset();
+  await page.keyboard.press("ControlOrMeta+Shift+KeyS");
+  await expect
+    .poll(() => liveElementCount(page), { timeout: 5000 })
+    .toBe(before + 1);
+  await page.waitForTimeout(800);
+  expect(await tracked.saves()).toBe(1);
+  expect(tracked.downloads).toEqual([]);
+  await expect(page.locator(".Toast")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("macOS keeps the Ctrl aliases: Ctrl+S saves, Ctrl+, and Ctrl+Shift+F work", async ({
+  page,
+}) => {
+  const isMac = await page.evaluate(() =>
+    /Mac/i.test(window.navigator.platform),
+  );
+  test.skip(!isMac, "Ctrl is already Mod off macOS");
+  await openGraphs(page, "?autosave=60000");
+  const tracked = await trackSaves(page);
+  const before = await liveElementCount(page);
+  await drawRectangle(page);
+  await tracked.reset();
+  await page.keyboard.press("Control+KeyS");
+  await expect
+    .poll(() => liveElementCount(page), { timeout: 5000 })
+    .toBe(before + 1);
+  expect(await tracked.saves()).toBe(1);
+
+  await page.keyboard.press("Control+Comma");
+  await expect(settingsModal(page)).toBeVisible();
+  await closeSettings(page);
+  await page.keyboard.press("Control+Shift+KeyF");
+  await expect(
+    page.getByPlaceholder("Search drawings and text…"),
+  ).toBeFocused();
+});
+
 // ---------------------------------------------------------------------------
 // The Hotkeys page
 // ---------------------------------------------------------------------------

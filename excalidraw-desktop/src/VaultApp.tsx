@@ -1202,7 +1202,14 @@ export const VaultApp = ({
   const runnerRef = useRef<CommandRunner | null>(null);
   const idle = !isBusy && !isClosing;
   const commandHandlers = appCommandHandlers({
-    save: handleExplicitSave,
+    // The save chords never reach Excalidraw (so Cmd+Shift+S can't start its
+    // "Save to disk" download). Commit a text edit first, then save after
+    // Excalidraw has published the committed scene.
+    save: async () => {
+      commitCanvasTextEdit(doc);
+      await new Promise((resolve) => (win ?? window).setTimeout(resolve, 0));
+      return handleExplicitSave();
+    },
     openSettings: () => openSettings(),
     openHotkeySettings: () => openSettings("hotkeys"),
     focusSearch: focusNavigatorSearch,

@@ -47,6 +47,9 @@ const start = (title: string) =>
   );
 
 const hotkeys = () => getPreferences(window).hotkeys;
+const SAVE_DEFAULTS = mac
+  ? ["Mod+S", "Mod+Shift+S", "Ctrl+S"]
+  : ["Mod+S", "Mod+Shift+S"];
 
 describe("Hotkeys settings page", () => {
   beforeEach(() => {
@@ -131,13 +134,38 @@ describe("Hotkeys settings page", () => {
     openPage();
     start("Save drawing");
     press({ code: "KeyJ", key: "j", ...MOD });
-    expect(hotkeys()["file.save"]).toEqual(["Mod+S", "Mod+J"]);
+    expect(hotkeys()["file.save"]).toEqual([...SAVE_DEFAULTS, "Mod+J"]);
     fireEvent.click(
       screen.getByRole("button", {
         name: `Remove ${MOD_LABEL}J from Save drawing`,
       }),
     );
     expect(hotkeys()["file.save"]).toBeUndefined();
+  });
+
+  it("lists every default chip; removing one default and resetting works", () => {
+    openPage();
+    const chips = () =>
+      document.querySelectorAll(
+        '.vault-hotkeys__row[data-command-id="file.save"] .vault-hotkeys__chip-key',
+      );
+    expect(chips()).toHaveLength(SAVE_DEFAULTS.length);
+    // Defaults never count as conflicts, even with two chords per command.
+    expect(screen.queryByRole("button", { name: /^Conflicts/ })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: mac
+          ? "Remove ⌃S from Save drawing"
+          : "Remove Ctrl+Shift+S from Save drawing",
+      }),
+    );
+    expect(hotkeys()["file.save"]).toEqual(SAVE_DEFAULTS.slice(0, -1));
+    expect(chips()).toHaveLength(SAVE_DEFAULTS.length - 1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Save drawing to default" }),
+    );
+    expect(hotkeys()["file.save"]).toBeUndefined();
+    expect(chips()).toHaveLength(SAVE_DEFAULTS.length);
   });
 
   it("Backspace clears every binding", () => {

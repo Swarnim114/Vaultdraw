@@ -10,22 +10,26 @@ export const COMMANDS: readonly CommandDefinition[] = [
     id: "file.save",
     title: "Save drawing",
     category: "File",
-    keys: { default: ["Mod+S"] },
+    // Mod+Shift+S too, so it never reaches Excalidraw's "Save to disk"
+    // download. Ctrl aliases on macOS keep the old Cmd-or-Ctrl behaviour.
+    keys: {
+      default: ["Mod+S", "Mod+Shift+S"],
+      mac: ["Mod+S", "Mod+Shift+S", "Ctrl+S"],
+    },
     when: ["drawingOpen"],
-    passThrough: true,
   },
   {
     id: "settings.open",
     title: "Open settings",
     category: "Settings",
-    keys: { default: ["Mod+Comma"] },
+    keys: { default: ["Mod+Comma"], mac: ["Mod+Comma", "Ctrl+Comma"] },
     when: ["vaultOpen", "!modalOpen"],
   },
   {
     id: "navigator.focusSearch",
     title: "Search drawings",
     category: "Navigator",
-    keys: { default: ["Mod+Shift+F"] },
+    keys: { default: ["Mod+Shift+F"], mac: ["Mod+Shift+F", "Ctrl+Shift+F"] },
     when: ["vaultOpen", "!modalOpen"],
   },
   {

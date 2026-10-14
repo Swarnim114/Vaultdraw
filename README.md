@@ -188,9 +188,9 @@ The page lists all commands with their keys as chips. Type in the filter to narr
 
 | Command id | What it does | macOS | Windows / Linux |
 | --- | --- | --- | --- |
-| `file.save` | Save drawing | ⌘S | Ctrl+S |
-| `settings.open` | Open settings | ⌘, | Ctrl+, |
-| `navigator.focusSearch` | Search drawings | ⇧⌘F | Ctrl+Shift+F |
+| `file.save` | Save drawing | ⌘S, ⇧⌘S, ⌃S | Ctrl+S, Ctrl+Shift+S |
+| `settings.open` | Open settings | ⌘,, ⌃, | Ctrl+, |
+| `navigator.focusSearch` | Search drawings | ⇧⌘F, ⌃⇧F | Ctrl+Shift+F |
 | `view.zoomIn` | Zoom in (interface) | ⇧⌘=, ⇧⌘Num + | Ctrl+Shift+=, Ctrl+Shift+Num + |
 | `view.zoomOut` | Zoom out (interface) | ⇧⌘-, ⇧⌘Num - | Ctrl+Shift+-, Ctrl+Shift+Num - |
 | `view.zoomReset` | Reset interface zoom | ⇧⌘0, ⇧⌘Num 0 | Ctrl+Shift+0, Ctrl+Shift+Num 0 |

@@ -61,12 +61,6 @@ export interface CommandDefinition {
   keys: CommandKeys;
   when?: WhenClause[];
   /**
-   * Let the key event continue to Excalidraw (preventDefault only) and run the
-   * handler after the event has finished propagating. Used by file.save so
-   * Excalidraw's WYSIWYG editor commits the text being typed before we save.
-   */
-  passThrough?: boolean;
-  /**
    * Run again on auto-repeat keydowns while the key is held (e.g. zoom).
    * Default false: a held key is still claimed but runs once.
    */

@@ -80,16 +80,8 @@ export function installCommandDispatcher(
         continue;
       }
       e.preventDefault();
-      if (e.repeat && !command.repeat) {
-        if (!command.passThrough) {
-          e.stopImmediatePropagation();
-        }
-        return;
-      }
-      if (command.passThrough) {
-        win.setTimeout(() => runHandler(command.id, handler), 0);
-      } else {
-        e.stopImmediatePropagation();
+      e.stopImmediatePropagation();
+      if (!e.repeat || command.repeat) {
         runHandler(command.id, handler);
       }
       return;

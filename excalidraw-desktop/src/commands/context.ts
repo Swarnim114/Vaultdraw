@@ -42,7 +42,7 @@ export function isTextEditingTarget(el: Element | null): boolean {
 
 /**
  * Commit an in-progress Excalidraw text edit before a command moves focus
- * (quick switcher, navigator search; Settings deliberately keeps the edit).
+ * (save, quick switcher, navigator search; Settings deliberately keeps it).
  * Excalidraw's WYSIWYG submits on blur and then refocuses its canvas
  * container; blurring first makes that happen now, instead of stealing focus
  * back from what the command focuses.

@@ -166,24 +166,23 @@ describe("dispatcher", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("passThrough: prevents default, lets the event propagate, runs later", () => {
-    vi.useFakeTimers();
+  it("save chords are swallowed: Excalidraw never sees Cmd+S or Cmd+Shift+S", () => {
     const save = vi.fn();
     install({ handlers: { "file.save": save } });
-    const e = press({ code: "KeyS", key: "s", metaKey: true });
-    expect(e.defaultPrevented).toBe(true);
-    expect(docListener).toHaveBeenCalledTimes(1);
-    expect(save).not.toHaveBeenCalled();
-    vi.runAllTimers();
-    expect(save).toHaveBeenCalledTimes(1);
+    for (const init of [
+      { code: "KeyS", key: "s", metaKey: true },
+      { code: "KeyS", key: "S", metaKey: true, shiftKey: true },
+    ]) {
+      expect(press(init).defaultPrevented).toBe(true);
+    }
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(docListener).not.toHaveBeenCalled();
   });
 
   it("works for synthetic events without a code", () => {
-    vi.useFakeTimers();
     const save = vi.fn();
     install({ handlers: { "file.save": save } });
     press({ key: "s", metaKey: true, ctrlKey: true });
-    vi.runAllTimers();
     expect(save).toHaveBeenCalledTimes(1);
   });
 
