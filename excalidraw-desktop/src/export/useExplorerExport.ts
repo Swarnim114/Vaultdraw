@@ -67,13 +67,13 @@ export const useExplorerExport = (input: {
     };
     try {
       await flushIfOpen(path);
-      const { scale, background, embedScene } = loadExportOptions();
+      const { scale, background, embedScene, pattern } = loadExportOptions();
       await exportDrawingFromVault({
         repository,
         handle: vault.handle,
         path,
         format,
-        options: { scale, background, embedScene, dark },
+        options: { scale, background, embedScene, pattern, dark },
         win,
         beforeRender: async (json) => {
           if (json.length > LARGE_DRAWING_CHARS) {

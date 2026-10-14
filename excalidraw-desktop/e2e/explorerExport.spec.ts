@@ -266,6 +266,71 @@ test("6. drawings with embedded images export with the image", async ({
   expect(errors).toEqual([]);
 });
 
+test("8. the paper pattern is exported, following the remembered option", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  const scene = JSON.parse(IMAGE_SCENE);
+  scene.files = {};
+  scene.elements = scene.elements.filter((e: any) => e.type !== "image");
+  scene.elements.push({
+    id: "paper-rect",
+    type: "rectangle",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 100,
+    angle: 0,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 1,
+    strokeStyle: "solid",
+    roughness: 1,
+    opacity: 100,
+    groupIds: [],
+    roundness: null,
+    link: null,
+    locked: false,
+    isDeleted: false,
+  });
+  scene.appState = {
+    viewBackgroundColor: "#ffffff",
+    viewBackgroundPattern: {
+      type: "grid",
+      spacing: 20,
+      color: null,
+      opacity: 1,
+      majorEvery: 5,
+    },
+  };
+  await addDrawing(page, "Paper.excalidraw", JSON.stringify(scene));
+  const setOptions = (pattern: boolean) =>
+    page.evaluate(
+      (p) =>
+        (window as any).__updatePreferences({
+          exportOptions: {
+            scale: 1,
+            background: true,
+            embedScene: false,
+            pattern: p,
+          },
+        }),
+      pattern,
+    );
+  await setOptions(true);
+  const withPattern = text(
+    (await exportFromRow(page, "Paper.excalidraw", "Export as SVG…")).bytes,
+  );
+  expect(withPattern).toContain("<pattern");
+  await setOptions(false);
+  const plain = text(
+    (await exportFromRow(page, "Paper.excalidraw", "Export as SVG…")).bytes,
+  );
+  expect(plain).not.toContain("<pattern");
+  expect(errors).toEqual([]);
+});
+
 test("7. perf: large drawing export time and longest main-thread gap", async ({
   page,
   browserName,

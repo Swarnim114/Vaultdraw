@@ -1,3 +1,4 @@
+import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FakeVaultRepository } from "../tests/fakeVaultRepository";
@@ -11,7 +12,13 @@ vi.mock("../editor/imageExport", () => ({
 }));
 
 const win = window as unknown as Window & typeof globalThis;
-const options = { scale: 3, background: false, embedScene: true, dark: true };
+const options = {
+  scale: 3,
+  background: false,
+  embedScene: true,
+  pattern: true,
+  dark: true,
+};
 
 const withDeleted = () => {
   const scene = JSON.parse(SAMPLE_SCENE);
@@ -54,7 +61,36 @@ describe("sceneToExportRequest", () => {
       exportBackground: false,
       exportEmbedScene: true,
       exportWithDarkMode: true,
+      // Pattern needs the background, as in the export dialog.
+      exportBackgroundPattern: false,
     });
+  });
+
+  it("keeps the file's paper pattern and exports it with the background", async () => {
+    const scene = JSON.parse(SAMPLE_SCENE);
+    scene.appState = {
+      ...scene.appState,
+      viewBackgroundPattern: createBackgroundPattern("grid"),
+    };
+    const request = await sceneToExportRequest(
+      JSON.stringify(scene),
+      "Paper.excalidraw",
+      "svg",
+      { ...options, background: true },
+      win,
+    );
+    expect(request.appState.exportBackgroundPattern).toBe(true);
+    expect(request.appState.viewBackgroundPattern).toMatchObject({
+      type: "grid",
+    });
+    const off = await sceneToExportRequest(
+      JSON.stringify(scene),
+      "Paper.excalidraw",
+      "svg",
+      { ...options, background: true, pattern: false },
+      win,
+    );
+    expect(off.appState.exportBackgroundPattern).toBe(false);
   });
 
   it("carries embedded image files", async () => {

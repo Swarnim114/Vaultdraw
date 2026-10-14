@@ -21,6 +21,8 @@ export type ExplorerExportOptions = {
   scale: number;
   background: boolean;
   embedScene: boolean;
+  /** Paper pattern (notebook backgrounds); only with the background. */
+  pattern: boolean;
   dark: boolean;
 };
 
@@ -63,6 +65,8 @@ export const sceneToExportRequest = async (
       exportScale: options.scale,
       exportBackground: options.background,
       exportEmbedScene: options.embedScene,
+      // Like the dialog's "Background pattern" switch: off without background.
+      exportBackgroundPattern: options.background && options.pattern,
       exportWithDarkMode: options.dark,
     } as ImageExportRequest["appState"],
     files: scene.files,
