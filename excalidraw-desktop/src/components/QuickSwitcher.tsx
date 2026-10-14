@@ -1,8 +1,10 @@
 /**
- * Cmd+P quick switcher: one keyboard-first list of drawings (fuzzy-ranked by
- * path) and commands. A leading ">" restricts it to commands. The name list
- * is fetched once per open (and again when the index reports new totals);
- * everything is prepared once and ranked synchronously per keystroke.
+ * The unified command palette (Cmd+P): drawings and provider items (commands,
+ * editor actions, themes, pens, ...) in one ranked list, one search. A leading
+ * ">" restricts it to items; Tab drills into an item's family ("Theme: ").
+ * Items are collected once when the palette opens (and again after a
+ * Mod+Enter run); everything is prepared once and ranked synchronously per
+ * keystroke (see palette/rank.ts).
  */
 import {
   memo,
@@ -14,29 +16,27 @@ import {
   useState,
 } from "react";
 
+import { chordFromEvent } from "../commands/keys";
 import { getCommand } from "../commands/commands";
-import { filter, prepare } from "../commands/fuzzy";
-import { chordFromEvent, formatChord } from "../commands/keys";
 import { effectiveKeys } from "../commands/keymap";
 import { useHotkeyOverrides } from "../commands/useCommands";
+import { focusCanvasIfIdle } from "../palette/focus";
+import { prepareDrawings, prepareItems, rankRows } from "../palette/rank";
+import { getRecent, recordRecent } from "../palette/recent";
 import { errorMessage } from "../vault/types";
 
 import { IconDrawing } from "./Icons";
 
 import "./QuickSwitcher.css";
 
-import type { Prepared, Ranked } from "../commands/fuzzy";
-import type {
-  CommandDefinition,
-  HotkeyOverrides,
-  Platform,
-} from "../commands/types";
+import type { RankedRow } from "../palette/rank";
+import type { PaletteItem } from "../palette/types";
+import type { Platform } from "../commands/types";
 import type { IndexStatus, VaultSearch } from "../search/types";
 
-const MAX_DRAWINGS = 50;
-const MAX_COMMANDS = 10;
 const SWITCHER_ID = "palette.quickSwitcher";
 const EXTENSION = /\.excalidraw$/i;
+const DRILL_SEPARATOR = ": ";
 
 export interface QuickSwitcherProps {
   /** Source of the drawing names; null = use `fallbackPaths`. */
@@ -44,29 +44,16 @@ export interface QuickSwitcherProps {
   handle: string;
   /** Used when there is no search backend. */
   fallbackPaths?: readonly string[];
-  /** Commands runnable right now (decided by the caller before opening). */
-  commandIds: readonly string[];
+  /** Entries from the palette providers (collectPaletteItems); called on open and again after a Mod+Enter run. */
+  collectItems(): readonly PaletteItem[];
   platform: Platform;
   onOpenDrawing(path: string): void;
-  onRunCommand(id: string): void;
+  /** Enter: the shell closes the palette, then runs it. Mod+Enter (keepOpen): the shell runs it in place. */
+  onRunItem(item: PaletteItem, keepOpen: boolean): void;
+  /** Esc, backdrop click, or the palette's own shortcut. */
   onClose(): void;
   ownerDocument?: Document | null;
 }
-
-interface DrawingItem {
-  path: string;
-  prepared: Prepared;
-}
-interface CommandItem {
-  command: CommandDefinition;
-  prepared: Prepared;
-}
-type Row =
-  | { kind: "drawing"; hit: Ranked<DrawingItem> }
-  | { kind: "command"; hit: Ranked<CommandItem> };
-
-const drawingPrepared = (item: DrawingItem) => item.prepared;
-const commandPrepared = (item: CommandItem) => item.prepared;
 
 /** Wrap matched characters of text[from, to) in <mark>. */
 function highlight(
@@ -95,25 +82,26 @@ function highlight(
 
 interface RowViewProps {
   id: string;
-  row: Row;
+  row: RankedRow;
   active: boolean;
   index: number;
-  shortcut: string;
   onHover(index: number): void;
   onPick(index: number): void;
 }
 
 const RowView = memo(
-  ({ id, row, active, index, shortcut, onHover, onPick }: RowViewProps) => {
-    const positions = new Set(row.hit.positions);
+  ({ id, row, active, index, onHover, onPick }: RowViewProps) => {
+    const positions = new Set(row.positions);
     let body: React.ReactNode;
     if (row.kind === "drawing") {
-      const { path } = row.hit.item;
+      const { path } = row.drawing;
       const slash = path.lastIndexOf("/");
       const nameEnd = path.replace(EXTENSION, "").length;
       body = (
         <>
-          <IconDrawing />
+          <span className="vault-quick__icon">
+            <IconDrawing />
+          </span>
           <span className="vault-quick__name">
             {highlight(path, slash + 1, nameEnd, positions)}
           </span>
@@ -125,14 +113,26 @@ const RowView = memo(
         </>
       );
     } else {
-      const { command, prepared } = row.hit.item;
+      const { item } = row.entry;
       body = (
         <>
+          <span className="vault-quick__icon">{item.icon}</span>
           <span className="vault-quick__name">
-            {highlight(prepared.text, 0, prepared.text.length, positions)}
+            {highlight(item.title, 0, item.title.length, positions)}
           </span>
-          <span className="vault-quick__muted">{command.category}</span>
-          {shortcut && <kbd className="vault-quick__keys">{shortcut}</kbd>}
+          <span className="vault-quick__muted">{item.group}</span>
+          {item.checked && (
+            <span
+              className="vault-quick__check"
+              role="img"
+              aria-label="Current"
+            >
+              ✓
+            </span>
+          )}
+          {item.shortcut && (
+            <kbd className="vault-quick__keys">{item.shortcut}</kbd>
+          )}
         </>
       );
     }
@@ -230,69 +230,59 @@ function useDrawingNames(
   return names;
 }
 
-const shortcutFor = (
-  command: CommandDefinition,
-  overrides: HotkeyOverrides,
-  platform: Platform,
-) => {
-  const first = effectiveKeys(command, overrides, platform)[0];
-  return first ? formatChord(first, platform) : "";
-};
+/** Query that drills into the family of an item, or null when it has none. */
+function drillQuery(item: PaletteItem): string | null {
+  const drill =
+    item.drill ??
+    (item.title.includes(DRILL_SEPARATOR)
+      ? item.title.slice(
+          0,
+          item.title.indexOf(DRILL_SEPARATOR) + DRILL_SEPARATOR.length,
+        )
+      : null);
+  return drill ? `>${drill}` : null;
+}
 
 export const QuickSwitcher = ({
   search,
   handle,
   fallbackPaths,
-  commandIds,
+  collectItems,
   platform,
   onOpenDrawing,
-  onRunCommand,
+  onRunItem,
   onClose,
   ownerDocument,
 }: QuickSwitcherProps) => {
+  const win = ownerDocument?.defaultView ?? null;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [items, setItems] = useState(() => collectItems());
+  const [recent] = useState(() => getRecent(win));
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mounted = useRef(true);
+  const pendingKey = useRef<string | null>(null);
   const previousFocus = useRef<Element | null>(
     ownerDocument?.activeElement ?? null,
   );
-  const overrides = useHotkeyOverrides(ownerDocument?.defaultView ?? null);
+  const overrides = useHotkeyOverrides(win);
   const names = useDrawingNames(search, handle, fallbackPaths);
 
-  const drawings = useMemo<DrawingItem[]>(
-    () => names.paths.map((path) => ({ path, prepared: prepare(path) })),
-    [names.paths],
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const drawings = useMemo(() => prepareDrawings(names.paths), [names.paths]);
+  const prepared = useMemo(() => prepareItems(items), [items]);
+  const rows = useMemo(
+    () => rankRows(drawings, prepared, query, recent),
+    [drawings, prepared, query, recent],
   );
-  const commands = useMemo<CommandItem[]>(() => {
-    const out: CommandItem[] = [];
-    for (const id of commandIds) {
-      const command = getCommand(id);
-      if (command && command.palette !== false && id !== SWITCHER_ID) {
-        out.push({ command, prepared: prepare(command.title) });
-      }
-    }
-    return out;
-  }, [commandIds]);
-
-  const rows = useMemo<Row[]>(() => {
-    const commandsOnly = query.startsWith(">");
-    const text = commandsOnly ? query.slice(1) : query;
-    const hasQuery = text.trim() !== "";
-    const out: Row[] = [];
-    if (!commandsOnly) {
-      for (const hit of filter(drawings, text, drawingPrepared, MAX_DRAWINGS)) {
-        out.push({ kind: "drawing", hit });
-      }
-    }
-    const commandLimit = hasQuery ? MAX_COMMANDS : commands.length;
-    for (const hit of filter(commands, text, commandPrepared, commandLimit)) {
-      out.push({ kind: "command", hit });
-    }
-    return out;
-  }, [query, drawings, commands]);
-
-  const drawingCount = rows.filter((r) => r.kind === "drawing").length;
   const selected = Math.min(active, Math.max(0, rows.length - 1));
 
   useEffect(() => {
@@ -300,23 +290,62 @@ export const QuickSwitcher = ({
     (el as HTMLElement | null)?.scrollIntoView?.({ block: "nearest" });
   }, [selected, rows]);
 
+  // After a Mod+Enter re-collect, keep the active row if it still exists.
+  useEffect(() => {
+    const key = pendingKey.current;
+    if (key !== null) {
+      pendingKey.current = null;
+      const at = rows.findIndex((r) => r.key === key);
+      if (at >= 0) {
+        setActive(at);
+      }
+    }
+  }, [rows]);
+
   const dismiss = useCallback(() => {
     const prev = previousFocus.current as HTMLElement | null;
-    if (prev && prev !== ownerDocument?.body) {
+    if (prev && prev !== ownerDocument?.body && prev.isConnected) {
       prev.focus?.();
+    } else {
+      inputRef.current?.blur();
+      focusCanvasIfIdle(ownerDocument);
     }
     onClose();
   }, [onClose, ownerDocument]);
 
-  const pick = (index: number) => {
+  const pick = (index: number, keepOpen = false) => {
     const row = rows[index];
     if (!row) {
       return;
     }
     if (row.kind === "drawing") {
-      onOpenDrawing(row.hit.item.path);
-    } else {
-      onRunCommand(row.hit.item.command.id);
+      recordRecent(row.key, win);
+      onOpenDrawing(row.drawing.path);
+      return;
+    }
+    const { item } = row.entry;
+    recordRecent(row.key, win);
+    onRunItem(item, keepOpen);
+    if (keepOpen) {
+      pendingKey.current = row.key;
+      setTimeout(() => {
+        if (!mounted.current) {
+          return;
+        }
+        setItems(collectItems());
+        if (ownerDocument?.activeElement !== inputRef.current) {
+          onClose();
+        }
+      }, 0);
+    }
+  };
+
+  const drill = () => {
+    const row = rows[selected];
+    const next = row?.kind === "item" ? drillQuery(row.entry.item) : null;
+    if (next !== null) {
+      setQuery(next);
+      setActive(0);
     }
   };
 
@@ -328,20 +357,46 @@ export const QuickSwitcher = ({
       e.preventDefault();
       e.stopPropagation();
     };
+    const el = inputRef.current;
+    const atEnd =
+      !!el &&
+      el.selectionStart === el.value.length &&
+      el.selectionEnd === el.value.length;
+    const step = (to: number) => {
+      swallow();
+      if (rows.length > 0) {
+        setActive(to);
+      }
+    };
     if (e.key === "Escape") {
       swallow();
       dismiss();
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      swallow();
-      if (rows.length > 0) {
-        const step = e.key === "ArrowDown" ? 1 : -1;
-        setActive((selected + step + rows.length) % rows.length);
-      }
+      step(
+        (selected + (e.key === "ArrowDown" ? 1 : -1) + rows.length) %
+          rows.length,
+      );
+    } else if (e.key === "PageDown" || e.key === "PageUp") {
+      const to = selected + (e.key === "PageDown" ? 8 : -8);
+      step(Math.max(0, Math.min(rows.length - 1, to)));
     } else if (e.key === "Enter") {
       swallow();
-      pick(selected);
+      pick(selected, platform === "mac" ? e.metaKey : e.ctrlKey);
     } else if (e.key === "Tab") {
       swallow();
+      if (!e.shiftKey) {
+        drill();
+      }
+    } else if (
+      e.key === "ArrowRight" &&
+      atEnd &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey
+    ) {
+      swallow();
+      drill();
     } else {
       const self = getCommand(SWITCHER_ID);
       const chord = chordFromEvent(e.nativeEvent, platform);
@@ -360,26 +415,7 @@ export const QuickSwitcher = ({
     names.status && names.status.state !== "ready"
       ? `Indexing… ${names.status.indexed}/${names.status.total}`
       : null;
-  const commandStart = drawingCount;
   const optionId = (i: number) => `${listId}-opt-${i}`;
-  const renderRow = (row: Row, i: number) => (
-    <RowView
-      key={`${row.kind}:${
-        row.kind === "drawing" ? row.hit.item.path : row.hit.item.command.id
-      }`}
-      id={optionId(i)}
-      row={row}
-      index={i}
-      active={i === selected}
-      shortcut={
-        row.kind === "command"
-          ? shortcutFor(row.hit.item.command, overrides, platform)
-          : ""
-      }
-      onHover={setActive}
-      onPick={pick}
-    />
-  );
 
   return (
     <div
@@ -395,9 +431,10 @@ export const QuickSwitcher = ({
         className="vault-modal vault-quick"
         role="dialog"
         aria-modal="true"
-        aria-label="Quick switcher"
+        aria-label="Command palette"
       >
         <input
+          ref={inputRef}
           className="vault-quick__input"
           type="text"
           role="combobox"
@@ -405,7 +442,7 @@ export const QuickSwitcher = ({
           aria-controls={listId}
           aria-activedescendant={rows.length ? optionId(selected) : undefined}
           aria-label="Search drawings and commands"
-          placeholder="Search drawings, or type > for commands"
+          placeholder="Search drawings and commands  (> commands only)"
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           spellCheck={false}
@@ -423,24 +460,17 @@ export const QuickSwitcher = ({
           role="listbox"
           aria-label="Results"
         >
-          {drawingCount > 0 && (
-            <div role="group" aria-label="Drawings">
-              <div className="vault-quick__group" aria-hidden="true">
-                Drawings
-              </div>
-              {rows.slice(0, drawingCount).map((row, i) => renderRow(row, i))}
-            </div>
-          )}
-          {rows.length > drawingCount && (
-            <div role="group" aria-label="Commands">
-              <div className="vault-quick__group" aria-hidden="true">
-                Commands
-              </div>
-              {rows
-                .slice(drawingCount)
-                .map((row, i) => renderRow(row, commandStart + i))}
-            </div>
-          )}
+          {rows.map((row, i) => (
+            <RowView
+              key={row.key}
+              id={optionId(i)}
+              row={row}
+              index={i}
+              active={i === selected}
+              onHover={setActive}
+              onPick={pick}
+            />
+          ))}
         </div>
         {rows.length === 0 && (
           <div className="vault-quick__empty">No matches</div>

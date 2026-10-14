@@ -57,6 +57,26 @@
   color: var(--vault-text-muted);
 }
 
+.vault-quick__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--vault-text-muted);
+}
+
+.vault-quick__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.vault-quick__check {
+  flex: none;
+  color: var(--vault-primary);
+}
+
 .vault-quick__name {
   flex: none;
   max-width: 60%;

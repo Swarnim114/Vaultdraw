@@ -7,9 +7,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { recordRecent } from "../palette/recent";
 import { QuickSwitcher } from "../components/QuickSwitcher";
 
 import type { QuickSwitcherProps } from "../components/QuickSwitcher";
+import type { PaletteItem } from "../palette/types";
 import type { IndexStatus, NamesListing } from "../search/types";
 
 const status = (total: number, state: IndexStatus["state"] = "ready") => ({
@@ -38,23 +40,34 @@ const PATHS = [
   "Projects/roadmap.excalidraw",
   "sketch.excalidraw",
 ];
-const COMMAND_IDS = [
-  "settings.open",
-  "view.toggleNavigator",
-  "vault.newDrawing",
+const mkItem = (
+  key: string,
+  title: string,
+  extra: Partial<PaletteItem> = {},
+): PaletteItem => ({ key, title, group: "App", run: vi.fn(), ...extra });
+
+const makeItems = (): PaletteItem[] => [
+  mkItem("command:settings.open", "Open settings", { shortcut: "⌘," }),
+  mkItem("command:view.toggleNavigator", "Toggle navigator", {
+    keywords: ["sidebar"],
+  }),
+  mkItem("command:vault.newDrawing", "New drawing"),
+  mkItem("theme:Dracula", "Theme: Dracula", { group: "Appearance" }),
+  mkItem("theme:Nord", "Theme: Nord", { group: "Appearance", checked: true }),
 ];
 
 const setup = async (props: Partial<QuickSwitcherProps> = {}) => {
   const handlers = {
     onOpenDrawing: vi.fn(),
-    onRunCommand: vi.fn(),
+    onRunItem: vi.fn(),
     onClose: vi.fn(),
   };
+  const collectItems = vi.fn(makeItems);
   render(
     <QuickSwitcher
       search={fakeSearch(PATHS)}
       handle="h"
-      commandIds={COMMAND_IDS}
+      collectItems={collectItems}
       platform="mac"
       ownerDocument={document}
       {...handlers}
@@ -62,7 +75,7 @@ const setup = async (props: Partial<QuickSwitcherProps> = {}) => {
     />,
   );
   await act(async () => {});
-  return handlers;
+  return { ...handlers, collectItems };
 };
 
 const input = () => screen.getByRole("combobox");
@@ -74,16 +87,27 @@ const options = () => screen.getAllByRole("option");
 const active = () =>
   options().findIndex((o) => o.getAttribute("aria-selected") === "true");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("QuickSwitcher", () => {
-  it("focuses the input and lists drawings then commands when empty", async () => {
+  it("focuses the input and lists drawings then items when empty", async () => {
     await setup();
     expect(input()).toHaveFocus();
-    expect(options()).toHaveLength(PATHS.length + COMMAND_IDS.length);
+    expect(options()).toHaveLength(PATHS.length + makeItems().length);
     expect(options()[0]).toHaveTextContent("old-notes");
     expect(screen.getByText("Open settings")).toBeInTheDocument();
     expect(screen.getByText("⌘,")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Command palette");
+  });
+
+  it("collects items once, on open", async () => {
+    const h = await setup();
+    type("a");
+    type("ab");
+    expect(h.collectItems).toHaveBeenCalledTimes(1);
   });
 
   it("ranks the fuzzy match first and Enter opens it", async () => {
@@ -97,15 +121,141 @@ describe("QuickSwitcher", () => {
     );
   });
 
-  it('">" lists commands only and Enter runs one', async () => {
+  it("merges drawings and items: a prefix item beats a fuzzy drawing", async () => {
+    await setup({
+      search: fakeSearch(["Notes/open-roadmap-settings.excalidraw", ...PATHS]),
+    });
+    type("open");
+    expect(options()[0]).toHaveTextContent("Open settings");
+    expect(options().some((o) => o.textContent?.includes("open-roadmap"))).toBe(
+      true,
+    );
+    expect(screen.queryByText("Drawings")).toBeNull();
+  });
+
+  it('">" lists items only and Enter runs one (keepOpen false)', async () => {
     const h = await setup();
     type(">");
-    expect(options()).toHaveLength(COMMAND_IDS.length);
-    expect(screen.queryByText("Drawings")).toBeNull();
+    expect(options()).toHaveLength(makeItems().length);
     type(">toggle");
     key("Enter");
-    expect(h.onRunCommand).toHaveBeenCalledWith("view.toggleNavigator");
+    expect(h.onRunItem).toHaveBeenCalledTimes(1);
+    expect(h.onRunItem.mock.calls[0][0].key).toBe(
+      "command:view.toggleNavigator",
+    );
+    expect(h.onRunItem.mock.calls[0][1]).toBe(false);
     expect(h.onOpenDrawing).not.toHaveBeenCalled();
+  });
+
+  it("Tab drills into the family and swallows Tab otherwise", async () => {
+    await setup();
+    type("dracula");
+    key("Tab");
+    expect(input()).toHaveValue(">Theme: ");
+    expect(options()).toHaveLength(2);
+    type("sketch");
+    key("Tab");
+    expect(input()).toHaveValue("sketch");
+  });
+
+  it("ArrowRight drills only with the caret at the end", async () => {
+    await setup();
+    type("dracula");
+    (input() as HTMLInputElement).setSelectionRange(2, 2);
+    key("ArrowRight");
+    expect(input()).toHaveValue("dracula");
+    (input() as HTMLInputElement).setSelectionRange(7, 7);
+    key("ArrowRight");
+    expect(input()).toHaveValue(">Theme: ");
+  });
+
+  it("Mod+Enter runs in place, re-collects and keeps query and row", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = await setup();
+      type(">theme");
+      const activeKeyText = () => options()[active()].textContent;
+      key("ArrowDown");
+      const before = activeKeyText();
+      key("Enter", { metaKey: true });
+      expect(h.onRunItem).toHaveBeenCalledWith(
+        expect.objectContaining({ key: expect.stringMatching(/^theme:/) }),
+        true,
+      );
+      expect(h.collectItems).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(h.collectItems).toHaveBeenCalledTimes(2);
+      expect(input()).toHaveValue(">theme");
+      expect(activeKeyText()).toBe(before);
+      expect(h.onClose).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Mod+Enter closes when the command moved focus out of the palette", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = await setup();
+      h.onRunItem.mockImplementation(() => {
+        const other = document.createElement("button");
+        document.body.append(other);
+        other.focus();
+      });
+      type(">settings");
+      key("Enter", { metaKey: true });
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(h.onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Mod+Enter on a drawing opens it like Enter", async () => {
+    const h = await setup();
+    type("roadmap");
+    key("Enter", { metaKey: true });
+    expect(h.onOpenDrawing).toHaveBeenCalledWith("Projects/roadmap.excalidraw");
+    expect(h.onRunItem).not.toHaveBeenCalled();
+  });
+
+  it("lists recents first on an empty query", async () => {
+    recordRecent("drawing:sketch.excalidraw", window);
+    recordRecent("theme:Nord", window);
+    await setup();
+    expect(options()[0]).toHaveTextContent("Theme: Nord");
+    expect(options()[1]).toHaveTextContent("sketch");
+    key("Enter");
+  });
+
+  it("records what was run as a recent", async () => {
+    await setup();
+    type(">new");
+    key("Enter");
+    cleanup();
+    await setup();
+    expect(options()[0]).toHaveTextContent("New drawing");
+  });
+
+  it("matches keywords without showing them", async () => {
+    await setup();
+    type("sidebar");
+    expect(options()).toHaveLength(1);
+    expect(options()[0]).toHaveTextContent("Toggle navigator");
+    expect(options()[0]).not.toHaveTextContent("sidebar");
+  });
+
+  it("marks the checked item", async () => {
+    await setup();
+    type(">theme: ");
+    expect(screen.getAllByRole("img", { name: "Current" })).toHaveLength(1);
+    expect(screen.getByText("✓").closest('[role="option"]')).toHaveTextContent(
+      "Nord",
+    );
   });
 
   it("wraps with the arrow keys", async () => {
@@ -126,6 +276,20 @@ describe("QuickSwitcher", () => {
     expect(h.onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("falls back to the canvas when the previous element is gone", async () => {
+    const editor = document.createElement("div");
+    editor.className = "vault-editor";
+    const canvas = document.createElement("div");
+    canvas.className = "excalidraw-container";
+    canvas.tabIndex = 0;
+    editor.append(canvas);
+    document.body.append(editor);
+    await setup();
+    key("Escape");
+    expect(canvas).toHaveFocus();
+    editor.remove();
+  });
+
   it("restores focus to the previous element on close", async () => {
     const button = document.createElement("button");
     document.body.append(button);
@@ -136,12 +300,12 @@ describe("QuickSwitcher", () => {
     button.remove();
   });
 
-  it("shows a message when listing fails but commands still work", async () => {
+  it("shows a message when listing fails but items still work", async () => {
     const h = await setup({ search: fakeSearch([], new Error("boom")) });
     expect(screen.getByRole("status")).toHaveTextContent("boom");
     type(">settings");
     key("Enter");
-    expect(h.onRunCommand).toHaveBeenCalledWith("settings.open");
+    expect(h.onRunItem.mock.calls[0][0].key).toBe("command:settings.open");
   });
 
   it("shows indexing progress with the names known so far", async () => {
