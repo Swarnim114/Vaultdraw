@@ -42,6 +42,29 @@ type Native = {
     path: string;
   }) => Promise<{ json: string; revision: string }>;
   export_file: (args: { name: string; bytes: number[] }) => Promise<boolean>;
+  move_entry: (args: {
+    handle: string;
+    from: string;
+    to: string;
+  }) => Promise<void>;
+  search_vault: (args: {
+    handle: string;
+    query: string;
+    limit?: number;
+    scope?: string;
+  }) => Promise<{
+    results: Array<{
+      path: string;
+      matches: Array<{ snippet: string; elementId: string }>;
+    }>;
+    totalMatches: number;
+    status: { state: string; indexed: number; total: number };
+  }>;
+  search_index_status: (args: { handle: string }) => Promise<{
+    state: string;
+    indexed: number;
+    total: number;
+  }>;
   load_settings: () => Promise<LoadSettingsResult>;
   update_config: (args: { changes: ConfigChange[] }) => Promise<void>;
   load_vault_settings: (args: { handle: string }) => Promise<{
@@ -494,6 +517,111 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
     stopListening?.();
+
+    await step("native-search-index", async () => {
+      const dir = `smoke-search-${runId}`;
+      const label = (id: string, text: string) => ({
+        id,
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 20,
+        text,
+        originalText: text,
+        isDeleted: false,
+      });
+      const scene = (...texts: string[]) =>
+        JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "desktop-smoke",
+          elements: texts.map((text, i) => label(`t${i}`, text)),
+          appState: {},
+          files: {},
+        });
+      const latin = `${dir}/latin-${runId}.excalidraw`;
+      const cjk = `${dir}/cjk-${runId}.excalidraw`;
+      const needle = `quokkaneedle${runId}`;
+      await call("create_folder", { handle: activeVault.handle, path: dir });
+      for (const [path, json, op] of [
+        [latin, scene(`Caf\u00e9 ${needle} graph`), "smoke-search-latin"],
+        [
+          cjk,
+          scene("\u6570\u636e\u5e93\u8bbe\u8ba1 ", `${needle}cjk`),
+          "smoke-search-cjk",
+        ],
+      ]) {
+        await call("write_drawing", {
+          handle: activeVault.handle,
+          path,
+          json,
+          expectedRevision: null,
+          operationId: op,
+        });
+      }
+      const find = (query: string) =>
+        call("search_vault", { handle: activeVault.handle, query });
+      const pathsFor = async (query: string) =>
+        (await find(query)).results.map((hit) => hit.path);
+      const poll = async (
+        what: string,
+        done: (paths: string[]) => boolean,
+        query: string,
+      ) => {
+        const until = win.performance.now() + 10_000;
+        let last: string[] = [];
+        while (win.performance.now() < until) {
+          last = await pathsFor(query);
+          if (done(last)) {
+            return last;
+          }
+          await delay(win, 100);
+        }
+        throw new Error(
+          `Timed out waiting for ${what}; last results for ${JSON.stringify(
+            query,
+          )}: ${JSON.stringify(last)}`,
+        );
+      };
+      const startedSearch = win.performance.now();
+      await poll("latin drawing indexed", (p) => p.includes(latin), needle);
+      const hitMs = Math.round(win.performance.now() - startedSearch);
+      await poll(
+        "accent-insensitive content",
+        (p) => p.includes(latin),
+        "CAFE",
+      );
+      await poll(
+        "CJK drawing indexed",
+        (p) => p.includes(cjk),
+        "\u6570\u636e\u5e93",
+      );
+      const response = await find(needle);
+      const hit = response.results.find((item) => item.path === latin);
+      if (!hit || !hit.matches[0]?.snippet.includes(needle)) {
+        throw new Error("Search hit has no snippet containing the needle");
+      }
+      // Rename: the old path disappears, the new one is found.
+      const renamed = `${dir}/renamed-${runId}.excalidraw`;
+      await call("move_entry", {
+        handle: activeVault.handle,
+        from: latin,
+        to: renamed,
+      });
+      await poll(
+        "rename reflected",
+        (p) => p.includes(renamed) && !p.includes(latin),
+        needle,
+      );
+      const status = await call("search_index_status", {
+        handle: activeVault.handle,
+      });
+      if (status.state !== "ready" || status.indexed < 2 || status.total < 2) {
+        throw new Error(`Index not ready: ${JSON.stringify(status)}`);
+      }
+      return { dir, firstHitMs: hitMs, renamed, status };
+    });
 
     await step("ui-create-drawing-and-open-editor", async () => {
       const outer = await waitFor("suite folder tree row", () =>
