@@ -15,6 +15,7 @@ import {
   setAutosaveDelayMs,
   setEditorDefaults,
   setTheme,
+  subscribePreferences,
   updatePreferences,
   type VaultTheme,
 } from "../../vault/preferences";
@@ -153,6 +154,12 @@ export const useSettingsController = ({
   );
   const vaultSettings = useVaultSettingsView(win);
   const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
+
+  // The view.zoom* shortcuts change the zoom while Settings may be open.
+  useEffect(
+    () => subscribePreferences(() => setZoomState(getPreferences(win).zoom)),
+    [win],
+  );
 
   // Refresh displayed values when config.toml is reloaded while open.
   useEffect(() => {
