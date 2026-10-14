@@ -10,6 +10,7 @@ import {
 import { COMMANDS, getCommand } from "./commands";
 import { readContext, whenHolds, type AppContext } from "./context";
 import { installCommandDispatcher, runHandler } from "./dispatcher";
+import { getRegisteredHandler } from "./handlerRegistry";
 import { detectPlatform } from "./keys";
 import { buildKeymap } from "./keymap";
 
@@ -57,10 +58,18 @@ export function setHotkeyOverride(
   updatePreferences({ hotkeys: next }, win);
 }
 
+export interface AvailabilityOptions {
+  /**
+   * Ignore `modalOpen`: the palette asks while its own backdrop is up (a
+   * Mod+Enter run keeps it open), and only opens when no other modal is.
+   */
+  fromPalette?: boolean;
+}
+
 export interface CommandRunner {
   /** Run a command if it is available; true when a handler ran. */
-  run(id: string): boolean;
-  isAvailable(id: string): boolean;
+  run(id: string, options?: AvailabilityOptions): boolean;
+  isAvailable(id: string, options?: AvailabilityOptions): boolean;
   platform: Platform;
 }
 
@@ -86,6 +95,10 @@ export function useCommandDispatcher(
 
   const live = useRef({ handlers, app, keymap });
   live.current = { handlers, app, keymap };
+  const handlerFor = useCallback(
+    (id: string) => live.current.handlers[id] ?? getRegisteredHandler(id),
+    [],
+  );
 
   const context = useCallback(
     (): CommandContext =>
@@ -108,34 +121,38 @@ export function useCommandDispatcher(
       platform,
       getKeymap: () => live.current.keymap,
       getContext: context,
-      getHandler: (id) => live.current.handlers[id],
+      getHandler: handlerFor,
     });
-  }, [win, platform, context]);
+  }, [win, platform, context, handlerFor]);
 
   const isAvailable = useCallback(
-    (id: string) => {
+    (id: string, options?: AvailabilityOptions) => {
       const command = getCommand(id);
-      if (!command || !live.current.handlers[id]) {
+      if (!command || !handlerFor(id)) {
         return false;
       }
-      const when = command.when?.filter(
-        (clause) => !FOCUS_RULES.has(clause.replace("!", "")),
-      );
+      const when = command.when?.filter((clause) => {
+        const key = clause.replace("!", "");
+        return (
+          !FOCUS_RULES.has(key) &&
+          !(options?.fromPalette && key === "modalOpen")
+        );
+      });
       return whenHolds(when, context());
     },
-    [context],
+    [context, handlerFor],
   );
 
   const run = useCallback(
-    (id: string) => {
-      const handler = live.current.handlers[id];
-      if (!handler || !isAvailable(id)) {
+    (id: string, options?: AvailabilityOptions) => {
+      const handler = handlerFor(id);
+      if (!handler || !isAvailable(id, options)) {
         return false;
       }
       runHandler(id, handler);
       return true;
     },
-    [isAvailable],
+    [isAvailable, handlerFor],
   );
 
   return { run, isAvailable, platform };

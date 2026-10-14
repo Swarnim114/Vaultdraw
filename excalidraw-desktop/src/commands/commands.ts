@@ -5,6 +5,8 @@
  */
 import { MAX_PEN_PRESETS } from "../pens/penPresets";
 
+import { EDITOR_COMMANDS } from "./editorCommands";
+
 import type { Chord, CommandDefinition, Platform } from "./types";
 
 /** "pen.select1" .. "pen.select9": pick a saved pen (and the freedraw tool). */
@@ -134,6 +136,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: { default: [] },
     when: ["vaultOpen", "!modalOpen"],
   },
+  ...EDITOR_COMMANDS,
   ...PEN_COMMANDS,
 ];
 
