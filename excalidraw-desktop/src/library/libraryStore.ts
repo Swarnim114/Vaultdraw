@@ -418,11 +418,14 @@ export class LibraryStore {
   /**
    * Reads the file (skipped when the revision is unchanged) and merges the
    * local pending delta on top of it. Returns true when local items changed.
+   * `reschedule` is off when `write()` reconciles a conflict: it retries
+   * itself, and re-arming the debounce would restart its bounded loop.
    */
   private async reconcile(
     src: Source,
     force = false,
     retryTorn = src.loaded,
+    reschedule = true,
   ): Promise<boolean> {
     let result;
     try {
@@ -448,7 +451,7 @@ export class LibraryStore {
         if (retryTorn) {
           // Sync tools can expose half-written files: look once more.
           await new Promise((resolve) => setTimeout(resolve, TORN_RETRY_MS));
-          return this.reconcile(src, true, false);
+          return this.reconcile(src, true, false, reschedule);
         }
         src.error = errorMessage(err);
         src.revision = result.revision;
@@ -474,7 +477,7 @@ export class LibraryStore {
         this.vaultIds.add(item.id);
       }
     }
-    if (pendingDelta(src)) {
+    if (reschedule && pendingDelta(src)) {
       this.schedule(src);
     }
     return changed;
@@ -568,7 +571,7 @@ export class LibraryStore {
         return;
       } catch (err) {
         if ((err as { code?: string })?.code === "CONFLICT") {
-          if (await this.reconcile(src, true)) {
+          if (await this.reconcile(src, true, src.loaded, false)) {
             this.bump("external");
           }
           continue;
