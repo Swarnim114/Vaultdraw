@@ -249,6 +249,68 @@ test.describe("opening, shortcuts and focus", () => {
   });
 });
 
+test("'Insert: <library item>' inserts it on the canvas", async ({ page }) => {
+  const errors = trackErrors(page);
+  await openVault(page);
+  await page.evaluate(
+    (item) => {
+      (window as any).__libraryRepo.setFile(
+        "personal",
+        JSON.stringify({
+          type: "excalidrawlib",
+          version: 2,
+          source: "https://excalidraw.com",
+          libraryItems: [item],
+        }),
+      );
+    },
+    {
+      id: "kanban",
+      status: "unpublished",
+      created: 1,
+      name: "Kanban card",
+      elements: [
+        {
+          ...rect("kanban-r", 0, 0),
+          seed: 7,
+          version: 1,
+          versionNonce: 7,
+          updated: 1,
+        },
+      ],
+    },
+  );
+  await page
+    .locator(".vault-tree-item__name", { hasText: "DSA" })
+    .first()
+    .click();
+  await seedTwoRects(page);
+  await openDrawing(page, "Graphs");
+  await focusCanvas(page);
+
+  // The library loads lazily (idle), so retry until the entry is listed.
+  await expect(async () => {
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await expect(palette(page)).toBeVisible();
+    await page.keyboard.type("kanban");
+    await expect(options(page).first()).toContainText("Insert: Kanban card", {
+      timeout: 500,
+    });
+  }).toPass({ timeout: 10_000 });
+  await page.keyboard.press("Enter");
+  await expect(palette(page)).toHaveCount(0);
+
+  await page.waitForTimeout(AFTER_AUTOSAVE_MS);
+  await expect.poll(async () => (await liveElements(page)).length).toBe(3);
+  const inserted = (await liveElements(page)).filter(
+    (e: any) => e.id !== "a" && e.id !== "b",
+  );
+  expect(inserted).toHaveLength(1);
+  expect(inserted[0].type).toBe("rectangle");
+  expect(errors).toEqual([]);
+});
+
 test.describe("navigator collapsed", () => {
   const collapse = async (page: Page) => {
     await page.keyboard.press("ControlOrMeta+Backslash");

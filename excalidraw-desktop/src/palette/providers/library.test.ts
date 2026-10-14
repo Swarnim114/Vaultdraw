@@ -9,7 +9,7 @@ describe("library items provider", () => {
     expect(provider.items()).toEqual([]);
   });
 
-  it("lists 'Library: <name>' items and run inserts", () => {
+  it("lists 'Insert: <name>' items and run inserts", () => {
     const insert = vi.fn();
     const provider = createLibraryItemsProvider(() => ({
       list: () => [{ id: "7", name: "Arrow set", keywords: ["arrows"] }],
@@ -18,7 +18,7 @@ describe("library items provider", () => {
     const [entry] = provider.items();
     expect(entry).toMatchObject({
       key: "library:7",
-      title: "Library: Arrow set",
+      title: "Insert: Arrow set",
       group: "Library",
       keywords: ["arrows"],
     });

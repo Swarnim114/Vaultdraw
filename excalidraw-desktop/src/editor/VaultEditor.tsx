@@ -125,6 +125,7 @@ const VaultEditorComponent = ({
     activePen: pens.active,
     selectPen: pens.selectPen,
     openPaperSettings: () => setPaperDialogOpen(true),
+    libraryStore: library?.store ?? null,
   });
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {

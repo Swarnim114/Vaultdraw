@@ -13,10 +13,12 @@ import { detectPlatform } from "../commands/keys";
 import { registerPaletteProvider } from "../palette/registry";
 import { createEditorProvider } from "../palette/providers/editor";
 import { createPensProvider } from "../palette/providers/pens";
+import { createLibraryItemsProvider } from "../palette/providers/library";
 import { getPreferences } from "../vault/preferences";
 
 import type { CommandHandlers } from "../commands/types";
 import type { PenPreset } from "../pens/penPresets";
+import type { LibraryStore } from "../library/libraryStore";
 
 import type { RefObject } from "react";
 
@@ -27,6 +29,8 @@ type Options = {
   activePen: number | null;
   selectPen: (index: number) => void;
   openPaperSettings: () => void;
+  /** The persisted library; null = Excalidraw's in-memory one (not listed). */
+  libraryStore: LibraryStore | null;
 };
 
 /**
@@ -89,10 +93,41 @@ export function useEditorPalette(options: Options): void {
         select: (i) => live.current.selectPen(i),
       }),
     );
+    const unLibrary = registerPaletteProvider(
+      createLibraryItemsProvider(() => {
+        const store = live.current.libraryStore;
+        const current = api();
+        if (
+          !store ||
+          !current ||
+          live.current.disabled ||
+          current.getAppState().viewModeEnabled
+        ) {
+          return null;
+        }
+        return {
+          // Unnamed items (from before names were required) can't be found
+          // by name, so they are not listed.
+          list: () =>
+            store
+              .listItems()
+              .flatMap(({ id, name, scope }) =>
+                name ? [{ id, name, keywords: ["library", scope] }] : [],
+              ),
+          insert: (id) => {
+            const item = store.getItem(id);
+            if (item) {
+              current.insertLibraryItems([item]);
+            }
+          },
+        };
+      }),
+    );
     return () => {
       unbind();
       unEditor();
       unPens();
+      unLibrary();
     };
   }, []);
 }
