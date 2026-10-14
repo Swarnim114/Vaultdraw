@@ -11,9 +11,9 @@ import "./desktop.css";
 // native side owns persistence. DOM APIs are derived from the mount node's
 // ownerDocument/defaultView per repo convention (no bare `document`/`window`
 // globals beyond the initial mount lookup fallback).
-// Boot phase marks (read with performance.getEntriesByName("vd:..."), e.g.
+// Boot phase marks (read with performance.getEntriesByName("vaultdraw:boot:..."), e.g.
 // from the perf harness or devtools); times are ms since navigation start.
-const mark = (name: string) => performance.mark(`vd:${name}`);
+const mark = (name: string) => performance.mark(`vaultdraw:boot:${name}`);
 mark("main-start");
 
 const mountNode = document.getElementById("root");
