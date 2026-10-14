@@ -27,6 +27,8 @@
   // the UI/editor/QA workers' modules resolve once they land.
   "include": [
     "src",
+    "perf/browser/*.ts",
+    "perf/browser/*.tsx",
     "vite.config.mts",
     "vitest.config.ts",
     "../packages/excalidraw/global.d.ts",
