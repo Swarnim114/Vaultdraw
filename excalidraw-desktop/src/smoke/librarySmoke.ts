@@ -67,6 +67,8 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
     doc.dispatchEvent(
       new win.KeyboardEvent("keydown", {
         key,
+        code: `Key${key.toUpperCase()}`,
+        cancelable: true,
         metaKey: true,
         ctrlKey: true,
         bubbles: true,
@@ -111,8 +113,20 @@ export async function runLibrarySmoke(ctx: LibrarySmokeContext) {
   };
   const addFromSelection = async (id: Scope) => {
     // Select everything on the open drawing, as a user would, then use the tile.
-    keydown("a");
-    const tile = await waitFor(`${id} add tile`, () => adder(id), 5000);
+    // Select-all is idempotent: repeat it on every poll, so a keydown that lands
+    // while the editor is still settling after the previous step's saves (the
+    // scene can be re-applied and drop the selection) is not lost.
+    const tile = await waitFor(
+      `${id} add tile`,
+      () => {
+        const found = adder(id);
+        if (!found) {
+          keydown("a");
+        }
+        return found;
+      },
+      8000,
+    );
     const before = tiles(id);
     tile.click();
     await waitFor(
