@@ -6,7 +6,11 @@ describe("palette shortcut labels", () => {
   it("formats registry commands with overrides", () => {
     expect(commandShortcutLabel("vault.newDrawing", {}, "mac")).toBe("⌘N");
     expect(
-      commandShortcutLabel("vault.newDrawing", { "vault.newDrawing": [] }, "mac"),
+      commandShortcutLabel(
+        "vault.newDrawing",
+        { "vault.newDrawing": [] },
+        "mac",
+      ),
     ).toBe("");
     expect(
       commandShortcutLabel(

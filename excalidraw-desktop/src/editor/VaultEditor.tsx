@@ -34,6 +34,7 @@ import { usePens } from "../pens/usePens";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
+import { useEditorPalette } from "./useEditorPalette";
 import {
   exportOptionsToAppState,
   loadExportOptions,
@@ -117,6 +118,14 @@ const VaultEditorComponent = ({
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
   const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
+  useEditorPalette({
+    apiRef,
+    disabled,
+    presets: pens.presets,
+    activePen: pens.active,
+    selectPen: pens.selectPen,
+    openPaperSettings: () => setPaperDialogOpen(true),
+  });
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
