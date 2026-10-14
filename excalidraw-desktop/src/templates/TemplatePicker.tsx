@@ -98,9 +98,13 @@ interface RowProps {
   onHover: (index: number) => void;
 }
 
+// One shared formatter: toLocaleDateString() builds a new Intl formatter on
+// every call, which dominated the picker's first render.
+let dateFormat: Intl.DateTimeFormat | undefined;
 const formatDate = (ms: number) => {
   try {
-    return new Date(ms).toLocaleDateString();
+    dateFormat ??= new Intl.DateTimeFormat();
+    return dateFormat.format(ms);
   } catch {
     return "";
   }
