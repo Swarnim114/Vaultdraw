@@ -15,12 +15,62 @@ import { buildCanvasColorTransform } from "../theme";
 import type { ThemeMode, ThemeVariant } from "../theme";
 
 type Transform = (color: string, isDarkMode: boolean) => string;
+type SyncSource = { variant: ThemeVariant; mode: ThemeMode; key: string };
+
+// One entry: the global sync and the page "match" display share the same
+// variant/mode key, hence the same transform (and display colour key).
+let built: { key: string; transform: Transform } | null = null;
+const transformFor = (source: SyncSource): Transform => {
+  if (built?.key !== source.key) {
+    built = {
+      key: source.key,
+      transform: buildCanvasColorTransform(
+        source.variant,
+        source.mode,
+        // NOT applyDarkModeFilter: that delegates back to this transform.
+        invertColorForDarkMode,
+      ),
+    };
+  }
+  return built.transform;
+};
+
+/** What the canvas shows now (ignoring suspension), null = standard colours. */
+const effectiveDisplay = (): {
+  transform: Transform;
+  canvas: string | null;
+} | null => {
+  if (pageDisplay === "identity") {
+    return { transform: identityTransform, canvas: null };
+  }
+  if (pageDisplay === "match" && themeSource) {
+    return {
+      transform: transformFor(themeSource),
+      canvas: themeSource.variant.mSurface,
+    };
+  }
+  return currentTransform
+    ? { transform: currentTransform, canvas: currentCanvas }
+    : null;
+};
+
+const applyDisplay = () => {
+  const display = effectiveDisplay();
+  setDisplayColorTransform(display?.transform ?? null, display?.canvas ?? null);
+};
 
 let currentKey = "off";
 let currentTransform: Transform | null = null;
 // The theme surface: the canvas background shown on screen while sync is on.
 let currentCanvas: string | null = null;
 let suspended = 0;
+// Page mode: the drawing's paper theme decides the display colours instead of
+// the global sync toggle. "identity" = standard light colours (also in a dark
+// UI); "match" = the theme transform + surface, whatever the toggle says.
+export type PageDisplay = "identity" | "match";
+let pageDisplay: PageDisplay | null = null;
+let themeSource: SyncSource | null = null;
+const identityTransform: Transform = (color) => color;
 const repainters = new Set<() => void>();
 
 const repaintAll = () => {
@@ -46,17 +96,40 @@ export const setCanvasSync = (
     return false;
   }
   currentKey = key;
-  currentTransform = sync
-    ? buildCanvasColorTransform(
-        sync.variant,
-        sync.mode,
-        // NOT applyDarkModeFilter: that delegates back to this transform.
-        invertColorForDarkMode,
-      )
-    : null;
+  currentTransform = sync ? transformFor(sync) : null;
   currentCanvas = sync ? sync.variant.mSurface : null;
   if (suspended === 0) {
-    setDisplayColorTransform(currentTransform, currentCanvas);
+    applyDisplay();
+  }
+  repaintAll();
+  return true;
+};
+
+/**
+ * The active theme's canvas palette, always (even with sync off): what a
+ * page-mode "match current theme" paper is drawn through.
+ */
+export const setCanvasThemeSource = (source: SyncSource | null): void => {
+  if (themeSource?.key === source?.key) {
+    return;
+  }
+  themeSource = source;
+  if (pageDisplay === "match") {
+    if (suspended === 0) {
+      applyDisplay();
+    }
+    repaintAll();
+  }
+};
+
+/** Page mode's display override (null = page mode off: today's behaviour). Returns true when it changed. */
+export const setPageDisplay = (display: PageDisplay | null): boolean => {
+  if (display === pageDisplay) {
+    return false;
+  }
+  pageDisplay = display;
+  if (suspended === 0) {
+    applyDisplay();
   }
   repaintAll();
   return true;
@@ -78,7 +151,7 @@ export const registerCanvasRepaint = (repaint: () => void) => {
  * repaints. The release is idempotent.
  */
 export const suspendCanvasSync = (): (() => void) => {
-  if (suspended++ === 0 && currentTransform) {
+  if (suspended++ === 0 && effectiveDisplay()) {
     setDisplayColorTransform(null);
   }
   let released = false;
@@ -87,8 +160,8 @@ export const suspendCanvasSync = (): (() => void) => {
       return;
     }
     released = true;
-    if (--suspended === 0 && currentTransform) {
-      setDisplayColorTransform(currentTransform, currentCanvas);
+    if (--suspended === 0 && effectiveDisplay()) {
+      applyDisplay();
       repaintAll();
     }
   };
@@ -101,7 +174,7 @@ export const suspendCanvasSync = (): (() => void) => {
 export const withStandardCanvasColors = async <T>(
   task: () => Promise<T>,
 ): Promise<T> => {
-  if (!currentTransform && suspended === 0) {
+  if (!effectiveDisplay() && suspended === 0) {
     return task();
   }
   const release = suspendCanvasSync();
@@ -118,6 +191,9 @@ export const resetCanvasSync = () => {
   currentTransform = null;
   currentCanvas = null;
   suspended = 0;
+  pageDisplay = null;
+  themeSource = null;
+  built = null;
   repainters.clear();
   setDisplayColorTransform(null);
 };

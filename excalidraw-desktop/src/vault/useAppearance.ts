@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 
-import { setCanvasSync } from "../editor/canvasSync";
+import { setCanvasSync, setCanvasThemeSource } from "../editor/canvasSync";
 import {
   getThemeRegistry,
   THEMES_CHANGED_EVENT,
@@ -80,16 +80,15 @@ export const useAppearance = (
     if (doc) {
       applyAppearance(doc, snapshot);
     }
-    setCanvasSync(
-      snapshot.syncCanvas
-        ? // The canvas palette follows the theme, not the accent.
-          {
-            variant: snapshot.entry.theme[snapshot.mode],
-            mode: snapshot.mode,
-            key: snapshot.key,
-          }
-        : null,
-    );
+    // The canvas palette follows the theme, not the accent.
+    const source = {
+      variant: snapshot.entry.theme[snapshot.mode],
+      mode: snapshot.mode,
+      key: snapshot.key,
+    };
+    // Page mode's "match current theme" paper needs it even with sync off.
+    setCanvasThemeSource(source);
+    setCanvasSync(snapshot.syncCanvas ? source : null);
   }, [doc, snapshot]);
 
   return { snapshot, registry, refresh };

@@ -6,9 +6,9 @@ import {
   useExcalidrawStateValue,
 } from "@excalidraw/excalidraw";
 
-import { getPageSetupPatch } from "./pageSetupChange";
-
 import type { PageSetup } from "@excalidraw/excalidraw/data/pageSetup";
+
+import { getPageSetupPatch } from "./pageSetupChange";
 
 /** The current drawing's page setup (null = normal canvas) and its setter. Call inside the Excalidraw tree. */
 export const usePageSetup = () => {

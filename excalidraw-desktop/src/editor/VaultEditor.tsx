@@ -22,6 +22,10 @@ import { CommandMenuItem } from "../commands/CommandMenuItem";
 import { IconLibrary } from "../components/Icons";
 import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
+import { PageMenuItem } from "../components/page/PageMenuItem";
+import { PageSetupDialog } from "../components/page/PageSetupDialog";
+import { PageNotice } from "../page/PageNotice";
+import { usePageMode } from "../page/usePageMode";
 import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
 
@@ -122,6 +126,7 @@ const VaultEditorComponent = ({
   const [editorError, setEditorError] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
   const [paperDialogOpen, setPaperDialogOpen] = useState(false);
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const handledFocusNonce = useRef<number | null>(null);
   const [libraryApi, setLibraryApi] = useState<ExcalidrawImperativeAPI | null>(
     null,
@@ -141,6 +146,15 @@ const VaultEditorComponent = ({
     openPaperSettings: () => setPaperDialogOpen(true),
     libraryStore: library?.store ?? null,
   });
+
+  const pageMode = usePageMode({
+    apiRef,
+    getWindow: () => host.current?.ownerDocument.defaultView ?? null,
+    disabled,
+    readOnly,
+    openPageSetup: () => setPageSetupOpen(true),
+  });
+  const onPageChange = pageMode.onChange;
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
@@ -276,6 +290,7 @@ const VaultEditorComponent = ({
       if (!ready.current) {
         return;
       }
+      onPageChange(elements, appState);
       rememberExportOptions(appState);
       // The dialog's live preview must show standard colours, not theme sync.
       const previewing = appState.openDialog?.name === "imageExport";
@@ -303,22 +318,29 @@ const VaultEditorComponent = ({
         maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
       }
     },
-    [serializePending, onAppState, onPenAppState, onToolAppState],
+    [serializePending, onAppState, onPenAppState, onToolAppState, onPageChange],
   );
 
-  const onInitialize = useCallback((api: ExcalidrawImperativeAPI) => {
-    apiRef.current = api;
-    setLibraryApi(api);
-    latest.current = [
-      api.getSceneElements(),
-      api.getAppState(),
-      api.getFiles(),
-    ];
-    signature.current = getSaveSignature(latest.current[0], latest.current[1]);
-    fileRefs.current = latest.current[2];
-    ready.current = true;
-    setApiReady(true);
-  }, []);
+  const onInitialize = useCallback(
+    (api: ExcalidrawImperativeAPI) => {
+      apiRef.current = api;
+      setLibraryApi(api);
+      latest.current = [
+        api.getSceneElements(),
+        api.getAppState(),
+        api.getFiles(),
+      ];
+      signature.current = getSaveSignature(
+        latest.current[0],
+        latest.current[1],
+      );
+      fileRefs.current = latest.current[2];
+      ready.current = true;
+      onPageChange(latest.current[0], latest.current[1]);
+      setApiReady(true);
+    },
+    [onPageChange],
+  );
 
   // Search results: focus the requested element once per request, after the
   // scene is loaded and laid out.
@@ -477,7 +499,14 @@ const VaultEditorComponent = ({
           <MainMenu.DefaultItems.ToggleTheme allowSystemTheme={false} />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
           <PaperMenuItem onOpenSettings={() => setPaperDialogOpen(true)} />
+          <PageMenuItem onOpenSetup={() => setPageSetupOpen(true)} />
         </MainMenu>
+        {pageSetupOpen && (
+          <PageSetupDialog
+            onClose={() => setPageSetupOpen(false)}
+            ownerDocument={host.current?.ownerDocument}
+          />
+        )}
         {paperDialogOpen && (
           <PaperDialog
             onClose={() => setPaperDialogOpen(false)}
@@ -486,7 +515,14 @@ const VaultEditorComponent = ({
         )}
       </>
     ),
-    [exporting, canExport, canOpenSettings, saveCopy, paperDialogOpen],
+    [
+      exporting,
+      canExport,
+      canOpenSettings,
+      saveCopy,
+      paperDialogOpen,
+      pageSetupOpen,
+    ],
   );
 
   return (
@@ -531,6 +567,7 @@ const VaultEditorComponent = ({
         {editorChildren}
       </Excalidraw>
       {editorLinks.overlays}
+      {pageMode.notice && <PageNotice {...pageMode.notice} />}
       {pens.freedrawActive && !readOnly && !disabled && (
         <PenBar
           presets={pens.presets}

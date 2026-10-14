@@ -1,0 +1,49 @@
+.page-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: var(--vault-menu-bg);
+  color: var(--vault-text);
+  border: 1px solid var(--vault-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-family: var(--vault-font);
+  font-size: 13px;
+}
+
+.page-notice-action {
+  padding: 3px 10px;
+  background: var(--vault-primary);
+  color: var(--vault-on-primary);
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.page-notice-action:hover {
+  background: var(--vault-primary-hover);
+}
+
+.page-notice-dismiss {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  color: var(--vault-text-muted);
+  border: 0;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.page-notice-dismiss:hover {
+  background: var(--vault-surface-hover);
+}

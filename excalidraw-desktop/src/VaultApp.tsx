@@ -35,6 +35,7 @@ import {
 import { getDefaultBackgroundPattern } from "./vault/paperDefaults";
 import { getNewDrawingPageSetup } from "./vault/pageDefaults";
 import { getPageSetupPatch } from "./page/pageSetupChange";
+import { isPageCommandChecked } from "./page/pageStatus";
 import {
   getSettingsStatus,
   PREFERENCES_CHANGED_EVENT,
@@ -1506,6 +1507,9 @@ export const VaultApp = ({
       }
       if (id.startsWith("navigator.sort.")) {
         return navigatorSort === id.slice("navigator.sort.".length);
+      }
+      if (id.startsWith("page.")) {
+        return isPageCommandChecked(id);
       }
       return false;
     },

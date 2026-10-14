@@ -19,6 +19,7 @@ export type CommandCategory =
   | "Templates"
   | "Tags"
   | "Paper"
+  | "Page"
   | "Library"
   | "Links";
 
