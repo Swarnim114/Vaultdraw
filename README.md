@@ -13,6 +13,7 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - Copy PNG or SVG to the clipboard, from the export dialog or the right-click menu. On macOS the image goes to the native clipboard
 - Insert Mermaid diagrams from the main menu or More tools. Conversion runs fully offline, with no AI
 - Works fully offline (fonts and assets are bundled)
+- Customisable hotkeys (Settings → Hotkeys) and a Cmd/Ctrl+P quick switcher for drawings and commands
 - Plain-text config folder, editable by hand or in Settings, reloaded live
 - Colour themes in Noctalia format, nine built in, light and dark (in progress)
 
@@ -130,8 +131,16 @@ A theme needs only three colours per variant (background, text, accent); everyth
 
 ```json
 {
-  "dark":  { "mSurface": "#1b1d2b", "mOnSurface": "#d8dae8", "mPrimary": "#82aaff" },
-  "light": { "mSurface": "#f6f6fa", "mOnSurface": "#2b2d3a", "mPrimary": "#3b6fd8" }
+  "dark": {
+    "mSurface": "#1b1d2b",
+    "mOnSurface": "#d8dae8",
+    "mPrimary": "#82aaff"
+  },
+  "light": {
+    "mSurface": "#f6f6fa",
+    "mOnSurface": "#2b2d3a",
+    "mPrimary": "#3b6fd8"
+  }
 }
 ```
 
@@ -160,6 +169,73 @@ Optional top-level `name` and `author` fields are for display only.
 With `sync_canvas = true` (**Sync canvas with theme** in Settings), the canvas is recoloured on screen: its background becomes the theme's background, and the pencil, stroke and fill colours from Excalidraw's palette become matching theme colours. This only changes what you see. Saved drawings and PNG/SVG exports keep Excalidraw's standard colours, so they look the same for anyone who opens them. With it off, the canvas renders as in regular Excalidraw.
 
 Themes are data only: colour values, no code.
+
+## Hotkeys
+
+Every Vaultdraw command has a key you can change. Open **Settings → Hotkeys** (Cmd/Ctrl+,).
+
+The page lists all commands with their keys as chips. Type in the filter to narrow by command name or key. The **⌨** button records keys: press a key combination and the list shows every command bound to it. The chips **All**, **Assigned**, **Customised**, **Unassigned** and **Conflicts** filter the list (Conflicts appears only when there is one).
+
+- **+** records a new key for a command. A command can have several.
+- **×** on a key removes it. **↺** resets the command to its defaults.
+- While recording, **Backspace** clears the key and **Esc** cancels.
+- Keys the system or the app menu owns (Cmd+Q, Cmd+W, Cmd+Tab, Cmd+C/X/V/Z/A and similar) are refused, with the reason shown.
+- A key used by two commands, or by one of Excalidraw's own shortcuts, is shown in red with what it clashes with. It is allowed, and Vaultdraw's binding wins.
+
+### Defaults
+
+`Mod` is Cmd on macOS and Ctrl on Windows and Linux. A dash means no key by default.
+
+| Command id | What it does | macOS | Windows / Linux |
+| --- | --- | --- | --- |
+| `file.save` | Save drawing | ⌘S | Ctrl+S |
+| `settings.open` | Open settings | ⌘, | Ctrl+, |
+| `navigator.focusSearch` | Search drawings | ⇧⌘F | Ctrl+Shift+F |
+| `view.zoomIn` | Zoom in (interface) | ⇧⌘=, ⇧⌘Num + | Ctrl+Shift+=, Ctrl+Shift+Num + |
+| `view.zoomOut` | Zoom out (interface) | ⇧⌘-, ⇧⌘Num - | Ctrl+Shift+-, Ctrl+Shift+Num - |
+| `view.zoomReset` | Reset interface zoom | ⇧⌘0, ⇧⌘Num 0 | Ctrl+Shift+0, Ctrl+Shift+Num 0 |
+| `palette.quickSwitcher` | Quick switcher | ⌘P | Ctrl+P |
+| `vault.newDrawing` | New drawing | ⌘N | Ctrl+N |
+| `view.toggleNavigator` | Toggle navigator | ⌘\  | Ctrl+\  |
+| `vault.switch` | Open another vault | — | — |
+| `file.revealInFinder` | Reveal drawing in Finder | — | — |
+| `file.duplicate` | Duplicate drawing | — | — |
+| `appearance.toggleMode` | Toggle light/dark mode | — | — |
+| `settings.openHotkeys` | Open hotkey settings | — | — |
+
+Canvas zoom is Excalidraw's own: **Cmd/Ctrl + `+`**, **`-`** and **`0`**. Interface zoom adds Shift.
+
+### The `[hotkeys]` table
+
+Settings writes to `config.toml`, and you can edit it by hand. Only your changes are stored, as a list of keys per command id:
+
+```toml
+[hotkeys]
+# add a second key (list the default too, or it is replaced)
+"file.save" = ["Mod+S", "Alt+S"]
+
+# unassign: an empty list
+"vault.newDrawing" = []
+
+# change a key
+"view.toggleNavigator" = ["Mod+B"]
+```
+
+Ids contain dots, so quote them. Delete a line to go back to the default. Edits apply as soon as the file is saved, with no restart.
+
+Keys are modifiers plus one key, joined with `+`: `Mod`, `Ctrl`, `Alt`, `Shift`, `Meta`. `Mod` means Cmd on macOS and Ctrl elsewhere, so one file works on both. The key is the physical key (`KeyboardEvent.code`) without the `Key` or `Digit` prefix: `N`, `0`, `Comma`, `Equal`, `Backslash`, `F2`, `ArrowUp`, `Numpad0`. These aliases are accepted too: `Cmd`, `CmdOrCtrl`, `Option`, `Esc`, `Plus`, `=`, `,`, `Digit0`, `KeyN`.
+
+Mistakes never break the app. They show as a warning banner in Settings and the rest of the file still applies:
+
+- An unknown command id is kept in the file and reported (it may belong to a newer version).
+- A key that can't be parsed is ignored.
+- A value that isn't a list keeps the command's defaults.
+
+### Quick switcher
+
+**Cmd/Ctrl+P** opens a list of drawings and commands. Type a few letters of a drawing name, in order and not necessarily next to each other (`vdg` finds `vault-design`), or of a command. Start with `>` to see commands only. Use Up and Down to move, Enter to open or run, and Esc to close.
+
+Excalidraw's own command palette is still on Cmd/Ctrl+/ and Cmd/Ctrl+Shift+P.
 
 ## Search
 
