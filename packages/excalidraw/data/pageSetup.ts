@@ -326,16 +326,25 @@ const clampAxis = (start: number, end: number, min: number, max: number) => {
 };
 
 /**
- * Translation that moves the bounds [x1, y1, x2, y2] fully inside a page
- * (by default the page nearest the bounds' centre; separate layout keeps
- * content on one sheet). Bounds larger than the page are aligned to its
- * top-left corner. { dx: 0, dy: 0 } = already inside.
+ * Translation that moves the bounds [x1, y1, x2, y2] to where content may
+ * be. Separate layout: fully inside one page (by default the page nearest
+ * the bounds' centre, so content can hop to another sheet). Continuous
+ * layout: inside the page column (page breaks are only where the PDF
+ * splits, so content may straddle them). Bounds larger than the area are
+ * aligned to its top-left corner. { dx: 0, dy: 0 } = already inside.
  */
 export const getClampToPageOffset = (
   setup: PageSetup,
   [x1, y1, x2, y2]: readonly [number, number, number, number],
   index = getPageIndexAt(setup, (y1 + y2) / 2),
 ): { dx: number; dy: number; index: number } => {
+  if (setup.layout === "continuous") {
+    return {
+      dx: clampAxis(x1, x2, 0, setup.width),
+      dy: clampAxis(y1, y2, 0, getPageAreaHeight(setup)),
+      index,
+    };
+  }
   const page = getPageRect(setup, index);
   return {
     dx: clampAxis(x1, x2, page.x, page.x + page.width),
@@ -344,7 +353,7 @@ export const getClampToPageOffset = (
   };
 };
 
-/** True when the bounds lie fully inside one page. */
+/** True when the bounds lie where content may be (see getClampToPageOffset). */
 export const isBoundsInsidePage = (
   setup: PageSetup,
   bounds: readonly [number, number, number, number],

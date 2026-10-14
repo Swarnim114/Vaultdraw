@@ -124,3 +124,17 @@ describe("page geometry", () => {
     ).toEqual({ width: 842, height: 595 });
   });
 });
+
+describe("continuous layout clamping", () => {
+  it("clamps to the column, so content may straddle page breaks", () => {
+    const c = cont();
+    expect(getClampToPageOffset(c, [0, 1080, 50, 1140])).toMatchObject({
+      dx: 0,
+      dy: 0,
+    });
+    expect(getClampToPageOffset(c, [-10, 3300, 50, 3400])).toMatchObject({
+      dx: 10,
+      dy: 3 * 1123 - 3400,
+    });
+  });
+});

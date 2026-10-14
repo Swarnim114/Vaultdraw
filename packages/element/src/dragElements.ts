@@ -46,6 +46,14 @@ export const dragSelectedElements = (
     y: number;
   },
   gridSize: NullableGridSize,
+  /**
+   * Final say on the translation of the dragged elements' original bounds
+   * (e.g. page mode keeps them on a page). Runs after snapping/grid.
+   */
+  constrainOffset?: (
+    bounds: Bounds,
+    offset: { x: number; y: number },
+  ) => { x: number; y: number },
 ) => {
   if (
     _selectedElements.length === 1 &&
@@ -100,12 +108,16 @@ export const dragSelectedElements = (
     origElements.push(origElement);
   }
 
-  const adjustedOffset = calculateOffset(
-    getCommonBounds(origElements),
+  const origBounds = getCommonBounds(origElements);
+  let adjustedOffset = calculateOffset(
+    origBounds,
     offset,
     snapOffset,
     gridSize,
   );
+  if (constrainOffset) {
+    adjustedOffset = constrainOffset(origBounds, adjustedOffset);
+  }
 
   // one array for the whole update, so that every element's bound-arrow
   // update and the unbinding checks share its cached id set

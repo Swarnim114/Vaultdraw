@@ -329,6 +329,11 @@ import {
 } from "../renderOverrides";
 import { History } from "../history";
 import { defaultLang, getLanguage, languages, setLanguage, t } from "../i18n";
+import {
+  canStartGestureAt,
+  clampGesturePointer,
+  constrainDragOffset,
+} from "../pageConstraints";
 
 import {
   getScrollToContentState,
@@ -6323,6 +6328,10 @@ class App extends React.Component<AppProps, AppState> {
       this.state,
     );
 
+    if (!canStartGestureAt(this.state.pageSetup, sceneX, sceneY)) {
+      return;
+    }
+
     if (selectedElements.length === 1 && isLinearElement(selectedElements[0])) {
       const selectedLinearElement: ExcalidrawLinearElement =
         selectedElements[0];
@@ -6932,7 +6941,16 @@ class App extends React.Component<AppProps, AppState> {
     this.lastPointerMoveEvent = event.nativeEvent;
     // corrects a missed keydown/keyup (e.g. pressed outside the editor)
     this.modifiers.sync(event);
-    const scenePointer = viewportCoordsToSceneCoords(event, this.state);
+    let scenePointer = viewportCoordsToSceneCoords(event, this.state);
+    if (this.state.multiElement && this.state.pageSetup) {
+      // page mode: a multi-point line being drawn follows the pointer only
+      // within the page
+      scenePointer = clampGesturePointer(
+        this.state.pageSetup,
+        this.state.multiElement,
+        scenePointer,
+      );
+    }
     const { x: scenePointerX, y: scenePointerY } = scenePointer;
     this.lastPointerMoveCoords = {
       x: scenePointerX,
@@ -7806,6 +7824,14 @@ class App extends React.Component<AppProps, AppState> {
     // else it will send pointer state & laser pointer events in collab when
     // panning
     if (this.pan.start(event)) {
+      return;
+    }
+
+    // page mode: no editing gesture may start outside a page
+    if (
+      this.state.activeTool.type !== "laser" &&
+      !canStartGestureAt(this.state.pageSetup, scenePointerX, scenePointerY)
+    ) {
       return;
     }
 
@@ -9196,7 +9222,7 @@ class App extends React.Component<AppProps, AppState> {
       if (this.state.openDialog?.name === "elementLinkSelector") {
         return;
       }
-      const pointerCoords = viewportCoordsToSceneCoords(event, this.state);
+      let pointerCoords = viewportCoordsToSceneCoords(event, this.state);
 
       if (this.state.activeLockedId) {
         this.setState({
@@ -9293,6 +9319,22 @@ class App extends React.Component<AppProps, AppState> {
 
       if (this.state.activeTool.type === "laser") {
         this.laserTrails.addPointToPath(pointerCoords.x, pointerCoords.y);
+      }
+
+      // page mode: creation, resize and point editing stay on the page
+      if (
+        this.state.pageSetup &&
+        (this.state.newElement ||
+          pointerDownState.resize.isResizing ||
+          (this.state.selectedLinearElement &&
+            this.state.selectedLinearElement.initialState.lastClickedPoint >
+              -1))
+      ) {
+        pointerCoords = clampGesturePointer(
+          this.state.pageSetup,
+          pointerDownState.origin,
+          pointerCoords,
+        );
       }
 
       if (this.drawShape.handlePointerMove(pointerCoords)) {
@@ -9712,6 +9754,10 @@ class App extends React.Component<AppProps, AppState> {
               this.scene,
               snapOffset,
               event[KEYS.CTRL_OR_CMD] ? null : this.getEffectiveGridSize(),
+              this.state.pageSetup
+                ? (bounds, offset) =>
+                    constrainDragOffset(this.state.pageSetup, bounds, offset)
+                : undefined,
             );
           }
 
@@ -10277,9 +10323,10 @@ class App extends React.Component<AppProps, AppState> {
       );
 
       if (newElement?.type === "freedraw") {
-        const pointerCoords = viewportCoordsToSceneCoords(
-          childEvent,
-          this.state,
+        const pointerCoords = clampGesturePointer(
+          this.state.pageSetup,
+          pointerDownState.origin,
+          viewportCoordsToSceneCoords(childEvent, this.state),
         );
 
         const points = newElement.points;
