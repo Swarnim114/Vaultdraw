@@ -1428,6 +1428,24 @@ export type ExcalidrawImperativeAPIEventMap = {
   "editor:unmount": [];
 };
 
+/** One editor command-palette entry, bound to this editor (see getCommandPaletteItems). */
+export type EditorPaletteCommand = {
+  /** Stable id: the action name ("alignLeft"), "tool.<type>", or a fixed name ("clearCanvas"). */
+  id: string;
+  /** Translated label, as Excalidraw's palette shows it. */
+  label: string;
+  keywords: readonly string[];
+  /** Excalidraw palette category: "App", "Export", "Editor", "Tools", "Elements", "Links". */
+  category: string;
+  /** Excalidraw's display shortcut (getShortcutFromShortcutName / tool letter), null = none. */
+  shortcut: string | null;
+  icon?: React.ReactNode;
+  /** Predicate + view-mode rule, evaluated when the list was requested. */
+  available: boolean;
+  /** Runs it exactly as Excalidraw's palette would. */
+  perform: () => void;
+};
+
 export interface ExcalidrawImperativeAPI {
   /** Whether the editor has been unmounted and the API is no longer usable. */
   isDestroyed: boolean;
@@ -1447,6 +1465,11 @@ export interface ExcalidrawImperativeAPI {
   };
   getSceneElements: InstanceType<typeof App>["getSceneElements"];
   getAppState: () => InstanceType<typeof App>["state"];
+  /**
+   * Excalidraw's built-in command palette entries (without library or host
+   * items), in palette order. Built on each call (cheap, nothing cached).
+   */
+  getCommandPaletteItems: () => EditorPaletteCommand[];
   getFiles: () => InstanceType<typeof App>["files"];
   getName: InstanceType<typeof App>["getName"];
   setViewport: InstanceType<typeof App>["viewport"]["setViewport"];

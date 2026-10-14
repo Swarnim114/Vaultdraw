@@ -399,6 +399,10 @@ import ConvertElementTypePopup, {
 } from "./ConvertElementTypePopup";
 
 import { activeConfirmDialogAtom } from "./ActiveConfirmDialog";
+import {
+  getCommandPaletteItems,
+  isCommandPaletteItemAvailable,
+} from "./CommandPalette/commandPaletteItems";
 import { AppArrowText } from "./App.arrowText";
 import { AppClipboard } from "./App.clipboard";
 import { AppText } from "./App.text";
@@ -811,6 +815,36 @@ class App extends React.Component<AppProps, AppState> {
       setElementRenderOverrides: this.setElementRenderOverrides,
       getSceneElements: this.getSceneElements,
       getAppState: () => this.state,
+      getCommandPaletteItems: () => {
+        const { actionManager, state, props } = this;
+        return getCommandPaletteItems({
+          app: this,
+          actionManager,
+          uiAppState: state,
+          appProps: props,
+          setAppState: this.setAppState,
+        }).map((item) => ({
+          id: item.id!,
+          label: item.label,
+          keywords: item.keywords ?? [],
+          category: item.category,
+          shortcut: item.shortcut ?? null,
+          icon:
+            typeof item.icon === "function"
+              ? item.icon(state, this.scene.getNonDeletedElements())
+              : item.icon,
+          available: !!isCommandPaletteItemAvailable(item, {
+            app: this,
+            appState: state,
+            appProps: props,
+          }),
+          perform: () =>
+            item.perform({
+              actionManager,
+              event: new KeyboardEvent("keydown"),
+            }),
+        }));
+      },
       getFiles: () => this.files,
       getName: this.getName,
       registerAction: (action: Action) => {

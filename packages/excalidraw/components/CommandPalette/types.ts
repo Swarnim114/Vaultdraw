@@ -2,6 +2,8 @@ import type { ActionManager } from "../../actions/manager";
 import type { Action } from "../../actions/types";
 
 export type CommandPaletteItem = {
+  /** stable id (set on built-in items) */
+  id?: string;
   label: string;
   /** additional keywords to match against
    * (appended to haystack, not displayed) */
