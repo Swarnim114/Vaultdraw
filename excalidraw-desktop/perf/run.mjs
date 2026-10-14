@@ -158,7 +158,7 @@ if (noisyIds.length) notes.push(`still noisy: ${noisyIds.join(", ")}`);
 
 const result = {
   version: 1, mode, createdAt: new Date().toISOString(), git, machine: machineInfo(),
-  config: { runs: rawApp.length, warmup, fixtureHash, drawingCount: config.drawingCount },
+  config: { runs: rawApp.length || rawBrowser.length, warmup, fixtureHash, drawingCount: config.drawingCount },
   metrics, raw: { app: rawApp, browser: rawBrowser }, notes, errors,
 };
 
@@ -166,7 +166,7 @@ const outFile = o.out ? path.resolve(o.out) : path.join(cacheDir, "results", `${
 mkdirSync(path.dirname(outFile), { recursive: true });
 writeFileSync(outFile, JSON.stringify(result, null, 2) + "\n");
 
-console.log(`\nVaultdraw perf - ${mode} - ${rawApp.length} measured run(s) + ${warmup} warmup - ${git.sha.slice(0, 10)}${git.dirty ? " (dirty)" : ""}`);
+console.log(`\nVaultdraw perf - ${mode} - ${rawApp.length || rawBrowser.length} measured run(s) + ${warmup} warmup - ${git.sha.slice(0, 10)}${git.dirty ? " (dirty)" : ""}`);
 console.log(resultTable(result, catalogue));
 for (const n of notes) console.log(`note: ${n}`);
 
