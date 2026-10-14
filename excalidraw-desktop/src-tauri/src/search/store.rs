@@ -26,13 +26,16 @@ pub(super) fn snapshot_path(state_dir: &Path, root: &Path) -> PathBuf {
 }
 
 pub(super) fn save(path: &Path, saved_at_ms: u64, index: &Index) -> Result<()> {
-    let payload = postcard::to_allocvec(&(saved_at_ms, index.docs())).map_err(|e| err("INTERNAL", format!("Index snapshot encode failed: {e}")))?;
-    let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
-    out.extend_from_slice(MAGIC);
-    out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-    out.extend_from_slice(&NORMALIZER_VERSION.to_le_bytes());
-    out.extend_from_slice(&crc32fast::hash(&payload).to_le_bytes());
-    out.extend_from_slice(&payload);
+    // Header first (crc patched afterwards) so the payload is encoded in place, with no second copy.
+    // Reserved up front from the in-memory size (untouched pages cost nothing), so it never regrows.
+    let mut header = Vec::with_capacity((index.approx_heap_bytes() + HEADER_LEN).min(MAX_SNAPSHOT_BYTES as usize));
+    header.extend_from_slice(MAGIC);
+    header.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+    header.extend_from_slice(&NORMALIZER_VERSION.to_le_bytes());
+    header.extend_from_slice(&[0; 4]);
+    let mut out = postcard::to_extend(&(saved_at_ms, index.docs()), header).map_err(|e| err("INTERNAL", format!("Index snapshot encode failed: {e}")))?;
+    let crc = crc32fast::hash(&out[HEADER_LEN..]);
+    out[12..HEADER_LEN].copy_from_slice(&crc.to_le_bytes());
     fs::create_dir_all(path.parent().ok_or_else(|| err("INVALID_PATH", "Snapshot has no parent"))?).map_err(ioerr)?;
     write_atomic(path, &out)
 }

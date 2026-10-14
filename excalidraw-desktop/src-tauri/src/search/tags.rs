@@ -101,6 +101,7 @@ pub(crate) fn doc_tags<'a>(texts: impl Iterator<Item = &'a str>) -> Vec<DocTag> 
             }
         }
     }
+    out.shrink_to_fit();
     out
 }
 

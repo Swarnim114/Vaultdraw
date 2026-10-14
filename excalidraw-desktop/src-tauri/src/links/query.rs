@@ -175,7 +175,7 @@ pub(crate) fn mentions_response(index: &Index, path: &str, limit: usize) -> Ment
         if let Some(d) = li.find_doc(path).filter(|_| !needle.is_empty()) {
             let mut cands: Vec<(String, usize)> = Vec::new();
             index.for_each_word_match(&needle, |p, doc, idx| {
-                if p != path && !text_links_vec(&doc.items[idx].text).iter().any(|l| li.resolve(&key_of_target(l.target)) == d) {
+                if p != path && !text_links_vec(doc.items.get(idx).text).iter().any(|l| li.resolve(&key_of_target(l.target)) == d) {
                     cands.push((p.to_string(), idx));
                 }
                 cands.len() < MAX_MENTION_CANDIDATES
@@ -185,7 +185,7 @@ pub(crate) fn mentions_response(index: &Index, path: &str, limit: usize) -> Ment
                 if resp.mentions.len() >= limit {
                     break;
                 }
-                let item = &docs[&p].items[idx];
+                let item = docs[&p].items.get(idx);
                 if let Some((snippet, highlights)) = word_snippet(&item.text, &needle) {
                     resp.mentions.push(BackLink { path: p, element_id: item.element_id.to_string(), container_id: item.container_id.as_deref().map(str::to_string), kind: LinkKind::Text, snippet, highlights });
                 }

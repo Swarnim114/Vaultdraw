@@ -5,6 +5,7 @@
 
 mod extract;
 mod index;
+mod packed;
 mod normalize;
 mod store;
 mod tags;
@@ -139,9 +140,13 @@ impl SearchService {
     }
 
     pub(crate) fn start_with(&self, handle: &str, root: PathBuf, emit: Emitter, snapshot: Option<PathBuf>) {
+        self.start_deferring(handle, root, emit, snapshot, worker::Defer::DEFAULT);
+    }
+
+    fn start_deferring(&self, handle: &str, root: PathBuf, emit: Emitter, snapshot: Option<PathBuf>, defer: worker::Defer) {
         let (tx, rx) = mpsc::channel();
         let shared = Arc::new(VaultIndex { index: RwLock::new(Index::default()), state: Mutex::new(IndexState::Loading), tx, stop: AtomicBool::new(false) });
-        let worker = worker::Worker { handle: handle.to_string(), root, shared: shared.clone(), rx, emit, snapshot, last_emit: Instant::now(), dirty_since: None };
+        let worker = worker::Worker { handle: handle.to_string(), root, shared: shared.clone(), rx, emit, snapshot, last_emit: Instant::now(), dirty_since: None, defer, deferred: Default::default() };
         if let Err(e) = std::thread::Builder::new().name("vaultdraw-search".into()).spawn(move || worker.run()) {
             eprintln!("vaultdraw: search indexer not started: {e}");
             return;
@@ -304,6 +309,46 @@ mod unit_tests {
         svc.start_with("h", root.to_path_buf(), noop(), None);
         wait_until("ready", || svc.status("h").is_ok_and(|s| s.state == IndexState::Ready));
         svc
+    }
+
+    #[test]
+    fn big_drawings_are_reindexed_only_after_they_go_quiet() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let svc = SearchService::default();
+        let defer = worker::Defer { min_bytes: 2_000, delay: Duration::from_millis(700) };
+        svc.start_deferring("h", root.to_path_buf(), noop(), None, defer);
+        wait_until("ready", || svc.status("h").is_ok_and(|s| s.state == IndexState::Ready));
+        let pad = "padding ".repeat(400);
+        let big = |tag: &str| write(root, "big.excalidraw", &[tag, &pad]);
+
+        big("version1");
+        svc.notify("h", &["big.excalidraw".into()], false);
+        write(root, "small.excalidraw", &["smallword"]);
+        svc.notify("h", &["small.excalidraw".into()], false);
+        // Small files are indexed at once; the big one is findable by name only.
+        wait_until("small", || paths(&svc, "smallword") == ["small.excalidraw"]);
+        assert_eq!(paths(&svc, "big"), vec!["big.excalidraw"]);
+        assert!(paths(&svc, "version1").is_empty());
+
+        // Events keep arriving faster than the delay: the content stays unindexed.
+        for v in ["version2", "version3"] {
+            std::thread::sleep(Duration::from_millis(400));
+            big(v);
+            svc.notify("h", &["big.excalidraw".into()], false);
+            assert!(paths(&svc, "version1").is_empty() && paths(&svc, v).is_empty());
+        }
+        // Once quiet, the final content (and only it) is indexed.
+        wait_until("final content", || paths(&svc, "version3") == ["big.excalidraw"]);
+        assert!(paths(&svc, "version2").is_empty() && paths(&svc, "version1").is_empty());
+
+        // A deferred file that is deleted never gets indexed.
+        big("ghost");
+        svc.notify("h", &["big.excalidraw".into()], false);
+        fs::remove_file(root.join("big.excalidraw")).unwrap();
+        svc.notify("h", &["big.excalidraw".into()], false);
+        std::thread::sleep(Duration::from_millis(1000));
+        assert!(paths(&svc, "ghost").is_empty() && paths(&svc, "big").is_empty());
     }
 
     #[test]

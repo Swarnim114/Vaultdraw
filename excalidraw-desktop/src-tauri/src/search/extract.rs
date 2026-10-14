@@ -108,6 +108,7 @@ fn non_empty<'a>(s: &'a Option<Cow<'a, str>>) -> Option<&'a str> {
 
 /// Extracts text elements (bound labels use `originalText`, which has no
 /// auto-wrap newlines) and frame names. Items that normalise to nothing are dropped.
+#[cfg_attr(not(test), allow(dead_code))] // production indexing uses `extract_doc`; tests and benches use this
 pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
     Ok(parse_scene(json)?.0)
 }

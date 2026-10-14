@@ -6,10 +6,11 @@ use super::extract::extract_doc;
 use super::index::DocEntry;
 use super::types::IndexState;
 use super::{store, Emitter, Update, VaultIndex};
-use crate::{now_ms, read_bounded, validate_relative, MAX_DRAWING_BYTES, META_DIR};
+use crate::{now_ms, validate_relative, MAX_DRAWING_BYTES, META_DIR};
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     sync::{atomic::Ordering, mpsc::{Receiver, RecvTimeoutError}, Arc},
     time::{Duration, Instant, SystemTime},
@@ -21,6 +22,18 @@ const EMIT_EVERY: Duration = Duration::from_millis(250);
 const SAVE_DELAY: Duration = Duration::from_secs(5);
 /// Files modified this close to a reference time may have changed without a stat change.
 const RACY_MS: u64 = 2000;
+
+/// Big drawings are re-indexed only after they stop changing: a save of a 20 MB drawing would
+/// otherwise cost a full re-read and parse every few hundred ms while the user types.
+#[derive(Clone, Copy)]
+pub(super) struct Defer {
+    pub min_bytes: u64,
+    pub delay: Duration,
+}
+
+impl Defer {
+    pub(super) const DEFAULT: Defer = Defer { min_bytes: 4 * 1024 * 1024, delay: Duration::from_secs(5) };
+}
 
 pub(crate) struct Found {
     pub path: String,
@@ -74,9 +87,25 @@ pub(super) fn entry_from_bytes(path: &str, stat: (u64, u64), bytes: &[u8]) -> Do
     }
 }
 
-fn parse(root: &Path, f: &Found) -> Option<(String, DocEntry)> {
-    let entry = match read_bounded(&root.join(&f.path), MAX_DRAWING_BYTES) {
-        Ok(bytes) => entry_from_bytes(&f.path, f.stat(), &bytes),
+/// Reads `path` into `buf` (reused across files, so a build faults big buffers in once, and
+/// freed with the caller's `Vec` when the build ends).
+fn read_into(path: &Path, buf: &mut Vec<u8>, size_hint: u64) -> crate::Result<()> {
+    let need = size_hint.min(MAX_DRAWING_BYTES) as usize + 1;
+    if buf.capacity() < need {
+        // Replace instead of growing: growing would copy bytes we are about to overwrite.
+        *buf = Vec::with_capacity(need.max(buf.capacity() * 2));
+    }
+    buf.clear();
+    fs::File::open(path).map_err(crate::ioerr)?.take(MAX_DRAWING_BYTES + 1).read_to_end(buf).map_err(crate::ioerr)?;
+    if buf.len() as u64 > MAX_DRAWING_BYTES {
+        return Err(crate::err("INVALID_FILE", "File exceeds its size limit"));
+    }
+    Ok(())
+}
+
+fn parse(root: &Path, f: &Found, buf: &mut Vec<u8>) -> Option<(String, DocEntry)> {
+    let entry = match read_into(&root.join(&f.path), buf, f.size) {
+        Ok(()) => entry_from_bytes(&f.path, f.stat(), buf),
         Err(e) if e.code == "NOT_FOUND" => return None,
         // Unreadable or oversize: still findable by name.
         Err(_) => DocEntry::new(&f.path, f.stat(), Vec::new()),
@@ -114,6 +143,9 @@ pub(super) struct Worker {
     pub snapshot: Option<PathBuf>,
     pub last_emit: Instant,
     pub dirty_since: Option<Instant>,
+    pub defer: Defer,
+    /// Big changed files and when each is due for re-indexing (reset by every new event).
+    pub deferred: HashMap<String, Instant>,
 }
 
 impl Worker {
@@ -121,7 +153,10 @@ impl Worker {
         lower_priority();
         self.startup();
         while !self.stopped() {
-            let wait = self.dirty_since.map_or(Duration::from_secs(3600), |t| SAVE_DELAY.saturating_sub(t.elapsed()));
+            let mut wait = self.dirty_since.map_or(Duration::from_secs(3600), |t| SAVE_DELAY.saturating_sub(t.elapsed()));
+            if let Some(due) = self.deferred.values().min() {
+                wait = wait.min(due.saturating_duration_since(Instant::now()));
+            }
             match self.rx.recv_timeout(wait) {
                 Ok(first) => {
                     if !self.handle_updates(first) {
@@ -131,6 +166,7 @@ impl Worker {
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
+            self.index_due();
             if self.dirty_since.is_some_and(|t| t.elapsed() >= SAVE_DELAY) {
                 self.save();
             }
@@ -211,11 +247,12 @@ impl Worker {
         if report {
             self.set_state(IndexState::Building);
         }
+        let mut buf = Vec::new();
         for chunk in pending.chunks(BATCH_DOCS) {
             if self.stopped() {
                 return changed;
             }
-            let docs: Vec<_> = chunk.iter().filter_map(|f| parse(&self.root, f)).collect();
+            let docs: Vec<_> = chunk.iter().filter_map(|f| parse(&self.root, f, &mut buf)).collect();
             {
                 let mut index = self.shared.write();
                 for (path, doc) in docs {
@@ -228,6 +265,25 @@ impl Worker {
             }
         }
         changed
+    }
+
+    /// Indexes deferred files whose quiet period has passed.
+    fn index_due(&mut self) {
+        let now = Instant::now();
+        let due: Vec<String> = self.deferred.iter().filter(|(_, t)| **t <= now).map(|(p, _)| p.clone()).collect();
+        if due.is_empty() {
+            return;
+        }
+        let racy_before = now_ms(SystemTime::now()).saturating_sub(RACY_MS);
+        let mut changed = false;
+        for rel in due {
+            self.deferred.remove(&rel);
+            changed |= self.apply_file(&rel, racy_before);
+        }
+        if changed {
+            self.emit(true);
+            self.dirty_since.get_or_insert_with(Instant::now);
+        }
     }
 
     /// Returns false when asked to shut down.
@@ -268,15 +324,36 @@ impl Worker {
         let md = fs::symlink_metadata(self.root.join(rel)).ok().filter(|m| !m.file_type().is_symlink());
         match md {
             None => {
+                self.deferred.retain(|p, _| p != rel && !p.starts_with(&format!("{rel}/")));
                 let mut index = self.shared.write();
                 index.remove(rel) | (index.remove_prefix(&format!("{rel}/")) > 0)
             }
             Some(m) if m.is_dir() => self.sync_subtree(rel, racy_before, false),
             Some(m) if m.is_file() && is_drawing_name(rel) => {
-                let found = Found { path: rel.to_string(), size: m.len(), mtime: m.modified().map(now_ms).unwrap_or(0) };
-                self.ingest(&[found], racy_before, false)
+                if m.len() < self.defer.min_bytes {
+                    self.deferred.remove(rel);
+                    return self.apply_file(rel, racy_before);
+                }
+                // Searchable by name now, content after the file has been quiet for `delay`.
+                self.deferred.insert(rel.to_string(), Instant::now() + self.defer.delay);
+                let mut index = self.shared.write();
+                if index.contains(rel) {
+                    false
+                } else {
+                    index.upsert(rel.to_string(), DocEntry::name_only(rel));
+                    true
+                }
             }
             Some(_) => false,
         }
+    }
+
+    /// Re-reads one drawing file now.
+    fn apply_file(&mut self, rel: &str, racy_before: u64) -> bool {
+        let Some(m) = fs::symlink_metadata(self.root.join(rel)).ok().filter(|m| m.is_file()) else {
+            return self.shared.write().remove(rel);
+        };
+        let found = Found { path: rel.to_string(), size: m.len(), mtime: m.modified().map(now_ms).unwrap_or(0) };
+        self.ingest(&[found], racy_before, false)
     }
 }

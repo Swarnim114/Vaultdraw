@@ -217,8 +217,9 @@ fn long_lines_are_centred_and_capped_at_120_chars() {
 
 #[test]
 fn self_links_are_not_backlinks_and_shape_labels_become_snippets() {
-    let mut labelled = doc("s.excalidraw", &[("t", "self [[T]] and [[s]]")], &[("box", "[[T]]")]);
-    labelled.items.push(item("lbl", Some("box"), "Box label\nsecond line"));
+    let items = vec![item("t", None, "self [[T]] and [[s]]"), item("lbl", Some("box"), "Box label\nsecond line")];
+    let elinks = vec![ElementLink { element_id: "box".into(), link: "[[T]]".into() }];
+    let labelled = DocEntry::new("s.excalidraw", (1, 1), items).with_links(elinks, [0; 8]);
     let ix = index_of(vec![plain("T.excalidraw"), ("s.excalidraw", labelled)]);
     let r = query::links_response(&ix, "s.excalidraw");
     assert!(r.backlinks.is_empty());

@@ -1,6 +1,7 @@
 //! In-memory vault index: normalised text per drawing + linear substring scan.
 
 use super::extract::{ElementLink, TextItem};
+use super::packed::{ItemRef, PackedItems};
 use crate::links::LinkIndex;
 use super::normalize::{fold_with_map, normalize, Folded};
 use super::tags::{doc_tags, key_under, split_tag_filters, DocTag};
@@ -40,7 +41,7 @@ pub(crate) struct DocEntry {
     pub stat: (u64, u64),
     /// False for name-only entries (content not read yet).
     pub parsed: bool,
-    pub items: Vec<TextItem>,
+    pub items: PackedItems,
     /// `link` fields of live elements (any non-empty value).
     pub elinks: Vec<ElementLink>,
     /// Content fingerprint of the file (`extract::fingerprint8`; all zero for name-only entries).
@@ -62,7 +63,7 @@ pub(crate) struct DocEntry {
 impl DocEntry {
     /// Name-only entry: searchable by path immediately, content fills in later.
     pub(crate) fn name_only(path: &str) -> DocEntry {
-        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), elinks: Vec::new(), hash8: [0; 8], buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new(), tags: Vec::new() };
+        let mut d = DocEntry { stat: (0, 0), parsed: false, items: PackedItems::default(), elinks: Vec::new(), hash8: [0; 8], buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new(), tags: Vec::new() };
         d.derive_name(path);
         d
     }
@@ -86,7 +87,7 @@ impl DocEntry {
         }
         buf.shrink_to_fit();
         let tags = doc_tags(kept.iter().map(|i| &*i.text));
-        let mut d = DocEntry { stat, parsed: true, items: kept, elinks: Vec::new(), hash8: [0; 8], buf, name_norm: String::new(), stem_off: 0, bounds, tags };
+        let mut d = DocEntry { stat, parsed: true, items: PackedItems::pack(kept), elinks: Vec::new(), hash8: [0; 8], buf, name_norm: String::new(), stem_off: 0, bounds, tags };
         d.derive_name(path);
         d
     }
@@ -112,18 +113,20 @@ impl DocEntry {
         let mut n = normalize(dir);
         self.stem_off = n.len() as u32;
         n.push_str(&normalize(file_stem(name)));
+        n.shrink_to_fit();
         self.name_norm = n;
     }
 
     /// Rebuilds derived fields after deserialisation; false if the entry is inconsistent.
     pub(crate) fn rebuild(&mut self, path: &str) -> bool {
         self.derive_name(path);
-        self.tags = doc_tags(self.items.iter().map(|i| &*i.text));
+        self.tags = doc_tags(self.items.iter().map(|i| i.text));
         self.bounds.clear();
         if !self.buf.is_empty() {
             self.bounds.push(0);
             self.bounds.extend(memchr::memchr_iter(b'\n', self.buf.as_bytes()).map(|i| i as u32 + 1));
         }
+        self.bounds.shrink_to_fit();
         self.bounds.len() == self.items.len() && (self.parsed || self.items.is_empty())
     }
 
@@ -135,11 +138,7 @@ impl DocEntry {
 
     #[allow(dead_code)] // reached via `Index::approx_heap_bytes`
     fn heap_bytes(&self) -> usize {
-        let items: usize = self
-            .items
-            .iter()
-            .map(|i| std::mem::size_of::<TextItem>() + i.element_id.len() + i.container_id.as_ref().map_or(0, |c| c.len()) + i.text.len())
-            .sum();
+        let items = self.items.heap_bytes();
         let elinks: usize = self.elinks.iter().map(|l| std::mem::size_of::<ElementLink>() + l.element_id.len() + l.link.len()).sum();
         items + elinks + self.buf.capacity() + self.name_norm.capacity() + self.bounds.capacity() * 4 + 48
     }
@@ -462,7 +461,7 @@ impl Index {
                     continue;
                 }
                 let idx = d.bounds.partition_point(|&b| b as usize <= m).saturating_sub(1);
-                if idx == last || d.items.get(idx).map_or(true, |i| i.kind != super::extract::ItemKind::Text) {
+                if idx == last || d.items.get(idx).kind != super::extract::ItemKind::Text {
                     continue;
                 }
                 last = idx;
@@ -480,9 +479,9 @@ impl Index {
 
     #[allow(dead_code)] // API for the tags feature
     /// Visits every text item of every drawing (for tag extraction without re-reading files).
-    pub(crate) fn for_each_item(&self, mut f: impl FnMut(&str, &TextItem)) {
+    pub(crate) fn for_each_item(&self, mut f: impl FnMut(&str, ItemRef<'_>)) {
         for (path, d) in &self.docs {
-            for item in &d.items {
+            for item in d.items.iter() {
                 f(path, item);
             }
         }
@@ -543,12 +542,12 @@ impl Index {
             match_count = hits.len() as u32;
             hits.sort_by_key(|h| (std::cmp::Reverse(h.mask.count_ones()), !h.word_start, h.idx));
             for h in hits.iter().take(MAX_MATCHES) {
-                let item = &d.items[h.idx];
-                debug_assert_eq!(d.item_text(h.idx), normalize(&item.text));
-                if let Some((snippet, highlights)) = build_snippet(&item.text, terms) {
+                let item = d.items.get(h.idx);
+                debug_assert_eq!(d.item_text(h.idx), normalize(item.text));
+                if let Some((snippet, highlights)) = build_snippet(item.text, terms) {
                     matches.push(ElementMatch {
                         element_id: item.element_id.to_string(),
-                        container_id: item.container_id.as_deref().map(str::to_string),
+                        container_id: item.container_id.map(str::to_string),
                         kind: item.kind,
                         snippet,
                         highlights,
@@ -826,7 +825,7 @@ mod unit_tests {
     fn rebuild_detects_inconsistency() {
         let mut d = DocEntry::new("a.excalidraw", (1, 1), vec![text("a", None, "x"), text("b", None, "y")]);
         assert!(d.rebuild("a.excalidraw"));
-        d.items.pop();
+        d.items = PackedItems::pack(vec![text("a", None, "x")]);
         assert!(!d.rebuild("a.excalidraw"));
     }
 }
