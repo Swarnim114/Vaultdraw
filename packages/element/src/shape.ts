@@ -1207,14 +1207,14 @@ const getFreeDrawSvgPath = (element: ExcalidrawFreeDrawElement) => {
  * visually comparing rendered strokes until they matched the desired feel.
  * Treat them as magic numbers backed by visual verification.
  */
-const VARIABLE_WIDTH_FREEDRAW = {
+export const VARIABLE_WIDTH_FREEDRAW = {
   /** Stroke size relative to `strokeWidth` for pressure-sensitive strokes. */
   SIZE_FACTOR: 4.25,
   THINNING: 0.6,
   SMOOTHING: 0.5,
 } as const;
 
-const CONSTANT_WIDTH_FREEDRAW = {
+export const CONSTANT_WIDTH_FREEDRAW = {
   /** Stroke size relative to `strokeWidth` for uniform (laser) strokes. */
   SIZE_FACTOR: 1.4,
   /**

@@ -46,6 +46,28 @@ describe("freedrawPen prop", () => {
     expect(h.elements.map((e) => e.type)).toEqual(["freedraw", "rectangle"]);
   });
 
+  it("puts a highlighter above a filled shape but below text", () => {
+    API.setElements([
+      API.createElement({ type: "text", x: 0, y: 0, text: "hi", id: "t" }),
+      API.createElement({
+        type: "rectangle",
+        x: 100,
+        y: 100,
+        backgroundColor: "#ffc9c9",
+        id: "filled",
+      }),
+      API.createElement({ type: "text", x: 0, y: 50, text: "yo", id: "t2" }),
+    ]);
+    pen = { strokeWidth: 10, behind: true };
+    UI.createElement("freedraw", { x: 0, y: 0 });
+    expect(h.elements.map((e) => e.type)).toEqual([
+      "text",
+      "rectangle",
+      "freedraw",
+      "text",
+    ]);
+  });
+
   it("keeps a regular stroke on top", () => {
     API.setElements([
       API.createElement({ type: "rectangle", x: 100, y: 100, id: "rect" }),

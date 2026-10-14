@@ -377,6 +377,7 @@ import {
   getViewportForZoomWithScrollConstraints,
 } from "../viewport";
 import { ElementCanvasButtons } from "../components/ElementCanvasButtons";
+import { getHighlighterInsertionIndex } from "../highlighter";
 import { LaserTrails } from "../laserTrails";
 import { withBatchedUpdates, withBatchedUpdatesThrottled } from "../reactUtils";
 import { isOverScrollBars } from "../scene/scrollbars";
@@ -8452,8 +8453,11 @@ class App extends React.Component<AppProps, AppState> {
     });
 
     if (pen?.behind && !element.frameId) {
-      // highlighter: behind everything, so text and shapes stay readable
-      this.scene.insertElementsAtIndex([element], 0);
+      // highlighter: behind text and ink, above backgrounds that would hide it
+      this.scene.insertElementsAtIndex(
+        [element],
+        getHighlighterInsertionIndex(this.scene.getElementsIncludingDeleted()),
+      );
     } else {
       this.insertNewElement(element);
     }
