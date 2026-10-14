@@ -12,6 +12,15 @@ import {
   type ShapeLinkFormat,
   type UpdateOnRename,
 } from "../links/types";
+  PAGE_LIMITS,
+  isPageLayout,
+  isPageOrientation,
+  isPageSize,
+  type PageLayout,
+  type PageOrientation,
+  type PageSize,
+} from "@excalidraw/excalidraw/data/pageSetup";
+
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
   DEFAULT_LASER,
@@ -45,6 +54,8 @@ export interface ExportOptions {
   embedScene: boolean;
   /** Draw the paper pattern in exports that include the background. */
   pattern: boolean;
+  /** Page mode: export the whole page column instead of the content. */
+  pageShaped: boolean;
 }
 
 const dpr = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
@@ -55,6 +66,7 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   background: true,
   embedScene: false,
   pattern: true,
+  pageShaped: false,
 };
 
 export function normalizeExportOptions(input: unknown): ExportOptions {
@@ -68,11 +80,17 @@ export function normalizeExportOptions(input: unknown): ExportOptions {
     background: typeof o.background === "boolean" ? o.background : d.background,
     embedScene: typeof o.embedScene === "boolean" ? o.embedScene : d.embedScene,
     pattern: typeof o.pattern === "boolean" ? o.pattern : d.pattern,
+    pageShaped: typeof o.pageShaped === "boolean" ? o.pageShaped : d.pageShaped,
   };
 }
 
 /** Paper style of new drawings; "plain" = no pattern. */
 export type PaperStyle = "plain" | BackgroundPatternType;
+
+/** Default mode of new drawings: the infinite canvas or simulated pages. */
+export type PageModeDefault = "normal" | "page";
+/** Paper theme as spelled in config.toml (the model uses "oldSchool"). */
+export type PagePaperTheme = "normal" | "old_school" | "match";
 
 interface VaultPreferencesBase {
   recentVaults: string[];
@@ -106,6 +124,16 @@ interface VaultPreferencesBase {
   paperMajorEvery: number;
   /** Ruled lines only. */
   paperMarginLine: boolean;
+  /** Page mode defaults for new drawings (`[page]`). */
+  pageMode: PageModeDefault;
+  pageLayout: PageLayout;
+  /** A preset id or "custom". */
+  pageSize: PageSize;
+  pageOrientation: PageOrientation;
+  /** Custom page size in px, used when pageSize is "custom"; 0 = unset. */
+  pageWidth: number;
+  pageHeight: number;
+  pagePaperTheme: PagePaperTheme;
   /** Replaces the theme's primary colour ("#rrggbb"); "" = the theme's own. */
   accentColor: string;
   /** Whole-window zoom in percent (webview zoom), 50 to 200. */
@@ -205,6 +233,13 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   paperOpacity: 1,
   paperMajorEvery: 0,
   paperMarginLine: true,
+  pageMode: "normal",
+  pageLayout: "separate",
+  pageSize: "a4",
+  pageOrientation: "portrait",
+  pageWidth: 0,
+  pageHeight: 0,
+  pagePaperTheme: "normal",
   accentColor: "",
   zoom: 100,
   confirmDelete: true,
@@ -279,6 +314,14 @@ export const isPaperOpacity = (value: unknown) =>
 export const isPaperMajorEvery = (value: unknown) =>
   value === 0 ||
   (Number.isInteger(value) && inRange(value, PAPER_LIMITS.majorEvery));
+
+export const isPageMode = (value: unknown): value is PageModeDefault =>
+  value === "normal" || value === "page";
+export const isPagePaperTheme = (value: unknown): value is PagePaperTheme =>
+  value === "normal" || value === "old_school" || value === "match";
+/** 0 = unset (the A4 side is used). */
+export const isPageSide = (value: unknown) =>
+  value === 0 || (Number.isInteger(value) && inRange(value, PAGE_LIMITS.side));
 
 export const MIN_ZOOM = 50;
 export const MAX_ZOOM = 200;
@@ -409,6 +452,21 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       d.paperMajorEvery,
     ),
     paperMarginLine: pick(parsed.paperMarginLine, isBoolean, d.paperMarginLine),
+    pageMode: pick(parsed.pageMode, isPageMode, d.pageMode),
+    pageLayout: pick(parsed.pageLayout, isPageLayout, d.pageLayout),
+    pageSize: pick(parsed.pageSize, isPageSize, d.pageSize),
+    pageOrientation: pick(
+      parsed.pageOrientation,
+      isPageOrientation,
+      d.pageOrientation,
+    ),
+    pageWidth: pick(parsed.pageWidth, isPageSide, d.pageWidth),
+    pageHeight: pick(parsed.pageHeight, isPageSide, d.pageHeight),
+    pagePaperTheme: pick(
+      parsed.pagePaperTheme,
+      isPagePaperTheme,
+      d.pagePaperTheme,
+    ),
     accentColor: pick(parsed.accentColor, isString, d.accentColor),
     zoom: pick(
       parsed.zoom,

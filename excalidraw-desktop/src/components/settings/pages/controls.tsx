@@ -5,16 +5,19 @@ export const Segmented = <T extends string | number>({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   options: readonly { label: string; val: T }[];
   value: T;
   onChange: (val: T) => void;
+  disabled?: boolean;
 }) => (
   <div className="vault-segmented-control">
     {options.map((o) => (
       <button
         key={String(o.val)}
         type="button"
+        disabled={disabled}
         className={`vault-segmented-btn ${
           value === o.val ? "vault-segmented-btn--active" : ""
         }`}

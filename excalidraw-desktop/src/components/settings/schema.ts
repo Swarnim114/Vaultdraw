@@ -18,6 +18,7 @@ import {
 export type SettingsPageId =
   | "general"
   | "appearance"
+  | "page"
   | "interface"
   | "drawing"
   | "tools"
@@ -43,6 +44,7 @@ export interface SettingsPage {
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "general", label: "General", group: "Options" },
   { id: "appearance", label: "Appearance", group: "Options" },
+  { id: "page", label: "Page", group: "Options" },
   { id: "interface", label: "Interface", group: "Options" },
   { id: "drawing", label: "Drawing", group: "Options" },
   {
@@ -191,6 +193,74 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
       "Overrides the theme's primary colour. Leave unset to use the theme's own.",
     keywords: ["accent", "colour", "color", "primary", "highlight", "brand"],
     configKey: "appearance.accent_color",
+  },
+
+  // ---- Page ----
+  {
+    id: "page-mode",
+    page: "page",
+    label: "Default Mode for New Drawings",
+    description:
+      "Normal is the infinite canvas; Pages simulates sheets of paper with vertical scrolling. Each drawing can switch from the canvas menu.",
+    keywords: ["page", "pages", "paper", "canvas", "infinite", "new drawing"],
+    configKey: "page.mode",
+  },
+  {
+    id: "page-layout",
+    page: "page",
+    label: "Layout",
+    description:
+      "Continuous is one long page that grows downward; Separate pages are fixed-size sheets with a gap, and a new one is added at the end.",
+    keywords: ["page", "continuous", "separate", "sheets", "roll", "scroll"],
+    configKey: "page.layout",
+  },
+  {
+    id: "page-size",
+    page: "page",
+    label: "Page Size",
+    description:
+      "A3, A4, A5, B5, Letter, Legal, tablet and phone sizes, or a custom width and height in pixels.",
+    keywords: [
+      "page",
+      "size",
+      "a4",
+      "a3",
+      "a5",
+      "b5",
+      "letter",
+      "legal",
+      "tablet",
+      "phone",
+      "custom",
+      "width",
+      "height",
+    ],
+    configKey: "page.size",
+  },
+  {
+    id: "page-orientation",
+    page: "page",
+    label: "Orientation",
+    description: "Portrait or landscape pages.",
+    keywords: ["page", "portrait", "landscape", "rotate"],
+    configKey: "page.orientation",
+  },
+  {
+    id: "page-paper-theme",
+    page: "page",
+    label: "Paper Theme",
+    description:
+      "Normal is clean white paper; Old school is yellowed paper with blue lines; Match current theme follows the app theme.",
+    keywords: [
+      "page",
+      "paper",
+      "theme",
+      "old school",
+      "cream",
+      "yellow",
+      "match",
+    ],
+    configKey: "page.paper_theme",
   },
 
   // ---- Interface ----

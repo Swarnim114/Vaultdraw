@@ -1,0 +1,43 @@
+.page-size {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-size__side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vault-text);
+}
+
+.page-size__side .paper-row__number {
+  width: 72px;
+}
+
+.page-dialog {
+  max-width: 460px;
+}
+
+.page-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.page-dialog__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-dialog__label {
+  flex: 0 0 90px;
+  color: var(--vault-text);
+}
+
+.vault-segmented-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

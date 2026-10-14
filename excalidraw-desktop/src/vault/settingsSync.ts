@@ -13,6 +13,13 @@ import {
   BACKGROUND_PATTERN_LIMITS,
   BACKGROUND_PATTERN_TYPES,
 } from "@excalidraw/excalidraw/data/backgroundPattern";
+import {
+  PAGE_LIMITS,
+  PAGE_SIZE_PRESET_IDS,
+  isPageLayout,
+  isPageOrientation,
+  isPageSize,
+} from "@excalidraw/excalidraw/data/pageSetup";
 
 import { isCommandId } from "../commands/commands";
 import { parseChord } from "../commands/keys";
@@ -47,6 +54,9 @@ import {
   detachPreferencesStore,
   getPreferences,
   isExpandedFolders,
+  isPageMode,
+  isPagePaperTheme,
+  isPageSide,
   isPaperColor,
   isPaperMajorEvery,
   isHintChars,
@@ -146,6 +156,13 @@ type ConfigField =
   | "paperOpacity"
   | "paperMajorEvery"
   | "paperMarginLine"
+  | "pageMode"
+  | "pageLayout"
+  | "pageSize"
+  | "pageOrientation"
+  | "pageWidth"
+  | "pageHeight"
+  | "pagePaperTheme"
   | "defaultFontFamily"
   | "defaultFontSize"
   | "defaultStrokeColor"
@@ -288,6 +305,50 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     key: "paper.margin_line",
     expected: "true or false",
     valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "pageMode",
+    key: "page.mode",
+    expected: '"normal" (infinite canvas) or "page"',
+    valid: isPageMode,
+  },
+  {
+    field: "pageLayout",
+    key: "page.layout",
+    expected: '"continuous" or "separate"',
+    valid: isPageLayout,
+  },
+  {
+    field: "pageSize",
+    key: "page.size",
+    expected: `${[...PAGE_SIZE_PRESET_IDS, "custom"]
+      .map((id) => `"${id}"`)
+      .join(", ")}`,
+    valid: isPageSize,
+  },
+  {
+    field: "pageOrientation",
+    key: "page.orientation",
+    expected: '"portrait" or "landscape"',
+    valid: isPageOrientation,
+  },
+  {
+    field: "pageWidth",
+    key: "page.width",
+    expected: `0 (unset) or a whole number of pixels between ${PAGE_LIMITS.side.min} and ${PAGE_LIMITS.side.max}`,
+    valid: isPageSide,
+  },
+  {
+    field: "pageHeight",
+    key: "page.height",
+    expected: `0 (unset) or a whole number of pixels between ${PAGE_LIMITS.side.min} and ${PAGE_LIMITS.side.max}`,
+    valid: isPageSide,
+  },
+  {
+    field: "pagePaperTheme",
+    key: "page.paper_theme",
+    expected: '"normal", "old_school" or "match"',
+    valid: isPagePaperTheme,
   },
   {
     field: "defaultFontFamily",

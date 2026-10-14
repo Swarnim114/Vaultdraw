@@ -328,6 +328,73 @@ describe("settingsSync mapping", () => {
     );
   });
 
+  it("maps the page keys from config.toml and back", () => {
+    const page = {
+      mode: "page",
+      layout: "continuous",
+      size: "custom",
+      orientation: "landscape",
+      width: 900,
+      height: 1200,
+      paper_theme: "old_school",
+    };
+    const { values, problems } = configToPreferences({ page });
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      pageMode: "page",
+      pageLayout: "continuous",
+      pageSize: "custom",
+      pageOrientation: "landscape",
+      pageWidth: 900,
+      pageHeight: 1200,
+      pagePaperTheme: "old_school",
+    });
+    const changes = preferencesToConfigChanges(DEFAULT_PREFERENCES, {
+      ...DEFAULT_PREFERENCES,
+      ...values,
+    });
+    expect(Object.fromEntries(changes.map((c) => [c.key, c.value]))).toEqual(
+      Object.fromEntries(
+        Object.entries(page).map(([k, v]) => [`page.${k}`, v]),
+      ),
+    );
+  });
+
+  it("defaults the page keys when absent", () => {
+    const { values, problems } = configToPreferences({});
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      pageMode: "normal",
+      pageLayout: "separate",
+      pageSize: "a4",
+      pageOrientation: "portrait",
+      pageWidth: 0,
+      pageHeight: 0,
+      pagePaperTheme: "normal",
+    });
+  });
+
+  it.each([
+    ["mode", "pages", "pageMode"],
+    ["layout", "stack", "pageLayout"],
+    ["size", "a9", "pageSize"],
+    ["orientation", "sideways", "pageOrientation"],
+    ["width", 50, "pageWidth"],
+    ["width", 5001, "pageWidth"],
+    ["height", 120.5, "pageHeight"],
+    ["paper_theme", "oldSchool", "pagePaperTheme"],
+  ] as const)(
+    "invalid page.%s = %j reports a problem and uses the default",
+    (name, bad, field) => {
+      const { values, problems } = configToPreferences({
+        page: { [name]: bad },
+      });
+      expect(problems.map((p) => p.key)).toEqual([`page.${name}`]);
+      expect(problems[0].message).toContain("expected");
+      expect(values[field]).toBe(DEFAULT_PREFERENCES[field]);
+    },
+  );
+
   it("defaults the paper keys when absent", () => {
     const { values, problems } = configToPreferences({});
     expect(problems).toEqual([]);
@@ -383,6 +450,7 @@ describe("settingsSync mapping", () => {
         background: true,
         embedScene: false,
         pattern: true,
+        pageShaped: false,
       },
     });
   });
@@ -492,6 +560,7 @@ describe("settingsSync runtime", () => {
         background: true,
         embedScene: false,
         pattern: true,
+        pageShaped: false,
       },
     });
     // state fields never go to update_config
