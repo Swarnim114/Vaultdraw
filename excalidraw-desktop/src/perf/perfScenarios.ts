@@ -5,6 +5,13 @@
  * dispatched" to "frame after the DOM updated has been presented".
  */
 import { collectFrames, countLong } from "./perfStats";
+import { refreshRateSamples, runRefreshRateProbe } from "./refreshRate";
+
+import type {
+  NativeProbe,
+  RefreshRateDrawing,
+  RefreshRateInput,
+} from "./refreshRate";
 
 import type fixturesConfig from "../../perf/fixtures.config.json";
 import type { VaultRepository } from "../vault/types";
@@ -29,6 +36,16 @@ export type PerfContext = {
     zoomMs: number;
   }>;
   log?: (msg: string) => void;
+  /**
+   * Refresh-rate probe (packaged app only: needs native input). `only` skips
+   * every other scenario (the standalone `perf/refresh-rate.mjs` suite).
+   */
+  refreshRate?: {
+    native: NativeProbe | null;
+    drawings: RefreshRateDrawing[];
+    inputs: RefreshRateInput[];
+    only?: boolean;
+  };
 };
 
 type PerfResult = {
@@ -362,6 +379,52 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     }
   };
 
+  const refreshRateScenario = async () => {
+    const probe = ctx.refreshRate;
+    if (!probe) {
+      return;
+    }
+    await scenario("refresh-rate", async () => {
+      const result = await runRefreshRateProbe({
+        win,
+        root,
+        open: ensureOpen,
+        native: probe.native,
+        drawings: probe.drawings,
+        inputs: probe.inputs,
+        log,
+      });
+      info.refreshRate = result;
+      for (const [id, values] of Object.entries(refreshRateSamples(result))) {
+        // Budgets assume a 120 Hz screen; on a 60 Hz one the numbers are info only.
+        if (result.displayHz >= 120) {
+          samples[id] = values;
+        }
+      }
+    });
+  };
+
+  if (ctx.refreshRate?.only) {
+    await scenario("vault-open", async () => {
+      const openButton = Array.from(root.querySelectorAll("button")).find(
+        (item) => item.textContent?.trim() === "Open Vault Folder",
+      );
+      if (!openButton) {
+        throw new Error('"Open Vault Folder" button not found');
+      }
+      openButton.click();
+      const paths = ctx.refreshRate?.drawings.map((d) => d.path) ?? [];
+      await waitUntil(
+        "refresh-rate drawing rows",
+        () => paths.every((path) => Boolean(row(path))),
+        60_000,
+      );
+      await afterPaint();
+    });
+    await refreshRateScenario();
+    return { samples, info, errors };
+  }
+
   const { openTargets, bigFolder, needle } = config;
   const rootSegment = (path: string) => path.split("/")[0];
 
@@ -660,6 +723,9 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
     push("zoom.longFrames", countLong(zoom.intervals));
     info.zoomVerified = zoom.verified;
   });
+
+  // 6b. refresh rate (packaged app) ----------------------------------------------------
+  await refreshRateScenario();
 
   // 7. typing --------------------------------------------------------------------------
   await scenario("typing", async () => {

@@ -442,6 +442,34 @@ function openTargetScene(rng, tag, spec, typingTarget, imageCount, imageTotalMB)
   return sceneJson(elements, files, { scrollX: 0, scrollY: 0, zoom: { value: 1 } });
 }
 
+/** Paper patterns as saved in a drawing's appState (DEFAULT_BACKGROUND_PATTERNS in data/backgroundPattern.ts). */
+const PAPER = {
+  plain: null,
+  grid: { type: "grid", spacing: 20, color: null, opacity: 1, majorEvery: 5, marginLine: false },
+  dots: { type: "dots", spacing: 20, color: null, opacity: 1, majorEvery: 1, marginLine: false },
+  isometric: { type: "isometric", spacing: 24, color: null, opacity: 1, majorEvery: 1, marginLine: false },
+};
+
+export const refreshRatePath = (pattern, elements) => `hz-${pattern}-${elements}.excalidraw`;
+
+/** Refresh-rate probe drawings: [{ rel, json, pattern, elements }] (deterministic). */
+export function refreshRateScenes(config) {
+  const spec = config.refreshRate;
+  if (!spec) return [];
+  const out = [];
+  for (const pattern of spec.patterns) {
+    if (!(pattern in PAPER)) throw new Error(`unknown refreshRate pattern ${pattern}`);
+    for (const n of spec.elements) {
+      const rng = mulberry32(hashSeed(config.seed, "hz", n));
+      const [w, h] = n > 500 ? [3200, 2000] : [1400, 900];
+      const elements = generateElements(rng, n, 0.25, w, h, null);
+      const json = sceneJson(elements, {}, { scrollX: 0, scrollY: 0, zoom: { value: 1 }, viewBackgroundPattern: PAPER[pattern] });
+      out.push({ rel: refreshRatePath(pattern, n), json, pattern, elements: n });
+    }
+  }
+  return out;
+}
+
 function imageHeavyScene(rng, tag, totalMB) {
   const images = Math.max(2, Math.round(totalMB / 5));
   const imgs = makeImages(rng, tag, images, totalMB);
@@ -604,6 +632,14 @@ export async function ensureVault({ cacheDir, config, log = console.log }) {
     imageHeavy.push({ path: h.path, bytes: sizes.get(h.path), elements: s.elements, images: s.images, imageTotalMB: h.imageTotalMB });
   }
 
+  // Refresh-rate probe drawings at vault root.
+  const refreshRate = [];
+  for (const scene of refreshRateScenes(config)) {
+    await put(scene.rel, scene.json);
+    refreshRate.push({ path: scene.rel, pattern: scene.pattern, elements: scene.elements });
+  }
+  const hzPaths = new Set(refreshRate.map((r) => r.path));
+
   // Manifest (search counts mirror treeStore.searchEntries: case-insensitive
   // substring on path or name over all folder + drawing entries).
   const entries = [
@@ -624,7 +660,7 @@ export async function ensureVault({ cacheDir, config, log = console.log }) {
 
   const bigCount = [...sizes.keys()].filter((p) => path.posix.dirname(p) === config.bigFolder.path).length;
   if (bigCount !== config.bigFolder.drawings) throw new Error(`bigFolder has ${bigCount} drawings`);
-  const ordinaryTotal = [...sizes.keys()].filter((p) => !Object.values(config.openTargets).includes(p) && !config.imageHeavy.some((h) => h.path === p)).length;
+  const ordinaryTotal = [...sizes.keys()].filter((p) => !Object.values(config.openTargets).includes(p) && !config.imageHeavy.some((h) => h.path === p) && !hzPaths.has(p)).length;
   if (ordinaryTotal !== config.drawingCount) throw new Error(`expected ${config.drawingCount} ordinary drawings, got ${ordinaryTotal}`);
 
   const manifest = {
@@ -635,6 +671,7 @@ export async function ensureVault({ cacheDir, config, log = console.log }) {
     folders: folders.length,
     openTargets,
     imageHeavy,
+    refreshRate,
     bigFolder: { path: config.bigFolder.path, drawings: bigCount },
     needle: { path: config.needle.path, query: config.needle.query },
     searchQueries,

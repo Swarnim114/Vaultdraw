@@ -72,3 +72,17 @@ test("combined baseline picks the matching mode; warns on machine mismatch", () 
   assert.equal(pickBaseline({ modes: { normal } }, "low-end").baseline, null);
   assert.equal(pickBaseline(normal, "low-end").warnings.length, 1);
 });
+
+test("higher-is-better metrics: a drop regresses, a rise improves, min budgets", () => {
+  const fps = (median, min = median) => ({ unit: "fps", median, p95: median, min, max: median, cv: 0, noisy: false });
+  const base = m({ "zoom.fps": fps(118) });
+  assert.equal(row(compare(m({ "zoom.fps": fps(100, 100) }), base, cat), "zoom.fps", "median").status, "regressed");
+  assert.equal(row(compare(m({ "zoom.fps": fps(119) }), base, cat), "zoom.fps", "median").status, "ok");
+  const low = m({ "zoom.fps": fps(60, 58) });
+  const up = compare(m({ "zoom.fps": fps(118, 116) }), low, cat);
+  assert.equal(row(up, "zoom.fps", "median").status, "improved");
+  assert.equal(up.exitCode, 0);
+  const breach = compare(m({ "zoom.fps": fps(118, 100) }), base, cat);
+  assert.ok(breach.rows.some((r) => r.metric === "zoom.fps" && r.status === "budget" && r.note.includes(">= 110")));
+  assert.equal(breach.exitCode, 1);
+});

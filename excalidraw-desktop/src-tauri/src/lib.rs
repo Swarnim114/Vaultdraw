@@ -20,6 +20,7 @@ mod drawing_copy;
 mod search;
 mod library;
 mod memory;
+mod refresh_rate;
 mod templates;
 mod themes;
 mod vault_settings;
@@ -1251,53 +1252,22 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// WKWebView configuration for the main window.
 ///
-/// WebKit caps page rendering (requestAnimationFrame, canvas redraws) near
-/// 60fps by default, even on 120Hz ProMotion displays, which makes panning and
-/// zooming feel less smooth than Excalidraw in Chromium. The cap is a private
-/// WebKit feature flag that only takes effect when set before the webview is
-/// created, so the window is built here instead of from tauri.conf.json.
-/// If the private API ever disappears, the flag is skipped and rendering
-/// simply stays at 60fps.
+/// WebKit caps page rendering near 60fps by default, even on 120Hz ProMotion
+/// displays. The cap is a private WebKit feature flag that only takes effect
+/// when set before the webview is created, so the window is built here instead
+/// of from tauri.conf.json. See `refresh_rate` (logs loudly if the flag can't
+/// be applied).
 #[cfg(all(target_os = "macos", not(test)))]
 fn webview_configuration(
     mtm: objc2::MainThreadMarker,
 ) -> objc2::rc::Retained<objc2_web_kit::WKWebViewConfiguration> {
-    use objc2::runtime::{AnyClass, AnyObject, Bool};
-    use objc2::{msg_send, sel, ClassType};
-    use objc2_foundation::NSString;
-    use objc2_web_kit::{WKPreferences, WKWebViewConfiguration, WKWebsiteDataStore};
-
-    const NEAR_60FPS_FEATURE: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
+    use objc2_web_kit::{WKWebViewConfiguration, WKWebsiteDataStore};
 
     let config = unsafe { WKWebViewConfiguration::new(mtm) };
     // A supplied configuration bypasses the window's `incognito` setting, so
     // keep website data non-persistent here.
     unsafe { config.setWebsiteDataStore(&WKWebsiteDataStore::nonPersistentDataStore(mtm)) };
-
-    let prefs = unsafe { config.preferences() };
-    let prefs_class: &AnyClass = WKPreferences::class();
-    let has_features: bool = unsafe { msg_send![prefs_class, respondsToSelector: sel!(_features)] };
-    let can_set: bool =
-        unsafe { msg_send![&*prefs, respondsToSelector: sel!(_setEnabled:forFeature:)] };
-    if has_features && can_set {
-        unsafe {
-            let features: *mut AnyObject = msg_send![prefs_class, _features];
-            if !features.is_null() {
-                let count: usize = msg_send![features, count];
-                for index in 0..count {
-                    let feature: *mut AnyObject = msg_send![features, objectAtIndex: index];
-                    let key: *mut NSString = msg_send![feature, key];
-                    if !key.is_null() && (*key).to_string() == NEAR_60FPS_FEATURE {
-                        let _: () = msg_send![
-                            &*prefs,
-                            _setEnabled: Bool::NO,
-                            forFeature: feature
-                        ];
-                    }
-                }
-            }
-        }
-    }
+    refresh_rate::disable_near_60fps_cap(&*unsafe { config.preferences() });
     config
 }
 
@@ -1359,6 +1329,7 @@ pub fn run() {
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
+                refresh_rate::probes::perf_display_info, refresh_rate::probes::perf_native_input,
                 clipboard::smoke_read_clipboard
             ])
         } else {

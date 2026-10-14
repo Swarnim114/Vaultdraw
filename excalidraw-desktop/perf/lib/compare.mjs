@@ -32,7 +32,7 @@ const pctDelta = (cur, base) => (base === 0 ? (cur === 0 ? 0 : Infinity) : ((cur
  * Rows: { metric, stat, unit, base, cur, deltaPct, threshold (percent), noisy, status, note }
  * status: ok | regressed | improved | budget | budget-preexisting | noisy-ok | new | missing
  *
- * Regression: cur > base*(1+thr) AND cur-base > absolute slack. thr = 5% (spec.pct) or, when either side is noisy
+ * Regression: cur > base*(1+thr) AND cur-base > absolute slack (mirrored for `better: "higher"` metrics). thr = 5% (spec.pct) or, when either side is noisy
  * (CV > 5%), max(thr, 2*max(cvBase, cvCur)).
  *
  * Budget policy (a deliberate decision): a budget breach FAILS only when the baseline met the budget (or there is no
@@ -72,14 +72,14 @@ export function compare(current, baseline, catalogue) {
           widened = true;
         }
       }
-      const delta = cur - base;
-      const regressed = cur > base * (1 + thr) && delta > spec.slack;
-      const wouldRegressAtBase =
-        cur > base * (1 + spec.pct / 100) && delta > spec.slack;
+      // `worse` > 0 means the metric moved in its bad direction.
+      const sign = spec.better === "higher" ? -1 : 1;
+      const worse = sign * (cur - base);
+      const worseBy = (t) => worse > Math.abs(base) * t && worse > spec.slack;
       let status = "ok";
-      if (regressed) status = "regressed";
-      else if (widened && wouldRegressAtBase) status = "noisy-ok";
-      else if (cur < base * (1 - thr) && -delta > spec.slack) status = "improved";
+      if (worseBy(thr)) status = "regressed";
+      else if (widened && worseBy(spec.pct / 100)) status = "noisy-ok";
+      else if (-worse > Math.abs(base) * thr && -worse > spec.slack) status = "improved";
       rows.push({
         metric: id, stat, unit: spec.unit, base, cur,
         deltaPct: pctDelta(cur, base), threshold: thr * 100, noisy, status,
@@ -87,16 +87,18 @@ export function compare(current, baseline, catalogue) {
       });
     }
     for (const bud of spec.budgets) {
+      // { max }: value must be < max; { min }: value must be >= min.
+      const meets = (v) => (bud.min !== undefined ? v >= bud.min : v < bud.max);
       const cur = c[bud.stat];
-      if (cur === undefined || cur < bud.max) continue;
+      if (cur === undefined || meets(cur)) continue;
       const baseVal = b?.[bud.stat];
-      const baseMet = baseVal === undefined || baseVal < bud.max;
+      const baseMet = baseVal === undefined || meets(baseVal);
       rows.push({
         metric: id, stat: bud.stat, unit: spec.unit, base: baseVal, cur,
         deltaPct: baseVal === undefined ? undefined : pctDelta(cur, baseVal),
         threshold: undefined, noisy: false,
         status: baseMet ? "budget" : "budget-preexisting",
-        note: `budget < ${bud.max} ${spec.unit}${baseMet ? "" : " (baseline already breached it; warning only)"}`,
+        note: `budget ${bud.min !== undefined ? `>= ${bud.min}` : `< ${bud.max}`} ${spec.unit}${baseMet ? "" : " (baseline already breached it; warning only)"}`,
       });
     }
   }

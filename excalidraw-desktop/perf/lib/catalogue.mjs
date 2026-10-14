@@ -23,6 +23,8 @@ export function specFor(catalogue, id) {
     slack: raw.slack ?? d.slackByUnit?.[unit] ?? 0,
     pct: raw.pct ?? d.pct ?? 5,
     noiseWidening: raw.noiseWidening !== false,
+    /** "lower" (default: times, sizes) or "higher" (rates such as fps). */
+    better: raw.better === "higher" ? "higher" : "lower",
     budgets: raw.budgets ?? [],
     desc: raw.desc ?? "",
   };

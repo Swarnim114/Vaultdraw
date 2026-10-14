@@ -28,6 +28,10 @@ export function max(xs) {
   return xs.length ? Math.max(...xs) : NaN;
 }
 
+export function min(xs) {
+  return xs.length ? Math.min(...xs) : NaN;
+}
+
 /** Sample standard deviation (n-1); 0 for fewer than 2 values. */
 export function stdev(xs) {
   if (xs.length < 2) return 0;
@@ -46,7 +50,7 @@ const round = (x) => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : x);
 
 /**
  * perRunSamples: Array<Record<metricId, number[]>> (measured runs only).
- * unitOf(id) -> unit string. Returns { [id]: { unit, n, runs, median, p95, max, mean, perRunMedians, cv, noisy } }.
+ * unitOf(id) -> unit string. Returns { [id]: { unit, n, runs, median, p95, min, max, mean, perRunMedians, cv, noisy } }.
  * median/p95/max are over ALL samples; cv is over the per-run medians.
  */
 export function aggregate(perRunSamples, unitOf = () => "") {
@@ -70,6 +74,7 @@ export function aggregate(perRunSamples, unitOf = () => "") {
       runs: perRunMedians.length,
       median: round(median(all)),
       p95: round(percentile(all, 95)),
+      min: round(min(all)),
       max: round(max(all)),
       mean: round(mean(all)),
       perRunMedians: perRunMedians.map(round),

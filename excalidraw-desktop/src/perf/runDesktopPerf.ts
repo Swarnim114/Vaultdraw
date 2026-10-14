@@ -6,7 +6,46 @@ import { desktopRepository } from "../vault/DesktopVaultRepository";
 import { installIpcTrace } from "./ipcTrace";
 import { runPerfScenarios } from "./perfScenarios";
 
+import type { NativeProbe, RefreshRateInput } from "./refreshRate";
+
 const IDLE_MS = 10_000;
+
+/** Native side of the refresh-rate probe (smoke-test build commands). */
+const nativeProbe: NativeProbe = {
+  displayInfo: () =>
+    invoke<Record<string, unknown>>("perf_display_info", { sampleMs: 500 }),
+  input: (args) => invoke<Record<string, unknown>>("perf_native_input", args),
+};
+
+const REFRESH_RATE_INPUTS: RefreshRateInput[] = [
+  "idle",
+  "zoom.native",
+  "zoom.gesture",
+  "zoom.wheel",
+  "pan.native",
+  "pan.wheel",
+];
+
+/** Refresh-rate drawings: all of them for the standalone suite, the harness subset otherwise. */
+const refreshRateOptions = (only: boolean) => {
+  const spec = fixturesConfig.refreshRate;
+  const patterns = only ? spec.patterns : spec.harness.patterns;
+  const sizes = only ? spec.elements : [spec.harness.elements];
+  return {
+    native: nativeProbe,
+    only,
+    inputs: only
+      ? REFRESH_RATE_INPUTS
+      : (["zoom.native", "zoom.gesture", "pan.native"] as RefreshRateInput[]),
+    drawings: patterns.flatMap((pattern) =>
+      sizes.map((elements) => ({
+        path: `hz-${pattern}-${elements}.excalidraw`,
+        pattern,
+        elements,
+      })),
+    ),
+  };
+};
 
 /** Packaged-app perf run (VITE_APP_PERF_TEST=true). Reports through the smoke bridge. */
 export async function runDesktopPerf(): Promise<void> {
@@ -113,6 +152,10 @@ export async function runDesktopPerf(): Promise<void> {
         },
       }).catch(() => undefined);
     });
+    const environment = await invoke<{ perfSuite?: string }>(
+      "smoke_environment",
+    ).catch(() => ({ perfSuite: "" }));
+    const onlyRefreshRate = environment.perfSuite === "refresh-rate";
     const { samples, info, errors } = await runPerfScenarios({
       root,
       doc,
@@ -120,7 +163,28 @@ export async function runDesktopPerf(): Promise<void> {
       repository: desktopRepository,
       config: fixturesConfig,
       mark,
+      refreshRate: refreshRateOptions(onlyRefreshRate),
+      // Progress lines (smoke-progress.log) for the standalone suite only: the
+      // full run keeps the vault folder free of extra writes.
+      log: onlyRefreshRate
+        ? (message) => {
+            void invoke("smoke_log", { step: `~${message}`, ok: true }).catch(
+              () => undefined,
+            );
+          }
+        : undefined,
     });
+
+    if (onlyRefreshRate) {
+      // Standalone refresh-rate suite: no idle / memory phase.
+      trace.uninstall();
+      win.clearInterval(heartbeat);
+      await invoke("smoke_finish", {
+        status: errors.length ? 1 : 0,
+        details: { perf: { version: 1, env: "tauri", samples, info, errors } },
+      });
+      return;
+    }
 
     // Idle must be truly idle: wait until autosave has settled (no write started for 1.5 s).
     let lastWriteAt = win.performance.now();

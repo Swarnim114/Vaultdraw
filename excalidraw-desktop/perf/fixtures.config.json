@@ -28,5 +28,11 @@
   "bigFolder": { "path": "Journal/2024", "drawings": 500 },
   "needle": { "path": "Projects/Atlas/Research/Deep/zebra-needle-4242.excalidraw", "query": "zebra-needle-4242" },
   "searchQueries": ["meeting", "graph notes", "q3 roadmap", "zz"],
-  "maxDrawingBytes": 31000000
+  "maxDrawingBytes": 31000000,
+  "refreshRate": {
+    "comment": "Root-level drawings for the refresh-rate probe: hz-<pattern>-<elements>.excalidraw. Elements fill the viewport around the scene origin at zoom 1 (2,000 over 3200x2000).",
+    "patterns": ["plain", "grid", "dots", "isometric"],
+    "elements": [0, 200, 2000],
+    "harness": { "patterns": ["plain", "dots"], "elements": 200 }
+  }
 }

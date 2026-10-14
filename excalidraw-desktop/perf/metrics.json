@@ -5,7 +5,7 @@
     "pct": 5,
     "noisyCv": 0.05,
     "gate": ["median", "p95"],
-    "slackByUnit": { "ms": 1, "%": 0.5, "MB": 5, "count": 1 }
+    "slackByUnit": { "ms": 1, "%": 0.5, "MB": 5, "count": 1, "fps": 1, "Hz": 1 }
   },
   "metrics": {
     "startup.coldToInteractive": { "unit": "ms", "desc": "spawn to onboarding visible" },
@@ -35,6 +35,36 @@
     "save.large": { "unit": "ms" },
     "pan.frame": { "unit": "ms", "desc": "frame interval while panning", "gate": ["p95"], "report": ["max"] },
     "zoom.frame": { "unit": "ms", "desc": "frame interval while zooming", "gate": ["p95"], "report": ["max"] },
+    "zoom.fps": {
+      "unit": "fps",
+      "better": "higher",
+      "desc": "refresh-rate probe: frames per second while pinch-zooming (native magnify into the WKWebView, 120 events/s; one sample per drawing). 120 Hz screens only",
+      "gate": ["median", "min"],
+      "budgets": [{ "stat": "min", "min": 110, "why": "120 Hz ProMotion: every pattern must stay >= 110 fps" }]
+    },
+    "pan.fps": {
+      "unit": "fps",
+      "better": "higher",
+      "desc": "refresh-rate probe: frames per second while two-finger panning (native trackpad scroll, 120 events/s)",
+      "gate": ["median", "min"],
+      "budgets": [{ "stat": "min", "min": 110, "why": "120 Hz ProMotion: every pattern must stay >= 110 fps" }]
+    },
+    "zoom.renderHz": {
+      "unit": "Hz",
+      "better": "higher",
+      "desc": "refresh-rate probe: frames per second that showed a new static-canvas render while zooming (what the eye sees)",
+      "gate": ["median", "min"],
+      "budgets": [{ "stat": "min", "min": 110 }]
+    },
+    "pan.renderHz": {
+      "unit": "Hz",
+      "better": "higher",
+      "desc": "refresh-rate probe: frames per second that showed a new static-canvas render while panning",
+      "gate": ["median", "min"],
+      "budgets": [{ "stat": "min", "min": 110 }]
+    },
+    "zoom.framesLe9msPct": { "unit": "%", "better": "higher", "desc": "refresh-rate probe: share of frame intervals <= 9 ms while zooming", "gate": ["median"] },
+    "pan.framesLe9msPct": { "unit": "%", "better": "higher", "desc": "refresh-rate probe: share of frame intervals <= 9 ms while panning", "gate": ["median"] },
     "pan.longFrames": {
       "unit": "count",
       "desc": "frames > 50 ms; no new long tasks: median must not exceed baseline",
