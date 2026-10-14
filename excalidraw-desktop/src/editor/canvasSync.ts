@@ -18,6 +18,8 @@ type Transform = (color: string, isDarkMode: boolean) => string;
 
 let currentKey = "off";
 let currentTransform: Transform | null = null;
+// The theme surface: the canvas background shown on screen while sync is on.
+let currentCanvas: string | null = null;
 let suspended = 0;
 const repainters = new Set<() => void>();
 
@@ -52,8 +54,9 @@ export const setCanvasSync = (
         invertColorForDarkMode,
       )
     : null;
+  currentCanvas = sync ? sync.variant.mSurface : null;
   if (suspended === 0) {
-    setDisplayColorTransform(currentTransform);
+    setDisplayColorTransform(currentTransform, currentCanvas);
   }
   repaintAll();
   return true;
@@ -85,7 +88,7 @@ export const suspendCanvasSync = (): (() => void) => {
     }
     released = true;
     if (--suspended === 0 && currentTransform) {
-      setDisplayColorTransform(currentTransform);
+      setDisplayColorTransform(currentTransform, currentCanvas);
       repaintAll();
     }
   };
@@ -113,6 +116,7 @@ export const withStandardCanvasColors = async <T>(
 export const resetCanvasSync = () => {
   currentKey = "off";
   currentTransform = null;
+  currentCanvas = null;
   suspended = 0;
   repainters.clear();
   setDisplayColorTransform(null);

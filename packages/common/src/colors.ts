@@ -90,13 +90,18 @@ export type DisplayColorTransform = (
 
 // Host hook to recolour on-screen scene colours (e.g. custom themes);
 // when set, it replaces the default dark mode filter in both themes.
+// `canvasBackground` optionally pins the on-screen canvas background to one
+// colour whatever the scene stores (cleared with the transform).
 let displayColorTransform: DisplayColorTransform | null = null;
+let displayCanvasBackground: string | null = null;
 let displayColorTransformVersion = 0;
 
 export const setDisplayColorTransform = (
   transform: DisplayColorTransform | null,
+  canvasBackground: string | null = null,
 ) => {
   displayColorTransform = transform;
+  displayCanvasBackground = transform ? canvasBackground : null;
   displayColorTransformVersion++;
 };
 
@@ -109,6 +114,15 @@ export const applyDarkModeFilter = (color: string, enable = true): string => {
   }
   return enable ? invertColorForDarkMode(color) : color;
 };
+
+/** On-screen colour of the canvas background (`viewBackgroundColor`). */
+export const applyCanvasBackgroundFilter = (
+  color: string,
+  enable = true,
+): string =>
+  displayCanvasBackground && color !== "transparent"
+    ? displayCanvasBackground
+    : applyDarkModeFilter(color, enable);
 
 export const invertColorForDarkMode = (color: string): string => {
   const cached = DARK_MODE_COLORS_CACHE?.get(color);

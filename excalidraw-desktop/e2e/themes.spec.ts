@@ -156,3 +156,51 @@ test("Dracula via Settings themes the app, Excalidraw UI and (with sync) the can
   await expect.poll(() => islandBackground(page)).toBe(defaultIsland);
   expect(errors).toEqual([]);
 });
+
+test("with sync on, a drawing with a dark custom background shows the theme canvas", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  const darkBg = "#18191c";
+  // A drawing whose stored background is not one of Excalidraw's canvas picks.
+  await page.evaluate((bg) => {
+    const repo = (window as any).__vaultRepo;
+    repo.seedDrawing(
+      "DSA/Dynamic Programming/01 Introduction.excalidraw",
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        elements: [],
+        appState: { viewBackgroundColor: bg },
+        files: {},
+      }),
+    );
+  }, darkBg);
+  await page
+    .locator(".vault-tree-item__name", { hasText: "Dynamic Programming" })
+    .first()
+    .click();
+  await openDrawing(page, "01 Introduction");
+  await expect
+    .poll(async () => closeTo(await emptyCanvasPixel(page), hexToRgb(darkBg)))
+    .toBe(true);
+
+  const dialog = await openSettings(page);
+  await dialog.getByRole("radio", { name: "Dracula" }).click();
+  await dialog.getByRole("switch", { name: /Sync canvas with theme/ }).click();
+  const canvasColor = await rootVar(page, "--vault-canvas");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      closeTo(await emptyCanvasPixel(page), hexToRgb(canvasColor)),
+    )
+    .toBe(true);
+  // On screen only: the file keeps its own background.
+  const saved = await readScene(
+    page,
+    "DSA/Dynamic Programming/01 Introduction.excalidraw",
+  );
+  expect(saved.appState.viewBackgroundColor).toBe(darkBg);
+  expect(errors).toEqual([]);
+});

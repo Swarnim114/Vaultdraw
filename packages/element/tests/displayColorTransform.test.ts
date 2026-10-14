@@ -1,4 +1,5 @@
 import {
+  applyCanvasBackgroundFilter,
   applyDarkModeFilter,
   COLOR_PALETTE,
   getDisplayColorTransformVersion,
@@ -22,6 +23,22 @@ const renderConfig = {
 describe("display color transform", () => {
   afterEach(() => {
     setDisplayColorTransform(null);
+  });
+
+  it("pins the canvas background only while a transform with one is set", () => {
+    expect(applyCanvasBackgroundFilter("#18191c", false)).toBe("#18191c");
+    setDisplayColorTransform((color) => color, "#282a36");
+    expect(applyCanvasBackgroundFilter("#18191c", false)).toBe("#282a36");
+    expect(applyCanvasBackgroundFilter("#121212", true)).toBe("#282a36");
+    expect(applyCanvasBackgroundFilter("transparent", true)).toBe(
+      "transparent",
+    );
+    // Element colours are untouched by the canvas override.
+    expect(applyDarkModeFilter("#18191c", false)).toBe("#18191c");
+    setDisplayColorTransform(null, "#282a36");
+    expect(applyCanvasBackgroundFilter("#18191c", true)).toBe(
+      invertColorForDarkMode("#18191c"),
+    );
   });
 
   it("keeps default behavior when no transform is set", () => {

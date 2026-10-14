@@ -7,6 +7,7 @@ import React, {
 } from "react";
 
 import {
+  applyCanvasBackgroundFilter,
   applyDarkModeFilter,
   DEFAULT_IMAGE_OPTIONS,
   getDisplayColorTransformVersion,
@@ -571,6 +572,7 @@ export function useExcalidrawStateValue(
 export { _useOnAppStateChange as useOnExcalidrawStateChange };
 
 export {
+  applyCanvasBackgroundFilter,
   applyDarkModeFilter,
   getDisplayColorTransformVersion,
   getStrokeWidthByKey,

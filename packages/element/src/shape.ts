@@ -25,6 +25,7 @@ import {
   assertNever,
   COLOR_PALETTE,
   LINE_POLYGON_POINT_MERGE_DISTANCE,
+  applyCanvasBackgroundFilter,
   applyDarkModeFilter,
   getDisplayColorTransformVersion,
   DEFAULT_STROKE_STREAMLINE,
@@ -393,7 +394,7 @@ const getArrowheadShapes = (
   }
 
   const strokeColor = applyDarkModeFilter(element.strokeColor, isDarkMode);
-  const backgroundFillColor = applyDarkModeFilter(
+  const backgroundFillColor = applyCanvasBackgroundFilter(
     canvasBackgroundColor,
     isDarkMode,
   );

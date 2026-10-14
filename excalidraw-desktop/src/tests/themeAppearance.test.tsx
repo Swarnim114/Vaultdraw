@@ -33,13 +33,19 @@ import {
 } from "../vault/preferences";
 import { useAppearance } from "../vault/useAppearance";
 
-const { transforms } = vi.hoisted(() => ({
+const { transforms, canvasBackgrounds } = vi.hoisted(() => ({
   transforms: [] as Array<((c: string, d: boolean) => string) | null>,
+  canvasBackgrounds: [] as Array<string | null>,
 }));
 
 vi.mock("@excalidraw/excalidraw", () => ({
-  setDisplayColorTransform: (fn: ((c: string, d: boolean) => string) | null) =>
-    transforms.push(fn),
+  setDisplayColorTransform: (
+    fn: ((c: string, d: boolean) => string) | null,
+    canvasBackground: string | null = null,
+  ) => {
+    transforms.push(fn);
+    canvasBackgrounds.push(canvasBackground);
+  },
   invertColorForDarkMode: (c: string) => `inverted(${c})`,
 }));
 
@@ -65,6 +71,7 @@ const mockSystemDark = (dark: boolean) => {
 beforeEach(() => {
   window.localStorage.clear();
   transforms.length = 0;
+  canvasBackgrounds.length = 0;
   mockSystemDark(false);
 });
 
@@ -176,6 +183,21 @@ describe("canvas sync", () => {
     expect(lastTransform()).toBeNull();
     expect(repaint).toHaveBeenCalledTimes(2);
     off();
+  });
+
+  it("pins the on-screen canvas background to the theme surface, whatever the file stores", async () => {
+    const variant = dracula.theme.dark;
+    setCanvasSync({ variant, mode: "dark", key: "bg" });
+    expect(canvasBackgrounds.at(-1)).toBe(variant.mSurface);
+    let during: unknown = "unset";
+    await withStandardCanvasColors(async () => {
+      during = canvasBackgrounds.at(-1);
+    });
+    // Exports: no override, so the file's own background colour is used.
+    expect(during).toBeNull();
+    expect(canvasBackgrounds.at(-1)).toBe(variant.mSurface);
+    setCanvasSync(null);
+    expect(canvasBackgrounds.at(-1)).toBeNull();
   });
 
   it("exports run with standard colours, then the transform comes back", async () => {
