@@ -186,6 +186,8 @@ test("5. export options persist across dialog reopen and drawing switch", async 
     embedScene: true,
     // paper pattern switch (F20): default on, remembered too
     pattern: true,
+    // page shape switch (page mode): default off, remembered too
+    pageShaped: false,
   });
   expect(errors).toEqual([]);
 });
