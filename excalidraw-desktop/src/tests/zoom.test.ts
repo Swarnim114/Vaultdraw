@@ -4,20 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyWebviewZoom,
   clampZoom,
-  installZoomShortcuts,
+  nextZoom,
   resetWebviewZoomState,
   stepZoom,
-  zoomCommandForKey,
 } from "../vault/zoom";
-
-const key = (code: string, mods: Partial<Record<string, boolean>> = {}) => ({
-  code,
-  metaKey: false,
-  ctrlKey: false,
-  shiftKey: false,
-  altKey: false,
-  ...mods,
-});
 
 describe("clampZoom / stepZoom", () => {
   it("clamps and rounds", () => {
@@ -34,84 +24,15 @@ describe("clampZoom / stepZoom", () => {
   });
 });
 
-describe("zoomCommandForKey", () => {
-  const cases: [string, "in" | "out" | "reset"][] = [
-    ["Equal", "in"],
-    ["NumpadAdd", "in"],
-    ["Minus", "out"],
-    ["NumpadSubtract", "out"],
-    ["Digit0", "reset"],
-    ["Numpad0", "reset"],
-  ];
-  it.each(cases)("mac Cmd+Shift %s", (code, cmd) => {
-    expect(
-      zoomCommandForKey(key(code, { metaKey: true, shiftKey: true }), true),
-    ).toBe(cmd);
-    expect(
-      zoomCommandForKey(key(code, { ctrlKey: true, shiftKey: true }), true),
-    ).toBeNull();
+describe("nextZoom", () => {
+  it("steps in and out within bounds", () => {
+    expect(nextZoom(100, "in")).toBe(110);
+    expect(nextZoom(100, "out")).toBe(90);
+    expect(nextZoom(200, "in")).toBe(200);
+    expect(nextZoom(50, "out")).toBe(50);
   });
-  it.each(cases)("non-mac Ctrl+Shift %s", (code, cmd) => {
-    expect(
-      zoomCommandForKey(key(code, { ctrlKey: true, shiftKey: true }), false),
-    ).toBe(cmd);
-    expect(
-      zoomCommandForKey(key(code, { metaKey: true, shiftKey: true }), false),
-    ).toBeNull();
-  });
-  it("ignores plain Cmd, Alt and other keys", () => {
-    expect(zoomCommandForKey(key("Equal", { metaKey: true }), true)).toBeNull();
-    expect(
-      zoomCommandForKey(
-        key("Equal", { metaKey: true, shiftKey: true, altKey: true }),
-        true,
-      ),
-    ).toBeNull();
-    expect(
-      zoomCommandForKey(key("KeyA", { metaKey: true, shiftKey: true }), true),
-    ).toBeNull();
-  });
-});
-
-describe("installZoomShortcuts", () => {
-  it("claims the event before a bubbling document listener", () => {
-    const onCommand = vi.fn();
-    const docListener = vi.fn();
-    document.addEventListener("keydown", docListener);
-    const dispose = installZoomShortcuts(document, { onCommand }, true);
-    const ev = new KeyboardEvent("keydown", {
-      code: "Equal",
-      metaKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    document.body.dispatchEvent(ev);
-    expect(onCommand).toHaveBeenCalledWith("in");
-    expect(ev.defaultPrevented).toBe(true);
-    expect(docListener).not.toHaveBeenCalled();
-
-    const plain = new KeyboardEvent("keydown", {
-      code: "Equal",
-      metaKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    document.body.dispatchEvent(plain);
-    expect(onCommand).toHaveBeenCalledTimes(1);
-    expect(docListener).toHaveBeenCalledTimes(1);
-
-    dispose();
-    document.body.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        code: "Equal",
-        metaKey: true,
-        shiftKey: true,
-        bubbles: true,
-      }),
-    );
-    expect(onCommand).toHaveBeenCalledTimes(1);
-    document.removeEventListener("keydown", docListener);
+  it("resets to the default", () => {
+    expect(nextZoom(170, "reset")).toBe(100);
   });
 });
 

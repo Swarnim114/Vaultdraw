@@ -1,6 +1,7 @@
 /**
- * Interface zoom: applies the `zoom` preference to the webview and handles
- * Cmd/Ctrl+Shift +/-/0. Mount once in the app shell.
+ * Interface zoom: applies the `zoom` preference to the webview. The keyboard
+ * shortcuts are the view.zoom* commands (see commands/useAppCommands.ts),
+ * which call `runZoomCommand`. Mount the hook once in the app shell.
  */
 import { useEffect, useState } from "react";
 
@@ -9,15 +10,19 @@ import {
   subscribePreferences,
   updatePreferences,
 } from "./preferences";
-import {
-  applyWebviewZoom,
-  clampZoom,
-  DEFAULT_ZOOM,
-  installZoomShortcuts,
-  stepZoom,
-} from "./zoom";
+import { applyWebviewZoom, clampZoom, nextZoom } from "./zoom";
 
-export const useInterfaceZoom = (doc: Document | null, win: Window | null) => {
+import type { ZoomCommand } from "./zoom";
+
+/** Step or reset the zoom preference (what Cmd+Shift +/-/0 do). */
+export const runZoomCommand = (
+  command: ZoomCommand,
+  win: Window | null,
+): void => {
+  updatePreferences({ zoom: nextZoom(getPreferences(win).zoom, command) }, win);
+};
+
+export const useInterfaceZoom = (win: Window | null) => {
   const [zoom, setZoom] = useState(() => getPreferences(win).zoom);
 
   useEffect(
@@ -31,29 +36,4 @@ export const useInterfaceZoom = (doc: Document | null, win: Window | null) => {
   useEffect(() => {
     void applyWebviewZoom(clampZoom(zoom));
   }, [zoom]);
-
-  useEffect(() => {
-    if (!doc) {
-      return;
-    }
-    const isMac = /Mac/.test(doc.defaultView?.navigator.userAgent ?? "");
-    return installZoomShortcuts(
-      doc,
-      {
-        onCommand: (cmd) => {
-          const current = getPreferences(win).zoom;
-          updatePreferences(
-            {
-              zoom:
-                cmd === "reset"
-                  ? DEFAULT_ZOOM
-                  : stepZoom(current, cmd === "in" ? 1 : -1),
-            },
-            win,
-          );
-        },
-      },
-      isMac,
-    );
-  }, [doc, win]);
 };

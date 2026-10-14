@@ -225,22 +225,6 @@ const VaultEditorComponent = ({
     [documentId],
   );
 
-  useEffect(() => {
-    const doc = host.current?.ownerDocument;
-    if (!doc) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        // Let Excalidraw's shortcut commit its WYSIWYG text editor; our flush
-        // listener blurs/serializes the committed snapshot without replacing it.
-        serializePending();
-      }
-    };
-    doc.addEventListener("keydown", onKeyDown);
-    return () => doc.removeEventListener("keydown", onKeyDown);
-  }, [documentId, serializePending]);
-
   const onEditorChange = useCallback(
     (elements: Snapshot[0], appState: Snapshot[1], files: Snapshot[2]) => {
       latest.current = [elements, appState, files];

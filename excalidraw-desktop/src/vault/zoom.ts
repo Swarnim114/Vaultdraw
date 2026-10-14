@@ -17,30 +17,12 @@ export function stepZoom(current: number, direction: 1 | -1): number {
   return clampZoom(current + direction * ZOOM_STEP);
 }
 
-type ZoomKeyEvent = Pick<
-  KeyboardEvent,
-  "code" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey"
->;
-
-const COMMAND_BY_CODE: Record<string, ZoomCommand> = {
-  Equal: "in",
-  NumpadAdd: "in",
-  Minus: "out",
-  NumpadSubtract: "out",
-  Digit0: "reset",
-  Numpad0: "reset",
-};
-
-/** Cmd/Ctrl + Shift + (+ | - | 0). Plain Cmd +/-/0 stays with the canvas. */
-export function zoomCommandForKey(
-  e: ZoomKeyEvent,
-  isMac: boolean,
-): ZoomCommand | null {
-  const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-  if (!mod || !e.shiftKey || e.altKey) {
-    return null;
+/** The zoom after applying a command to the current percentage. */
+export function nextZoom(current: number, command: ZoomCommand): number {
+  if (command === "reset") {
+    return DEFAULT_ZOOM;
   }
-  return COMMAND_BY_CODE[e.code] ?? null;
+  return stepZoom(current, command === "in" ? 1 : -1);
 }
 
 export interface WebviewZoomDeps {
@@ -87,31 +69,4 @@ export function applyWebviewZoom(
   const result = queue.then(run, run);
   queue = result;
   return result;
-}
-
-export interface ZoomShortcutHandlers {
-  onCommand(command: ZoomCommand): void;
-}
-
-/** One capture-phase listener on the window so the canvas never sees it. */
-export function installZoomShortcuts(
-  doc: Document,
-  handlers: ZoomShortcutHandlers,
-  isMac: boolean,
-): () => void {
-  const win = doc.defaultView;
-  if (!win) {
-    return () => {};
-  }
-  const onKeyDown = (e: KeyboardEvent) => {
-    const command = zoomCommandForKey(e, isMac);
-    if (!command) {
-      return;
-    }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    handlers.onCommand(command);
-  };
-  win.addEventListener("keydown", onKeyDown, true);
-  return () => win.removeEventListener("keydown", onKeyDown, true);
 }

@@ -38,6 +38,13 @@ vi.mock("../editor/VaultEditor", () => ({
 const navTree = () => within(screen.getByLabelText("Vault File Navigator"));
 const input = () => screen.getByPlaceholderText(/Search drawings/i);
 
+/** The command registry binds Mod (Cmd on macOS, Ctrl elsewhere): pick one. */
+const spoofPlatform = (platform: "Win32" | "MacIntel") => {
+  const ua = platform === "Win32" ? "Windows" : "Macintosh";
+  vi.spyOn(window.navigator, "platform", "get").mockReturnValue(platform);
+  vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(ua);
+};
+
 function setup() {
   const repo = new FakeVaultRepository();
   repo.seedDrawing("DSA/Shortest Paths.excalidraw", SEARCH_SCENE);
@@ -58,7 +65,10 @@ beforeEach(() => {
   editorProps.length = 0;
   setNavigatorCollapsed(false, window);
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("vault search flow", () => {
   it("shows grouped results with highlighted snippets while typing", async () => {
@@ -217,6 +227,7 @@ describe("vault search flow", () => {
   });
 
   it("Ctrl+Shift+F also works and selects existing text", async () => {
+    spoofPlatform("Win32");
     setup();
     await type("dijk");
     (input() as HTMLInputElement).blur();

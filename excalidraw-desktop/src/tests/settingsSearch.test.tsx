@@ -61,6 +61,7 @@ const results = () => screen.getByRole("region", { name: /search results/i });
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => {
+  vi.restoreAllMocks();
   disposeSettings();
   window.localStorage.clear();
 });
@@ -301,6 +302,13 @@ describe("Escape claimed by the canvas", () => {
   });
 });
 
+/** The command registry binds Mod (Cmd on macOS, Ctrl elsewhere): pick one. */
+const spoofPlatform = (platform: "Win32" | "MacIntel") => {
+  const ua = platform === "Win32" ? "Windows" : "Macintosh";
+  vi.spyOn(window.navigator, "platform", "get").mockReturnValue(platform);
+  vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(ua);
+};
+
 describe("Cmd+, opens Settings", () => {
   const renderApp = async () => {
     const repo = new FakeVaultRepository();
@@ -312,7 +320,8 @@ describe("Cmd+, opens Settings", () => {
   };
   const dialog = () => screen.queryByRole("dialog");
 
-  it("opens with Cmd+, and with Ctrl+,", async () => {
+  it("opens with Cmd+, (macOS)", async () => {
+    spoofPlatform("MacIntel");
     await renderApp();
     expect(dialog()).toBeNull();
     fireEvent.keyDown(document.body, {
@@ -327,7 +336,11 @@ describe("Cmd+, opens Settings", () => {
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(dialog()).toBeNull();
+  });
 
+  it("opens with Ctrl+, (elsewhere)", async () => {
+    spoofPlatform("Win32");
+    await renderApp();
     fireEvent.keyDown(document.body, {
       key: ",",
       code: "Comma",

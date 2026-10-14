@@ -35,7 +35,7 @@ import {
 } from "./vault/treeStore";
 import { useVaultDocument } from "./vault/useVaultDocument";
 import { useAppearance } from "./vault/useAppearance";
-import { useInterfaceZoom } from "./vault/useInterfaceZoom";
+import { runZoomCommand, useInterfaceZoom } from "./vault/useInterfaceZoom";
 import { useVaultSettings } from "./vault/useVaultSettings";
 import { useTemplates } from "./templates/useTemplates";
 import { isInTemplatesFolder } from "./templates/listTemplates";
@@ -44,6 +44,12 @@ import {
   folderChain,
   resolveNewDrawingParent,
 } from "./vault/newDrawing";
+import { COMMANDS } from "./commands/commands";
+import { appCommandHandlers } from "./commands/useAppCommands";
+import {
+  useCommandDispatcher,
+  type CommandRunner,
+} from "./commands/useCommands";
 import { LibraryStore } from "./library/libraryStore";
 import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
@@ -53,11 +59,14 @@ import { Onboarding } from "./components/Onboarding";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { RecoveryDialog } from "./components/RecoveryDialog";
 import { SettingsModal } from "./components/settings/SettingsModal";
+
+import { QuickSwitcher } from "./components/QuickSwitcher";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 
 import "./components/VaultShell.css";
 
+import type { SettingsPageId } from "./components/settings/schema";
 import type { VaultSearch } from "./search/types";
 
 import type { LibraryRepository } from "./library/types";
@@ -67,6 +76,8 @@ import type {
   VaultInfo,
   VaultRepository,
 } from "./vault/types";
+
+const QUICK_SWITCHER_ID = "palette.quickSwitcher";
 
 export interface VaultAppProps {
   ownerDocument?: Document | null;
@@ -149,11 +160,19 @@ export const VaultApp = ({
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPageId | undefined>(
+    undefined,
+  );
+  // Cmd+P: the commands runnable when it opened (the switcher's own backdrop
+  // would otherwise make every `!modalOpen` command look unavailable).
+  const [switcher, setSwitcher] = useState<{ commandIds: string[] } | null>(
+    null,
+  );
   // Colour theme + mode: tokens, html.dark, canvas sync (see useAppearance).
   const appearance = useAppearance(doc, win);
   const { refresh: refreshAppearance } = appearance;
   const appTheme = appearance.snapshot.mode;
-  useInterfaceZoom(doc, win);
+  useInterfaceZoom(win);
   // Per-vault settings.toml overrides merged over config.toml (vault > global).
   const vaultSettings = useVaultSettings(win, vault);
   const { navigatorSort, newDrawingFolder, templatesFolder } =
@@ -335,7 +354,7 @@ export const VaultApp = ({
     };
   }, [flushAndDestroy]);
 
-  // Explicit Save action wired to flushDoc (Ctrl+S / Cmd+S and UI Save button)
+  // Explicit Save action wired to flushDoc (file.save command and UI Save button)
   const handleExplicitSave = useCallback(async () => {
     if (!activeDoc || vault?.readOnly || isBusy || isClosing) {
       return;
@@ -350,83 +369,6 @@ export const VaultApp = ({
       });
     }
   }, [activeDoc, flushDoc, isBusy, isClosing, vault?.readOnly]);
-
-  // Global Ctrl+S / Cmd+S listener with committed text editing preservation
-  useEffect(() => {
-    if (!doc) {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void handleExplicitSave();
-      }
-    };
-    doc.addEventListener("keydown", onKeyDown);
-    return () => doc.removeEventListener("keydown", onKeyDown);
-  }, [doc, handleExplicitSave]);
-
-  // Cmd+, (Ctrl+, elsewhere) opens Settings. Hard-wired until the command
-  // registry lands. Like Cmd+S it never ends a text edit: Settings opens
-  // without taking focus from an active text field (see SettingsModal).
-  const hasVault = vault !== null;
-  useEffect(() => {
-    if (!doc || !hasVault) {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        !(e.metaKey || e.ctrlKey) ||
-        e.altKey ||
-        e.shiftKey ||
-        (e.key !== "," && e.code !== "Comma")
-      ) {
-        return;
-      }
-      e.preventDefault();
-      // Another dialog (rename, move, confirm...) or Settings itself is open.
-      if (doc.querySelector(".vault-modal-backdrop")) {
-        return;
-      }
-      setShowSettingsModal(true);
-    };
-    doc.addEventListener("keydown", onKeyDown);
-    return () => doc.removeEventListener("keydown", onKeyDown);
-  }, [doc, hasVault]);
-
-  // Cmd+Shift+F (Ctrl+Shift+F elsewhere) focuses the navigator search.
-  // Hard-wired until the command registry lands, like Cmd+,. Excalidraw does
-  // not bind it (its find is Cmd+F with a lowercase key), the capture phase
-  // just guarantees nothing else sees it.
-  useEffect(() => {
-    if (!doc || !hasVault) {
-      return;
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        !(e.metaKey || e.ctrlKey) ||
-        !e.shiftKey ||
-        e.altKey ||
-        e.code !== "KeyF"
-      ) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      if (doc.querySelector(".vault-modal-backdrop")) {
-        return;
-      }
-      setNavigatorCollapsed((collapsed) => {
-        if (collapsed) {
-          saveNavigatorCollapsed(false, win);
-        }
-        return false;
-      });
-      setSearchFocusNonce((n) => n + 1);
-    };
-    doc.addEventListener("keydown", onKeyDown, true);
-    return () => doc.removeEventListener("keydown", onKeyDown, true);
-  }, [doc, hasVault, win]);
 
   // Load a directory's entries with generation check and error surfacing
   const loadDirectory = useCallback(
@@ -1240,6 +1182,82 @@ export const VaultApp = ({
     }
   };
 
+  const openSettings = (page?: SettingsPageId) => {
+    setSettingsPage(page);
+    setShowSettingsModal(true);
+  };
+
+  const focusNavigatorSearch = () => {
+    setNavigatorCollapsed((collapsed) => {
+      if (collapsed) {
+        saveNavigatorCollapsed(false, win);
+      }
+      return false;
+    });
+    setSearchFocusNonce((n) => n + 1);
+  };
+
+  const runnerRef = useRef<CommandRunner | null>(null);
+  const idle = !isBusy && !isClosing;
+  const commandHandlers = appCommandHandlers({
+    save: handleExplicitSave,
+    openSettings: () => openSettings(),
+    openHotkeySettings: () => openSettings("hotkeys"),
+    focusSearch: focusNavigatorSearch,
+    zoom: (command) => runZoomCommand(command, win),
+    toggleNavigator: handleToggleNavigator,
+    newDrawing: () => {
+      if (idle) {
+        return handleNewDrawing();
+      }
+    },
+    switchVault: () => {
+      if (idle) {
+        return handleSwitchVault();
+      }
+    },
+    revealActive: () => {
+      if (activeDoc) {
+        return handleRevealEntry(activeDoc.path);
+      }
+    },
+    duplicateActive: () => {
+      if (activeDoc && idle) {
+        return handleDuplicateDrawing(activeDoc.path);
+      }
+    },
+    toggleMode: () =>
+      handleCanvasThemeChange(appTheme === "dark" ? "light" : "dark"),
+    toggleQuickSwitcher: () =>
+      setSwitcher((open) => {
+        if (open) {
+          return null;
+        }
+        const runner = runnerRef.current;
+        return {
+          commandIds: COMMANDS.filter(
+            (c) => c.id !== QUICK_SWITCHER_ID && runner?.isAvailable(c.id),
+          ).map((c) => c.id),
+        };
+      }),
+  });
+  const commandRunner = useCommandDispatcher(doc, win, {
+    handlers: commandHandlers,
+    app: {
+      vaultOpen: vault !== null,
+      drawingOpen: activeDoc != null,
+      writable: !vault?.readOnly,
+    },
+  });
+  runnerRef.current = commandRunner;
+
+  const closeSwitcher = () => setSwitcher(null);
+  const runFromSwitcher = (id: string) => {
+    setSwitcher(null);
+    // After the switcher's backdrop has unmounted, so `!modalOpen` holds.
+    (win ?? window).setTimeout(() => runnerRef.current?.run(id), 0);
+  };
+
   // Build tree nodes for Navigator
   const treeNodes = useMemo(() => {
     return buildTree(directoryMap, "", navigatorSort);
@@ -1439,7 +1457,7 @@ export const VaultApp = ({
                 disabled={isBusy || isClosing || docHook.loading}
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
-                onOpenSettings={() => setShowSettingsModal(true)}
+                onOpenSettings={() => openSettings()}
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
@@ -1507,7 +1525,7 @@ export const VaultApp = ({
           activePath={activeDoc?.path ?? null}
           collapsed={navigatorCollapsed}
           onToggleCollapse={handleToggleNavigator}
-          onOpenSettings={() => setShowSettingsModal(true)}
+          onOpenSettings={() => openSettings()}
           onOpenDrawing={handleOpenDrawing}
           search={vaultSearch}
           onOpenSearchResult={handleOpenSearchResult}
@@ -1577,12 +1595,33 @@ export const VaultApp = ({
       {showSettingsModal && (
         <SettingsModal
           vault={vault}
+          initialPage={settingsPage}
           onClose={() => setShowSettingsModal(false)}
           onAppearanceChanged={refreshAppearance}
           themeRegistry={appearance.registry}
           onRevealVault={(path) => {
             void handleRevealEntry(path);
           }}
+          ownerDocument={doc}
+        />
+      )}
+
+      {switcher && (
+        <QuickSwitcher
+          search={vaultSearch}
+          handle={vault.handle}
+          fallbackPaths={allIndexedEntries
+            .filter((e) => e.kind === "drawing")
+            .map((e) => e.path)
+            .sort()}
+          commandIds={switcher.commandIds}
+          platform={commandRunner.platform}
+          onOpenDrawing={(path) => {
+            setSwitcher(null);
+            void handleOpenDrawing(path);
+          }}
+          onRunCommand={runFromSwitcher}
+          onClose={closeSwitcher}
           ownerDocument={doc}
         />
       )}
