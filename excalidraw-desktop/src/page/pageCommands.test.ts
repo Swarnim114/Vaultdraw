@@ -240,9 +240,9 @@ describe("Page navigation handlers", () => {
     api.state = { ...api.state, width: 1000, height: 800 };
     const nav = createPageNavigationHandlers(() => api as any);
     nav["page.next"]!();
-    expect(api.state.scrollY).toBeCloseTo(-(setup.height + 40) + 24, 3);
+    expect(api.state.scrollY).toBeCloseTo(-(setup.height + 40) + 72, 3);
     nav["page.previous"]!();
-    expect(api.state.scrollY).toBeCloseTo(24, 3);
+    expect(api.state.scrollY).toBeCloseTo(72, 3);
   });
 });
 

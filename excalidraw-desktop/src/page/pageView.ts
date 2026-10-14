@@ -18,8 +18,14 @@ import type { AppState, ScrollConstraints } from "@excalidraw/excalidraw/types";
 
 /** Space left and right of the page at fit zoom, viewport px. */
 export const PAGE_SIDE_MARGIN = 24;
-/** Space above page 1 when scrolled to the top, viewport px. */
-export const PAGE_TOP_MARGIN = 24;
+/**
+ * Space above page 1 when scrolled to the top, viewport px: clears the
+ * floating toolbar (bottom edge measured at ~64 css px, see the "top inset"
+ * e2e screenshot) plus a small gap. A constant, not a DOM read: the toolbar
+ * height is fixed by the editor UI and a layout read would couple the view
+ * maths to the DOM. Vertical only; the fit-width zoom does not use it.
+ */
+export const PAGE_TOP_MARGIN = 72;
 /** Room below the last page, as a fraction of the viewport height. */
 export const PAGE_BOTTOM_FRACTION = 0.4;
 /** Minimum zoom = this x the fit-width zoom. */

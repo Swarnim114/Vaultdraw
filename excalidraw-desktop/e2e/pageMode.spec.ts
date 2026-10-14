@@ -328,12 +328,15 @@ test("auto-extend: drawing in the last quarter adds a page that renders", async 
   ).toBe(true);
 });
 
+// keep in sync with PAGE_TOP_MARGIN in src/page/pageView.ts
+const PAGE_TOP_MARGIN = 72;
+
 test("PageDown and PageUp move one page", async ({ page }) => {
   await seedAndOpen(page, "Nav.excalidraw", {
     pageSetup: setupOf({ pageCount: 3 }),
   });
   await focusCanvas(page);
-  const expected = (i: number, z: number) => -(i * PITCH) + 24 / z;
+  const expected = (i: number, z: number) => -(i * PITCH) + PAGE_TOP_MARGIN / z;
   const z = (await live(page)).zoom;
   await page.keyboard.press("PageDown");
   await expect
@@ -596,6 +599,31 @@ test.describe("screenshots", () => {
     rect("b", 120, 400, 200, 120),
     rect("c", 90, 1000, 260, 140),
   ];
+
+  test("top inset: page 1 clears the floating toolbar", async ({ page }) => {
+    await seedAndOpen(page, "Top.excalidraw", {
+      pageSetup: setupOf({ pageCount: 2 }),
+      elements: content,
+    });
+    const toolbar = await page.locator(".App-toolbar").first().boundingBox();
+    const z = (await live(page)).zoom;
+    const s = await live(page);
+    const box = (await page
+      .locator(".vault-editor canvas.static")
+      .boundingBox())!;
+    const pageTop = box.y + s.scrollY * z;
+    // eslint-disable-next-line no-console
+    console.log(
+      "TOOLBAR_BOTTOM",
+      toolbar && toolbar.y + toolbar.height,
+      "PAGE_TOP",
+      pageTop,
+    );
+    expect(pageTop).toBeGreaterThanOrEqual(
+      (toolbar?.y ?? 0) + (toolbar?.height ?? 0),
+    );
+    await shot(page, "top-inset");
+  });
 
   test("continuous and separate layouts", async ({ page }) => {
     await seedAndOpen(page, "Cont.excalidraw", {

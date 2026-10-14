@@ -43,7 +43,7 @@ describe("getPageViewLock", () => {
       lockZoom: true,
       overscroll: 0,
       zoom: fit / 2,
-      offsets: { left: 24, right: 24, top: 24, bottom: 320 },
+      offsets: { left: 24, right: 24, top: PAGE_TOP_MARGIN, bottom: 320 },
     });
   });
 
