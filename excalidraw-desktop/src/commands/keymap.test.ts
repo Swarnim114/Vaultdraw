@@ -13,11 +13,11 @@ import type { CommandDefinition } from "./types";
 const cmd = (id: string) => getCommand(id) as CommandDefinition;
 
 describe("commands registry", () => {
-  it("has unique ids in namespace.camelCase form", () => {
+  it("has unique ids in dotted namespace.camelCase form", () => {
     const ids = COMMANDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
-      expect(id).toMatch(/^[a-z]+\.[a-zA-Z][a-zA-Z0-9]*$/);
+      expect(id).toMatch(/^[a-z]+(\.[a-zA-Z][a-zA-Z0-9_]*)+$/);
     }
     expect(isCommandId("file.save")).toBe(true);
     expect(isCommandId("nope.nope")).toBe(false);

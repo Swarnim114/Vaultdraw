@@ -57,6 +57,17 @@ const DEFAULT_WIDTH = 280;
 const clampWidth = (value: number) =>
   Math.round(Math.min(480, Math.max(200, value || DEFAULT_WIDTH)));
 
+/**
+ * A one-shot action asked of the navigator from outside (the command
+ * palette): a new nonce re-triggers it. Dialog kinds act on `path`.
+ */
+export type NavigatorAction =
+  | { kind: "newFolder" }
+  | { kind: "rename" | "move" | "trash"; path: string }
+  | { kind: "search"; query: string };
+
+export type NavigatorRequest = NavigatorAction & { nonce: number };
+
 interface VaultNavigatorProps {
   vault: VaultInfo;
   activePath: string | null;
@@ -71,6 +82,8 @@ interface VaultNavigatorProps {
   ) => void | Promise<void>;
   /** Bump to focus and select the search input (Cmd+Shift+F). */
   searchFocusNonce?: number;
+  /** Palette-triggered action; see NavigatorRequest. */
+  request?: NavigatorRequest | null;
   onCreateDrawing: (parentPath: string, name: string) => void | Promise<void>;
   onCreateFolder: (parentPath: string, name: string) => void | Promise<void>;
   onRenameEntry: (path: string, newName: string) => void | Promise<void>;
@@ -114,6 +127,7 @@ export const VaultNavigator = ({
   search = null,
   onOpenSearchResult,
   searchFocusNonce = 0,
+  request = null,
   onCreateDrawing,
   onCreateFolder,
   onRenameEntry,
@@ -259,6 +273,40 @@ export const VaultNavigator = ({
       searchInputRef.current?.select();
     }
   }, [searchFocusNonce]);
+
+  useEffect(() => {
+    if (!request) {
+      return;
+    }
+    if (request.kind === "search") {
+      setSearchQuery(request.query);
+      searchInputRef.current?.focus();
+      return;
+    }
+    if (request.kind === "newFolder") {
+      setCreateParent("");
+      setCreateKind("folder");
+      setCreateName("");
+      setCreateError(null);
+      return;
+    }
+    const entry = allIndexedEntries.find((e) => e.path === request.path) ?? {
+      path: request.path,
+      name: request.path.split("/").pop() ?? request.path,
+      kind: "drawing" as const,
+      modifiedAt: 0,
+      size: 0,
+    };
+    if (request.kind === "rename") {
+      setRenameTarget(entry);
+    } else if (request.kind === "move") {
+      setMoveTarget(entry);
+    } else {
+      requestTrash(entry);
+    }
+    // Only a new request (nonce) triggers; the other values are read live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.nonce]);
 
   // Flatten visible tree items for keyboard navigation
   const getVisibleItems = useCallback((): VaultEntry[] => {

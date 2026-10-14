@@ -13,6 +13,7 @@ import {
   getNavigatorCollapsed,
   getPreferences,
   getRecentVaults,
+  getTheme,
   removeRecentVault,
   setExpandedFolders as saveExpandedFolders,
   setNavigatorCollapsed as saveNavigatorCollapsed,
@@ -38,6 +39,7 @@ import { useVaultDocument } from "./vault/useVaultDocument";
 import { useAppearance } from "./vault/useAppearance";
 import { runZoomCommand, useInterfaceZoom } from "./vault/useInterfaceZoom";
 import { useVaultSettings } from "./vault/useVaultSettings";
+import { tagQuery } from "./tags/types";
 import { useTemplates } from "./templates/useTemplates";
 import { isInTemplatesFolder } from "./templates/listTemplates";
 import {
@@ -45,18 +47,29 @@ import {
   folderChain,
   resolveNewDrawingParent,
 } from "./vault/newDrawing";
-import { COMMANDS } from "./commands/commands";
 import { commitCanvasTextEdit } from "./commands/context";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
   useCommandDispatcher,
   type CommandRunner,
 } from "./commands/useCommands";
+import {
+  collectPaletteItems,
+  registerPaletteProvider,
+} from "./palette/registry";
+import { focusCanvasIfIdle } from "./palette/focus";
+import { createCommandsProvider } from "./palette/providers/commands";
+import { createThemesProvider } from "./palette/providers/themes";
+import { resolveSelectedTheme } from "./theme/registry";
 import { LibraryStore } from "./library/libraryStore";
 import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
 import { VaultHeader } from "./components/VaultHeader";
-import { VaultNavigator } from "./components/VaultNavigator";
+import {
+  VaultNavigator,
+  type NavigatorAction,
+  type NavigatorRequest,
+} from "./components/VaultNavigator";
 import { useExplorerExport } from "./export/useExplorerExport";
 import { Onboarding } from "./components/Onboarding";
 import { ConflictDialog } from "./components/ConflictDialog";
@@ -70,6 +83,8 @@ import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 import "./components/VaultShell.css";
 
 import type { SettingsPageId } from "./components/settings/schema";
+import type { PaletteItem } from "./palette/types";
+import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
 
 import type { LibraryRepository } from "./library/types";
@@ -79,8 +94,6 @@ import type {
   VaultInfo,
   VaultRepository,
 } from "./vault/types";
-
-const QUICK_SWITCHER_ID = "palette.quickSwitcher";
 
 export interface VaultAppProps {
   ownerDocument?: Document | null;
@@ -166,11 +179,16 @@ export const VaultApp = ({
   const [settingsPage, setSettingsPage] = useState<SettingsPageId | undefined>(
     undefined,
   );
-  // Cmd+P: the commands runnable when it opened (the switcher's own backdrop
-  // would otherwise make every `!modalOpen` command look unavailable).
-  const [switcher, setSwitcher] = useState<{ commandIds: string[] } | null>(
-    null,
-  );
+  // Cmd+P command palette (providers are asked when it opens).
+  const [switcher, setSwitcher] = useState(false);
+  // One-shot navigator actions triggered from the palette.
+  const [navigatorRequest, setNavigatorRequest] =
+    useState<NavigatorRequest | null>(null);
+  const requestNavigator = (action: NavigatorAction) =>
+    setNavigatorRequest((prev) => ({
+      ...action,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }));
   // Colour theme + mode: tokens, html.dark, canvas sync (see useAppearance).
   const appearance = useAppearance(doc, win);
   const { refresh: refreshAppearance } = appearance;
@@ -1177,7 +1195,7 @@ export const VaultApp = ({
     setShowSettingsModal(true);
   };
 
-  const focusNavigatorSearch = () => {
+  const showNavigator = () => {
     commitCanvasTextEdit(doc);
     setNavigatorCollapsed((collapsed) => {
       if (collapsed) {
@@ -1185,7 +1203,21 @@ export const VaultApp = ({
       }
       return false;
     });
+  };
+
+  const focusNavigatorSearch = () => {
+    showNavigator();
     setSearchFocusNonce((n) => n + 1);
+  };
+
+  // Write where the value currently lives: this vault if it overrides the
+  // global order, else config.toml.
+  const handleSortChange = (order: SortOrder) => {
+    if (vaultSettings.isOverridden("navigatorSort")) {
+      void vaultSettings.setOverride("navigatorSort", order);
+    } else {
+      updatePreferences({ navigatorSort: order }, win);
+    }
   };
 
   const runnerRef = useRef<CommandRunner | null>(null);
@@ -1231,18 +1263,50 @@ export const VaultApp = ({
       if (!switcher) {
         commitCanvasTextEdit(doc);
       }
-      setSwitcher((open) => {
-        if (open) {
-          return null;
-        }
-        const runner = runnerRef.current;
-        return {
-          commandIds: COMMANDS.filter(
-            (c) => c.id !== QUICK_SWITCHER_ID && runner?.isAvailable(c.id),
-          ).map((c) => c.id),
-        };
-      });
+      setSwitcher((open) => !open);
     },
+    openSettingsPage: openSettings,
+    setMode: handleCanvasThemeChange,
+    setSyncCanvas: (on) => {
+      updatePreferences({ syncCanvas: on }, win);
+      refreshAppearance();
+    },
+    exportActive: (format) => {
+      if (activeDoc) {
+        return handleExportDrawing(activeDoc.path, format);
+      }
+    },
+    saveActiveAsTemplate: () => {
+      if (activeDoc) {
+        templates.requestSave(activeDoc.path);
+      }
+    },
+    searchTags: () => {
+      showNavigator();
+      requestNavigator({ kind: "search", query: tagQuery("") });
+    },
+    newFolder: () => requestNavigator({ kind: "newFolder" }),
+    renameActive: () => {
+      if (activeDoc) {
+        requestNavigator({ kind: "rename", path: activeDoc.path });
+      }
+    },
+    moveActive: () => {
+      if (activeDoc) {
+        requestNavigator({ kind: "move", path: activeDoc.path });
+      }
+    },
+    trashActive: () => {
+      if (activeDoc) {
+        requestNavigator({ kind: "trash", path: activeDoc.path });
+      }
+    },
+    revealVault: () => handleRevealEntry(""),
+    setSort: handleSortChange,
+    openRecovered:
+      recoveryCount > 0 ? () => setShowRecoveryDialog(true) : undefined,
+    resolveConflict:
+      saveStatus === "conflict" ? () => setShowConflictDialog(true) : undefined,
   });
   const commandRunner = useCommandDispatcher(doc, win, {
     handlers: commandHandlers,
@@ -1254,11 +1318,88 @@ export const VaultApp = ({
   });
   runnerRef.current = commandRunner;
 
-  const closeSwitcher = () => setSwitcher(null);
-  const runFromSwitcher = (id: string) => {
-    setSwitcher(null);
-    // After the switcher's backdrop has unmounted, so `!modalOpen` holds.
-    (win ?? window).setTimeout(() => runnerRef.current?.run(id), 0);
+  // Palette providers read live state through this ref, so the provider
+  // objects stay stable and nothing runs while the palette is closed.
+  const paletteLive = useRef({
+    checked: (_id: string): boolean => false,
+    registry: appearance.registry,
+    refreshAppearance,
+  });
+  paletteLive.current = {
+    checked: (id) => {
+      if (id.startsWith("appearance.mode.")) {
+        return getTheme(win) === id.slice("appearance.mode.".length);
+      }
+      if (id.startsWith("appearance.syncCanvas.")) {
+        return getPreferences(win).syncCanvas === id.endsWith(".on");
+      }
+      if (id.startsWith("navigator.sort.")) {
+        return navigatorSort === id.slice("navigator.sort.".length);
+      }
+      return false;
+    },
+    registry: appearance.registry,
+    refreshAppearance,
+  };
+  useEffect(() => {
+    const live = () => paletteLive.current;
+    const runner = {
+      run: (id: string, o?: { fromPalette?: boolean }) =>
+        runnerRef.current?.run(id, o) ?? false,
+      isAvailable: (id: string, o?: { fromPalette?: boolean }) =>
+        runnerRef.current?.isAvailable(id, o) ?? false,
+      get platform() {
+        return runnerRef.current?.platform ?? "mac";
+      },
+    };
+    const stops = [
+      registerPaletteProvider(
+        createCommandsProvider({
+          runner,
+          overrides: () => getPreferences(win).hotkeys,
+          checked: (id) => live().checked(id),
+        }),
+      ),
+      registerPaletteProvider(
+        createThemesProvider({
+          registry: () => live().registry,
+          currentKey: () =>
+            resolveSelectedTheme(
+              live().registry,
+              getPreferences(win).colorTheme,
+            ).entry.key,
+          select: (key) => {
+            updatePreferences({ colorTheme: key }, win);
+            live().refreshAppearance();
+          },
+        }),
+      ),
+    ];
+    return () => stops.forEach((stop) => stop());
+  }, [win]);
+
+  const closeSwitcher = () => setSwitcher(false);
+  const runPaletteItem = (item: PaletteItem, keepOpen: boolean) => {
+    const execute = async () => {
+      try {
+        await item.run();
+      } catch (err) {
+        console.error(`Palette entry "${item.key}" failed`, err);
+      }
+    };
+    if (keepOpen) {
+      void execute();
+      return;
+    }
+    setSwitcher(false);
+    // After the palette's backdrop has unmounted, so `!modalOpen` holds.
+    const timers = win ?? window;
+    timers.setTimeout(() => {
+      void execute().then(() =>
+        // One more tick so a dialog the entry opened can take focus first.
+        timers.setTimeout(() => focusCanvasIfIdle(doc), 0),
+      );
+    }, 0);
   };
 
   // Build tree nodes for Navigator
@@ -1533,6 +1674,7 @@ export const VaultApp = ({
           search={vaultSearch}
           onOpenSearchResult={handleOpenSearchResult}
           searchFocusNonce={searchFocusNonce}
+          request={navigatorRequest}
           onCreateDrawing={handleCreateDrawing}
           onCreateFolder={handleCreateFolder}
           onRenameEntry={handleRenameEntry}
@@ -1544,15 +1686,7 @@ export const VaultApp = ({
           onExportDrawing={handleExportDrawing}
           onSwitchVault={handleSwitchVault}
           sortOrder={navigatorSort}
-          onSortChange={(order) => {
-            // Write where the value currently lives: this vault if it
-            // overrides the global order, else config.toml.
-            if (vaultSettings.isOverridden("navigatorSort")) {
-              void vaultSettings.setOverride("navigatorSort", order);
-            } else {
-              updatePreferences({ navigatorSort: order }, win);
-            }
-          }}
+          onSortChange={handleSortChange}
           confirmDelete={confirmDelete}
           showTagChips={showTagChips}
           treeNodes={treeNodes}
@@ -1618,13 +1752,13 @@ export const VaultApp = ({
             .filter((e) => e.kind === "drawing")
             .map((e) => e.path)
             .sort()}
-          commandIds={switcher.commandIds}
+          collectItems={collectPaletteItems}
           platform={commandRunner.platform}
           onOpenDrawing={(path) => {
-            setSwitcher(null);
+            setSwitcher(false);
             void handleOpenDrawing(path);
           }}
-          onRunCommand={runFromSwitcher}
+          onRunItem={runPaletteItem}
           onClose={closeSwitcher}
           ownerDocument={doc}
         />

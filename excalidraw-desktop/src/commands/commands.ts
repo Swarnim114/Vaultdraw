@@ -3,7 +3,9 @@
  * those). Order matters: it is the dispatcher's tie-break and the order the
  * Hotkeys page lists commands in.
  */
+import { SETTINGS_PAGES } from "../components/settings/schema";
 import { MAX_PEN_PRESETS } from "../pens/penPresets";
+import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
 import { EDITOR_COMMANDS } from "./editorCommands";
 
@@ -25,6 +27,30 @@ const PEN_COMMANDS: CommandDefinition[] = Array.from(
     palette: false,
   }),
 );
+
+/** "settings.page.appearance": open one settings page (Hotkeys has its own). */
+export const settingsPageCommandId = (page: string) => `settings.page.${page}`;
+
+const SETTINGS_PAGE_COMMANDS: CommandDefinition[] = SETTINGS_PAGES.filter(
+  (page) => page.id !== "hotkeys",
+).map((page) => ({
+  id: settingsPageCommandId(page.id),
+  title: `Settings: ${page.label}`,
+  category: "Settings",
+  keys: { default: [] },
+  when: ["vaultOpen", "!modalOpen"],
+}));
+
+/** "navigator.sort.name_asc": set the navigator sort order. */
+export const sortCommandId = (order: SortOrder) => `navigator.sort.${order}`;
+
+const SORT_COMMANDS: CommandDefinition[] = SORT_ORDERS.map((order) => ({
+  id: sortCommandId(order),
+  title: `Sort: ${SORT_LABELS[order]}`,
+  category: "Navigator",
+  keys: { default: [] },
+  when: ["vaultOpen", "!modalOpen"],
+}));
 
 export const COMMANDS: readonly CommandDefinition[] = [
   {
@@ -48,7 +74,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   },
   {
     id: "navigator.focusSearch",
-    title: "Search drawings",
+    title: "Search vault",
     category: "Navigator",
     keys: { default: ["Mod+Shift+F"], mac: ["Mod+Shift+F", "Ctrl+Shift+F"] },
     when: ["vaultOpen", "!modalOpen"],
@@ -75,9 +101,10 @@ export const COMMANDS: readonly CommandDefinition[] = [
   },
   {
     id: "palette.quickSwitcher",
-    title: "Quick switcher",
+    title: "Command palette",
     category: "Palette",
-    keys: { default: ["Mod+P"] },
+    // Excalidraw's own palette keys (Mod+/, Mod+Shift+P) open ours.
+    keys: { default: ["Mod+P", "Mod+Slash", "Mod+Shift+P"] },
     when: ["vaultOpen", "!modalOpen"],
   },
   {
@@ -89,8 +116,8 @@ export const COMMANDS: readonly CommandDefinition[] = [
   },
   {
     id: "vault.newFromTemplate",
-    title: "New drawing from template",
-    category: "Vault",
+    title: "Templates: New drawing from template",
+    category: "Templates",
     // Matched by code: Option+N types a dead key on macOS.
     keys: { default: ["Mod+Alt+N"], mac: ["Mod+Alt+N", "Ctrl+Alt+N"] },
     when: ["vaultOpen", "!modalOpen"],
@@ -131,11 +158,127 @@ export const COMMANDS: readonly CommandDefinition[] = [
   },
   {
     id: "settings.openHotkeys",
-    title: "Open hotkey settings",
+    title: "Settings: Hotkeys",
     category: "Settings",
     keys: { default: [] },
     when: ["vaultOpen", "!modalOpen"],
   },
+  ...SETTINGS_PAGE_COMMANDS,
+  {
+    id: "appearance.mode.light",
+    title: "Mode: Light",
+    category: "Appearance",
+    keys: { default: [] },
+  },
+  {
+    id: "appearance.mode.dark",
+    title: "Mode: Dark",
+    category: "Appearance",
+    keys: { default: [] },
+  },
+  {
+    id: "appearance.mode.system",
+    title: "Mode: System",
+    category: "Appearance",
+    keys: { default: [] },
+  },
+  {
+    id: "appearance.syncCanvas.on",
+    title: "Sync canvas with theme: On",
+    category: "Appearance",
+    keys: { default: [] },
+  },
+  {
+    id: "appearance.syncCanvas.off",
+    title: "Sync canvas with theme: Off",
+    category: "Appearance",
+    keys: { default: [] },
+  },
+  {
+    id: "file.exportPng",
+    title: "Export: PNG",
+    category: "Export",
+    keys: { default: [] },
+    when: ["drawingOpen"],
+  },
+  {
+    id: "file.exportSvg",
+    title: "Export: SVG",
+    category: "Export",
+    keys: { default: [] },
+    when: ["drawingOpen"],
+  },
+  {
+    id: "file.saveCopy",
+    title: "Save a copy",
+    category: "Export",
+    keys: { default: [] },
+    when: ["drawingOpen"],
+  },
+  {
+    id: "templates.saveDrawing",
+    title: "Templates: Save drawing as template",
+    category: "Templates",
+    keys: { default: [] },
+    when: ["drawingOpen"],
+  },
+  {
+    id: "navigator.searchTags",
+    title: "Tags: Search by tag",
+    category: "Tags",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "navigator.newFolder",
+    title: "New folder",
+    category: "Navigator",
+    keys: { default: [] },
+    when: ["vaultOpen", "writable", "!modalOpen"],
+  },
+  {
+    id: "file.rename",
+    title: "Rename drawing",
+    category: "File",
+    keys: { default: [] },
+    when: ["drawingOpen", "writable", "!modalOpen"],
+  },
+  {
+    id: "file.move",
+    title: "Move drawing",
+    category: "File",
+    keys: { default: [] },
+    when: ["drawingOpen", "writable", "!modalOpen"],
+  },
+  {
+    id: "file.trash",
+    title: "Move drawing to Trash",
+    category: "File",
+    keys: { default: [] },
+    when: ["drawingOpen", "writable", "!modalOpen"],
+  },
+  {
+    id: "vault.reveal",
+    title: "Reveal vault folder",
+    category: "Vault",
+    keys: { default: [] },
+    when: ["vaultOpen"],
+  },
+  {
+    id: "vault.openRecovered",
+    title: "Open recovered drawings",
+    category: "Vault",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "file.resolveConflict",
+    title: "Resolve conflict",
+    category: "File",
+    keys: { default: [] },
+    when: ["drawingOpen", "!modalOpen"],
+  },
+  ...SORT_COMMANDS,
   ...EDITOR_COMMANDS,
   ...PEN_COMMANDS,
 ];

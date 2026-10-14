@@ -13,7 +13,12 @@ export type CommandCategory =
   | "Settings"
   | "Appearance"
   | "Palette"
-  | "Pens";
+  | "Pens"
+  | "Export"
+  | "Templates"
+  | "Tags"
+  | "Paper"
+  | "Library";
 
 /**
  * Facts the dispatcher checks before claiming a key.

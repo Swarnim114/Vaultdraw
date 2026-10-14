@@ -15,7 +15,7 @@ const PAPER_COMMANDS: CommandDefinition[] = [
     (style): CommandDefinition => ({
       id: paperCommandId(style.id),
       title: `Paper: ${style.label}`,
-      category: "View",
+      category: "Paper",
       keys: { default: [] },
       when: ["drawingOpen", "writable"],
     }),
@@ -23,7 +23,7 @@ const PAPER_COMMANDS: CommandDefinition[] = [
   {
     id: "paper.settings",
     title: "Paper settings…",
-    category: "View",
+    category: "Paper",
     keys: { default: [] },
     when: ["drawingOpen", "writable"],
   },
@@ -33,8 +33,8 @@ export const EDITOR_COMMANDS: readonly CommandDefinition[] = [
   ...PAPER_COMMANDS,
   {
     id: "library.toggle",
-    title: "Toggle library",
-    category: "View",
+    title: "Library: Open/close",
+    category: "Library",
     keys: { default: [] },
     when: ["drawingOpen"],
   },
