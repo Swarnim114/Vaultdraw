@@ -26,7 +26,9 @@ describe("ensureFolder", () => {
     const existing = new Set(["a"]);
     const repo = {
       listDirectory: vi.fn(async (_h: string, p: string) => {
-        if (!existing.has(p)) throw new Error("NOT_FOUND");
+        if (!existing.has(p)) {
+          throw new Error("NOT_FOUND");
+        }
         return [];
       }),
       createFolder: vi.fn(async (_h: string, p: string) => {

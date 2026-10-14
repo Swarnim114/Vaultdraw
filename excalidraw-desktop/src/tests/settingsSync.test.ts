@@ -181,6 +181,97 @@ describe("settingsSync mapping", () => {
     expect(preferencesToConfigChanges(prev, { ...prev })).toEqual([]);
   });
 
+  it("maps the phase 2 keys from config.toml", () => {
+    const { values, problems } = configToPreferences({
+      appearance: { accent_color: "#336699" },
+      interface: { zoom: 125 },
+      navigator: { sort: "modified_desc" },
+      files: { confirm_delete: false, new_drawing_folder: "Inbox/Deep" },
+    });
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      accentColor: "#336699",
+      zoom: 125,
+      navigatorSort: "modified_desc",
+      confirmDelete: false,
+      newDrawingFolder: "Inbox/Deep",
+    });
+  });
+
+  it("defaults the phase 2 keys when absent", () => {
+    const { values, problems } = configToPreferences({});
+    expect(problems).toEqual([]);
+    expect(values).toMatchObject({
+      accentColor: DEFAULT_PREFERENCES.accentColor,
+      zoom: 100,
+      navigatorSort: DEFAULT_PREFERENCES.navigatorSort,
+      confirmDelete: true,
+      newDrawingFolder: "",
+    });
+  });
+
+  it.each([
+    ["appearance", "accent_color", "blue", "accentColor"],
+    ["interface", "zoom", 300, "zoom"],
+    ["interface", "zoom", 49, "zoom"],
+    ["interface", "zoom", 120.5, "zoom"],
+    ["navigator", "sort", "random", "navigatorSort"],
+    ["files", "confirm_delete", "no", "confirmDelete"],
+    ["files", "new_drawing_folder", "../escape", "newDrawingFolder"],
+    ["files", "new_drawing_folder", "/abs", "newDrawingFolder"],
+  ] as const)(
+    "invalid %s.%s = %j reports a problem and uses the default",
+    (table, name, bad, field) => {
+      const { values, problems } = configToPreferences({
+        [table]: { [name]: bad },
+      });
+      expect(problems.map((p) => p.key)).toEqual([`${table}.${name}`]);
+      expect(values[field]).toBe(DEFAULT_PREFERENCES[field]);
+    },
+  );
+
+  it("maps phase 2 preference changes to dotted keys", () => {
+    const prev = { ...DEFAULT_PREFERENCES };
+    const next = {
+      ...prev,
+      accentColor: "#336699",
+      zoom: 150,
+      navigatorSort: "name_desc" as const,
+      confirmDelete: false,
+      newDrawingFolder: "Inbox",
+    };
+    expect(preferencesToConfigChanges(prev, next)).toEqual(
+      expect.arrayContaining([
+        { key: "appearance.accent_color", value: "#336699" },
+        { key: "interface.zoom", value: 150 },
+        { key: "navigator.sort", value: "name_desc" },
+        { key: "files.confirm_delete", value: false },
+        { key: "files.new_drawing_folder", value: "Inbox" },
+      ]),
+    );
+    expect(preferencesToConfigChanges(prev, next)).toHaveLength(5);
+    // and back: values written then read give the same preferences
+    const written = Object.fromEntries(
+      preferencesToConfigChanges(prev, next).map((c) => [c.key, c.value]),
+    );
+    const { values } = configToPreferences({
+      appearance: { accent_color: written["appearance.accent_color"] },
+      interface: { zoom: written["interface.zoom"] },
+      navigator: { sort: written["navigator.sort"] },
+      files: {
+        confirm_delete: written["files.confirm_delete"],
+        new_drawing_folder: written["files.new_drawing_folder"],
+      },
+    });
+    expect(values).toMatchObject({
+      accentColor: "#336699",
+      zoom: 150,
+      navigatorSort: "name_desc",
+      confirmDelete: false,
+      newDrawingFolder: "Inbox",
+    });
+  });
+
   it("validates state.json fields", () => {
     expect(
       stateToPreferences({

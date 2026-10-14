@@ -145,6 +145,13 @@ export class FakeVaultRepository implements VaultRepository {
     }
   }
 
+  /** Pin a drawing's reported modified time (listings default to now). */
+  setModified(path: string, modifiedAt: number): void {
+    this.mtimes.set(path, modifiedAt);
+  }
+
+  private mtimes = new Map<string, number>();
+
   /** Seed helper: create folder chain implicitly. */
   seedDrawing(path: string, json: string): string {
     assertValidDrawingPath(path);
@@ -253,7 +260,7 @@ export class FakeVaultRepository implements VaultRepository {
             path: filePath,
             name: rest,
             kind: "drawing",
-            modifiedAt: Date.now(),
+            modifiedAt: this.mtimes.get(filePath) ?? Date.now(),
             size: row.json.length,
           });
         }

@@ -675,7 +675,10 @@ export async function runDesktopSmoke(): Promise<void> {
     // Informational: about 120 on ProMotion displays when WebKit's 60fps cap is
     // disabled (see webview_configuration in lib.rs), about 60 otherwise.
     await step("render-frame-rate", async () => {
+      // Bounded: an occluded window never delivers animation frames, which
+      // would otherwise hang the whole run with no report.
       const frames = await new Promise<number>((resolve) => {
+        win.setTimeout(() => resolve(-1), 4000);
         let count = 0;
         let start = 0;
         const tick = (now: number) => {
@@ -1372,6 +1375,44 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // Records the zoom the app booted with. For the two-run restart check
+    // (see the smoke handbook): set interface.zoom in the config dir, relaunch,
+    // and compare the native window width with innerWidth.
+    await step("startup-zoom", async () => {
+      const loaded = await call("load_settings");
+      const configured =
+        ((loaded.config as Record<string, Record<string, unknown>> | null)
+          ?.interface?.zoom as number | undefined) ?? 100;
+      // outerWidth is 0 in the WKWebView, so take the unzoomed width from the
+      // native window: logical width / CSS innerWidth = the applied zoom.
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const native = getCurrentWindow();
+      const [size, scale] = await Promise.all([
+        native.innerSize(),
+        native.scaleFactor(),
+      ]);
+      const logicalWidth = size.width / scale;
+      const ratio = logicalWidth / win.innerWidth;
+      const expected = configured / 100;
+      if (Math.abs(ratio - expected) > 0.05 * expected) {
+        throw new Error(
+          `Startup zoom not applied: configured ${configured}%, native/CSS width ratio ${ratio.toFixed(
+            3,
+          )} (CSS inner ${
+            win.innerWidth
+          }, native logical ${logicalWidth}, dpr ${win.devicePixelRatio})`,
+        );
+      }
+      return {
+        configuredZoom: configured,
+        prefZoom: getPreferences(win).zoom,
+        innerWidth: win.innerWidth,
+        nativeLogicalWidth: logicalWidth,
+        devicePixelRatio: win.devicePixelRatio,
+        nativeOverCssWidth: Number(ratio.toFixed(3)),
+      };
+    });
+
     await step("config-gui-write-preserves-comments", async () => {
       button("Settings").click();
       const modal = await waitFor("settings modal", () =>
@@ -1681,6 +1722,474 @@ export async function runDesktopSmoke(): Promise<void> {
         defaultPrevented: event.defaultPrevented,
         searchFocused,
       };
+    });
+
+    // ---- Settings phase 2 (accent, zoom, per-vault settings, default folder) ----
+    // The webview cannot write config.toml / settings.toml directly, so "hand
+    // edits" go through update_config / update_vault_settings: both rewrite the
+    // file on disk and the app picks the change up through the file watcher,
+    // the same path an editor save takes.
+    const cssPrimary = () =>
+      win
+        .getComputedStyle(doc.documentElement)
+        .getPropertyValue("--vault-primary")
+        .trim();
+    const waitPrefs = (
+      label: string,
+      test: (prefs: VaultPreferences) => boolean,
+      ms = 4000,
+    ) => waitFor(label, () => (test(getPreferences(win)) ? true : null), ms);
+    const pollAsync = async <T>(
+      label: string,
+      read: () => Promise<T | null>,
+      ms: number,
+    ): Promise<T> => {
+      const until = win.performance.now() + ms;
+      while (win.performance.now() < until) {
+        const result = await read();
+        if (result !== null) {
+          return result;
+        }
+        await delay(win, 250);
+      }
+      throw new Error(`Timed out after ${ms}ms waiting for ${label}`);
+    };
+    const resetPhase2Config = async () => {
+      await call("update_config", {
+        changes: [
+          { key: "appearance.accent_color", value: null },
+          { key: "interface.zoom", value: null },
+          { key: "navigator.sort", value: null },
+          { key: "files.confirm_delete", value: null },
+          { key: "files.new_drawing_folder", value: null },
+        ],
+      });
+      await waitPrefs(
+        "phase 2 defaults restored",
+        (p) =>
+          p.accentColor === "" &&
+          p.zoom === 100 &&
+          p.navigatorSort === DEFAULT_PREFERENCES.navigatorSort &&
+          p.confirmDelete === true,
+      );
+    };
+
+    await step("settings-phase2-config-live", async () => {
+      const primaryBefore = cssPrimary();
+      const startedAt = win.performance.now();
+      await call("update_config", {
+        changes: [
+          { key: "appearance.accent_color", value: "#336699" },
+          { key: "interface.zoom", value: 110 },
+          { key: "navigator.sort", value: "name_desc" },
+          { key: "files.confirm_delete", value: false },
+        ],
+      });
+      try {
+        await waitPrefs(
+          "phase 2 preferences from config",
+          (p) =>
+            p.accentColor === "#336699" &&
+            p.zoom === 110 &&
+            p.navigatorSort === "name_desc" &&
+            p.confirmDelete === false,
+        );
+        const latencyMs = Math.round(win.performance.now() - startedAt);
+        const primaryAfter = await waitFor(
+          "--vault-primary to change",
+          () => {
+            const now = cssPrimary();
+            return now && now !== primaryBefore ? now : null;
+          },
+          3000,
+        );
+        const status = getSettingsStatus();
+        if (status.problems.length) {
+          throw new Error(
+            `Valid phase 2 values raised problems: ${JSON.stringify(
+              status.problems,
+            )}`,
+          );
+        }
+        return { latencyMs, primaryBefore, primaryAfter };
+      } finally {
+        await resetPhase2Config();
+        await delay(win, 400);
+      }
+    });
+
+    await step("interface-zoom", async () => {
+      const setZoomViaConfig = async (percent: number) => {
+        await call("update_config", {
+          changes: [{ key: "interface.zoom", value: percent }],
+        });
+        await waitPrefs(`zoom pref ${percent}`, (p) => p.zoom === percent);
+      };
+      const key = (code: string, shift: boolean, meta = true) => {
+        const event = new win.KeyboardEvent("keydown", {
+          key:
+            code === "Equal"
+              ? shift
+                ? "+"
+                : "="
+              : code === "Minus"
+              ? "-"
+              : "0",
+          code,
+          metaKey: meta,
+          shiftKey: shift,
+          bubbles: true,
+          cancelable: true,
+        });
+        doc.dispatchEvent(event);
+        return event;
+      };
+      const base = { innerWidth: win.innerWidth, dpr: win.devicePixelRatio };
+      await setZoomViaConfig(150);
+      const zoomed = await waitFor(
+        "native webview zoom (innerWidth shrinks)",
+        () =>
+          win.innerWidth < base.innerWidth * 0.8
+            ? {
+                innerWidth: win.innerWidth,
+                dpr: win.devicePixelRatio,
+              }
+            : null,
+        6000,
+      );
+      const widthRatio = base.innerWidth / zoomed.innerWidth;
+      if (Math.abs(widthRatio - 1.5) > 0.08) {
+        throw new Error(
+          `innerWidth ratio ${widthRatio.toFixed(3)} is not ~1.5 (base ${
+            base.innerWidth
+          }, zoomed ${zoomed.innerWidth}, dpr ${base.dpr} -> ${zoomed.dpr})`,
+        );
+      }
+      await delay(win, 600); // let Excalidraw's resize observer settle
+
+      // Pointer draw at 150%: the element must land where the pointer went.
+      const activePath = await waitFor(
+        "active drawing path",
+        () =>
+          root.querySelector<HTMLElement>(
+            ".vault-tree-item--active .vault-tree-item__name",
+          )?.title,
+      );
+      const canvas = await waitFor("canvas at 150%", () => {
+        const el = root.querySelector<HTMLCanvasElement>(
+          ".vault-editor canvas.interactive",
+        );
+        const b = el?.getBoundingClientRect();
+        return el && b && b.width >= 40 && b.height >= 40 ? el : null;
+      });
+      const bounds = canvas.getBoundingClientRect();
+      const rectangleTool = root.querySelector<HTMLButtonElement>(
+        '[data-testid="toolbar-rectangle"]',
+      );
+      if (!rectangleTool) {
+        throw new Error("rectangle toolbar button not found");
+      }
+      rectangleTool.click();
+      await delay(win, 150);
+      const x1 = bounds.left + bounds.width * 0.5;
+      const y1 = bounds.top + bounds.height * 0.5;
+      const dx = 90;
+      const dy = 70;
+      const send = (type: string, x: number, y: number, buttons: number) =>
+        canvas.dispatchEvent(
+          new win.PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: "mouse",
+            isPrimary: true,
+            button: 0,
+            buttons,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      send("pointerdown", x1, y1, 1);
+      send("pointermove", x1 + dx / 2, y1 + dy / 2, 1);
+      send("pointermove", x1 + dx, y1 + dy, 1);
+      send("pointerup", x1 + dx, y1 + dy, 0);
+      await delay(win, 300);
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          key: "s",
+          metaKey: true,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      type Saved = {
+        elements: Array<{
+          type: string;
+          isDeleted?: boolean;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }>;
+        appState?: {
+          scrollX?: number;
+          scrollY?: number;
+          zoom?: { value?: number };
+        };
+      };
+      const readRects = async () => {
+        const read = await call("read_drawing", {
+          handle: activeVault.handle,
+          path: activePath,
+        });
+        const saved = JSON.parse(read.json) as Saved;
+        return {
+          saved,
+          rects: saved.elements.filter(
+            (e) => e.type === "rectangle" && !e.isDeleted,
+          ),
+        };
+      };
+      // The earlier 100% rectangle is already saved; wait for one more.
+      const before = (await readRects()).rects.length;
+      const { saved, rects } = await pollAsync(
+        "second rectangle saved",
+        async () => {
+          const r = await readRects();
+          return r.rects.length > before ? r : null;
+        },
+        8000,
+      );
+      const rect = rects[rects.length - 1];
+      const canvasZoom = saved.appState?.zoom?.value ?? 1;
+      const widthErr = Math.abs(rect.width * canvasZoom - dx);
+      const heightErr = Math.abs(rect.height * canvasZoom - dy);
+      const scrollX = saved.appState?.scrollX;
+      const scrollY = saved.appState?.scrollY;
+      let absErr: number | null = null;
+      if (typeof scrollX === "number" && typeof scrollY === "number") {
+        const ex = (x1 - bounds.left) / canvasZoom - scrollX;
+        const ey = (y1 - bounds.top) / canvasZoom - scrollY;
+        absErr = Math.max(
+          Math.abs(rect.x - ex) * canvasZoom,
+          Math.abs(rect.y - ey) * canvasZoom,
+        );
+      }
+      if (widthErr > 3 || heightErr > 3 || (absErr !== null && absErr > 3)) {
+        throw new Error(
+          `Pointer coordinates off at 150%: widthErr ${widthErr}, heightErr ${heightErr}, absErr ${absErr}`,
+        );
+      }
+
+      // Keyboard: Cmd+Shift+= steps by 10; plain Cmd+= is the canvas's.
+      key("Equal", true);
+      await waitPrefs("zoom 160 after Cmd+Shift+=", (p) => p.zoom === 160);
+      const plain = key("Equal", false);
+      await delay(win, 400);
+      if (getPreferences(win).zoom !== 160) {
+        throw new Error("Plain Cmd+= changed the interface zoom");
+      }
+      key("Minus", true);
+      await waitPrefs("zoom 150 after Cmd+Shift+-", (p) => p.zoom === 150);
+      key("Digit0", true);
+      await waitPrefs("zoom 100 after Cmd+Shift+0", (p) => p.zoom === 100);
+      const restored = await waitFor(
+        "innerWidth restored at 100%",
+        () =>
+          Math.abs(win.innerWidth - base.innerWidth) <= 2
+            ? win.innerWidth
+            : null,
+        6000,
+      );
+      await resetPhase2Config();
+      return {
+        baseInnerWidth: base.innerWidth,
+        baseDpr: base.dpr,
+        zoom150InnerWidth: zoomed.innerWidth,
+        zoom150Dpr: zoomed.dpr,
+        widthRatio: Number(widthRatio.toFixed(3)),
+        restoredInnerWidth: restored,
+        draw: {
+          canvasZoom,
+          widthErrPx: Number(widthErr.toFixed(2)),
+          heightErrPx: Number(heightErr.toFixed(2)),
+          absErrPx: absErr === null ? null : Number(absErr.toFixed(2)),
+          plainCmdEqualDefaultPrevented: plain.defaultPrevented,
+        },
+      };
+    });
+
+    await step("vault-settings-override", async () => {
+      const handle = activeVault.handle;
+      const probe = `smoke-suite-${runId}/sort-probe`;
+      const names = ["a-probe", "b-probe", "c-probe"];
+      const json = JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        source: "smoke",
+        elements: [],
+        appState: {},
+        files: {},
+      });
+      await call("create_folder", { handle, path: probe });
+      for (const name of names) {
+        await call("write_drawing", {
+          handle,
+          path: `${probe}/${name}.excalidraw`,
+          json,
+          expectedRevision: null,
+          operationId: `probe-${name}-${runId}`,
+        });
+      }
+      const row = (path: string) =>
+        root.querySelector<HTMLElement>(
+          `.vault-tree-item[data-tree-path="${win.CSS.escape(path)}"]`,
+        );
+      button("Refresh files").click();
+      const folderRow = await waitFor("sort probe folder row", () =>
+        row(probe),
+      );
+      if (!row(`${probe}/a-probe.excalidraw`)) {
+        folderRow.click();
+      }
+      await waitFor("probe rows", () => row(`${probe}/c-probe.excalidraw`));
+      const order = () =>
+        Array.from(
+          root.querySelectorAll<HTMLElement>(
+            `.vault-tree-item[data-tree-path^="${probe}/"]`,
+          ),
+        )
+          .map((el) =>
+            el.dataset.treePath?.split("/").pop()?.replace(".excalidraw", ""),
+          )
+          .join(",");
+      const expectOrder = (label: string, want: string) =>
+        waitFor(
+          `${label}: ${want}`,
+          () => (order() === want ? true : null),
+          4000,
+        ).catch(() => {
+          throw new Error(`${label}: expected ${want}, got ${order()}`);
+        });
+      const globalSort = async () =>
+        (
+          (await call("load_settings")).config as Record<
+            string,
+            Record<string, unknown>
+          > | null
+        )?.navigator?.sort;
+      const trail: Record<string, string> = {};
+      try {
+        await expectOrder("default", "a-probe,b-probe,c-probe");
+        trail.default = order();
+
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "navigator.sort", value: "name_desc" }],
+        });
+        await expectOrder("vault name_desc", "c-probe,b-probe,a-probe");
+        trail.vaultNameDesc = order();
+        if ((await globalSort()) !== undefined) {
+          throw new Error("config.toml navigator.sort changed by a vault edit");
+        }
+        if (getPreferences(win).navigatorSort !== "name_asc") {
+          throw new Error(
+            "Global navigatorSort preference leaked the vault value",
+          );
+        }
+
+        // Vault file edited back: applies live; wins over a global name_desc.
+        await call("update_config", {
+          changes: [{ key: "navigator.sort", value: "name_desc" }],
+        });
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "navigator.sort", value: "name_asc" }],
+        });
+        await expectOrder(
+          "vault name_asc over global name_desc",
+          "a-probe,b-probe,c-probe",
+        );
+        trail.vaultBeatsGlobal = order();
+
+        // Removing the override falls back to the global value.
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "navigator.sort", value: null }],
+        });
+        await expectOrder(
+          "override removed, global name_desc",
+          "c-probe,b-probe,a-probe",
+        );
+        trail.globalAfterRemoval = order();
+        const vaultFile = await call("load_vault_settings", { handle });
+        if (
+          vaultFile.settingsError ||
+          JSON.stringify(vaultFile.settings?.navigator ?? {}) !== "{}"
+        ) {
+          throw new Error(
+            `vault settings not clean: ${JSON.stringify(vaultFile)}`,
+          );
+        }
+      } finally {
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "navigator.sort", value: null }],
+        }).catch(() => {});
+        await resetPhase2Config();
+      }
+      await expectOrder("restored", "a-probe,b-probe,c-probe");
+      return trail;
+    });
+
+    await step("new-drawing-default-folder", async () => {
+      const handle = activeVault.handle;
+      const folder = "Smoke Inbox/Deep";
+      await call("update_vault_settings", {
+        handle,
+        changes: [{ key: "files.new_drawing_folder", value: folder }],
+      });
+      try {
+        await delay(win, 600); // vault-settings-change round trip
+        const header = root.querySelector<HTMLButtonElement>(
+          '.vault-header [aria-label="New Drawing"]',
+        );
+        if (!header) {
+          throw new Error("Header New Drawing button not found");
+        }
+        header.click();
+        const created = await pollAsync(
+          `new drawing in ${folder}`,
+          async () => {
+            const deep = await call("list_directory", {
+              handle,
+              path: folder,
+            }).catch(() => [] as VaultEntry[]);
+            return deep.find((e) => e.kind === "drawing")?.path ?? null;
+          },
+          8000,
+        );
+        const rootList = await call("list_directory", { handle, path: "" });
+        const inbox = await call("list_directory", {
+          handle,
+          path: "Smoke Inbox",
+        });
+        if (
+          !rootList.some(
+            (e) => e.path === "Smoke Inbox" && e.kind === "folder",
+          ) ||
+          !inbox.some((e) => e.path === folder && e.kind === "folder")
+        ) {
+          throw new Error("Default folder chain was not created");
+        }
+        return { folder, created };
+      } finally {
+        await call("update_vault_settings", {
+          handle,
+          changes: [{ key: "files.new_drawing_folder", value: null }],
+        }).catch(() => {});
+      }
     });
 
     // ---- Colour themes (personal/planning/themes.md "Final decisions") ----
