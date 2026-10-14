@@ -22,7 +22,8 @@ export interface UseVaultSearchResult {
 
 /**
  * Debounced, latest-wins search. Re-runs the current query when the index
- * becomes ready and (throttled) while it is building so results fill in.
+ * starts building or becomes ready, and (throttled) while it is building so
+ * results fill in.
  */
 export function useVaultSearch(
   search: VaultSearch | null,
@@ -61,7 +62,14 @@ export function useVaultSearch(
       const prev = previous;
       previous = next.state;
       setStatus(next);
-      if (next.state === "ready" && prev !== null && prev !== "ready") {
+      // Entering "building" means the crawl has made every name searchable (it
+      // parses contents afterwards), so a query typed during the walk is
+      // answered right away instead of after the throttle.
+      const entered =
+        prev !== next.state &&
+        (next.state === "building" ||
+          (next.state === "ready" && prev !== null));
+      if (entered) {
         if (timer) {
           clearTimeout(timer);
         }

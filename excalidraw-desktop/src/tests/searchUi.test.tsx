@@ -338,6 +338,40 @@ describe("useVaultSearch", () => {
     });
     expect(search.search).toHaveBeenCalledTimes(2);
   });
+
+  it("re-runs as soon as the crawl starts building (names are searchable)", async () => {
+    vi.useFakeTimers();
+    let emit: (s: IndexStatus) => void = () => {};
+    const search: VaultSearch = {
+      search: vi.fn(async () => response()),
+      listNames: async () => ({ paths: [], status: status() }),
+      status: async () => status({ state: "loading", indexed: 0, total: 0 }),
+      tags: async () => NO_TAGS,
+      subscribe: async (l) => {
+        emit = l;
+        return () => {};
+      },
+    };
+    renderHook(() => useVaultSearch(search, "h", "zebra"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(search.search).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      emit(status({ state: "building", indexed: 0, total: 5000 }));
+    });
+    // Well before the 1 s building throttle.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(search.search).toHaveBeenCalledTimes(2);
+    // Further progress events stay throttled.
+    await act(async () => {
+      emit(status({ state: "building", indexed: 64, total: 5000 }));
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(search.search).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("FakeVaultSearch", () => {
