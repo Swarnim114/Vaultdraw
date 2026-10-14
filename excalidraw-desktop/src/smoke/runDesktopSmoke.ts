@@ -1845,6 +1845,124 @@ export async function runDesktopSmoke(): Promise<void> {
         return event;
       };
       const base = { innerWidth: win.innerWidth, dpr: win.devicePixelRatio };
+      const drawCheck = async () => {
+        const activePath = await waitFor(
+          "active drawing path",
+          () =>
+            root.querySelector<HTMLElement>(
+              ".vault-tree-item--active .vault-tree-item__name",
+            )?.title,
+        );
+        const canvas = await waitFor("canvas for pointer check", () => {
+          const el = root.querySelector<HTMLCanvasElement>(
+            ".vault-editor canvas.interactive",
+          );
+          const b = el?.getBoundingClientRect();
+          return el && b && b.width >= 40 && b.height >= 40 ? el : null;
+        });
+        const bounds = canvas.getBoundingClientRect();
+        const rectangleTool = root.querySelector<HTMLButtonElement>(
+          '[data-testid="toolbar-rectangle"]',
+        );
+        if (!rectangleTool) {
+          throw new Error("rectangle toolbar button not found");
+        }
+        rectangleTool.click();
+        await delay(win, 150);
+        const x1 = bounds.left + bounds.width * 0.5;
+        const y1 = bounds.top + bounds.height * 0.5;
+        const dx = 90;
+        const dy = 70;
+        const send = (type: string, x: number, y: number, buttons: number) =>
+          canvas.dispatchEvent(
+            new win.PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType: "mouse",
+              isPrimary: true,
+              button: 0,
+              buttons,
+              clientX: x,
+              clientY: y,
+            }),
+          );
+        send("pointerdown", x1, y1, 1);
+        send("pointermove", x1 + dx / 2, y1 + dy / 2, 1);
+        send("pointermove", x1 + dx, y1 + dy, 1);
+        send("pointerup", x1 + dx, y1 + dy, 0);
+        await delay(win, 300);
+        doc.dispatchEvent(
+          new win.KeyboardEvent("keydown", {
+            key: "s",
+            metaKey: true,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        type Saved = {
+          elements: Array<{
+            type: string;
+            isDeleted?: boolean;
+            x: number;
+            y: number;
+            id?: string;
+            width: number;
+            height: number;
+          }>;
+          appState?: {
+            scrollX?: number;
+            scrollY?: number;
+            zoom?: { value?: number };
+          };
+        };
+        const readRects = async () => {
+          const read = await call("read_drawing", {
+            handle: activeVault.handle,
+            path: activePath,
+          });
+          const saved = JSON.parse(read.json) as Saved;
+          return {
+            saved,
+            rects: saved.elements.filter(
+              (e) => e.type === "rectangle" && !e.isDeleted,
+            ),
+          };
+        };
+        // The earlier 100% rectangle is already saved; wait for one more.
+        const beforeIds = new Set(
+          (await readRects()).rects.map((r) => r.id ?? JSON.stringify(r)),
+        );
+        const { saved, fresh } = await pollAsync(
+          "new rectangle saved",
+          async () => {
+            const r = await readRects();
+            const added = r.rects.filter(
+              (e) => !beforeIds.has(e.id ?? JSON.stringify(e)),
+            );
+            return added.length > 0 ? { saved: r.saved, fresh: added } : null;
+          },
+          8000,
+        );
+        const rect = fresh[fresh.length - 1];
+        const canvasZoom = saved.appState?.zoom?.value ?? 1;
+        const widthErr = Math.abs(rect.width * canvasZoom - dx);
+        const heightErr = Math.abs(rect.height * canvasZoom - dy);
+        const scrollX = saved.appState?.scrollX;
+        const scrollY = saved.appState?.scrollY;
+        let absErr: number | null = null;
+        if (typeof scrollX === "number" && typeof scrollY === "number") {
+          const ex = (x1 - bounds.left) / canvasZoom - scrollX;
+          const ey = (y1 - bounds.top) / canvasZoom - scrollY;
+          absErr = Math.max(
+            Math.abs(rect.x - ex) * canvasZoom,
+            Math.abs(rect.y - ey) * canvasZoom,
+          );
+        }
+        return { widthErr, heightErr, absErr, canvasZoom, rect };
+      };
+      const at100 = await drawCheck();
       await setZoomViaConfig(150);
       const zoomed = await waitFor(
         "native webview zoom (innerWidth shrinks)",
@@ -1867,118 +1985,16 @@ export async function runDesktopSmoke(): Promise<void> {
       }
       await delay(win, 600); // let Excalidraw's resize observer settle
 
-      // Pointer draw at 150%: the element must land where the pointer went.
-      const activePath = await waitFor(
-        "active drawing path",
-        () =>
-          root.querySelector<HTMLElement>(
-            ".vault-tree-item--active .vault-tree-item__name",
-          )?.title,
-      );
-      const canvas = await waitFor("canvas at 150%", () => {
-        const el = root.querySelector<HTMLCanvasElement>(
-          ".vault-editor canvas.interactive",
-        );
-        const b = el?.getBoundingClientRect();
-        return el && b && b.width >= 40 && b.height >= 40 ? el : null;
-      });
-      const bounds = canvas.getBoundingClientRect();
-      const rectangleTool = root.querySelector<HTMLButtonElement>(
-        '[data-testid="toolbar-rectangle"]',
-      );
-      if (!rectangleTool) {
-        throw new Error("rectangle toolbar button not found");
-      }
-      rectangleTool.click();
-      await delay(win, 150);
-      const x1 = bounds.left + bounds.width * 0.5;
-      const y1 = bounds.top + bounds.height * 0.5;
-      const dx = 90;
-      const dy = 70;
-      const send = (type: string, x: number, y: number, buttons: number) =>
-        canvas.dispatchEvent(
-          new win.PointerEvent(type, {
-            bubbles: true,
-            cancelable: true,
-            pointerId: 1,
-            pointerType: "mouse",
-            isPrimary: true,
-            button: 0,
-            buttons,
-            clientX: x,
-            clientY: y,
-          }),
-        );
-      send("pointerdown", x1, y1, 1);
-      send("pointermove", x1 + dx / 2, y1 + dy / 2, 1);
-      send("pointermove", x1 + dx, y1 + dy, 1);
-      send("pointerup", x1 + dx, y1 + dy, 0);
-      await delay(win, 300);
-      doc.dispatchEvent(
-        new win.KeyboardEvent("keydown", {
-          key: "s",
-          metaKey: true,
-          ctrlKey: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      type Saved = {
-        elements: Array<{
-          type: string;
-          isDeleted?: boolean;
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-        }>;
-        appState?: {
-          scrollX?: number;
-          scrollY?: number;
-          zoom?: { value?: number };
-        };
-      };
-      const readRects = async () => {
-        const read = await call("read_drawing", {
-          handle: activeVault.handle,
-          path: activePath,
-        });
-        const saved = JSON.parse(read.json) as Saved;
-        return {
-          saved,
-          rects: saved.elements.filter(
-            (e) => e.type === "rectangle" && !e.isDeleted,
-          ),
-        };
-      };
-      // The earlier 100% rectangle is already saved; wait for one more.
-      const before = (await readRects()).rects.length;
-      const { saved, rects } = await pollAsync(
-        "second rectangle saved",
-        async () => {
-          const r = await readRects();
-          return r.rects.length > before ? r : null;
-        },
-        8000,
-      );
-      const rect = rects[rects.length - 1];
-      const canvasZoom = saved.appState?.zoom?.value ?? 1;
-      const widthErr = Math.abs(rect.width * canvasZoom - dx);
-      const heightErr = Math.abs(rect.height * canvasZoom - dy);
-      const scrollX = saved.appState?.scrollX;
-      const scrollY = saved.appState?.scrollY;
-      let absErr: number | null = null;
-      if (typeof scrollX === "number" && typeof scrollY === "number") {
-        const ex = (x1 - bounds.left) / canvasZoom - scrollX;
-        const ey = (y1 - bounds.top) / canvasZoom - scrollY;
-        absErr = Math.max(
-          Math.abs(rect.x - ex) * canvasZoom,
-          Math.abs(rect.y - ey) * canvasZoom,
-        );
-      }
-      if (widthErr > 3 || heightErr > 3 || (absErr !== null && absErr > 3)) {
+      const at150 = await drawCheck();
+      const bad = (r: typeof at150) =>
+        r.widthErr > 3 ||
+        r.heightErr > 3 ||
+        (r.absErr !== null && r.absErr > 3);
+      if (bad(at100) || bad(at150)) {
         throw new Error(
-          `Pointer coordinates off at 150%: widthErr ${widthErr}, heightErr ${heightErr}, absErr ${absErr}`,
+          `Pointer coordinates off (100%: ${JSON.stringify(
+            at100,
+          )}; 150%: ${JSON.stringify(at150)})`,
         );
       }
 
@@ -2011,10 +2027,8 @@ export async function runDesktopSmoke(): Promise<void> {
         widthRatio: Number(widthRatio.toFixed(3)),
         restoredInnerWidth: restored,
         draw: {
-          canvasZoom,
-          widthErrPx: Number(widthErr.toFixed(2)),
-          heightErrPx: Number(heightErr.toFixed(2)),
-          absErrPx: absErr === null ? null : Number(absErr.toFixed(2)),
+          at100,
+          at150,
           plainCmdEqualDefaultPrevented: plain.defaultPrevented,
         },
       };
@@ -2151,7 +2165,7 @@ export async function runDesktopSmoke(): Promise<void> {
         changes: [{ key: "files.new_drawing_folder", value: folder }],
       });
       try {
-        await delay(win, 600); // vault-settings-change round trip
+        await delay(win, 2000); // watcher debounce (~0.6 s) + vault-settings-change round trip
         const header = root.querySelector<HTMLButtonElement>(
           '.vault-header [aria-label="New Drawing"]',
         );
