@@ -5996,7 +5996,7 @@ class App extends React.Component<AppProps, AppState> {
 
     const initialScale = gesture.initialScale;
     if (initialScale) {
-      this.viewport.translate(
+      const didTranslate = this.viewport.translate(
         (state) => ({
           ...getViewportForZoomWithScrollConstraints(
             {
@@ -6006,12 +6006,21 @@ class App extends React.Component<AppProps, AppState> {
             },
             state,
           ),
+          // Vaultdraw: like wheel and touch zoom, draw from the cached
+          // element bitmaps while the pinch is in progress; re-rasterizing
+          // every element at every pinch step held a trackpad pinch to
+          // ~20 fps on a 200-element drawing. Crisp again 300 ms after the
+          // last step.
+          shouldCacheIgnoreZoom: true,
         }),
         {
           zoomPreConstrained: true,
           preserveScrollConstraintsSnapBack: true,
         },
       );
+      if (didTranslate) {
+        this.resetShouldCacheIgnoreZoomDebounced();
+      }
     }
   });
 
