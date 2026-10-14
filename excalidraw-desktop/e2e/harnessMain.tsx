@@ -1,6 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
+import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgroundPattern";
+
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
@@ -173,6 +176,11 @@ const libraryRepository = new FakeLibraryRepository();
 
 (ownerWindow as any).__vaultRepo = repository;
 (ownerWindow as any).__updatePreferences = updatePreferences;
+// Paper perf spec: the canvas renderer, for a micro-benchmark.
+(ownerWindow as any).__paperRenderer = {
+  createBackgroundPattern,
+  renderBackgroundPattern,
+};
 (ownerWindow as any).__libraryRepo = libraryRepository;
 
 void import("../src/VaultApp").then(({ default: VaultApp }) => {
