@@ -1,7 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TAGS_REFRESH_DEBOUNCE_MS, useVaultTags } from "./useVaultTags";
+import {
+  sameTags,
+  TAGS_REFRESH_DEBOUNCE_MS,
+  useVaultTags,
+} from "./useVaultTags";
 
 import type { IndexStatus, VaultSearch } from "../search/types";
 import type { TagsResponse } from "./types";
@@ -115,5 +119,65 @@ describe("useVaultTags", () => {
       vi.advanceTimersByTime(TAGS_REFRESH_DEBOUNCE_MS * 2);
     });
     expect(t.tags).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useVaultTags refetch renders", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps the same data object when a refetch answers the same tags", async () => {
+    const t = setup();
+    t.tags.mockImplementation(async () => response("A"));
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders++;
+      return useVaultTags(t.search, "h");
+    });
+    await flush();
+    const before = result.current.byPath;
+    const rendersBefore = renders;
+    act(() => t.emit());
+    await act(async () => {
+      vi.advanceTimersByTime(TAGS_REFRESH_DEBOUNCE_MS);
+    });
+    expect(t.tags).toHaveBeenCalledTimes(2);
+    expect(result.current.byPath).toBe(before);
+    expect(renders).toBe(rendersBefore);
+  });
+
+  it("sameTags compares tags and paths by value", () => {
+    const a = response("A");
+    expect(sameTags(a, response("A"))).toBe(true);
+    expect(sameTags(a, response("B"))).toBe(false);
+    expect(
+      sameTags(a, {
+        ...a,
+        byPath: { "a.excalidraw": ["A"], "b.excalidraw": ["A"] },
+      }),
+    ).toBe(false);
+    expect(sameTags(a, { ...a, tags: [{ ...a.tags[0], count: 2 }] })).toBe(
+      false,
+    );
+  });
+});
+
+describe("useVaultTags loading", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("clears loading when a refetch supersedes the first fetch", async () => {
+    const t = setup();
+    t.tags.mockReturnValueOnce(new Promise(() => {}));
+    t.tags.mockResolvedValueOnce(response("A"));
+    const { result } = renderHook(() => useVaultTags(t.search, "h"));
+    await flush();
+    expect(result.current.loading).toBe(true);
+    act(() => t.emit());
+    await act(async () => {
+      vi.advanceTimersByTime(TAGS_REFRESH_DEBOUNCE_MS);
+    });
+    expect(result.current.tags[0].display).toBe("A");
+    expect(result.current.loading).toBe(false);
   });
 });

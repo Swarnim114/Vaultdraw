@@ -11,7 +11,32 @@ export interface UseVaultTagsResult {
   loading: boolean;
 }
 
-const EMPTY: Omit<UseVaultTagsResult, "loading"> = { tags: [], byPath: {} };
+type TagsData = Omit<UseVaultTagsResult, "loading">;
+
+const EMPTY: TagsData = { tags: [], byPath: {} };
+
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
+/** True when two tag answers would render the same. */
+export const sameTags = (a: TagsData, b: TagsData) => {
+  if (
+    a.tags.length !== b.tags.length ||
+    a.tags.some(
+      (t, i) =>
+        t.tag !== b.tags[i].tag ||
+        t.display !== b.tags[i].display ||
+        t.count !== b.tags[i].count,
+    )
+  ) {
+    return false;
+  }
+  const paths = Object.keys(a.byPath);
+  return (
+    paths.length === Object.keys(b.byPath).length &&
+    paths.every((p) => b.byPath[p] && sameList(a.byPath[p], b.byPath[p]))
+  );
+};
 
 /**
  * Vault tags: fetched on mount/handle change and refetched (debounced,
@@ -21,7 +46,7 @@ export function useVaultTags(
   search: VaultSearch | null,
   handle: string | null,
 ): UseVaultTagsResult {
-  const [data, setData] = useState(EMPTY);
+  const [data, setData] = useState<TagsData>(EMPTY);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -33,20 +58,33 @@ export function useVaultTags(
     let cancelled = false;
     let seq = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let current = EMPTY;
+    let showsLoading = false;
 
-    const load = () => {
+    // Only the first fetch shows as loading, and an unchanged answer keeps the
+    // old object: refetches after every index change must not re-render the
+    // whole navigator tree.
+    const load = (initial: boolean) => {
       const mine = ++seq;
-      setLoading(true);
+      if (initial) {
+        showsLoading = true;
+        setLoading(true);
+      }
       search
         .tags(handle)
         .then((res) => {
           if (!cancelled && mine === seq) {
-            setData({ tags: res.tags, byPath: res.byPath });
+            const next = { tags: res.tags, byPath: res.byPath };
+            if (!sameTags(current, next)) {
+              current = next;
+              setData(next);
+            }
           }
         })
         .catch(() => {})
         .finally(() => {
-          if (!cancelled && mine === seq) {
+          if (showsLoading && !cancelled && mine === seq) {
+            showsLoading = false;
             setLoading(false);
           }
         });
@@ -57,7 +95,7 @@ export function useVaultTags(
       }
       timer = setTimeout(() => {
         timer = null;
-        load();
+        load(false);
       }, TAGS_REFRESH_DEBOUNCE_MS);
     };
 
@@ -76,7 +114,7 @@ export function useVaultTags(
         }
       })
       .catch(() => {});
-    load();
+    load(true);
 
     return () => {
       cancelled = true;
