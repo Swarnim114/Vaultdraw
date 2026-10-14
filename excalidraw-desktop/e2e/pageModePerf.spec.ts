@@ -104,11 +104,11 @@ const PAGES_FOR_BIG = 10; // 200 rows * 55 + 10 = 11010 px = 9.8 A4 pages
 const openMode = async (
   page: Page,
   mode: Mode,
-  o: { pattern: boolean; elements: unknown[] },
+  o: { pattern: boolean; elements: unknown[]; zoom?: number },
 ) => {
   const name = `Perf ${mode} ${Math.random().toString(36).slice(2, 6)}`;
   await page.evaluate(
-    ([n, m, withPattern, elements, setup]) => {
+    ([n, m, withPattern, elements, setup, zoom]) => {
       const w = window as any;
       const repo = w.__vaultRepo;
       repo.seedDrawing(
@@ -123,6 +123,7 @@ const openMode = async (
               ? w.__paperRenderer.createBackgroundPattern("lines")
               : null,
             ...(m === "normal" ? {} : { pageSetup: setup }),
+            ...(zoom && m === "normal" ? { zoom: { value: zoom } } : {}),
           },
           files: {},
         }),
@@ -138,6 +139,7 @@ const openMode = async (
         layout: mode === "continuous" ? "continuous" : "separate",
         pageCount: PAGES_FOR_BIG,
       }),
+      o.zoom ?? 0,
     ] as const,
   );
   await expect(
@@ -444,4 +446,158 @@ test("drag cost of one element on 2000 elements: page mode vs normal", async ({
     }
   }
   expect(rows.length).toBeGreaterThan(0);
+});
+
+// Fit-width variant: page mode opens at the zoom its view lock installs
+// (page fills the width minus margins); normal mode is opened at that same
+// zoom value. Not overridden by the test.
+const setZoom = async (page: Page, value: number) => {
+  await page.evaluate((v) => {
+    const el = document.querySelector(".vault-editor canvas.interactive")!;
+    const key = Object.keys(el).find((k) => k.startsWith("__reactFiber"))!;
+    let f = (el as any)[key];
+    while (f && !(f.stateNode?.scene && f.stateNode?.state?.zoom)) {
+      f = f.return;
+    }
+    f.stateNode.setState({ zoom: { value: v }, scrollX: 0, scrollY: 0 });
+  }, value);
+  await page.waitForTimeout(300);
+};
+
+const readZoom = (page: Page) =>
+  page.evaluate(() => {
+    const el = document.querySelector(".vault-editor canvas.interactive")!;
+    const key = Object.keys(el).find((k) => k.startsWith("__reactFiber"))!;
+    let f = (el as any)[key];
+    while (f && !(f.stateNode?.scene && f.stateNode?.state?.zoom)) {
+      f = f.return;
+    }
+    return f.stateNode.state.zoom.value as number;
+  });
+
+for (const kind of ["scroll", "zoom"] as const) {
+  test(`fit-width ${kind}: page mode vs normal at the same zoom`, async ({
+    page,
+    browserName,
+  }) => {
+    await openVault(page);
+    const rows: Record<string, any>[] = [];
+    let fitZoom = 0;
+    for (const mode of ["separate", "continuous", "normal"] as const) {
+      await openMode(page, mode, {
+        pattern: kind === "zoom",
+        elements: kind === "zoom" ? [rect("a", 100, 100)] : bigScene(),
+        zoom: mode === "normal" ? fitZoom : undefined,
+      });
+      if (mode === "normal") {
+        await setZoom(page, fitZoom);
+      }
+      const zoom = await readZoom(page);
+      if (mode === "separate") {
+        fitZoom = zoom;
+      }
+      for (const rate of ratesFor(browserName).filter((r) => r !== 4)) {
+        await throttle(page, browserName, rate);
+        let work: number[];
+        let extra = {};
+        if (kind === "zoom") {
+          await wheelSweep(page, 15, 2, true, true);
+          work = [
+            ...(await wheelSweep(page, 15, 2, true, true)).work,
+            ...(await wheelSweep(page, 15, 2, true, true)).work,
+            ...(await wheelSweep(page, 15, 2, true, true)).work,
+          ];
+        } else {
+          await wheelSweep(page, 20, 40, false, true);
+          const a = await wheelSweep(page, 60, 40, false, true);
+          work = a.work;
+          extra = {
+            longTasks: a.long.length,
+            longestTask: Math.round(Math.max(0, ...a.long)),
+          };
+        }
+        await throttle(page, browserName, 1);
+        const row = {
+          test: `pagemode-fit-${kind}`,
+          browser: browserName,
+          mode,
+          rate,
+          zoom: +zoom.toFixed(3),
+          steps: work.length,
+          ...stats(work),
+          ...extra,
+        };
+        record(row);
+        rows.push(row);
+      }
+    }
+    for (const row of rows.filter((r) => r.mode !== "normal")) {
+      const base = rows.find(
+        (r) => r.mode === "normal" && r.rate === row.rate,
+      )!;
+      record({
+        test: `pagemode-fit-${kind}-vs-normal`,
+        browser: browserName,
+        mode: row.mode,
+        rate: row.rate,
+        zoom: row.zoom,
+        normalZoom: base.zoom,
+        p95Ratio: +(row.p95 / base.p95).toFixed(3),
+        meanRatio: +(row.mean / base.mean).toFixed(3),
+      });
+    }
+  });
+}
+
+// PERF_PROFILE=1 (Chromium): CPU profile of a fit-width zoom sweep, per mode.
+test("profile: fit-width zoom sweep top self-time functions", async ({
+  page,
+  browserName,
+}) => {
+  test.skip(process.env.PERF_PROFILE !== "1" || browserName !== "chromium");
+  await openVault(page);
+  let fitZoom = 0;
+  for (const mode of ["separate", "normal"] as const) {
+    await openMode(page, mode, {
+      pattern: true,
+      elements: [rect("a", 100, 100)],
+    });
+    if (mode === "normal") {
+      await setZoom(page, fitZoom);
+    } else {
+      fitZoom = await readZoom(page);
+    }
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Profiler.enable");
+    await cdp.send("Profiler.setSamplingInterval", { interval: 50 });
+    await wheelSweep(page, 15, 2, true, true);
+    await cdp.send("Profiler.start");
+    const res = [];
+    for (let i = 0; i < 3; i++) {
+      res.push(await wheelSweep(page, 15, 2, true, true));
+    }
+    const { profile } = await cdp.send("Profiler.stop");
+    const self = new Map<number, number>();
+    const dt = profile.timeDeltas ?? [];
+    profile.samples?.forEach((id: number, i: number) =>
+      self.set(id, (self.get(id) ?? 0) + (dt[i] ?? 0)),
+    );
+    const byName = new Map<string, number>();
+    for (const n of profile.nodes) {
+      const cf = n.callFrame;
+      const key = `${cf.functionName || "(anon)"} ${cf.url
+        .split("/")
+        .slice(-2)
+        .join("/")}:${cf.lineNumber}`;
+      byName.set(key, (byName.get(key) ?? 0) + (self.get(n.id) ?? 0));
+    }
+    const top = [...byName.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18);
+    // eslint-disable-next-line no-console
+    console.log(
+      `PROFILE ${mode} zoomAfter=${await readZoom(page)} fit=${fitZoom}\n${top
+        .map(([k, v]) => `  ${(v / 1000 / 90).toFixed(3)} ms/step  ${k}`)
+        .join("\n")}`,
+    );
+    await cdp.detach();
+  }
 });
