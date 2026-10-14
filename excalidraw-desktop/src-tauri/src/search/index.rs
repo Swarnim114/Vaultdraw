@@ -1,0 +1,559 @@
+//! In-memory vault index: normalised text per drawing + linear substring scan.
+
+use super::extract::TextItem;
+use super::normalize::{fold_with_map, normalize, Folded};
+use super::types::{ElementMatch, Scope, SearchHit};
+use memchr::memmem::Finder;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+const MAX_TERMS: usize = 8;
+/// Occurrences examined per term when scoring a drawing.
+const SCORE_HIT_CAP: usize = 16;
+/// Occurrences examined per term when picking snippets of a returned drawing.
+const SNIPPET_HIT_CAP: usize = 256;
+const MAX_MATCHES: usize = 5;
+const SNIPPET_CHARS: usize = 120;
+const SNIPPET_LEAD: usize = 40;
+const DRAWING_EXT: &str = ".excalidraw";
+
+fn split_path(path: &str) -> (&str, &str) {
+    match path.rfind('/') {
+        Some(i) => path.split_at(i + 1),
+        None => ("", path),
+    }
+}
+
+fn file_stem(name: &str) -> &str {
+    let cut = name.len().saturating_sub(DRAWING_EXT.len());
+    match name.get(cut..) {
+        Some(ext) if ext.eq_ignore_ascii_case(DRAWING_EXT) => &name[..cut],
+        _ => name,
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct DocEntry {
+    /// `(size, mtime_ms)` of the file the content was parsed from.
+    pub stat: (u64, u64),
+    /// False for name-only entries (content not read yet).
+    pub parsed: bool,
+    pub items: Vec<TextItem>,
+    /// Normalised items joined with `\n`.
+    buf: String,
+    // Derived, rebuilt on load.
+    #[serde(skip)]
+    name_norm: String,
+    #[serde(skip)]
+    stem_off: u32,
+    #[serde(skip)]
+    bounds: Vec<u32>,
+}
+
+impl DocEntry {
+    /// Name-only entry: searchable by path immediately, content fills in later.
+    pub(crate) fn name_only(path: &str) -> DocEntry {
+        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new() };
+        d.derive_name(path);
+        d
+    }
+
+    /// Parsed entry. Items that normalise to nothing are dropped so items and buffer lines align.
+    pub(crate) fn new(path: &str, stat: (u64, u64), items: Vec<TextItem>) -> DocEntry {
+        let mut buf = String::new();
+        let mut kept = Vec::with_capacity(items.len());
+        let mut bounds = Vec::with_capacity(items.len());
+        for item in items {
+            let n = normalize(&item.text);
+            if n.is_empty() {
+                continue;
+            }
+            if !kept.is_empty() {
+                buf.push('\n');
+            }
+            bounds.push(buf.len() as u32);
+            buf.push_str(&n);
+            kept.push(item);
+        }
+        buf.shrink_to_fit();
+        let mut d = DocEntry { stat, parsed: true, items: kept, buf, name_norm: String::new(), stem_off: 0, bounds };
+        d.derive_name(path);
+        d
+    }
+
+    fn derive_name(&mut self, path: &str) {
+        let (dir, name) = split_path(path);
+        let mut n = normalize(dir);
+        self.stem_off = n.len() as u32;
+        n.push_str(&normalize(file_stem(name)));
+        self.name_norm = n;
+    }
+
+    /// Rebuilds derived fields after deserialisation; false if the entry is inconsistent.
+    pub(crate) fn rebuild(&mut self, path: &str) -> bool {
+        self.derive_name(path);
+        self.bounds.clear();
+        if !self.buf.is_empty() {
+            self.bounds.push(0);
+            self.bounds.extend(memchr::memchr_iter(b'\n', self.buf.as_bytes()).map(|i| i as u32 + 1));
+        }
+        self.bounds.len() == self.items.len() && (self.parsed || self.items.is_empty())
+    }
+
+    fn item_text(&self, i: usize) -> &str {
+        let start = self.bounds[i] as usize;
+        let end = self.bounds.get(i + 1).map_or(self.buf.len(), |&b| b as usize - 1);
+        &self.buf[start..end]
+    }
+
+    #[allow(dead_code)] // reached via `Index::approx_heap_bytes`
+    fn heap_bytes(&self) -> usize {
+        let items: usize = self
+            .items
+            .iter()
+            .map(|i| std::mem::size_of::<TextItem>() + i.element_id.len() + i.container_id.as_ref().map_or(0, |c| c.len()) + i.text.len())
+            .sum();
+        items + self.buf.capacity() + self.name_norm.capacity() + self.bounds.capacity() * 4 + 48
+    }
+}
+
+struct Term {
+    text: String,
+    finder: Finder<'static>,
+}
+
+fn parse_terms(query: &str) -> Vec<Term> {
+    let mut out: Vec<Term> = Vec::new();
+    for raw in normalize(query).split(' ').filter(|t| !t.is_empty()) {
+        if out.len() == MAX_TERMS {
+            break;
+        }
+        if !out.iter().any(|t| t.text == raw) {
+            out.push(Term { text: raw.to_string(), finder: Finder::new(raw).into_owned() });
+        }
+    }
+    out
+}
+
+fn is_boundary(c: Option<char>) -> bool {
+    c.map_or(true, |c| !c.is_alphanumeric() || c as u32 >= 0x2E80)
+}
+
+fn word_start(hay: &str, s: usize) -> bool {
+    is_boundary(hay[..s].chars().next_back())
+}
+
+/// Match quality: exact 10, whole word 8, word prefix 6, mid-word 3.
+fn tier(hay: &str, s: usize, e: usize, exact: bool) -> f32 {
+    if exact {
+        10.0
+    } else {
+        match (word_start(hay, s), is_boundary(hay[e..].chars().next())) {
+            (true, true) => 8.0,
+            (true, false) => 6.0,
+            _ => 3.0,
+        }
+    }
+}
+
+fn utf16_len(c: char) -> u32 {
+    c.len_utf16() as u32
+}
+
+/// Sorted, merged char ranges to UTF-16 `[start, end)` pairs relative to `chars[window_start..]`.
+fn to_utf16(chars: &[char], window: (usize, usize), base: u32, mut ranges: Vec<(usize, usize)>) -> Vec<[u32; 2]> {
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (a, b) in ranges {
+        let (a, b) = (a.max(window.0), b.min(window.1));
+        if a >= b {
+            continue;
+        }
+        match merged.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    let mut pos = vec![base; window.1 - window.0 + 1];
+    for (i, &c) in chars[window.0..window.1].iter().enumerate() {
+        pos[i + 1] = pos[i] + utf16_len(c);
+    }
+    merged.into_iter().map(|(a, b)| [pos[a - window.0], pos[b - window.0]]).collect()
+}
+
+fn term_ranges(folded: &Folded, terms: &[Term], cap: usize) -> Vec<(usize, usize)> {
+    let bytes: Vec<(usize, usize)> = terms
+        .iter()
+        .flat_map(|t| t.finder.find_iter(folded.norm.as_bytes()).take(cap).map(move |s| (s, s + t.text.len())))
+        .collect();
+    folded.char_ranges(&bytes)
+}
+
+fn build_snippet(text: &str, terms: &[Term]) -> Option<(String, Vec<[u32; 2]>)> {
+    let folded = fold_with_map(text);
+    let ranges = term_ranges(&folded, terms, 64);
+    let first = ranges.iter().map(|r| r.0).min()?;
+    let n = folded.chars.len();
+    let (mut start, mut end) = (0, n);
+    if n > SNIPPET_CHARS {
+        start = first.saturating_sub(SNIPPET_LEAD);
+        end = (start + SNIPPET_CHARS).min(n);
+        start = end.saturating_sub(SNIPPET_CHARS);
+    }
+    let mut snippet = String::new();
+    let base = if start > 0 {
+        snippet.push('…');
+        1
+    } else {
+        0
+    };
+    snippet.extend(&folded.chars[start..end]);
+    if end < n {
+        snippet.push('…');
+    }
+    Some((snippet, to_utf16(&folded.chars, (start, end), base, ranges)))
+}
+
+struct ItemHit {
+    idx: usize,
+    mask: u8,
+    word_start: bool,
+}
+
+/// Items of `d` containing any term, one entry per item, sorted by item index.
+fn collect_item_hits(d: &DocEntry, terms: &[Term]) -> Vec<ItemHit> {
+    let mut raw: Vec<(usize, usize, bool)> = Vec::new();
+    for (ti, t) in terms.iter().enumerate() {
+        for m in t.finder.find_iter(d.buf.as_bytes()).take(SNIPPET_HIT_CAP) {
+            let idx = d.bounds.partition_point(|&b| b as usize <= m).saturating_sub(1);
+            raw.push((idx, ti, word_start(&d.buf, m)));
+        }
+    }
+    raw.sort_unstable();
+    let mut hits: Vec<ItemHit> = Vec::new();
+    for (idx, ti, ws) in raw {
+        match hits.last_mut() {
+            Some(h) if h.idx == idx => {
+                h.mask |= 1 << ti;
+                h.word_start |= ws;
+            }
+            _ => hits.push(ItemHit { idx, mask: 1 << ti, word_start: ws }),
+        }
+    }
+    hits
+}
+
+struct Scored<'a> {
+    path: &'a str,
+    doc: &'a DocEntry,
+    score: f32,
+}
+
+#[derive(Default)]
+pub(crate) struct Index {
+    docs: HashMap<String, DocEntry>,
+}
+
+impl Index {
+    pub(crate) fn from_docs(mut docs: HashMap<String, DocEntry>) -> Option<Index> {
+        docs.iter_mut().all(|(p, d)| d.rebuild(p)).then_some(Index { docs })
+    }
+    pub(crate) fn docs(&self) -> &HashMap<String, DocEntry> {
+        &self.docs
+    }
+    pub(crate) fn get(&self, path: &str) -> Option<&DocEntry> {
+        self.docs.get(path)
+    }
+    pub(crate) fn contains(&self, path: &str) -> bool {
+        self.docs.contains_key(path)
+    }
+    pub(crate) fn upsert(&mut self, path: String, entry: DocEntry) {
+        self.docs.insert(path, entry);
+    }
+    pub(crate) fn remove(&mut self, path: &str) -> bool {
+        self.docs.remove(path).is_some()
+    }
+    /// Removes everything under `prefix` (pass a directory path ending in `/`).
+    pub(crate) fn remove_prefix(&mut self, prefix: &str) -> usize {
+        let before = self.docs.len();
+        self.docs.retain(|p, _| !p.starts_with(prefix));
+        before - self.docs.len()
+    }
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) -> usize {
+        let before = self.docs.len();
+        self.docs.retain(|p, _| keep(p));
+        before - self.docs.len()
+    }
+    /// `(drawings with content indexed, drawings known)`.
+    pub(crate) fn counts(&self) -> (usize, usize) {
+        (self.docs.values().filter(|d| d.parsed).count(), self.docs.len())
+    }
+    #[allow(dead_code)] // API for the tags feature
+    /// Visits every text item of every drawing (for tag extraction without re-reading files).
+    pub(crate) fn for_each_item(&self, mut f: impl FnMut(&str, &TextItem)) {
+        for (path, d) in &self.docs {
+            for item in &d.items {
+                f(path, item);
+            }
+        }
+    }
+    #[allow(dead_code)] // memory reporting (used by the perf test)
+    pub(crate) fn approx_heap_bytes(&self) -> usize {
+        let table = self.docs.capacity() * (std::mem::size_of::<String>() + std::mem::size_of::<DocEntry>() + 1);
+        table + self.docs.iter().map(|(p, d)| p.capacity() + d.heap_bytes()).sum::<usize>()
+    }
+
+    /// Best score of `term` in `d` plus its content occurrence count; `None` when absent.
+    fn score_term(&self, d: &DocEntry, t: &Term, scope: Scope) -> Option<(f32, usize)> {
+        let mut best = 0.0f32;
+        let mut count = 0;
+        let mut found = false;
+        if scope != Scope::Content {
+            let name = d.name_norm.as_str();
+            for s in t.finder.find_iter(name.as_bytes()) {
+                found = true;
+                let e = s + t.text.len();
+                let exact = s == d.stem_off as usize && e == name.len();
+                let weight = if s >= d.stem_off as usize { 10.0 } else { 2.0 };
+                best = best.max(weight * tier(name, s, e, exact));
+            }
+        }
+        if scope != Scope::Names {
+            let buf = d.buf.as_str();
+            let b = buf.as_bytes();
+            for s in t.finder.find_iter(b).take(SCORE_HIT_CAP) {
+                found = true;
+                count += 1;
+                let e = s + t.text.len();
+                let exact = (s == 0 || b[s - 1] == b'\n') && (e == b.len() || b[e] == b'\n');
+                best = best.max(tier(buf, s, e, exact));
+            }
+        }
+        found.then_some((best, count))
+    }
+
+    fn score_doc(&self, d: &DocEntry, terms: &[Term], scope: Scope) -> Option<f32> {
+        let mut total = 0.0;
+        let mut extra = 0usize;
+        for t in terms {
+            let (best, count) = self.score_term(d, t, scope)?;
+            total += best;
+            extra += count.saturating_sub(1);
+        }
+        Some(((total + 8.0 * (1.0 + extra as f32).ln()) * 100.0).round() / 100.0)
+    }
+
+    fn build_hit(&self, path: &str, d: &DocEntry, score: f32, terms: &[Term], scope: Scope) -> SearchHit {
+        let name = split_path(path).1.to_string();
+        let name_highlights = if scope == Scope::Content {
+            Vec::new()
+        } else {
+            let stem = fold_with_map(file_stem(&name));
+            let ranges = term_ranges(&stem, terms, 64);
+            let n = stem.chars.len();
+            to_utf16(&stem.chars, (0, n), 0, ranges)
+        };
+        let mut matches = Vec::new();
+        let mut match_count = 0;
+        if scope != Scope::Names && !d.items.is_empty() {
+            let mut hits = collect_item_hits(d, terms);
+            match_count = hits.len() as u32;
+            hits.sort_by_key(|h| (std::cmp::Reverse(h.mask.count_ones()), !h.word_start, h.idx));
+            for h in hits.iter().take(MAX_MATCHES) {
+                let item = &d.items[h.idx];
+                debug_assert_eq!(d.item_text(h.idx), normalize(&item.text));
+                if let Some((snippet, highlights)) = build_snippet(&item.text, terms) {
+                    matches.push(ElementMatch {
+                        element_id: item.element_id.to_string(),
+                        container_id: item.container_id.as_deref().map(str::to_string),
+                        kind: item.kind,
+                        snippet,
+                        highlights,
+                    });
+                }
+            }
+        }
+        SearchHit { path: path.to_string(), name, score, name_highlights, matches, match_count }
+    }
+
+    /// Drawings whose name/path or text contains every whitespace-separated term,
+    /// best first, at most `limit`; also the total number of matching drawings.
+    pub(crate) fn query(&self, q: &str, scope: Scope, limit: usize) -> (Vec<SearchHit>, usize) {
+        let terms = parse_terms(q);
+        if terms.is_empty() || limit == 0 {
+            return (Vec::new(), 0);
+        }
+        let mut scored: Vec<Scored> = self
+            .docs
+            .iter()
+            .filter_map(|(path, doc)| self.score_doc(doc, &terms, scope).map(|score| Scored { path, doc, score }))
+            .collect();
+        let total = scored.len();
+        let cmp = |a: &Scored, b: &Scored| b.score.total_cmp(&a.score).then(a.path.len().cmp(&b.path.len())).then_with(|| a.path.cmp(b.path));
+        if total > limit {
+            scored.select_nth_unstable_by(limit, cmp);
+            scored.truncate(limit);
+        }
+        scored.sort_by(cmp);
+        let hits = scored.iter().map(|s| self.build_hit(s.path, s.doc, s.score, &terms, scope)).collect();
+        (hits, total)
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use crate::search::extract::ItemKind;
+
+    fn text(id: &str, container: Option<&str>, t: &str) -> TextItem {
+        TextItem { element_id: id.into(), container_id: container.map(Into::into), kind: ItemKind::Text, text: t.into() }
+    }
+
+    fn index(docs: &[(&str, &[&str])]) -> Index {
+        let mut idx = Index::default();
+        for (path, texts) in docs {
+            let items = texts.iter().enumerate().map(|(i, t)| text(&format!("e{i}"), None, t)).collect();
+            idx.upsert(path.to_string(), DocEntry::new(path, (1, 1), items));
+        }
+        idx
+    }
+
+    fn paths(hits: &[SearchHit]) -> Vec<&str> {
+        hits.iter().map(|h| h.path.as_str()).collect()
+    }
+
+    #[test]
+    fn and_semantics_across_name_and_content() {
+        let idx = index(&[("auth.excalidraw", &["Login flow", "Token"]), ("other.excalidraw", &["login"]), ("misc/notes.excalidraw", &["token", "login"])]);
+        let (hits, total) = idx.query("login token", Scope::All, 10);
+        assert_eq!(total, 2);
+        assert_eq!(paths(&hits).len(), 2);
+        assert!(!paths(&hits).contains(&"other.excalidraw"));
+        // name + content split across fields still matches
+        let (hits, _) = idx.query("auth token", Scope::All, 10);
+        assert_eq!(paths(&hits), vec!["auth.excalidraw"]);
+    }
+
+    #[test]
+    fn prefix_midword_and_accent_insensitive() {
+        let idx = index(&[("a.excalidraw", &["Dijkstra algorithm", "Café"])]);
+        assert_eq!(idx.query("dijk", Scope::All, 5).1, 1);
+        assert_eq!(idx.query("kstra", Scope::All, 5).1, 1);
+        assert_eq!(idx.query("CAFE", Scope::All, 5).1, 1);
+        assert_eq!(idx.query("zzz", Scope::All, 5).1, 0);
+        assert_eq!(idx.query("   ", Scope::All, 5).1, 0);
+    }
+
+    #[test]
+    fn cjk_substring_and_dakuten() {
+        let idx = index(&[("a.excalidraw", &["数据库设计", "がっこう"])]);
+        assert_eq!(idx.query("据库", Scope::Content, 5).1, 1);
+        assert_eq!(idx.query("が", Scope::Content, 5).1, 1);
+        assert_eq!(idx.query("か", Scope::Content, 5).1, 0);
+    }
+
+    #[test]
+    fn scope_names_and_content() {
+        let idx = index(&[("planning.excalidraw", &["budget"]), ("budget.excalidraw", &["x"])]);
+        assert_eq!(paths(&idx.query("budget", Scope::Names, 5).0), vec!["budget.excalidraw"]);
+        assert_eq!(paths(&idx.query("budget", Scope::Content, 5).0), vec!["planning.excalidraw"]);
+        assert_eq!(idx.query("budget", Scope::All, 5).1, 2);
+        // extension and nothing else never matches names
+        assert_eq!(idx.query("excalidraw", Scope::Names, 5).1, 0);
+    }
+
+    #[test]
+    fn ranking_name_beats_content_and_ties_prefer_short_paths() {
+        let idx = index(&[
+            ("notes.excalidraw", &["roadmap"]),
+            ("roadmap.excalidraw", &["nothing"]),
+            ("a/b/c/same.excalidraw", &["roadmap"]),
+            ("same2.excalidraw", &["roadmap"]),
+        ]);
+        let (hits, _) = idx.query("roadmap", Scope::All, 10);
+        assert_eq!(hits[0].path, "roadmap.excalidraw");
+        assert_eq!(hits[1].path, "notes.excalidraw");
+        assert_eq!(hits[2].path, "same2.excalidraw");
+        assert_eq!(hits[3].path, "a/b/c/same.excalidraw");
+        // exact whole-item beats mid-word
+        let idx = index(&[("x.excalidraw", &["subtree"]), ("y.excalidraw", &["tree"])]);
+        assert_eq!(idx.query("tree", Scope::Content, 5).0[0].path, "y.excalidraw");
+    }
+
+    #[test]
+    fn limit_truncates_but_total_counts_all() {
+        let docs: Vec<(String, Vec<&str>)> = (0..30).map(|i| (format!("d{i}.excalidraw"), vec!["hello"])).collect();
+        let refs: Vec<(&str, &[&str])> = docs.iter().map(|(p, t)| (p.as_str(), t.as_slice())).collect();
+        let (hits, total) = index(&refs).query("hello", Scope::All, 7);
+        assert_eq!((hits.len(), total), (7, 30));
+    }
+
+    #[test]
+    fn snippet_highlights_are_utf16_with_emoji_and_accents() {
+        let idx = index(&[("a.excalidraw", &["😀 Café au lait"])]);
+        let (hits, _) = idx.query("cafe", Scope::Content, 5);
+        let m = &hits[0].matches[0];
+        assert_eq!(m.snippet, "😀 Café au lait");
+        // 😀 = 2 UTF-16 units, space = 1, so "Café" spans [3, 7).
+        assert_eq!(m.highlights, vec![[3, 7]]);
+        let units: Vec<u16> = m.snippet.encode_utf16().collect();
+        assert_eq!(String::from_utf16(&units[3..7]).unwrap(), "Café");
+    }
+
+    #[test]
+    fn long_snippets_are_cut_with_ellipses_around_the_match() {
+        let long = format!("{} needle {}", "word ".repeat(60), "tail ".repeat(60));
+        let idx = index(&[("a.excalidraw", &[long.as_str()])]);
+        let m = &idx.query("needle", Scope::Content, 5).0[0].matches[0];
+        assert!(m.snippet.starts_with('…') && m.snippet.ends_with('…'));
+        assert!(m.snippet.chars().count() <= SNIPPET_CHARS + 2);
+        let units: Vec<u16> = m.snippet.encode_utf16().collect();
+        let [a, b] = m.highlights[0];
+        assert_eq!(String::from_utf16(&units[a as usize..b as usize]).unwrap(), "needle");
+    }
+
+    #[test]
+    fn matches_prefer_items_with_more_terms_and_report_count() {
+        let idx = index(&[("a.excalidraw", &["alpha", "beta", "alpha beta", "alpha again", "alpha more", "alpha last", "alpha x"])]);
+        let hit = &idx.query("alpha beta", Scope::Content, 5).0[0];
+        assert_eq!(hit.matches[0].snippet, "alpha beta");
+        assert_eq!(hit.matches.len(), MAX_MATCHES);
+        assert_eq!(hit.match_count, 7);
+        assert_eq!(hit.matches[0].element_id, "e2");
+    }
+
+    #[test]
+    fn name_highlights_index_into_the_file_name() {
+        let idx = index(&[("dir/Über Plan.excalidraw", &[])]);
+        let hit = &idx.query("plan", Scope::Names, 5).0[0];
+        assert_eq!(hit.name, "Über Plan.excalidraw");
+        assert_eq!(hit.name_highlights, vec![[5, 9]]);
+    }
+
+    #[test]
+    fn name_only_entries_match_and_remove_prefix_works() {
+        let mut idx = Index::default();
+        idx.upsert("f/a.excalidraw".into(), DocEntry::name_only("f/a.excalidraw"));
+        idx.upsert("fx/b.excalidraw".into(), DocEntry::name_only("fx/b.excalidraw"));
+        assert_eq!(idx.query("f", Scope::Names, 5).1, 2); // folder part of the path matches too
+        assert_eq!(idx.counts(), (0, 2));
+        assert_eq!(idx.remove_prefix("f/"), 1);
+        assert!(idx.contains("fx/b.excalidraw"));
+    }
+
+    #[test]
+    fn for_each_item_visits_everything() {
+        let idx = index(&[("a.excalidraw", &["one", "two"]), ("b.excalidraw", &["three"])]);
+        let mut n = 0;
+        idx.for_each_item(|_, _| n += 1);
+        assert_eq!(n, 3);
+    }
+
+    #[test]
+    fn rebuild_detects_inconsistency() {
+        let mut d = DocEntry::new("a.excalidraw", (1, 1), vec![text("a", None, "x"), text("b", None, "y")]);
+        assert!(d.rebuild("a.excalidraw"));
+        d.items.pop();
+        assert!(!d.rebuild("a.excalidraw"));
+    }
+}

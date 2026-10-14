@@ -14,6 +14,7 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager, State};
 
 mod config;
+mod search;
 mod themes;
 mod vault_settings;
 #[cfg(feature = "smoke-test")]
@@ -495,6 +496,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
             }
             paths.sort();
             paths.dedup();
+            if let Some(search) = app_handle.try_state::<search::SearchService>() {
+                search.notify(&h, &paths, rescan);
+            }
             if settings_changed {
                 let _ = app_handle.emit("vault-settings-change", VaultSettingsChange { handle: h.clone() });
             }
@@ -540,6 +544,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         .lock()
         .map_err(|_| err("INTERNAL", "Vault state unavailable"))?
         .insert(handle.clone(), vault);
+    if let Some(search) = app.try_state::<search::SearchService>() {
+        search.start(&handle, root.clone(), search::tauri_emitter(app));
+    }
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -606,12 +613,15 @@ async fn reopen_vault(app: AppHandle, state: State<'_, Service>) -> Result<Optio
     open_vault(path, &app, &state).map(Some)
 }
 #[tauri::command]
-async fn release_vault(handle: String, state: State<'_, Service>) -> Result<()> {
+async fn release_vault(handle: String, app: AppHandle, state: State<'_, Service>) -> Result<()> {
     state
         .vaults
         .lock()
         .map_err(|_| err("INTERNAL", "Vault state unavailable"))?
         .remove(&handle);
+    if let Some(search) = app.try_state::<search::SearchService>() {
+        search.stop(&handle);
+    }
     Ok(())
 }
 #[tauri::command]
@@ -1086,6 +1096,7 @@ pub fn run() {
     {
         let builder = tauri::Builder::default()
             .manage(Service::default())
+            .manage(search::SearchService::default())
             .setup(|app| {
                 // The main window is declared in tauri.conf.json with `create: false`
                 // and built here so macOS can use a custom webview configuration.
@@ -1122,6 +1133,7 @@ pub fn run() {
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
+                search::search_vault, search::search_index_status,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish
             ])
         } else {
@@ -1131,7 +1143,8 @@ pub fn run() {
                 export_file, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
-                vault_settings::load_vault_settings, vault_settings::update_vault_settings
+                vault_settings::load_vault_settings, vault_settings::update_vault_settings,
+                search::search_vault, search::search_index_status
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1141,7 +1154,8 @@ pub fn run() {
             export_file, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
-            vault_settings::load_vault_settings, vault_settings::update_vault_settings
+            vault_settings::load_vault_settings, vault_settings::update_vault_settings,
+            search::search_vault, search::search_index_status
         ]);
         let app = builder
             .build(tauri::generate_context!())
