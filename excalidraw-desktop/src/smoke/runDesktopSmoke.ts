@@ -1159,34 +1159,64 @@ export async function runDesktopSmoke(): Promise<void> {
         );
       const editor = () =>
         doc.querySelector<HTMLTextAreaElement>("textarea.excalidraw-wysiwyg");
-      const docIdBefore = root
-        .querySelector(".vault-editor")
-        ?.getAttribute("data-document-id");
-      key("Escape");
-      key("a", { metaKey: true, ctrlKey: true });
-      await delay(win, 150);
-      key("Enter");
-      await delay(win, 300);
-      if (!editor()) {
-        throw new Error(
-          `Enter on the selected rectangle did not open a text editor: ${JSON.stringify(
-            {
-              docIdBefore,
-              docIdAfter: root
-                .querySelector(".vault-editor")
-                ?.getAttribute("data-document-id"),
-              active: doc.activeElement?.className,
-              hasFocus: doc.hasFocus(),
-            },
-          )}`,
-        );
-      }
-      // A smoke-launched window may not be the key window, so focus may not
-      // have been granted by the OS; focus explicitly as a user click would.
-      if (doc.activeElement !== editor()) {
-        editor()!.focus();
-      }
-      const focusedInitially = doc.activeElement === editor();
+      const docId = () =>
+        root.querySelector(".vault-editor")?.getAttribute("data-document-id");
+      const docIdBefore = docId();
+      // Excalidraw commits the WYSIWYG editor on blur, and WebKit blurs the
+      // focused element whenever the window stops being the key window (app
+      // switch, a tiling window manager moving focus). That is upstream
+      // behaviour and keeps the text, but it is not what this step tests, so
+      // record focus changes and tell OS focus loss apart from an app bug.
+      const focusLog: Array<Record<string, unknown>> = [];
+      const t0 = win.performance.now();
+      const onWindowBlur = () =>
+        focusLog.push({
+          event: "window-blur",
+          ms: Math.round(win.performance.now() - t0),
+        });
+      const onFocusOut = (event: FocusEvent) => {
+        if (
+          (event.target as Element | null)?.matches?.(
+            "textarea.excalidraw-wysiwyg",
+          )
+        ) {
+          focusLog.push({
+            event: "editor-blur",
+            ms: Math.round(win.performance.now() - t0),
+            windowFocused: doc.hasFocus(),
+            to:
+              (event.relatedTarget as Element | null)?.className?.toString() ??
+              null,
+          });
+        }
+      };
+      win.addEventListener("blur", onWindowBlur);
+      doc.addEventListener("focusout", onFocusOut, true);
+      const openEditor = async () => {
+        key("Escape");
+        key("a", { metaKey: true, ctrlKey: true });
+        await delay(win, 150);
+        key("Enter");
+        await delay(win, 300);
+        if (!editor()) {
+          throw new Error(
+            `Enter on the selected rectangle did not open a text editor: ${JSON.stringify(
+              {
+                docIdBefore,
+                docIdAfter: docId(),
+                active: doc.activeElement?.className,
+                hasFocus: doc.hasFocus(),
+              },
+            )}`,
+          );
+        }
+        // A smoke-launched window may not be the key window, so focus may not
+        // have been granted by the OS; focus explicitly as a user click would.
+        if (doc.activeElement !== editor()) {
+          editor()!.focus();
+        }
+        return doc.activeElement === editor();
+      };
       const type = (text: string) => {
         const textarea = editor();
         if (!textarea) {
@@ -1201,15 +1231,70 @@ export async function runDesktopSmoke(): Promise<void> {
           }),
         );
       };
-      type("Smoke");
-      // Longer than the autosave debounce so the native write and its
-      // watcher echo both land while the editor is still open.
-      await delay(win, 3000);
-      if (!editor()) {
-        throw new Error("Text editor closed after autosave");
-      }
-      if (focusedInitially && doc.activeElement !== editor()) {
-        throw new Error("Text editor lost focus after autosave");
+      let focusedInitially = false;
+      const osFocusLosses: Array<Record<string, unknown>> = [];
+      try {
+        focusedInitially = await openEditor();
+        type("Smoke");
+        for (let attempt = 1; ; attempt++) {
+          const logged = focusLog.length;
+          // Longer than the autosave debounce so the native write and its
+          // watcher echo both land while the editor is still open.
+          await delay(win, 3000);
+          const open = !!editor();
+          const focused = doc.activeElement === editor();
+          if (open && (!focusedInitially || focused)) {
+            break;
+          }
+          const events = focusLog.slice(logged);
+          const diagnostics = JSON.stringify({
+            attempt,
+            editorOpen: open,
+            docIdBefore,
+            docIdAfter: docId(),
+            active: doc.activeElement?.className?.toString().slice(0, 80),
+            windowFocused: doc.hasFocus(),
+            events,
+          });
+          if (docId() !== docIdBefore) {
+            // The scene was reloaded under the editor: the real bug.
+            throw new Error(
+              `Text editor remounted during autosave: ${diagnostics}`,
+            );
+          }
+          const osFocusLost = events.some(
+            (e) => e.event === "window-blur" || e.windowFocused === false,
+          );
+          if (!osFocusLost) {
+            throw new Error(
+              `Text editor ${
+                open ? "lost focus" : "closed"
+              } after autosave without OS focus loss: ${diagnostics}`,
+            );
+          }
+          osFocusLosses.push(JSON.parse(diagnostics));
+          if (attempt >= 3) {
+            throw new Error(
+              `The window kept losing OS focus while the text editor was open (environment, not autosave): ${diagnostics}`,
+            );
+          }
+          // Reopen the label: the blur committed it, nothing typed is lost.
+          if (!open || !focused) {
+            key("Escape");
+            await delay(win, 100);
+            await openEditor();
+          }
+          if (editor()!.value !== "Smoke") {
+            throw new Error(
+              `Typed text lost after OS focus loss: ${JSON.stringify(
+                editor()!.value,
+              )}`,
+            );
+          }
+        }
+      } finally {
+        win.removeEventListener("blur", onWindowBlur);
+        doc.removeEventListener("focusout", onFocusOut, true);
       }
       type(" text");
       editor()!.dispatchEvent(
@@ -1242,6 +1327,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return {
         savedTexts: texts,
         focusedInitially,
+        osFocusLosses,
         gesture: "select rectangle + Enter",
         caveat:
           "text inserted via input events on the real WYSIWYG textarea, not OS keystrokes",

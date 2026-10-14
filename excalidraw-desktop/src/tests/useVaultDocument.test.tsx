@@ -334,6 +334,62 @@ describe("useVaultDocument watcher revision probe", () => {
     expect(repo.reads).toBe(1);
   });
 
+  // Native watcher echoes of our own saves arrive after the write is
+  // acknowledged, often while the user keeps typing. A reload would remount the
+  // editor (closing an open text editor) and a conflict would stop autosave.
+  it("own-save echoes while typing never reload or conflict", async () => {
+    const repo = new ProbingRepository();
+    repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
+    const { result } = renderHook(() =>
+      useVaultDocument(repo, vaultOf(repo), { autosaveDelayMs: 60_000 }),
+    );
+    await openPath(result, "a.excalidraw");
+    const id = result.current.document?.id;
+    const echo = () =>
+      act(() => {
+        repo.emit({
+          handle: repo.vault.handle,
+          paths: ["a.excalidraw"],
+          rescan: false,
+        });
+      });
+    const settle = () =>
+      act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+    // Save 1 (its in-write echo is handled by the in-flight barrier).
+    act(() => result.current.change(editedSampleScene()));
+    await act(async () => {
+      await result.current.flush({ commitText: false });
+    });
+    // The user types on; the edit is pending, then save 1's late echo lands.
+    act(() => result.current.change(BLANK_SCENE));
+    repo.reads = 0;
+    echo();
+    await settle();
+    expect(result.current.status).toBe("dirty");
+    expect(result.current.document?.id).toBe(id);
+    expect(repo.reads).toBe(0);
+
+    // Late echo arriving while the next save is in flight.
+    repo.latencyMs = 15;
+    let saving!: Promise<void>;
+    act(() => {
+      saving = result.current.flush({ commitText: false });
+    });
+    echo();
+    await act(async () => {
+      await saving;
+    });
+    await settle();
+    expect(result.current.status).toBe("saved");
+    expect(result.current.document?.id).toBe(id);
+    expect((await repo.readDrawing(repo.handle, "a.excalidraw")).json).toBe(
+      BLANK_SCENE,
+    );
+  });
+
   it("treats a missing file from the probe as a deletion", async () => {
     const repo = new ProbingRepository();
     repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
