@@ -35,6 +35,11 @@ mod test_alloc;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 
+// Test builds use the counting allocator in test_alloc.rs (a crate has one global allocator).
+#[cfg(not(test))]
+#[global_allocator]
+static ALLOC: memory::ProcessAlloc = memory::PROCESS_ALLOC;
+
 const MAX_DRAWING_BYTES: u64 = 32 * 1024 * 1024;
 /// Exported files (PNG, SVG, multi-page PDF) may be much larger than a drawing.
 const MAX_EXPORT_BYTES: u64 = 256 * 1024 * 1024;
