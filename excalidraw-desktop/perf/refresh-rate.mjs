@@ -22,7 +22,7 @@ run's temp config dir; the file itself is only read.
 
 Builds the perf app (smoke-test feature, temp config/state dirs; never the user's), launches it once
 (~1-2 min, the window opens in the background) and prints effective fps / rendered Hz per scenario.
-Exit 1 if a zoom or pan pass falls below 110 fps on a 120 Hz screen, 2 if the screen is locked.
+Exit 1 if a native zoom or pan pass falls below 110 fps (or 100 drawn Hz) on a 120 Hz screen, 2 if the screen is locked.
 Wrap in the shared build lock:
   lockf -k /Users/kalon/Opensource/excalidraw/.cache/build.lock node excalidraw-desktop/perf/refresh-rate.mjs
 `;
@@ -150,6 +150,9 @@ console.log(`screen: ${d.display?.screenName ?? "?"} max ${d.display?.screenMaxF
 console.log(`60 fps cap flag: ${JSON.stringify(d.flag ?? null)}; live: near60fps enabled=${d.display?.liveNear60fpsEnabled}`);
 console.log("");
 console.log(table(result.passes));
+if (d.window && (d.window.width < 2400 || d.window.height < 1600)) {
+  console.log(`WARNING: the window is ${d.window.width}x${d.window.height} device px (a tiling window manager may have shrunk it); compare runs only at equal window sizes`);
+}
 console.log(`window ${JSON.stringify(d.window ?? null)}; static canvas ${result.passes.find((p) => p.canvas)?.canvas ?? "?"} device px`);
 console.log(`\nfps = rendering updates/s; drawnHz = frames/s that showed a new canvas render; multi = frames that drew the scene 2+ times;`);
 console.log(`jsP50/P95 = static-render script ms per rendering frame; js% = share of the pass in that script; cpu* = % of a core (WebContent, GPU, app processes).`);
@@ -157,6 +160,8 @@ console.log(`JSON: ${out}`);
 for (const e of run.errors) log(`error: ${e}`);
 
 const gated = result.passes.filter((p) => p.input !== "idle" && p.input.endsWith(".native") || p.input.endsWith(".native.out")).filter((p) => !p.error && !p.noEffect);
-const failing = (result.displayHz ?? 0) >= 120 ? gated.filter((p) => p.stats.fps < BUDGET_FPS || p.stats.renderHz < BUDGET_FPS) : [];
-if (failing.length) log(`${failing.length} native zoom/pan passes below ${BUDGET_FPS} fps or drawn Hz`);
+// Drawn Hz also carries the injected input's timing jitter, so its floor is lower.
+const BUDGET_DRAWN_HZ = 100;
+const failing = (result.displayHz ?? 0) >= 120 ? gated.filter((p) => p.stats.fps < BUDGET_FPS || p.stats.renderHz < BUDGET_DRAWN_HZ) : [];
+if (failing.length) log(`${failing.length} native zoom/pan passes below ${BUDGET_FPS} fps or ${BUDGET_DRAWN_HZ} drawn Hz: ${failing.map((p) => `${p.drawing.replace(/\.excalidraw$/, "")} ${p.input}`).join(", ")}`);
 process.exit(run.errors.length || failing.length || !result.passes.length ? 1 : 0);

@@ -54,14 +54,14 @@
       "better": "higher",
       "desc": "refresh-rate probe: frames per second that showed a new static-canvas render while zooming (what the eye sees)",
       "gate": ["median", "min"],
-      "budgets": [{ "stat": "min", "min": 110 }]
+      "budgets": [{ "stat": "min", "min": 100, "why": "drawn Hz also carries the jitter of the injected input (~118 events/s, not vsync-locked)" }]
     },
     "pan.renderHz": {
       "unit": "Hz",
       "better": "higher",
       "desc": "refresh-rate probe: frames per second that showed a new static-canvas render while panning",
       "gate": ["median", "min"],
-      "budgets": [{ "stat": "min", "min": 110 }]
+      "budgets": [{ "stat": "min", "min": 100, "why": "drawn Hz also carries the jitter of the injected input (~118 events/s, not vsync-locked)" }]
     },
     "zoom.framesLe9msPct": { "unit": "%", "better": "higher", "desc": "refresh-rate probe: share of frame intervals <= 9 ms while zooming", "gate": ["median"] },
     "pan.framesLe9msPct": { "unit": "%", "better": "higher", "desc": "refresh-rate probe: share of frame intervals <= 9 ms while panning", "gate": ["median"] },

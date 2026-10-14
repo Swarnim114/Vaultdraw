@@ -454,13 +454,44 @@ const PAPER = {
 
 export const refreshRatePath = (pattern, elements) => `hz-${pattern}-${elements}.excalidraw`;
 
+/**
+ * scrollX/scrollY/zoom that fit the elements' bounds into a 1200x800 CSS
+ * viewport (centred, zoom 0.1..1.5), so a probe drawing opens with its
+ * content on screen whatever view it was saved with.
+ */
+export function fitView(elements, width = 1200, height = 800) {
+  let [x1, y1, x2, y2] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const e of elements) {
+    const xs = [e.x, e.x + (e.width ?? 0)];
+    const ys = [e.y, e.y + (e.height ?? 0)];
+    for (const [px, py] of e.points ?? []) {
+      xs.push(e.x + px);
+      ys.push(e.y + py);
+    }
+    x1 = Math.min(x1, ...xs);
+    y1 = Math.min(y1, ...ys);
+    x2 = Math.max(x2, ...xs);
+    y2 = Math.max(y2, ...ys);
+  }
+  if (!Number.isFinite(x1)) return { scrollX: 0, scrollY: 0, zoom: { value: 1 } };
+  const zoom = Math.min(1.5, Math.max(0.1, Math.min(width / (x2 - x1 || 1), height / (y2 - y1 || 1))));
+  // viewport = (scene + scroll) * zoom
+  return {
+    scrollX: width / (2 * zoom) - (x1 + x2) / 2,
+    scrollY: height / (2 * zoom) - (y1 + y2) / 2,
+    zoom: { value: Math.round(zoom * 100) / 100 },
+  };
+}
+
 /** Copies of a real drawing, one per paper style (same content, pattern swapped): [{ rel, json, pattern, elements }]. */
 export function paperVariants(json, patterns, prefix = "user") {
   const scene = JSON.parse(json);
-  const elements = (scene.elements ?? []).filter((e) => !e.isDeleted).length;
+  const live = (scene.elements ?? []).filter((e) => !e.isDeleted);
+  const elements = live.length;
+  const view = fitView(live);
   return patterns.map((pattern) => {
     if (!(pattern in PAPER)) throw new Error(`unknown paper style ${pattern}`);
-    const copy = { ...scene, appState: { ...scene.appState, viewBackgroundPattern: PAPER[pattern] } };
+    const copy = { ...scene, appState: { ...scene.appState, ...view, viewBackgroundPattern: PAPER[pattern] } };
     return { rel: `${prefix}-${pattern}.excalidraw`, json: JSON.stringify(copy), pattern, elements };
   });
 }
