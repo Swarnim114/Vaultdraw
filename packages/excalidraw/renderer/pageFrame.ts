@@ -1,11 +1,12 @@
 /**
- * Page mode, on-screen frame: the neutral surround, the visible pages
- * (shadow, border, paper) and the clip that keeps the notebook pattern on
- * the paper. Exports are not drawn here (they clip to page rects elsewhere).
+ * Page mode, on-screen frame. The canvas is first filled with the paper
+ * colour and the pattern/grid drawn exactly as in normal mode; this module
+ * then paints only the complement of the visible pages (the surround), plus
+ * the shadows, borders and break lines, which all lie outside the paper.
+ * No overdraw, no clip. Exports are not drawn here.
  *
- * Per frame: a few fillRects per visible page and one clip. Everything is
- * drawn in device pixels with edges snapped to whole pixels, so page edges
- * stay crisp while panning and zooming. No blur, no per-frame strings.
+ * Per frame: a handful of thin fillRects. Everything is in device pixels
+ * with edges snapped to whole pixels, so page edges stay crisp. No blur.
  */
 
 import {
@@ -33,39 +34,36 @@ const BREAK_DARK = "rgba(255,255,255,0.14)";
 /** Same fields the notebook pattern needs (device px size, dpr, scroll). */
 export type PageFrameView = BackgroundPatternView;
 
-export type PageFrameColors = {
-  /** on-screen paper colour: applyCanvasBackgroundFilter(viewBackgroundColor) */
-  paper: string;
-};
-
-/** Visible page rects in device px, flat [left, top, right, bottom, ...]. */
-export type PageClip = number[];
-
 export const getPageSurroundColor = (isDarkMode: boolean) =>
   isDarkMode ? PAGE_SURROUND_DARK : PAGE_SURROUND_LIGHT;
 
-/**
- * Draws the surround and the visible pages. Returns the clip for the pattern
- * (empty when no page is in view: clips everything; the surround is still drawn).
- */
-export const renderPageFrame = (
-  context: CanvasRenderingContext2D,
+type PageLayout = {
+  left: number;
+  right: number;
+  /** left/right clamped to the canvas */
+  L: number;
+  R: number;
+  first: number;
+  last: number;
+  separate: boolean;
+  dp: number;
+  snap: (v: number) => number;
+  /** sheet extents (device px): each visible page, or one long sheet */
+  tops: number[];
+  bottoms: number[];
+};
+
+/** Visible page rects in device px (null when no page is in view). */
+const getPageLayout = (
   setup: PageSetup,
   view: PageFrameView,
-  colors: PageFrameColors,
-): PageClip => {
-  const { scrollX, scrollY, scale, width, height, isDarkMode } = view;
+): PageLayout | null => {
+  const { scrollX, scrollY, scale, width, height } = view;
   const dp = view.zoom * scale; // device px per scene unit
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.fillStyle = getPageSurroundColor(isDarkMode);
-  context.fillRect(0, 0, width, height);
-
   const range =
     dp > 0 ? getPageIndexRange(setup, -scrollY, -scrollY + height / dp) : null;
   if (!range) {
-    context.restore();
-    return [];
+    return null;
   }
   const [first, last] = range;
   const separate = setup.layout === "separate";
@@ -75,70 +73,124 @@ export const renderPageFrame = (
   const hiX = width + 4;
   const hiY = height + 4;
   const clampTo = (v: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
-
   const left = clampTo(snap(scrollX), hiX);
   const right = clampTo(snap(setup.width + scrollX), hiX);
-  const clip: PageClip = [];
-  const border = isDarkMode ? BORDER_DARK : BORDER_LIGHT;
-
-  // the sheets to draw: each visible page, or one long sheet when continuous
   const sheets = separate ? last - first + 1 : 1;
+  const tops: number[] = [];
+  const bottoms: number[] = [];
   for (let i = 0; i < sheets; i++) {
     const top = getPageRect(setup, first + i).y;
     const bottom = separate
       ? top + setup.height
       : getPageRect(setup, last).y + setup.height;
-    const t = clampTo(snap(top + scrollY), hiY);
-    const b = clampTo(snap(bottom + scrollY), hiY);
-    if (separate) {
-      const d = Math.max(1, Math.round(scale * 2));
-      context.fillStyle = isDarkMode ? SHADOW_DARK_FAR : SHADOW_LIGHT_FAR;
-      context.fillRect(left + 2 * d, t + 2 * d, right - left, b - t);
-      context.fillStyle = isDarkMode ? SHADOW_DARK_NEAR : SHADOW_LIGHT_NEAR;
-      context.fillRect(left + d, t + d, right - left, b - t);
+    tops.push(clampTo(snap(top + scrollY), hiY));
+    bottoms.push(clampTo(snap(bottom + scrollY), hiY));
+  }
+  return {
+    left,
+    right,
+    L: Math.max(0, left),
+    R: Math.min(width, right),
+    first,
+    last,
+    separate,
+    dp,
+    snap,
+    tops,
+    bottoms,
+  };
+};
+
+const fillRectSafe = (
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) => {
+  if (w > 0 && h > 0) {
+    context.fillRect(x, y, w, h);
+  }
+};
+
+/**
+ * Paints the surround, shadows, borders and break lines around the visible
+ * pages. Call after the pattern/grid and before the elements; the canvas must
+ * already hold the paper colour everywhere (bootstrapCanvas).
+ */
+export const renderPageSurround = (
+  context: CanvasRenderingContext2D,
+  setup: PageSetup,
+  view: PageFrameView,
+) => {
+  const { scrollY, scale, width, height, isDarkMode } = view;
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  const surround = getPageSurroundColor(isDarkMode);
+  const fill = (x: number, y: number, w: number, h: number) =>
+    fillRectSafe(context, x, y, w, h);
+
+  const layout = getPageLayout(setup, view);
+  if (!layout) {
+    context.fillStyle = surround;
+    context.fillRect(0, 0, width, height);
+    context.restore();
+    return;
+  }
+  const { left, right, L, R, first, last, separate, snap, tops, bottoms } =
+    layout;
+  const sheets = tops.length;
+  const hiY = height + 4;
+  const border = isDarkMode ? BORDER_DARK : BORDER_LIGHT;
+
+  // 1. surround: side strips (full height) and the gaps inside the column
+  context.fillStyle = surround;
+  fill(0, 0, L, height);
+  fill(R, 0, width - R, height);
+  let cursor = 0;
+  for (let i = 0; i < sheets; i++) {
+    fill(L, cursor, R - L, Math.min(tops[i], height) - cursor);
+    cursor = Math.max(cursor, Math.min(bottoms[i], height));
+  }
+  fill(L, cursor, R - L, height - cursor);
+
+  // 2. shadows (separate): only the L-shaped parts outside the page,
+  // far first then near, never over the next page
+  if (separate) {
+    const d = Math.max(1, Math.round(scale * 2));
+    for (const [style, k] of [
+      [isDarkMode ? SHADOW_DARK_FAR : SHADOW_LIGHT_FAR, 2 * d],
+      [isDarkMode ? SHADOW_DARK_NEAR : SHADOW_LIGHT_NEAR, d],
+    ] as const) {
+      context.fillStyle = style;
+      for (let i = 0; i < sheets; i++) {
+        const t = tops[i];
+        const b = bottoms[i];
+        const end = Math.min(b + k, i + 1 < sheets ? tops[i + 1] : hiY);
+        fill(right, t + k, k, end - (t + k));
+        fill(left + k, b, right - left - k, end - b);
+      }
     }
-    // 1 device-px border around the paper
-    context.fillStyle = border;
-    context.fillRect(left - 1, t - 1, right - left + 2, b - t + 2);
-    context.fillStyle = colors.paper;
-    context.fillRect(left, t, right - left, b - t);
-    clip.push(left, t, right, b);
   }
 
+  // 3. 1 device-px borders around the paper
+  context.fillStyle = border;
+  for (let i = 0; i < sheets; i++) {
+    const t = tops[i];
+    const b = bottoms[i];
+    fill(left - 1, t - 1, right - left + 2, 1);
+    fill(left - 1, b, right - left + 2, 1);
+    fill(left - 1, t, 1, b - t);
+    fill(right, t, 1, b - t);
+  }
+
+  // 4. faint line where the PDF pages split
   if (!separate && last > first) {
-    // faint line where the PDF pages split
     context.fillStyle = isDarkMode ? BREAK_DARK : BREAK_LIGHT;
     const pitch = getPagePitch(setup);
     for (let i = first + 1; i <= last; i++) {
-      context.fillRect(left, snap(i * pitch + scrollY), right - left, 1);
+      fill(left, snap(i * pitch + scrollY), right - left, 1);
     }
   }
-  context.restore();
-  return clip;
-};
-
-/** Runs `draw` clipped to the page rects (no clip when `clip` is null). */
-export const withPageClip = (
-  context: CanvasRenderingContext2D,
-  clip: PageClip | null,
-  draw: () => void,
-) => {
-  if (!clip) {
-    draw();
-    return;
-  }
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.beginPath();
-  for (let i = 0; i < clip.length; i += 4) {
-    context.rect(
-      clip[i],
-      clip[i + 1],
-      clip[i + 2] - clip[i],
-      clip[i + 3] - clip[i + 1],
-    );
-  }
-  context.clip();
-  draw();
   context.restore();
 };

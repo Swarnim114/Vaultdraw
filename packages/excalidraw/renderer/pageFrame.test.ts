@@ -3,8 +3,7 @@ import { DEFAULT_PAGE_SETUP, getPagePitch } from "../data/pageSetup";
 import {
   PAGE_SURROUND_DARK,
   PAGE_SURROUND_LIGHT,
-  renderPageFrame,
-  withPageClip,
+  renderPageSurround,
 } from "./pageFrame";
 
 import type { PageSetup } from "../data/pageSetup";
@@ -46,91 +45,114 @@ const setup = (over: Partial<PageSetup> = {}): PageSetup => ({
   ...over,
 });
 
-const PAPER = "#fff";
-const paperFills = (c: any) => c.fills.filter((f: any) => f.style === PAPER);
+const surroundFills = (c: any, dark = false) =>
+  c.fills.filter(
+    (f: any) => f.style === (dark ? PAGE_SURROUND_DARK : PAGE_SURROUND_LIGHT),
+  );
+const area = (fills: any[]) =>
+  fills.reduce((a: number, f: any) => a + f.rect[2] * f.rect[3], 0);
+const overlaps = (r: number[], x: number, y: number) =>
+  x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3];
 
-describe("renderPageFrame", () => {
-  it("fills the surround by theme, never through the paper colour", () => {
-    for (const [dark, color] of [
-      [false, PAGE_SURROUND_LIGHT],
-      [true, PAGE_SURROUND_DARK],
-    ] as const) {
-      const c = makeContext();
-      renderPageFrame(c, setup(), view({ isDarkMode: dark }), { paper: PAPER });
-      expect(c.fills[0]).toEqual({ style: color, rect: [0, 0, 1200, 800] });
+describe("renderPageSurround", () => {
+  it("separate: surround is exactly the complement of the visible pages", () => {
+    const s = setup();
+    const pitch = getPagePitch(s);
+    const c = makeContext();
+    renderPageSurround(c, s, view({ scrollY: 0, height: 1200 }));
+    const fills = surroundFills(c);
+    const pageArea = s.width * s.height + s.width * (1200 - pitch);
+    expect(area(fills)).toBe(1200 * 1200 - pageArea);
+    const inside = (x: number, y: number) =>
+      fills.some((f: any) => overlaps(f.rect, x, y));
+    expect(inside(110, 10)).toBe(false);
+    expect(inside(110, pitch + 10)).toBe(false);
+    expect(inside(110, s.height + 5)).toBe(true);
+    expect(inside(50, 10)).toBe(true);
+    expect(inside(100 + s.width + 50, 10)).toBe(true);
+    for (let i = 0; i < fills.length; i++) {
+      for (let j = i + 1; j < fills.length; j++) {
+        const a = fills[i].rect;
+        const b = fills[j].rect;
+        const hit =
+          a[0] < b[0] + b[2] &&
+          b[0] < a[0] + a[2] &&
+          a[1] < b[1] + b[3] &&
+          b[1] < a[1] + a[3];
+        expect(hit).toBe(false);
+      }
     }
   });
 
-  it("separate: draws only visible pages, gaps stay surround", () => {
-    const s = setup();
-    const pitch = getPagePitch(s);
-    const c = makeContext();
-    // view covers page 0 and part of page 1 (page 1 starts at pitch)
-    const clip = renderPageFrame(c, s, view({ scrollY: 0, height: 1200 }), {
-      paper: PAPER,
-    });
-    expect(clip).toEqual([
-      100,
-      0,
-      100 + s.width,
-      s.height,
-      100,
-      pitch,
-      100 + s.width,
-      pitch + s.height > 1200 ? 1204 : pitch + s.height,
-    ]);
-    expect(paperFills(c)).toHaveLength(2);
-    // the gap rows between pages are not covered by any paper fill
-    const gapY = s.height + 10;
-    expect(
-      paperFills(c).some(
-        (f: any) => f.rect[1] <= gapY && f.rect[1] + f.rect[3] > gapY,
-      ),
-    ).toBe(false);
-  });
-
-  it("separate: skips pages scrolled out of view", () => {
-    const s = setup();
-    const pitch = getPagePitch(s);
-    const c = makeContext();
-    const clip = renderPageFrame(
-      c,
-      s,
-      view({ scrollY: -(pitch * 3), height: 600 }),
-      {
-        paper: PAPER,
-      },
-    )!;
-    expect(clip).toHaveLength(4);
-    expect(paperFills(c)).toHaveLength(1);
-  });
-
-  it("continuous: one sheet and break lines at page splits", () => {
+  it("continuous: complement of the one sheet, with a break line", () => {
     const s = setup({ layout: "continuous" });
     const c = makeContext();
-    const clip = renderPageFrame(c, s, view({ scrollY: 0, height: 2000 }), {
-      paper: PAPER,
-    })!;
-    expect(clip).toHaveLength(4);
-    expect(paperFills(c)).toHaveLength(1);
-    // breaks at 1123 (1x) and the sheet end is clamped, one line per break
+    renderPageSurround(c, s, view({ scrollY: 0, height: 2000 }));
+    expect(area(surroundFills(c))).toBe(1200 * 2000 - s.width * 2000);
     const breaks = c.fills.filter((f: any) => f.rect[3] === 1);
-    expect(breaks).toHaveLength(1);
-    expect(breaks[0].rect[1]).toBe(s.height);
+    expect(breaks.some((f: any) => f.rect[1] === s.height)).toBe(true);
   });
 
-  it("returns an empty clip (and still the surround) when no page is visible", () => {
+  it("page top on screen: strip above the first page", () => {
     const c = makeContext();
-    const clip = renderPageFrame(c, setup(), view({ scrollY: 5000 }), {
-      paper: PAPER,
-    });
-    expect(clip).toEqual([]);
-    expect(c.fills).toHaveLength(1);
+    renderPageSurround(c, setup(), view({ scrollY: 50, height: 400 }));
+    const fills = surroundFills(c);
+    expect(fills.some((f: any) => overlaps(f.rect, 300, 20))).toBe(true);
+    expect(fills.some((f: any) => overlaps(f.rect, 300, 60))).toBe(false);
   });
 
-  it("snaps edges to device pixels and scales borders", () => {
+  it("uses the dark surround colour in dark mode", () => {
     const c = makeContext();
-    const clip = renderPageFrame(
+    renderPageSurround(c, setup(), view({ isDarkMode: true }));
+    expect(surroundFills(c, true).length).toBeGreaterThan(0);
+    expect(surroundFills(c, false)).toHaveLength(0);
+  });
+
+  it("zoomed in past the page edges: no side strips", () => {
+    const c = makeContext();
+    renderPageSurround(
+      c,
+      setup(),
+      view({ scrollX: -50, zoom: 4, width: 1000, height: 600 }),
+    );
+    expect(
+      surroundFills(c).every((f: any) => f.rect[0] === 0 && f.rect[2] === 1000),
+    ).toBe(true);
+  });
+
+  it("no page visible: one full surround fill", () => {
+    const c = makeContext();
+    renderPageSurround(c, setup(), view({ scrollY: 5000 }));
+    expect(c.fills).toEqual([
+      { style: PAGE_SURROUND_LIGHT, rect: [0, 0, 1200, 800] },
+    ]);
+  });
+
+  it("never clips, no shadowBlur, bounded number of draws", () => {
+    const c = makeContext();
+    renderPageSurround(c, setup({ pageCount: 500 }), view({ height: 4000 }));
+    expect(c.ops).not.toContain("clip");
+    expect(c.ops).not.toContain("beginPath");
+    expect(c.shadowBlur).toBeUndefined();
+    expect(c.fills.length).toBeLessThan(60);
+  });
+
+  it("shadows never paint over the next page when the gap is tiny", () => {
+    const s = setup();
+    const c = makeContext();
+    renderPageSurround(c, s, view({ scrollY: 0, scrollX: 0, zoom: 0.1 }));
+    const nextTop = Math.round(getPagePitch(s) * 0.1);
+    for (const f of c.fills) {
+      if (f.style.startsWith("rgba(0,0,0,0.0")) {
+        const [, y, , h] = f.rect;
+        expect(y + h <= nextTop || y >= nextTop).toBe(true);
+      }
+    }
+  });
+
+  it("snaps edges to device pixels", () => {
+    const c = makeContext();
+    renderPageSurround(
       c,
       setup({ layout: "continuous" }),
       view({
@@ -141,76 +163,28 @@ describe("renderPageFrame", () => {
         width: 3000,
         height: 2000,
       }),
-      { paper: PAPER },
-    )!;
-    expect(clip[0]).toBe(Math.round(10.3 * 0.77 * 2));
-    expect(Number.isInteger(clip[2])).toBe(true);
+    );
+    expect(c.fills[0].rect[2]).toBe(Math.round(10.3 * 0.77 * 2));
+    expect(c.fills.every((f: any) => f.rect.every(Number.isInteger))).toBe(
+      true,
+    );
   });
 
-  it("uses no shadowBlur and a bounded number of draws", () => {
-    const c = makeContext();
-    renderPageFrame(c, setup({ pageCount: 500 }), view({ height: 4000 }), {
-      paper: PAPER,
-    });
-    expect(c.shadowBlur).toBeUndefined();
-    expect(c.fills.length).toBeLessThan(30);
-  });
-});
-
-describe("withPageClip", () => {
-  it("draws directly when there is no clip (page mode off)", () => {
-    const c = makeContext();
-    const draw = vi.fn();
-    withPageClip(c, null, draw);
-    expect(draw).toHaveBeenCalledTimes(1);
-    expect(c.ops).toEqual([]);
-  });
-
-  it("clips to all page rects once, then restores", () => {
-    const c = makeContext();
-    const draw = vi.fn(() => c.ops.push("draw"));
-    withPageClip(c, [1, 2, 11, 22, 1, 40, 11, 60], draw);
-    expect(c.rects).toEqual([
-      [1, 2, 10, 20],
-      [1, 40, 10, 20],
-    ]);
-    expect(c.ops).toEqual([
-      "save",
-      "setTransform",
-      "beginPath",
-      "clip",
-      "draw",
-      "restore",
-    ]);
-  });
-});
-
-describe("renderPageFrame call overhead (recording context, no real canvas)", () => {
-  it("costs microseconds per frame", () => {
+  it("costs microseconds per frame (recording context)", () => {
     const noop = () => {};
     const c: any = {
       fillStyle: "",
       save: noop,
       restore: noop,
       setTransform: noop,
-      beginPath: noop,
-      clip: noop,
-      rect: noop,
       fillRect: noop,
     };
     const s = setup({ pageCount: 50 });
-    const colors = { paper: "#fff" };
     const n = 20000;
     const t0 = performance.now();
     for (let i = 0; i < n; i++) {
-      const clip = renderPageFrame(c, s, view({ scrollY: -i }), colors);
-      withPageClip(c, clip, noop);
+      renderPageSurround(c, s, view({ scrollY: -i }));
     }
-    const perFrameMs = (performance.now() - t0) / n;
-    // eslint-disable-next-line no-console
-    console.info(
-      `pageFrame JS cost: ${(perFrameMs * 1000).toFixed(2)} us/frame`,
-    );
-    expect(perFrameMs).toBeLessThan(0.1);
+    expect((performance.now() - t0) / n).toBeLessThan(0.1);
   });
 });
