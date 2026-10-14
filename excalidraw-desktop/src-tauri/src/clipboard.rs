@@ -62,8 +62,11 @@ pub fn check_size(bytes: &[u8]) -> Result<&[u8]> {
 }
 
 pub fn header(request: &Request<'_>, name: &str) -> Result<String> {
-    request
-        .headers()
+    header_value(request.headers(), name)
+}
+
+pub fn header_value(headers: &tauri::http::HeaderMap, name: &str) -> Result<String> {
+    headers
         .get(name)
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned)

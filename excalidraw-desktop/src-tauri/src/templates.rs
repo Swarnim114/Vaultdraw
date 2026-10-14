@@ -7,7 +7,7 @@
 #![cfg_attr(test, allow(dead_code))]
 
 use super::{
-    config, ensure_json, ensure_no_sibling_collision, err, ioerr, now_ms, read_drawing_file, revision, safe_path,
+    config, ensure_json, ensure_no_sibling_collision, err, ioerr, now_ms, read_drawing_parts, revision, safe_path,
     validate_relative, write_atomic_new, DrawingFile, Result,
 };
 use serde::Serialize;
@@ -97,7 +97,7 @@ pub(crate) async fn list_global_templates() -> Result<Vec<TemplateEntry>> {
 #[tauri::command]
 pub(crate) async fn read_global_template(name: String) -> Result<DrawingFile> {
     validate_name(&name)?;
-    read_drawing_file(&templates_dir()?, &name)
+    read_drawing_parts(&templates_dir()?, &name)
 }
 
 #[tauri::command]
@@ -133,7 +133,7 @@ mod tests {
         let t = tempdir().unwrap();
         let root = t.path().join("templates");
         let w = write_in(&root, "Kanban.excalidraw", DOC).unwrap();
-        let read = read_drawing_file(&root, "Kanban.excalidraw").unwrap();
+        let read = read_drawing_parts(&root, "Kanban.excalidraw").unwrap();
         assert_eq!(read.json, DOC);
         assert_eq!(read.revision, w.revision);
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1, "no temp files left");
@@ -191,7 +191,7 @@ mod tests {
         fs::write(root.join("real.excalidraw"), DOC).unwrap();
         let names: Vec<_> = list_in(&root).unwrap().into_iter().map(|e| e.name).collect();
         assert_eq!(names, ["real.excalidraw"]);
-        assert_eq!(code(read_drawing_file(&root, "link.excalidraw")), "INVALID_PATH");
+        assert_eq!(code(read_drawing_parts(&root, "link.excalidraw")), "INVALID_PATH");
         assert!(write_in(&root, "link.excalidraw", DOC).is_err());
     }
 }

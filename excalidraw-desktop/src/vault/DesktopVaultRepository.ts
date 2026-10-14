@@ -109,6 +109,23 @@ export function normalizeError(cause: unknown): Error {
   return new Error(errorMessage(cause));
 }
 
+const REVISION_HEX_LENGTH = 64;
+const FRAME_PREFIX_LENGTH = REVISION_HEX_LENGTH + 1;
+
+/** Splits a `<revision>\n<json>` frame returned by `read_drawing`. */
+export function decodeDrawingFrame(buffer: ArrayBuffer): DrawingFile {
+  if (!buffer || buffer.byteLength < FRAME_PREFIX_LENGTH) {
+    throw new VaultError("INVALID_FILE", "Malformed drawing response");
+  }
+  const revision = new TextDecoder().decode(
+    new Uint8Array(buffer, 0, REVISION_HEX_LENGTH),
+  );
+  const json = new TextDecoder().decode(
+    new Uint8Array(buffer, FRAME_PREFIX_LENGTH),
+  );
+  return { json, revision };
+}
+
 /**
  * DesktopVaultRepository bridges renderer calls to native Tauri 2 commands
  * via typed IPC with exact snake_case command names and camelCase arguments.
@@ -129,6 +146,7 @@ export class DesktopVaultRepository implements VaultRepository {
     this.releaseVault = this.releaseVault.bind(this);
     this.listDirectory = this.listDirectory.bind(this);
     this.readDrawing = this.readDrawing.bind(this);
+    this.readRevision = this.readRevision.bind(this);
     this.writeDrawing = this.writeDrawing.bind(this);
     this.createFolder = this.createFolder.bind(this);
     this.move = this.move.bind(this);
@@ -194,15 +212,33 @@ export class DesktopVaultRepository implements VaultRepository {
     }
   }
 
+  /**
+   * The native side frames the reply as `<64 hex revision>\n<json utf-8>` in one
+   * ArrayBuffer, so the content never goes through JSON string escaping.
+   */
   async readDrawing(handle: string, path: string): Promise<DrawingFile> {
     const invoke = await this.getInvoke();
     try {
-      return await invoke<DrawingFile>("read_drawing", { handle, path });
+      const framed = await invoke<ArrayBuffer>("read_drawing", {
+        handle,
+        path,
+      });
+      return decodeDrawingFrame(framed);
     } catch (err) {
       throw normalizeError(err);
     }
   }
 
+  async readRevision(handle: string, path: string): Promise<string | null> {
+    const invoke = await this.getInvoke();
+    try {
+      return await invoke<string | null>("drawing_revision", { handle, path });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
+  /** The scene is the raw request body; the other arguments travel as headers. */
   async writeDrawing(input: {
     handle: string;
     path: string;
@@ -212,13 +248,20 @@ export class DesktopVaultRepository implements VaultRepository {
   }): Promise<{ revision: string }> {
     const invoke = await this.getInvoke();
     try {
-      return await invoke<{ revision: string }>("write_drawing", {
-        handle: input.handle,
-        path: input.path,
-        json: input.json,
-        expectedRevision: input.expectedRevision,
-        operationId: input.operationId,
-      });
+      return await invoke<{ revision: string }>(
+        "write_drawing",
+        new TextEncoder().encode(input.json),
+        {
+          headers: {
+            "x-handle": encodeURIComponent(input.handle),
+            "x-path": encodeURIComponent(input.path),
+            "x-expected-revision": encodeURIComponent(
+              input.expectedRevision ?? "",
+            ),
+            "x-operation-id": encodeURIComponent(input.operationId),
+          },
+        },
+      );
     } catch (err) {
       throw normalizeError(err);
     }

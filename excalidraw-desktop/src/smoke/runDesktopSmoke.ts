@@ -330,10 +330,27 @@ export async function runDesktopSmoke(): Promise<void> {
   doc.addEventListener("securitypolicyviolation", onCsp);
 
   const { invoke } = await import("@tauri-apps/api/core");
+  // Drawing read/write use a raw-bytes IPC frame; go through the repository
+  // codec so smoke steps keep the `{ json, revision }` shape.
+  const invokeNative = (
+    command: string,
+    args?: Record<string, unknown>,
+  ): Promise<unknown> => {
+    if (command === "read_drawing") {
+      const { handle, path } = args as { handle: string; path: string };
+      return desktopRepository.readDrawing(handle, path);
+    }
+    if (command === "write_drawing") {
+      return desktopRepository.writeDrawing(
+        args as Parameters<typeof desktopRepository.writeDrawing>[0],
+      );
+    }
+    return invoke(command, args);
+  };
   const call = <K extends keyof Native>(
     command: K,
     args?: Record<string, unknown>,
-  ) => invoke(command, args) as ReturnType<Native[K]>;
+  ) => invokeNative(command, args) as ReturnType<Native[K]>;
 
   const waitFor = async <T>(
     label: string,
@@ -1594,7 +1611,7 @@ export async function runDesktopSmoke(): Promise<void> {
       startedAt,
       step,
       waitFor,
-      invoke: (command, args) => invoke(command, args),
+      invoke: invokeNative,
     }).finally(() => {
       svgExportInFlight = false;
     });
@@ -2240,7 +2257,7 @@ export async function runDesktopSmoke(): Promise<void> {
       path: `${nested}/ui-edited.excalidraw`,
       step,
       waitFor,
-      invoke: (command, args) => invoke(command, args),
+      invoke: invokeNative,
     });
 
     await step("interface-zoom", async () => {
@@ -3024,7 +3041,7 @@ export async function runDesktopSmoke(): Promise<void> {
       waitFor,
       delay: (ms) => delay(win, ms),
       mark,
-      call: (command, args) => invoke(command, args) as Promise<any>,
+      call: (command, args) => invokeNative(command, args) as Promise<any>,
       vaultHandle: activeVault.handle,
       drawingPath: `${nested}/ui-edited.excalidraw`,
       staticCanvasPixel,

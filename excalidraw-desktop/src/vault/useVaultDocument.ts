@@ -576,6 +576,25 @@ export const useVaultDocument = (
           ) {
             return;
           }
+          if (repository.readRevision) {
+            // Our own saves echo through the watcher: compare revisions first and
+            // skip the full read when nothing changed. A missing file is deleted.
+            const diskRevision = await repository.readRevision(
+              current.handle,
+              current.path,
+            );
+            if (diskRevision === null) {
+              throw new Error("Drawing not found");
+            }
+            if (
+              disposed ||
+              checkGeneration !== generation.current ||
+              active.current !== current ||
+              diskRevision === current.revision
+            ) {
+              return;
+            }
+          }
           const disk = await repository.readDrawing(
             current.handle,
             current.path,

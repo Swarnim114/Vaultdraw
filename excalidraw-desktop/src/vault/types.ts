@@ -29,6 +29,8 @@ export interface VaultRepository {
   releaseVault(handle: string): Promise<void>;
   listDirectory(handle: string, path: string): Promise<VaultEntry[]>;
   readDrawing(handle: string, path: string): Promise<DrawingFile>;
+  /** Cheap revision probe (no content transfer); null when the file is missing. */
+  readRevision?(handle: string, path: string): Promise<string | null>;
   writeDrawing(input: {
     handle: string;
     path: string;

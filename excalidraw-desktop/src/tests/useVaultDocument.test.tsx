@@ -286,3 +286,65 @@ describe("saveCopy and relocate", () => {
     expect(result.current.document?.path).toBe("Algo/a.excalidraw");
   });
 });
+
+describe("useVaultDocument watcher revision probe", () => {
+  class ProbingRepository extends FakeVaultRepository {
+    reads = 0;
+    probes = 0;
+    async readDrawing(handle: string, path: string) {
+      this.reads += 1;
+      return super.readDrawing(handle, path);
+    }
+    async readRevision(handle: string, path: string) {
+      this.probes += 1;
+      try {
+        return (await super.readDrawing(handle, path)).revision;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  it("skips the full read when the revision is unchanged, reads when it differs", async () => {
+    const repo = new ProbingRepository();
+    repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
+    const { result } = renderHook(() => useVaultDocument(repo, vaultOf(repo)));
+    await openPath(result, "a.excalidraw");
+    repo.reads = 0;
+
+    act(() => {
+      repo.emit({
+        handle: repo.vault.handle,
+        paths: ["a.excalidraw"],
+        rescan: false,
+      });
+    });
+    await waitFor(() => expect(repo.probes).toBe(1));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(repo.reads).toBe(0);
+
+    act(() => {
+      repo.externalWrite("a.excalidraw", BLANK_SCENE);
+    });
+    await waitFor(() =>
+      expect(result.current.document?.json).toBe(BLANK_SCENE),
+    );
+    expect(repo.reads).toBe(1);
+  });
+
+  it("treats a missing file from the probe as a deletion", async () => {
+    const repo = new ProbingRepository();
+    repo.seedDrawing("a.excalidraw", SAMPLE_SCENE);
+    const { result } = renderHook(() => useVaultDocument(repo, vaultOf(repo)));
+    await openPath(result, "a.excalidraw");
+    repo.reads = 0;
+    act(() => {
+      repo.externalDelete("a.excalidraw");
+    });
+    await waitFor(() => expect(result.current.status).toBe("conflict"));
+    expect(result.current.error).toMatch(/deleted/i);
+    expect(repo.reads).toBe(0);
+  });
+});

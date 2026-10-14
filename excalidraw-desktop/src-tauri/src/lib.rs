@@ -5,7 +5,8 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    borrow::Cow,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
     sync::{atomic::{AtomicU64, Ordering}, mpsc, Arc, Mutex},
     thread,
@@ -17,6 +18,7 @@ mod clipboard;
 mod config;
 mod search;
 mod library;
+mod memory;
 mod templates;
 mod themes;
 mod vault_settings;
@@ -45,12 +47,6 @@ struct VaultEntry {
     kind: String,
     modified_at: u64,
     size: u64,
-}
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DrawingFile {
-    json: String,
-    revision: String,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,13 +105,14 @@ struct Service {
     vaults: Mutex<HashMap<String, Arc<Vault>>>,
 }
 
+/// Borrowed when serializing (the snapshot is never copied), owned when `list_recovery` parses it.
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RecoveryRecord {
-    path: String,
-    expected_revision: Option<String>,
-    operation_id: String,
-    json: String,
+struct RecoveryRecord<'a> {
+    path: Cow<'a, str>,
+    expected_revision: Option<Cow<'a, str>>,
+    operation_id: Cow<'a, str>,
+    json: Cow<'a, str>,
     created_at: u64,
 }
 
@@ -127,6 +124,19 @@ fn now_ms(t: SystemTime) -> u64 {
 }
 fn revision(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
+}
+/// Hex SHA-256 of a stream through a fixed buffer, plus the number of bytes read.
+fn revision_of_reader(mut reader: impl Read) -> std::io::Result<(String, u64)> {
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+        total += n as u64;
+    }
+    Ok((hex::encode(hasher.finalize()), total))
 }
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 fn random_id() -> String {
@@ -252,13 +262,21 @@ fn ensure_no_sibling_collision(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+/// Only the field the validator needs; serde skips (but still syntax-checks) the rest,
+/// so a large scene is validated without building a `serde_json::Value` tree.
+#[derive(Deserialize)]
+struct SceneProbe<'a> {
+    #[serde(rename = "type")]
+    kind: Option<Cow<'a, str>>,
+}
 fn ensure_json(json: &str) -> Result<()> {
     if json.len() as u64 > MAX_DRAWING_BYTES {
         return Err(err("INVALID_FILE", "Drawing exceeds the 32 MiB limit"));
     }
-    let value: serde_json::Value = serde_json::from_str(json)
+    let probe: SceneProbe = serde_json::from_str(json)
         .map_err(|e| err("INVALID_FILE", format!("Invalid JSON: {e}")))?;
-    if !value.is_object() || value.get("type").and_then(serde_json::Value::as_str) != Some("excalidraw") {
+    // A derived struct also accepts a JSON array, so require an object explicitly.
+    if !json.trim_start().starts_with('{') || probe.kind.as_deref() != Some("excalidraw") {
         return Err(err("INVALID_FILE", "Drawing JSON must be an Excalidraw scene object"));
     }
     Ok(())
@@ -293,6 +311,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     result.map_err(ioerr)
 }
 fn write_atomic_new(path: &Path, bytes: &[u8]) -> Result<()> {
+    write_atomic_new_with(path, |f| f.write_all(bytes))
+}
+/// No-clobber atomic create where `fill` streams the content into the temp file.
+fn write_atomic_new_with(path: &Path, fill: impl FnOnce(&mut File) -> std::io::Result<()>) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| err("INVALID_PATH", "File has no parent"))?;
@@ -306,7 +328,7 @@ fn write_atomic_new(path: &Path, bytes: &[u8]) -> Result<()> {
             .write(true)
             .create_new(true)
             .open(&temp)?;
-        f.write_all(bytes)?;
+        fill(&mut f)?;
         f.sync_all()?;
         // Hard-link creation is an atomic no-clobber commit on the same filesystem.
         fs::hard_link(&temp, path)?;
@@ -354,11 +376,14 @@ fn recovery_dir(v: &Vault) -> Result<PathBuf> {
     checked_recovery_dir(v, true)?.ok_or_else(|| err("INTERNAL", "Recovery directory unavailable"))
 }
 fn current_revision(path: &Path) -> Result<Option<String>> {
-    match read_bounded(path, MAX_DRAWING_BYTES) {
-        Ok(bytes) => Ok(Some(revision(&bytes))),
-        Err(e) if e.code == "NOT_FOUND" => Ok(None),
-        Err(e) => Err(e),
-    }
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(ioerr(e)),
+    };
+    let (rev, total) = revision_of_reader(file.take(MAX_DRAWING_BYTES + 1)).map_err(ioerr)?;
+    if total > MAX_DRAWING_BYTES { return Err(err("INVALID_FILE", "File exceeds its size limit")); }
+    Ok(Some(rev))
 }
 fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
     let mut data = Vec::new();
@@ -382,23 +407,39 @@ fn create_recovery(
         if ty.is_symlink() { return Err(err("INVALID_PATH", "Recovery metadata contains a symbolic link")); }
         if ty.is_file() { total = total.saturating_add(entry.metadata().map_err(ioerr)?.len()); }
     }
-    let payload = serde_json::to_vec(&RecoveryRecord {
+    let record = RecoveryRecord {
         path: path.into(),
-        expected_revision: expected.map(str::to_owned),
+        expected_revision: expected.map(Cow::Borrowed),
         operation_id: operation_id.into(),
         json: json.into(),
         created_at: now_ms(SystemTime::now()),
-    })
-    .map_err(|e| err("INTERNAL", e.to_string()))?;
-    if payload.len() as u64 > MAX_RECOVERY_RECORD_BYTES || total.saturating_add(payload.len() as u64) > MAX_RECOVERY_BYTES {
+    };
+    // Exact serialized size from a counting pass (no allocation), so the caps below hold
+    // without materialising the escaped record in memory.
+    let mut counter = CountingWriter(0);
+    serde_json::to_writer(&mut counter, &record).map_err(|e| err("INTERNAL", e.to_string()))?;
+    if counter.0 > MAX_RECOVERY_RECORD_BYTES || total.saturating_add(counter.0) > MAX_RECOVERY_BYTES {
         return Err(err(
             "RECOVERY_FULL",
             "Recovery storage is full; discard snapshots before saving",
         ));
     }
     let file = dir.join(format!("{}.json", random_id()));
-    write_atomic_new(&file, &payload)?;
+    write_atomic_new_with(&file, |f| {
+        let mut out = BufWriter::new(f);
+        serde_json::to_writer(&mut out, &record)?;
+        out.flush()
+    })?;
     Ok(file)
+}
+/// `Write` sink that only counts bytes.
+struct CountingWriter(u64);
+impl Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 += buf.len() as u64;
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
 }
 fn remove_recovery(path: &Path) {
     let _ = fs::remove_file(path);
@@ -686,20 +727,63 @@ async fn list_directory(
     });
     Ok(out)
 }
-fn read_drawing_file(root: &Path, path: &str) -> Result<DrawingFile> {
+/// Hex SHA-256 length; the read frame is `<revision hex>\n<json bytes>`.
+const REVISION_HEX_LEN: usize = 64;
+const FRAME_PREFIX_LEN: usize = REVISION_HEX_LEN + 1;
+/// Reads a drawing into one buffer laid out as `<revision hex>\n<json bytes>`: the file is
+/// read straight into the buffer after a placeholder prefix, hashed in place and validated
+/// as UTF-8 JSON without further copies.
+fn read_drawing_file(root: &Path, path: &str) -> Result<Vec<u8>> {
     if !path.to_ascii_lowercase().ends_with(".excalidraw") { return Err(err("INVALID_PATH", "Only .excalidraw files can be read as drawings")); }
     let p = safe_path(root, path, false)?;
-    let meta = fs::metadata(&p).map_err(ioerr)?;
+    let file = File::open(&p).map_err(ioerr)?;
+    let meta = file.metadata().map_err(ioerr)?;
     if !meta.is_file() || meta.len() > MAX_DRAWING_BYTES { return Err(err("INVALID_FILE", "Drawing is not a regular file or exceeds 32 MiB")); }
-    let bytes = read_bounded(&p, MAX_DRAWING_BYTES)?;
-    let json = String::from_utf8(bytes.clone()).map_err(|_| err("INVALID_FILE", "Drawing is not UTF-8 JSON"))?;
-    ensure_json(&json)?;
-    Ok(DrawingFile { json, revision: revision(&bytes) })
+    let mut buf = Vec::with_capacity(FRAME_PREFIX_LEN + meta.len() as usize);
+    buf.resize(FRAME_PREFIX_LEN, 0);
+    file.take(MAX_DRAWING_BYTES + 1).read_to_end(&mut buf).map_err(ioerr)?;
+    if (buf.len() - FRAME_PREFIX_LEN) as u64 > MAX_DRAWING_BYTES { return Err(err("INVALID_FILE", "File exceeds its size limit")); }
+    let json = std::str::from_utf8(&buf[FRAME_PREFIX_LEN..]).map_err(|_| err("INVALID_FILE", "Drawing is not UTF-8 JSON"))?;
+    ensure_json(json)?;
+    let digest = Sha256::digest(&buf[FRAME_PREFIX_LEN..]);
+    hex::encode_to_slice(digest, &mut buf[..REVISION_HEX_LEN]).map_err(|e| err("INTERNAL", e.to_string()))?;
+    buf[REVISION_HEX_LEN] = b'\n';
+    Ok(buf)
+}
+/// `{ json, revision }` for small JSON-IPC readers (global templates); vault drawings use the raw frame.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DrawingFile {
+    json: String,
+    revision: String,
+}
+fn read_drawing_parts(root: &Path, path: &str) -> Result<DrawingFile> {
+    let mut framed = read_drawing_file(root, path)?;
+    let json = String::from_utf8(framed.split_off(FRAME_PREFIX_LEN)).map_err(|_| err("INVALID_FILE", "Drawing is not UTF-8 JSON"))?;
+    framed.truncate(REVISION_HEX_LEN);
+    let revision = String::from_utf8(framed).map_err(|e| err("INTERNAL", e.to_string()))?;
+    Ok(DrawingFile { json, revision })
 }
 #[tauri::command]
-async fn read_drawing(handle: String, path: String, state: State<'_, Service>) -> Result<DrawingFile> {
+async fn read_drawing(handle: String, path: String, state: State<'_, Service>) -> Result<tauri::ipc::Response> {
     let v = vault_for(&state, &handle)?;
-    read_drawing_file(&v.root, &path)
+    let framed = read_drawing_file(&v.root, &path)?;
+    memory::schedule_release();
+    Ok(tauri::ipc::Response::new(framed))
+}
+/// Revision of a drawing without sending its content; `None` when the file is missing.
+fn drawing_revision_at(root: &Path, path: &str) -> Result<Option<String>> {
+    if !path.to_ascii_lowercase().ends_with(".excalidraw") { return Err(err("INVALID_PATH", "Only .excalidraw files have drawing revisions")); }
+    match safe_path(root, path, true) {
+        Ok(p) => current_revision(&p),
+        Err(e) if e.code == "NOT_FOUND" => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+#[tauri::command]
+async fn drawing_revision(handle: String, path: String, state: State<'_, Service>) -> Result<Option<String>> {
+    let v = vault_for(&state, &handle)?;
+    drawing_revision_at(&v.root, &path)
 }
 fn write_drawing_file(v: &Vault, path: &str, json: &str, expected_revision: Option<&str>, operation_id: &str) -> Result<serde_json::Value> {
     write_drawing_file_with_commit(v, path, json, expected_revision, operation_id, |p, bytes, create| {
@@ -725,19 +809,33 @@ where F: FnOnce(&Path, &[u8], bool) -> Result<()> {
     remove_recovery(&snapshot);
     Ok(serde_json::json!({"revision": rev}))
 }
+/// Arguments carried in the headers of the raw `write_drawing` request (percent-encoded).
+#[derive(Debug)]
+struct WriteHeaders { handle: String, path: String, expected_revision: Option<String>, operation_id: String }
+fn parse_write_headers(headers: &tauri::http::HeaderMap) -> Result<WriteHeaders> {
+    let required = |name: &str| clipboard::percent_decode(&clipboard::header_value(headers, name)?);
+    // Absent or empty expected revision means create-only.
+    let expected = match clipboard::header_value(headers, "x-expected-revision") {
+        Ok(v) => Some(clipboard::percent_decode(&v)?).filter(|v| !v.is_empty()),
+        Err(_) => None,
+    };
+    Ok(WriteHeaders { handle: required("x-handle")?, path: required("x-path")?, expected_revision: expected, operation_id: required("x-operation-id")? })
+}
+/// The raw body is the UTF-8 scene JSON; it is validated in place, never copied into a String.
+fn write_drawing_raw(v: &Vault, args: &WriteHeaders, body: &[u8]) -> Result<serde_json::Value> {
+    let json = std::str::from_utf8(body).map_err(|_| err("INVALID_FILE", "Drawing is not UTF-8 JSON"))?;
+    write_drawing_file(v, &args.path, json, args.expected_revision.as_deref(), &args.operation_id)
+}
 #[tauri::command]
-async fn write_drawing(
-    handle: String,
-    path: String,
-    json: String,
-    expected_revision: Option<String>,
-    operation_id: String,
-    state: State<'_, Service>,
-) -> Result<serde_json::Value> {
-    let v = vault_for(&state, &handle)?;
+async fn write_drawing(request: tauri::ipc::Request<'_>, state: State<'_, Service>) -> Result<serde_json::Value> {
+    let args = parse_write_headers(request.headers())?;
+    let body = clipboard::raw_body(&request)?;
+    let v = vault_for(&state, &args.handle)?;
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
-    write_drawing_file(&v, &path, &json, expected_revision.as_deref(), &operation_id)
+    let result = write_drawing_raw(&v, &args, body);
+    memory::schedule_release();
+    result
 }
 fn create_folder_at(root: &Path, path: &str) -> Result<()> {
     if path.is_empty() { return Err(err("INVALID_PATH", "Cannot create the vault root")); }
@@ -875,7 +973,7 @@ async fn list_recovery(handle: String, state: State<'_, Service>) -> Result<Vec<
             ));
         }
         let data = read_bounded(&entry.path(), MAX_RECOVERY_RECORD_BYTES)?;
-        let record: RecoveryRecord = match serde_json::from_slice(&data) {
+        let record: RecoveryRecord<'_> = match serde_json::from_slice(&data) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -894,9 +992,9 @@ async fn list_recovery(handle: String, state: State<'_, Service>) -> Result<Vec<
                 .to_string_lossy()
                 .trim_end_matches(".json")
                 .into(),
-            path: record.path,
+            path: record.path.into_owned(),
             modified_at: record.created_at,
-            json: record.json,
+            json: record.json.into_owned(),
         });
     }
     out.sort_by_key(|r| r.modified_at);
@@ -927,6 +1025,10 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     const SCENE: &str = r#"{"type":"excalidraw","version":2,"source":"https://excalidraw.com","elements":[],"appState":{},"files":{}}"#;
+    fn split_frame(frame: &[u8]) -> (String, &[u8]) {
+        assert_eq!(frame[REVISION_HEX_LEN], b'\n');
+        (String::from_utf8(frame[..REVISION_HEX_LEN].to_vec()).unwrap(), &frame[FRAME_PREFIX_LEN..])
+    }
     fn vault(root: &Path) -> Vault {
         Vault { root: root.canonicalize().unwrap(), handle: "test".into(), read_only: false, _lock: None, _watcher: None, mutation: Mutex::new(()) }
     }
@@ -1014,9 +1116,10 @@ mod tests {
         let result = write_drawing_file(&v, "a.excalidraw", embedded, None, "op").unwrap();
         assert_eq!(result["revision"], revision(embedded.as_bytes()));
         assert_eq!(fs::read_to_string(t.path().join("a.excalidraw")).unwrap(), embedded);
-        let loaded = read_drawing_file(&v.root, "a.excalidraw").unwrap();
-        assert_eq!(loaded.json, embedded);
-        assert_eq!(loaded.revision, revision(embedded.as_bytes()));
+        let frame = read_drawing_file(&v.root, "a.excalidraw").unwrap();
+        let (rev, body) = split_frame(&frame);
+        assert_eq!(body, embedded.as_bytes());
+        assert_eq!(rev, revision(embedded.as_bytes()));
         assert_eq!(write_drawing_file(&v, "a.excalidraw", SCENE, None, "op2").unwrap_err().code, "CONFLICT");
     }
     #[test]
@@ -1054,7 +1157,88 @@ mod tests {
     fn json_validation_requires_excalidraw_scene_and_is_bounded() {
         assert!(ensure_json("[]").is_err()); assert!(ensure_json("{bad").is_err()); assert!(ensure_json("{\"ok\":true}").is_err());
         assert!(ensure_json(SCENE).is_ok());
+        // Shapes a derived struct would otherwise accept or mis-handle.
+        assert!(ensure_json(r#"["excalidraw"]"#).is_err());
+        assert!(ensure_json(r#"{"type":5}"#).is_err());
+        assert!(ensure_json(r#"{"type":"excalidraw"} trailing"#).is_err());
+        assert!(ensure_json(r#"{"elements":[{"type":"x"}],"type":"excalidraw"}"#).is_ok());
+        assert!(ensure_json(r#"  {"type":"exc\u0061lidraw"}"#).is_ok());
         assert!(ensure_json(&format!("{{\"type\":\"excalidraw\",\"x\":\"{}\"}}", "x".repeat(MAX_DRAWING_BYTES as usize))).is_err());
+    }
+    #[test]
+    fn read_frame_has_revision_prefix_and_identical_body() {
+        let t = tempdir().unwrap(); let v = vault(t.path());
+        fs::write(t.path().join("a.excalidraw"), SCENE).unwrap();
+        let frame = read_drawing_file(&v.root, "a.excalidraw").unwrap();
+        let (rev, body) = split_frame(&frame);
+        assert_eq!(body, SCENE.as_bytes());
+        assert_eq!(rev, revision(SCENE.as_bytes()));
+        assert_eq!(frame.len(), FRAME_PREFIX_LEN + SCENE.len());
+        assert_eq!(read_drawing_file(&v.root, "missing.excalidraw").unwrap_err().code, "NOT_FOUND");
+        fs::write(t.path().join("bad.excalidraw"), [0xff, 0xfe]).unwrap();
+        assert_eq!(read_drawing_file(&v.root, "bad.excalidraw").unwrap_err().code, "INVALID_FILE");
+        fs::write(t.path().join("notscene.excalidraw"), "{\"a\":1}").unwrap();
+        assert_eq!(read_drawing_file(&v.root, "notscene.excalidraw").unwrap_err().code, "INVALID_FILE");
+    }
+    #[test]
+    fn streaming_revision_matches_buffered_revision() {
+        let t = tempdir().unwrap(); let p = t.path().join("big.excalidraw");
+        let data: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+        fs::write(&p, &data).unwrap();
+        assert_eq!(current_revision(&p).unwrap(), Some(revision(&data)));
+        assert_eq!(current_revision(&t.path().join("none")).unwrap(), None);
+        assert_eq!(drawing_revision_at(t.path(), "big.excalidraw").unwrap(), Some(revision(&data)));
+        assert_eq!(drawing_revision_at(t.path(), "none.excalidraw").unwrap(), None);
+        assert_eq!(drawing_revision_at(t.path(), "big.txt").unwrap_err().code, "INVALID_PATH");
+        let (rev, n) = revision_of_reader(&data[..]).unwrap();
+        assert_eq!((rev, n), (revision(&data), data.len() as u64));
+    }
+    #[test]
+    fn recovery_streaming_record_keeps_the_json_shape() {
+        let t = tempdir().unwrap(); let v = vault(t.path());
+        let snapshot = create_recovery(&v, "a.excalidraw", Some("abc"), "op", SCENE).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&fs::read(&snapshot).unwrap()).unwrap();
+        assert_eq!(value["path"], "a.excalidraw");
+        assert_eq!(value["expectedRevision"], "abc");
+        assert_eq!(value["operationId"], "op");
+        assert_eq!(value["json"], SCENE);
+        assert!(value["createdAt"].is_u64());
+        // Serialized length reported by the counting pass equals the bytes on disk.
+        let record = RecoveryRecord { path: "a.excalidraw".into(), expected_revision: None, operation_id: "op".into(), json: SCENE.into(), created_at: 1 };
+        let mut counter = CountingWriter(0);
+        serde_json::to_writer(&mut counter, &record).unwrap();
+        assert_eq!(counter.0 as usize, serde_json::to_vec(&record).unwrap().len());
+        assert!(fs::read_dir(snapshot.parent().unwrap()).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().starts_with(".excalidraw-tmp")));
+    }
+    #[test]
+    fn write_headers_decode_and_empty_expected_means_create_only() {
+        let mut h = tauri::http::HeaderMap::new();
+        h.insert("x-handle", "h%2F1".parse().unwrap());
+        h.insert("x-path", "f%C3%B6lder%2Fa%20b.excalidraw".parse().unwrap());
+        h.insert("x-operation-id", "op-1".parse().unwrap());
+        let a = parse_write_headers(&h).unwrap();
+        assert_eq!((a.handle.as_str(), a.path.as_str(), a.operation_id.as_str()), ("h/1", "földer/a b.excalidraw", "op-1"));
+        assert_eq!(a.expected_revision, None);
+        h.insert("x-expected-revision", "".parse().unwrap());
+        assert_eq!(parse_write_headers(&h).unwrap().expected_revision, None);
+        h.insert("x-expected-revision", "abc123".parse().unwrap());
+        assert_eq!(parse_write_headers(&h).unwrap().expected_revision.as_deref(), Some("abc123"));
+        h.remove("x-path");
+        assert_eq!(parse_write_headers(&h).unwrap_err().code, "INVALID_ARGUMENT");
+    }
+    #[test]
+    fn raw_write_path_is_guarded_and_returns_revision() {
+        let t = tempdir().unwrap(); let v = vault(t.path());
+        let args = |expected: Option<&str>| WriteHeaders { handle: "test".into(), path: "a.excalidraw".into(), expected_revision: expected.map(str::to_owned), operation_id: "op".into() };
+        let created = write_drawing_raw(&v, &args(None), SCENE.as_bytes()).unwrap();
+        assert_eq!(created["revision"], revision(SCENE.as_bytes()));
+        assert_eq!(write_drawing_raw(&v, &args(None), SCENE.as_bytes()).unwrap_err().code, "CONFLICT");
+        let next = SCENE.replace("[]", "[{\"id\":1}]");
+        let rev = created["revision"].as_str().unwrap().to_owned();
+        assert_eq!(write_drawing_raw(&v, &args(Some(&rev)), next.as_bytes()).unwrap()["revision"], revision(next.as_bytes()));
+        assert_eq!(fs::read_to_string(t.path().join("a.excalidraw")).unwrap(), next);
+        assert_eq!(write_drawing_raw(&v, &args(Some(&rev)), SCENE.as_bytes()).unwrap_err().code, "CONFLICT");
+        assert_eq!(write_drawing_raw(&v, &args(None), &[0xff]).unwrap_err().code, "INVALID_FILE");
     }
 }
 
@@ -1151,7 +1335,7 @@ pub fn run() {
         #[cfg(feature = "smoke-test")]
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
-                choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
+                choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
@@ -1166,7 +1350,7 @@ pub fn run() {
             ])
         } else {
             builder.invoke_handler(tauri::generate_handler![
-                choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
+                choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
                 export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
@@ -1180,7 +1364,7 @@ pub fn run() {
         };
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
-            choose_vault, reopen_vault, release_vault, list_directory, read_drawing,
+            choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
             write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
             export_file, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
