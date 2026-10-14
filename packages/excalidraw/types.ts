@@ -914,6 +914,16 @@ export interface ExcalidrawProps {
    */
   onInitialize?: (api: ExcalidrawImperativeAPI) => void;
   isCollaborating?: boolean;
+  /**
+   * Host-controlled freedraw pen, read when a freedraw stroke starts.
+   * Returns null to use the regular stroke width / streamline.
+   */
+  freedrawPen?: () => FreedrawPen | null;
+  /**
+   * Host-controlled laser pointer look, read when a laser stroke starts.
+   * Returns null for the built-in look.
+   */
+  laserPointerOptions?: () => LaserPointerSettings | null;
   onPointerUpdate?: (payload: {
     pointer: { x: number; y: number; tool: "pointer" | "laser" };
     button: "down" | "up";
@@ -1672,3 +1682,25 @@ export type ViewportOffsets = Offsets & {
  * default if the surface hasn't been rendered yet.
  */
 export type ViewportUIName = "sidebar" | "stylesPanel" | "stats";
+
+/** Per-stroke overrides for the freedraw tool (see ExcalidrawProps.freedrawPen). */
+export type FreedrawPen = {
+  /** Element strokeWidth (freedraw units: 0.5 thin, 1 medium, 2 bold). */
+  strokeWidth: number;
+  /** perfect-freehand streamline, 0 (raw) to 1 (very smooth). */
+  streamline?: number;
+  /** Insert the stroke behind every other element (highlighter). */
+  behind?: boolean;
+};
+
+/** Laser pointer look (see ExcalidrawProps.laserPointerOptions). */
+export type LaserPointerSettings = {
+  /** CSS colour of the trail. */
+  color: string;
+  /** Trail thickness in screen pixels. */
+  size: number;
+  /** Time in ms until a trail point has faded out completely. */
+  decayMs: number;
+  /** Number of trail points over which the tail tapers off. */
+  length: number;
+};

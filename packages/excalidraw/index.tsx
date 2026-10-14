@@ -83,6 +83,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     onInitialize,
     isCollaborating = false,
     onPointerUpdate,
+    freedrawPen,
+    laserPointerOptions,
     renderTopLeftUI,
     renderTopRightUI,
     langCode = defaultLang.code,
@@ -227,6 +229,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           onInitialize={onInitialize}
           isCollaborating={isCollaborating}
           onPointerUpdate={onPointerUpdate}
+          freedrawPen={freedrawPen}
+          laserPointerOptions={laserPointerOptions}
           renderTopLeftUI={renderTopLeftUI}
           renderTopRightUI={renderTopRightUI}
           langCode={langCode}

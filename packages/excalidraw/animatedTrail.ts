@@ -58,6 +58,11 @@ export class AnimatedTrail implements Trail {
     }
   }
 
+  /** Applies to trails started afterwards. */
+  setOptions(options: Partial<LaserPointerOptions>) {
+    Object.assign(this.options, options);
+  }
+
   get hasCurrentTrail() {
     return !!this.currentTrail;
   }

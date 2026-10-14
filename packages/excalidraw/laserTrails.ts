@@ -7,7 +7,14 @@ import { getClientColor } from "./clients";
 
 import type { Trail } from "./animatedTrail";
 import type App from "./components/App";
-import type { SocketId } from "./types";
+import type { LaserPointerSettings, SocketId } from "./types";
+
+const DEFAULT_LASER_SETTINGS: LaserPointerSettings = {
+  color: DEFAULT_LASER_COLOR,
+  size: 2,
+  decayMs: 1000,
+  length: 50,
+};
 
 export class LaserTrails implements Trail {
   public localTrail: AnimatedTrail;
@@ -17,17 +24,22 @@ export class LaserTrails implements Trail {
   constructor(private app: App) {
     this.localTrail = new AnimatedTrail(app, {
       ...this.getTrailOptions(),
-      fill: () => DEFAULT_LASER_COLOR,
+      fill: () => this.settings.color,
     });
   }
 
-  private getTrailOptions() {
+  private settings = DEFAULT_LASER_SETTINGS;
+
+  private getTrailOptions(
+    { size, decayMs, length }: LaserPointerSettings = DEFAULT_LASER_SETTINGS,
+  ) {
     return {
+      size,
       simplify: 0,
       streamline: 0.4,
       sizeMapping: (c) => {
-        const DECAY_TIME = 1000;
-        const DECAY_LENGTH = 50;
+        const DECAY_TIME = Math.max(1, decayMs);
+        const DECAY_LENGTH = Math.max(1, length);
         const t = Math.max(
           0,
           1 - (performance.now() - c.pressure) / DECAY_TIME,
@@ -43,6 +55,10 @@ export class LaserTrails implements Trail {
   }
 
   startPath(x: number, y: number): void {
+    // the host may change the look between strokes
+    this.settings =
+      this.app.props.laserPointerOptions?.() ?? DEFAULT_LASER_SETTINGS;
+    this.localTrail.setOptions(this.getTrailOptions(this.settings));
     this.localTrail.startPath(x, y);
   }
 

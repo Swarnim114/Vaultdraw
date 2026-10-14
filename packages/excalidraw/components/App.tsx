@@ -8419,6 +8419,7 @@ class App extends React.Component<AppProps, AppState> {
     const simulatePressure = event.pressure === 0.5;
 
     const strokeVariability = this.state.currentItemStrokeVariability;
+    const pen = this.props.freedrawPen?.() ?? null;
 
     const element = newFreeDrawElement({
       type: elementType,
@@ -8427,7 +8428,8 @@ class App extends React.Component<AppProps, AppState> {
       strokeColor: this.state.currentItemStrokeColor,
       backgroundColor: this.state.currentItemBackgroundColor,
       fillStyle: this.state.currentItemFillStyle,
-      strokeWidth: this.getCurrentItemStrokeWidth("freedraw"),
+      strokeWidth:
+        pen?.strokeWidth ?? this.getCurrentItemStrokeWidth("freedraw"),
       strokeStyle: this.state.currentItemStrokeStyle,
       roughness: this.state.currentItemRoughness,
       opacity: this.state.currentItemOpacity,
@@ -8436,9 +8438,10 @@ class App extends React.Component<AppProps, AppState> {
       strokeOptions: {
         variability: strokeVariability,
         streamline:
-          event.pointerType !== "mouse"
+          pen?.streamline ??
+          (event.pointerType !== "mouse"
             ? DEFAULT_STROKE_STREAMLINE_PRECISE
-            : DEFAULT_STROKE_STREAMLINE,
+            : DEFAULT_STROKE_STREAMLINE),
       },
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
@@ -8448,7 +8451,12 @@ class App extends React.Component<AppProps, AppState> {
       pressures: simulatePressure ? [] : [event.pressure],
     });
 
-    this.insertNewElement(element);
+    if (pen?.behind && !element.frameId) {
+      // highlighter: behind everything, so text and shapes stay readable
+      this.scene.insertElementsAtIndex([element], 0);
+    } else {
+      this.insertNewElement(element);
+    }
 
     this.setState((prevState) => {
       const nextSelectedElementIds = {
