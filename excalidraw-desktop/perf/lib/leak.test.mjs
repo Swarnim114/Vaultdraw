@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drawingsAt, slope, leakSummary, leakTableText, totalMB } from "./leak.mjs";
+import { parseCheckpoint, slope, leakSummary, leakTableText, totalMB } from "./leak.mjs";
 
 const cp = (label, app, web, gpu = 10) => ({ label, procs: { app, webContent: web, gpu } });
 const series = [
@@ -15,11 +15,13 @@ const series = [
   cp("idle-after", 112, 255),
 ];
 
-test("drawingsAt", () => {
-  assert.equal(drawingsAt("baseline"), 0);
-  assert.equal(drawingsAt("after-30"), 30);
-  assert.equal(drawingsAt("after-vault-switch"), null);
-  assert.equal(drawingsAt("idle-after"), null);
+test("parseCheckpoint", () => {
+  assert.deepEqual(parseCheckpoint("baseline"), { pass: 0, n: 0 });
+  assert.deepEqual(parseCheckpoint("after-30"), { pass: 1, n: 30 });
+  assert.deepEqual(parseCheckpoint("p1-after-30"), { pass: 1, n: 30 });
+  assert.deepEqual(parseCheckpoint("p2-after-50"), { pass: 2, n: 50 });
+  assert.equal(parseCheckpoint("after-vault-switch"), null);
+  assert.equal(parseCheckpoint("idle-after"), null);
 });
 
 test("slope: exact line, degenerate input", () => {
@@ -69,4 +71,20 @@ test("leakTableText lists every checkpoint with a total column", () => {
   assert.equal(lines.length, series.length + 1);
   assert.match(lines[0], /checkpoint\s+total\s+app\s+webContent\s+gpu/);
   assert.match(lines[1], /^baseline\s+310\.0\s+100\.0\s+200\.0\s+10\.0$/);
+});
+
+test("two passes: plateau in pass 2 shows ~0 pass-2 growth and slope", () => {
+  const plateau = [
+    cp("baseline", 100, 200),
+    cp("p1-after-10", 100, 300), cp("p1-after-20", 100, 400), cp("p1-after-50", 100, 500),
+    cp("p2-after-10", 100, 500), cp("p2-after-20", 100, 500), cp("p2-after-50", 100, 500),
+    cp("after-vault-switch", 90, 300), cp("idle-after", 90, 300),
+  ];
+  const { samples } = leakSummary(plateau);
+  assert.deepEqual(samples["memory.leak.pass2GrowthMB"], [0]);
+  assert.deepEqual(samples["memory.leak.pass2PerTenDrawingsMB"], [0]);
+  assert.ok(samples["memory.leak.perTenDrawingsMB"][0] > 5);
+  assert.deepEqual(samples["memory.leak.switchDeltaMB"], [-210]);
+  const growing = [cp("baseline", 0, 0), cp("p1-after-50", 0, 100), cp("p2-after-10", 0, 120), cp("p2-after-50", 0, 200), cp("idle-after", 0, 200)];
+  assert.deepEqual(leakSummary(growing).samples["memory.leak.pass2GrowthMB"], [100]);
 });

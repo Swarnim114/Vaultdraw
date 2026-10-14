@@ -640,7 +640,7 @@ async fn choose_vault(
 ) -> Result<Option<VaultInfo>> {
     #[cfg(feature = "smoke-test")]
     let selected = if smoke::enabled() {
-        Some(smoke::test_dir().map_err(|e| err("SMOKE_CONFIG", e))?)
+        Some(smoke::choose_dir().map_err(|e| err("SMOKE_CONFIG", e))?)
     } else {
         rfd::FileDialog::new()
             .set_title(if create { "Choose or create a Vaultdraw vault" } else { "Open a Vaultdraw vault" })

@@ -1,9 +1,11 @@
 //! Optional packaged-app smoke bridge. This module is compiled only with `smoke-test`.
 use serde_json::{json, Value};
-use std::{env, fs, io::Write, path::PathBuf, sync::{Mutex, OnceLock}};
+use std::{env, fs, io::Write, path::PathBuf, sync::{atomic::{AtomicUsize, Ordering}, Mutex, OnceLock}};
 use tauri::AppHandle;
 
 const ENV_DIR: &str = "EXCALIDRAW_VAULT_SMOKE_DIR";
+const ENV_DIR_ALT: &str = "EXCALIDRAW_VAULT_SMOKE_DIR_ALT";
+static CHOOSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REPORT: OnceLock<Mutex<Vec<Value>>> = OnceLock::new();
 
 fn report() -> &'static Mutex<Vec<Value>> {
@@ -26,6 +28,30 @@ pub fn test_dir() -> Result<PathBuf, String> {
         return Err(format!("{ENV_DIR} must name a directory"));
     }
     path.canonicalize().map_err(|error| error.to_string())
+}
+
+/// Vault for the n-th `choose_vault` call: the test folder, or with EXCALIDRAW_VAULT_SMOKE_DIR_ALT set
+/// alternating test folder (call 0, 2, ...) and alternate folder (call 1, 3, ...) so a perf run can switch vaults.
+pub fn choose_dir() -> Result<PathBuf, String> {
+    let call = CHOOSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    let alt = env::var_os(ENV_DIR_ALT).filter(|value| !value.is_empty()).map(PathBuf::from);
+    match pick_dir(call, alt) {
+        Some(path) => {
+            if !path.is_absolute() {
+                return Err(format!("{ENV_DIR_ALT} must be an absolute path"));
+            }
+            if !path.is_dir() {
+                return Err(format!("{ENV_DIR_ALT} must name an existing directory"));
+            }
+            path.canonicalize().map_err(|error| error.to_string())
+        }
+        None => test_dir(),
+    }
+}
+
+/// The alternate folder when this call should use it, else None (use the primary test folder).
+fn pick_dir(call: usize, alt: Option<PathBuf>) -> Option<PathBuf> {
+    alt.filter(|_| call % 2 == 1)
 }
 
 /// Resolve the export sandbox after canonicalizing it so a symlink cannot escape the test folder.
@@ -245,5 +271,22 @@ pub fn pdf_import_path() -> Result<PathBuf, String> {
     match env::var_os("VAULTDRAW_SMOKE_PDF") {
         Some(p) if !p.is_empty() => Ok(PathBuf::from(p)),
         _ => Ok(test_dir()?.join("smoke.pdf")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alternates_only_when_alt_is_set() {
+        let alt = Some(PathBuf::from("/alt"));
+        assert_eq!(pick_dir(0, alt.clone()), None);
+        assert_eq!(pick_dir(1, alt.clone()), Some(PathBuf::from("/alt")));
+        assert_eq!(pick_dir(2, alt.clone()), None);
+        assert_eq!(pick_dir(3, alt), Some(PathBuf::from("/alt")));
+        for call in 0..4 {
+            assert_eq!(pick_dir(call, None), None);
+        }
     }
 }

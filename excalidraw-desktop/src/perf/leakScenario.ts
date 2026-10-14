@@ -16,6 +16,7 @@ export const ALT_MARKER = "perf-alt-marker.excalidraw";
 const DRAWINGS = 50;
 const CHECKPOINT_EVERY = 10;
 const BASELINE_SETTLE_MS = 8000;
+const PASSES = 2;
 /** Positions (in the 50-drawing sequence) of the root targets and image-heavy drawings. */
 const SPECIAL_SLOTS = [2, 8, 14, 21, 30, 40];
 
@@ -78,15 +79,15 @@ export async function runLeakScenario(kit: PerfKit): Promise<void> {
   await openByRow(openTargets.small);
   await sleep(BASELINE_SETTLE_MS);
   await checkpoint("baseline");
-  for (let i = 0; i < plan.length; i++) {
-    await openByRow(plan[i]);
-    await sleep(150);
-    if ((i + 1) % CHECKPOINT_EVERY === 0) {
-      await checkpoint(`after-${i + 1}`);
+  // Two passes over the same drawings: a plateau in pass 2 means caches, steady growth means a leak.
+  for (let pass = 1; pass <= PASSES; pass++) {
+    for (let i = 0; i < plan.length; i++) {
+      await openByRow(plan[i]);
+      await sleep(150);
+      if ((i + 1) % CHECKPOINT_EVERY === 0 || i + 1 === plan.length) {
+        await checkpoint(`p${pass}-after-${i + 1}`);
+      }
     }
-  }
-  if (plan.length % CHECKPOINT_EVERY !== 0) {
-    await checkpoint(`after-${plan.length}`);
   }
 
   // Vault switch away and back. Needs the runner's second vault and a switch-capable

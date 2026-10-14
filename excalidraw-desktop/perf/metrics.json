@@ -128,6 +128,8 @@
     "memory.leak.growthMB.network": {"unit": "MB", "desc": "leak mode: network process growth (jsHeap: Chromium mode, after forced GC)", "gate": ["median"], "slack": 5},
     "memory.leak.growthMB.jsHeap": {"unit": "MB", "desc": "leak mode: jsHeap process growth (jsHeap: Chromium mode, after forced GC)", "gate": ["median"], "slack": 5},
     "memory.leak.perTenDrawingsMB": {"unit": "MB", "desc": "leak mode: least-squares footprint growth per 10 drawings opened (baseline and after-10..50)", "gate": ["median"], "slack": 2},
+    "memory.leak.pass2PerTenDrawingsMB": {"unit": "MB", "desc": "leak mode: footprint slope per 10 drawings in the second pass over the same 50 drawings; ~0 = plateau, positive = steady growth", "gate": ["median"], "slack": 2},
+    "memory.leak.pass2GrowthMB": {"unit": "MB", "desc": "leak mode: footprint at the end of pass 2 minus end of pass 1 (same drawings); ~0 = plateau", "gate": ["median"], "slack": 5},
     "memory.leak.switchDeltaMB": {"unit": "MB", "desc": "leak mode: after-vault-switch minus after the last drawing; negative = memory given back. Report only.", "gate": []},
     "typical.vaultOpenToTree": {"unit": "ms", "desc": "typical vault: Open Vault Folder click to root rows painted", "gate": ["median"]},
     "typical.open.300": {"unit": "ms", "desc": "typical vault: open the 300-element drawing with 2 images", "gate": ["median", "p95"]},
