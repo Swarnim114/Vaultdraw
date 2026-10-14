@@ -258,7 +258,8 @@ test("8. Mermaid conversion of 200 nodes under 4x CPU throttling (Chromium)", as
     async ({ text, sel }) => {
       // CodeMirror 6 (lazy chunk); the textarea only exists as a fallback.
       const content = document.querySelector<any>(".cm-content");
-      const view = content?.cmView?.view;
+      // CodeMirror >= 6.39 stores the tile on `cmTile` (older: `cmView`).
+      const view = content?.cmTile?.root?.view ?? content?.cmView?.view;
       const textarea = document.querySelector<HTMLTextAreaElement>(
         "textarea.ttd-dialog-input",
       );
