@@ -81,7 +81,12 @@ export default defineConfig({
     },
     setupFiles: ["./setupTests.ts"],
     // Playwright specs run via `yarn --cwd excalidraw-desktop test:e2e`
-    exclude: [...configDefaults.exclude, "excalidraw-desktop/e2e/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      "excalidraw-desktop/e2e/**",
+      // node:test files, run with `node --test`
+      "excalidraw-desktop/perf/**",
+    ],
     globals: true,
     environment: "jsdom",
     // don't list skipped tests in the failure tree — keeps output readable

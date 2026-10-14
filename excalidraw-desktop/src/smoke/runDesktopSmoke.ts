@@ -1363,6 +1363,32 @@ export async function runDesktopSmoke(): Promise<void> {
           }`,
         );
       }
+      // Leave the drawing as it was: images cannot be added to the library, so a
+      // leftover image would make the later "select all, add to library" step fail.
+      // The inserted image is the selection; delete it and save.
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          key: "Delete",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      const cleanupUntil = win.performance.now() + 8000;
+      while ((await readLive()).length !== before) {
+        if (win.performance.now() > cleanupUntil) {
+          throw new Error("Dropped image was not removed after the drop step");
+        }
+        doc.dispatchEvent(
+          new win.KeyboardEvent("keydown", {
+            key: "s",
+            metaKey: true,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        await delay(win, 1200);
+      }
       return {
         before,
         after: live.length,
