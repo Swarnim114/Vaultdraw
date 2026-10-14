@@ -4,8 +4,9 @@
  * Draws in device pixels with an identity transform so lines land on whole
  * pixels and dots stay locked to scene coordinates: scene -> device is
  * `(x + scroll) * zoom * scale`. Steady-state frames allocate nothing: line
- * levels are one path each, dots/isometric use a cached CanvasPattern tile
- * that only changes with zoom/colour/dpr (panning just updates its matrix).
+ * levels are one path each; dots/isometric use a cached CanvasPattern tile
+ * when the gap is a whole number of device px (panning just updates its
+ * matrix), otherwise one path with every visible dot.
  */
 
 import {
@@ -39,7 +40,7 @@ export type BackgroundPatternView = {
 
 /** Levels with more lines than this in one frame are skipped. */
 export const MAX_PATTERN_LINES = 2000;
-/** The fallback path draws at most this many dots per frame. */
+/** The dot path draws at most this many dots per frame. */
 export const MAX_PATTERN_FALLBACK_DOTS = 20000;
 /** Largest tile edge (device px) the CanvasPattern path accepts. */
 export const MAX_PATTERN_TILE_PX = 256;
@@ -228,7 +229,7 @@ const renderLines = (
 };
 
 // ---------------------------------------------------------------------------
-// dots (dots, isometric): cached CanvasPattern tile
+// dots (dots, isometric): cached CanvasPattern tile or one dot path
 // ---------------------------------------------------------------------------
 
 const tileCache: {
@@ -347,10 +348,22 @@ const renderDots = (
 
   const tileWidth = Math.round(gapX);
   const tileHeight = Math.round(gapY);
+  const rowGap = isometric ? gapY / 2 : gapY;
+  const firstColumn = Math.ceil(-originX / gapX) - 1;
+  const lastColumn = Math.floor((view.width - originX) / gapX) + 1;
+  const firstRow = Math.ceil(-originY / rowGap) - 1;
+  const lastRow = Math.floor((view.height - originY) / rowGap) + 1;
+  const dotCount = (lastColumn - firstColumn + 1) * (lastRow - firstRow + 1);
+  // A tile repeated at a whole-pixel offset is a plain copy; a scaled or
+  // sub-pixel tile is resampled per pixel (~6x slower than one dot path on a
+  // 2560x1440 canvas). So: whole-pixel gap -> tile at a rounded offset; other
+  // gaps -> one dot path; the resampled tile only when there are too many dots.
+  const wholeGap =
+    Math.abs(gapX - tileWidth) < 1e-3 && Math.abs(gapY - tileHeight) < 1e-3;
   context.globalAlpha = alpha;
   context.fillStyle = color;
-
   if (
+    (wholeGap || dotCount > MAX_PATTERN_FALLBACK_DOTS) &&
     tileWidth >= 1 &&
     tileHeight >= 1 &&
     tileWidth <= MAX_PATTERN_TILE_PX &&
@@ -366,30 +379,23 @@ const renderDots = (
     );
     if (tile) {
       const m = tileCache.matrix!;
-      m.a = gapX / tileWidth;
+      m.a = wholeGap ? 1 : gapX / tileWidth;
       m.b = 0;
       m.c = 0;
-      m.d = gapY / tileHeight;
+      m.d = wholeGap ? 1 : gapY / tileHeight;
       // tile origin sits half a cell before scene (0, 0)
-      m.e = mod(originX - gapX / 2, gapX);
-      m.f = mod(originY - gapY / (isometric ? 4 : 2), gapY);
+      const e = mod(originX - gapX / 2, gapX);
+      const f = mod(originY - gapY / (isometric ? 4 : 2), gapY);
+      m.e = wholeGap ? Math.round(e) : e;
+      m.f = wholeGap ? Math.round(f) : f;
       tile.setTransform(m);
       context.fillStyle = tile;
       context.fillRect(0, 0, view.width, view.height);
       return;
     }
   }
-
-  // fallback: one path with every visible dot (few at this size)
-  const rowGap = isometric ? gapY / 2 : gapY;
-  const firstColumn = Math.ceil(-originX / gapX) - 1;
-  const lastColumn = Math.floor((view.width - originX) / gapX) + 1;
-  const firstRow = Math.ceil(-originY / rowGap) - 1;
-  const lastRow = Math.floor((view.height - originY) / rowGap) + 1;
-  if (
-    (lastColumn - firstColumn + 1) * (lastRow - firstRow + 1) >
-    MAX_PATTERN_FALLBACK_DOTS
-  ) {
+  // one path with every visible dot
+  if (dotCount > MAX_PATTERN_FALLBACK_DOTS) {
     return;
   }
   context.beginPath();

@@ -104,16 +104,33 @@ describe("renderBackgroundPattern", () => {
     const ctx = makeContext();
     const dots = { ...createBackgroundPattern("dots"), spacing: 21 };
     renderBackgroundPattern(ctx, dots, view());
-    renderBackgroundPattern(ctx, dots, view({ scrollX: -33, scrollY: 17 }));
+    renderBackgroundPattern(ctx, dots, view({ scrollX: -33.3, scrollY: 17 }));
     expect(ctx.calls.createPattern).toBe(1);
     expect(ctx.calls.fillRect).toBe(2);
     expect(ctx.pattern.setTransform).toHaveBeenCalledTimes(2);
-    // zoom change rebuilds
-    renderBackgroundPattern(ctx, dots, view({ zoom: 1.5 }));
+    // whole-pixel gap: an unscaled tile at a whole-pixel offset (no resampling)
+    const m = ctx.pattern.setTransform.mock.calls[1][0];
+    expect([m.a, m.d]).toEqual([1, 1]);
+    expect(Number.isInteger(m.e)).toBe(true);
+    expect(Number.isInteger(m.f)).toBe(true);
+    // a zoom with another whole-pixel gap rebuilds the tile
+    renderBackgroundPattern(ctx, dots, view({ zoom: 2 }));
     expect(ctx.calls.createPattern).toBe(2);
   });
 
-  it("isometric: tile is one cell wide and two rows tall", async () => {
+  it("dots: a fractional gap draws one dot path instead of a resampled tile", () => {
+    const ctx = makeContext();
+    renderBackgroundPattern(
+      ctx,
+      { ...createBackgroundPattern("dots"), spacing: 21 },
+      view({ zoom: 1.37 }),
+    );
+    expect(ctx.calls.fillRect).toBeUndefined();
+    expect(ctx.calls.fill).toBe(1);
+    expect(ctx.calls.arc).toBeGreaterThan(0);
+  });
+
+  it("isometric: too many dots for one path -> tile one cell wide, two rows tall", async () => {
     // the tile canvas is cached module-wide: load a fresh module
     vi.resetModules();
     const fresh = await import("./backgroundPattern");
@@ -131,7 +148,8 @@ describe("renderBackgroundPattern", () => {
     fresh.renderBackgroundPattern(
       ctx,
       { ...createBackgroundPattern("isometric"), spacing: 30 },
-      view(),
+      // 200 columns x ~230 rows > MAX_PATTERN_FALLBACK_DOTS
+      view({ width: 6000, height: 6000 }),
     );
     spy.mockRestore();
     expect(ctx.calls.createPattern).toBe(1);
