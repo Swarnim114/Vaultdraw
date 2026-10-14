@@ -79,7 +79,7 @@ autosave_delay_ms = 500
 # "vault.newDrawing" = ["Mod+N"]
 
 [pens]
-# Saved pens of the freedraw tool (Alt+1 .. Alt+9 while drawing). width: 0.5 thin, 1 medium, 2 bold, ~10 highlighter.
+# Saved pens of the freedraw tool (Alt+1 .. Alt+9 by default, see [hotkeys] pen.select1..9). width: 0.5 thin, 1 medium, 2 bold, ~10 highlighter.
 # pressure = variable width; smoothing 0 (raw) to 1 (smooth); highlighter = drawn behind everything.
 # presets = [ { name = "Fine liner", color = "#1e1e1e", width = 0.5, opacity = 100, pressure = false, smoothing = 0.3, highlighter = false } ]
 

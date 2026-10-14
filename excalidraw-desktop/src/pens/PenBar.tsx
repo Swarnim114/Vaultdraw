@@ -4,17 +4,25 @@ import type { PenPreset } from "./penPresets";
 
 interface Props {
   presets: readonly PenPreset[];
+  /** Display text of each pen's shortcut ("" or missing = none). */
+  shortcuts?: readonly string[];
   active: number | null;
   onSelect: (index: number) => void;
   onOpenSettings?: () => void;
 }
 
 /** Pen chips shown under the top toolbar while the freedraw tool is active. */
-export function PenBar({ presets, active, onSelect, onOpenSettings }: Props) {
+export function PenBar({
+  presets,
+  shortcuts = [],
+  active,
+  onSelect,
+  onOpenSettings,
+}: Props) {
   return (
     <div className="pen-bar" role="toolbar" aria-label="Pens">
       {presets.map((preset, i) => {
-        const shortcut = `Alt+${i + 1}`;
+        const shortcut = shortcuts[i];
         return (
           <button
             key={`${i}-${preset.name}`}
@@ -22,7 +30,7 @@ export function PenBar({ presets, active, onSelect, onOpenSettings }: Props) {
             className="pen-bar__chip"
             aria-label={preset.name}
             aria-pressed={active === i}
-            title={`${preset.name} (${shortcut})`}
+            title={shortcut ? `${preset.name} (${shortcut})` : preset.name}
             onClick={() => onSelect(i)}
           >
             <span

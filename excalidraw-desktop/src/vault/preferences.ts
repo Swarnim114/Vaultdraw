@@ -86,7 +86,7 @@ export interface VaultPreferences {
   templatesFolder: string;
   /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
   hotkeys: Record<string, string[]>;
-  /** Saved pens (1 to 9), selected with Alt+1..9. */
+  /** Saved pens (1 to 9), selected with the pen.selectN commands (Alt+1..9). */
   penPresets: PenPreset[];
   laserColor: string;
   laserSize: number;

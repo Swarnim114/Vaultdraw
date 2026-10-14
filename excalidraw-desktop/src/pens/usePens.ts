@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AppState,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
 
+import { getCommand, penCommandId } from "../commands/commands";
+import { detectPlatform, formatChord } from "../commands/keys";
+import { effectiveKeys } from "../commands/keymap";
+import { useHotkeyOverrides } from "../commands/useCommands";
 import { getPreferences, subscribePreferences } from "../vault/preferences";
+
+import { registerPenSelector } from "./penCommands";
 
 import {
   laserToPointerSettings,
@@ -35,16 +41,20 @@ type Applied = {
   widthKey: string | null;
 };
 
-const isTextTarget = (target: EventTarget | null) => {
-  const el = target as HTMLElement | null;
-  return (
-    !!el &&
-    (el.tagName === "INPUT" ||
-      el.tagName === "TEXTAREA" ||
-      el.tagName === "SELECT" ||
-      el.isContentEditable)
-  );
-};
+/** Display text of each pen's first chord ("" when unassigned). */
+function usePenShortcuts(count: number): string[] {
+  const overrides = useHotkeyOverrides(null);
+  return useMemo(() => {
+    const platform = detectPlatform();
+    return Array.from({ length: count }, (_, i) => {
+      const command = getCommand(penCommandId(i));
+      const [chord] = command
+        ? effectiveKeys(command, overrides, platform)
+        : [];
+      return chord ? formatChord(chord, platform) : "";
+    });
+  }, [count, overrides]);
+}
 
 /** Presets from preferences; the state only changes when their content does. */
 function usePresets(): PenPreset[] {
@@ -71,10 +81,10 @@ function usePresets(): PenPreset[] {
  */
 export function usePens(
   apiRef: RefObject<ExcalidrawImperativeAPI | null>,
-  hostRef: RefObject<HTMLElement | null>,
   enabled: boolean,
 ) {
   const presets = usePresets();
+  const shortcuts = usePenShortcuts(presets.length);
   const [active, setActive] = useState<number | null>(null);
   const [freedrawActive, setFreedrawActive] = useState(false);
   const presetsRef = useRef(presets);
@@ -166,38 +176,12 @@ export function usePens(
     [],
   );
 
-  // Alt+1..9 (event.code, so macOS Alt-dead-keys do not matter) while drawing.
-  useEffect(() => {
-    const doc = hostRef.current?.ownerDocument;
-    if (!doc) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        !event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        !freedrawRef.current ||
-        !enabledRef.current ||
-        isTextTarget(event.target)
-      ) {
-        return;
-      }
-      const match = /^Digit([1-9])$/.exec(event.code);
-      const index = match ? Number(match[1]) - 1 : -1;
-      if (index >= 0 && index < presetsRef.current.length) {
-        event.preventDefault();
-        event.stopPropagation();
-        selectPen(index);
-      }
-    };
-    doc.addEventListener("keydown", onKeyDown, true);
-    return () => doc.removeEventListener("keydown", onKeyDown, true);
-  }, [hostRef, selectPen]);
+  // Alt+1..9 by default: the "pen.selectN" commands (rebindable, Hotkeys page).
+  useEffect(() => registerPenSelector(selectPen), [selectPen]);
 
   return {
     presets,
+    shortcuts,
     active,
     freedrawActive,
     selectPen,

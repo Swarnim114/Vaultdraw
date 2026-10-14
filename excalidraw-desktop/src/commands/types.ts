@@ -12,7 +12,8 @@ export type CommandCategory =
   | "Navigator"
   | "Settings"
   | "Appearance"
-  | "Palette";
+  | "Palette"
+  | "Pens";
 
 /**
  * Facts the dispatcher checks before claiming a key.

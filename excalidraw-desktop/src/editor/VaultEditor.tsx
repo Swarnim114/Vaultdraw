@@ -109,7 +109,7 @@ const VaultEditorComponent = ({
     null,
   );
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
-  const pens = usePens(apiRef, host, !readOnly && !disabled);
+  const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -479,6 +479,7 @@ const VaultEditorComponent = ({
       {pens.freedrawActive && !readOnly && !disabled && (
         <PenBar
           presets={pens.presets}
+          shortcuts={pens.shortcuts}
           active={pens.active}
           onSelect={pens.selectPen}
           onOpenSettings={onOpenSettings && (() => onOpenSettings("pens"))}

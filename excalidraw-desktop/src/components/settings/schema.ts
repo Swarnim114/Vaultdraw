@@ -225,7 +225,7 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     page: "pens",
     label: "Pen Presets",
     description:
-      "Saved pens for freehand drawing. Select one with Alt+1 to Alt+9 or from the pen bar.",
+      "Saved pens for freehand drawing. Select one from the pen bar or with Alt+1 to Alt+9 (change these keys on the Hotkeys page).",
     keywords: [
       "pen",
       "pens",

@@ -2,6 +2,8 @@
  * Binds the app shell's actions to command ids (see commands.ts). Every id in
  * COMMANDS gets a handler here; the dispatcher decides when it may run.
  */
+import { PEN_COMMAND_HANDLERS } from "../pens/penCommands";
+
 import type { CommandHandlers } from "./types";
 
 export interface AppCommandActions {
@@ -39,5 +41,6 @@ export function appCommandHandlers(
     "file.duplicate": actions.duplicateActive,
     "appearance.toggleMode": actions.toggleMode,
     "palette.quickSwitcher": actions.toggleQuickSwitcher,
+    ...PEN_COMMAND_HANDLERS,
   };
 }

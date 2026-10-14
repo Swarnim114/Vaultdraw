@@ -19,7 +19,7 @@ export interface PenPreset {
   highlighter: boolean;
 }
 
-/** Alt+1 .. Alt+9 select a preset. */
+/** One "pen.selectN" command each (Alt+1 .. Alt+9 by default). */
 export const MAX_PEN_PRESETS = 9;
 export const MIN_PEN_WIDTH = 0.5;
 export const MAX_PEN_WIDTH = 40;

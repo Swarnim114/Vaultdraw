@@ -136,3 +136,27 @@ test("the pen bar's settings link opens the Pens & laser page", async ({
   await expect(page.locator("#settings-title")).not.toHaveText("Pens & laser");
   expect(errors).toEqual([]);
 });
+
+test("pen keys are rebindable commands listed on the Hotkeys page", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await page.keyboard.press("ControlOrMeta+Comma");
+  await page.getByRole("tab", { name: "Hotkeys" }).click();
+  await expect(
+    page.locator('.vault-hotkeys__row[data-command-id="pen.select9"]'),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close Settings" }).click();
+
+  await page.evaluate(() =>
+    (window as any).__updatePreferences({
+      hotkeys: { "pen.select2": ["Alt+Shift+2"] },
+    }),
+  );
+  // Works from any tool: it switches to freedraw with that pen.
+  await page.keyboard.press("Alt+Shift+Digit2");
+  const marker = pensBar(page).getByRole("button", { name: "Marker" });
+  await expect(marker).toHaveAttribute("aria-pressed", "true");
+  await expect(marker).toHaveAttribute("title", /Marker \(.*2\)/);
+  expect(errors).toEqual([]);
+});

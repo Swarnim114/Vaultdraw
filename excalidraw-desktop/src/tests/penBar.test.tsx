@@ -10,6 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import { PenBar } from "../pens/PenBar";
 import { DEFAULT_PEN_PRESETS } from "../pens/penPresets";
 import { usePens } from "../pens/usePens";
+import { PEN_COMMAND_HANDLERS } from "../pens/penCommands";
+import { detectPlatform, formatChord } from "../commands/keys";
+import { useCommandDispatcher } from "../commands/useCommands";
+import { updatePreferences } from "../vault/preferences";
 
 describe("PenBar", () => {
   it("renders chips with shortcut titles, marks the active one and selects", () => {
@@ -18,6 +22,7 @@ describe("PenBar", () => {
     render(
       <PenBar
         presets={DEFAULT_PEN_PRESETS}
+        shortcuts={["⌥1", "⌥2", ""]}
         active={1}
         onSelect={onSelect}
         onOpenSettings={onOpenSettings}
@@ -25,7 +30,12 @@ describe("PenBar", () => {
     );
     const marker = screen.getByRole("button", { name: "Marker" });
     expect(marker).toHaveAttribute("aria-pressed", "true");
-    expect(marker).toHaveAttribute("title", "Marker (Alt+2)");
+    expect(marker).toHaveAttribute("title", "Marker (⌥2)");
+    // Unassigned (or missing) shortcut: just the name.
+    expect(screen.getByRole("button", { name: "Brush" })).toHaveAttribute(
+      "title",
+      "Brush",
+    );
     expect(screen.getByRole("button", { name: "Red pen" })).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -49,12 +59,8 @@ const state = (over: Record<string, unknown> = {}) =>
 
 const setup = (enabled = true) => {
   const api = { updateScene: vi.fn(), setActiveTool: vi.fn() };
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  const hook = renderHook(() =>
-    usePens({ current: api as any }, { current: host }, enabled),
-  );
-  return { api, host, hook };
+  const hook = renderHook(() => usePens({ current: api as any }, enabled));
+  return { api, hook };
 };
 
 const altDigit = (code: string, target: EventTarget = document.body) => {
@@ -70,14 +76,19 @@ const altDigit = (code: string, target: EventTarget = document.body) => {
   return event;
 };
 
-describe("usePens", () => {
-  it("selects a preset with Alt+digit only while freedraw is active", () => {
-    const { api, hook } = setup();
-    expect(altDigit("Digit2").defaultPrevented).toBe(false);
-    expect(api.updateScene).not.toHaveBeenCalled();
+/** The app's dispatcher with only the pen handlers bound, a drawing open. */
+const dispatcher = () =>
+  renderHook(() =>
+    useCommandDispatcher(document, window, {
+      handlers: PEN_COMMAND_HANDLERS,
+      app: { vaultOpen: true, drawingOpen: true, writable: true },
+    }),
+  );
 
-    act(() => hook.result.current.onAppState(state()));
-    expect(hook.result.current.freedrawActive).toBe(true);
+describe("usePens", () => {
+  it("selects a preset through the pen.selectN commands (Alt+digit)", () => {
+    const { api, hook } = setup();
+    const keys = dispatcher();
 
     expect(altDigit("Digit2").defaultPrevented).toBe(true);
     expect(api.updateScene).toHaveBeenCalledWith({
@@ -90,11 +101,42 @@ describe("usePens", () => {
     expect(api.setActiveTool).toHaveBeenCalledWith({ type: "freedraw" });
     expect(hook.result.current.active).toBe(1);
     expect(hook.result.current.freedrawPen()).toMatchObject({ behind: false });
-    // out of range / text inputs are ignored
-    expect(altDigit("Digit9").defaultPrevented).toBe(false);
+    // No sixth preset: claimed by the command but nothing happens.
+    act(() => {
+      PEN_COMMAND_HANDLERS["pen.select9"]?.();
+    });
+    expect(hook.result.current.active).toBe(1);
+    // Option+digit types characters in text fields: never claimed there.
     const input = document.createElement("input");
     document.body.appendChild(input);
+    input.focus();
     expect(altDigit("Digit1", input).defaultPrevented).toBe(false);
+    input.remove();
+    keys.unmount();
+    hook.unmount();
+    // Unmounted editor: the commands have no target any more.
+    act(() => {
+      PEN_COMMAND_HANDLERS["pen.select1"]?.();
+    });
+    expect(api.updateScene).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels pens with their effective, rebindable shortcuts", () => {
+    const platform = detectPlatform();
+    const { hook } = setup();
+    expect(hook.result.current.shortcuts[1]).toBe(
+      formatChord("Alt+2", platform),
+    );
+    act(() =>
+      updatePreferences({
+        hotkeys: { "pen.select2": ["Alt+Shift+2"], "pen.select3": [] },
+      }),
+    );
+    expect(hook.result.current.shortcuts[1]).toBe(
+      formatChord("Alt+Shift+2", platform),
+    );
+    expect(hook.result.current.shortcuts[2]).toBe("");
+    act(() => updatePreferences({ hotkeys: {} }));
   });
 
   it("drops the active preset when colour is changed manually", () => {
@@ -124,7 +166,9 @@ describe("usePens", () => {
     hook.rerender();
     expect(hook.result.current.freedrawPen).toBe(freedrawPen);
     expect(hook.result.current.laserPointerOptions).toBe(laserPointerOptions);
-    expect(altDigit("Digit1").defaultPrevented).toBe(false);
+    act(() => {
+      PEN_COMMAND_HANDLERS["pen.select1"]?.();
+    });
     expect(api.updateScene).not.toHaveBeenCalled();
     expect(laserPointerOptions()).toHaveProperty("decayMs");
   });

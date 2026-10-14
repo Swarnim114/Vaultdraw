@@ -3,7 +3,26 @@
  * those). Order matters: it is the dispatcher's tie-break and the order the
  * Hotkeys page lists commands in.
  */
+import { MAX_PEN_PRESETS } from "../pens/penPresets";
+
 import type { Chord, CommandDefinition, Platform } from "./types";
+
+/** "pen.select1" .. "pen.select9": pick a saved pen (and the freedraw tool). */
+export const penCommandId = (index: number) => `pen.select${index + 1}`;
+
+const PEN_COMMANDS: CommandDefinition[] = Array.from(
+  { length: MAX_PEN_PRESETS },
+  (_, i) => ({
+    id: penCommandId(i),
+    title: `Select pen ${i + 1}`,
+    category: "Pens",
+    // Matched by code, so macOS Option+digit dead keys do not matter. Never
+    // while typing: Option+digit types characters (¡, ™, £...) on macOS.
+    keys: { default: [`Alt+${i + 1}`] },
+    when: ["drawingOpen", "!textEditing", "!modalOpen"],
+    palette: false,
+  }),
+);
 
 export const COMMANDS: readonly CommandDefinition[] = [
   {
@@ -115,6 +134,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: { default: [] },
     when: ["vaultOpen", "!modalOpen"],
   },
+  ...PEN_COMMANDS,
 ];
 
 const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(
