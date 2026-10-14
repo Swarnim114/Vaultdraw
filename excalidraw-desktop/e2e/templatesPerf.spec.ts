@@ -5,21 +5,22 @@ import { expect, test, type Page } from "@playwright/test";
 import { openVault } from "./helpers";
 
 // Performance measurements for the template picker (F9). Skipped unless
-// E2E_PERF=1. Numbers go to stdout and to $PERF_MD (markdown).
+// E2E_PERF=1. Numbers go to stdout, and to markdown when PERF_MD is set
+// (one file per browser: <PERF_MD without .md>-<browser>.md).
 // Budget: first paint of the list < 100 ms p95 (200 templates); no long task
 // > 50 ms caused by thumbnails.
 const PERF = process.env.E2E_PERF === "1";
 const RUNS = Number(process.env.PERF_RUNS ?? 10);
 const COUNT = Number(process.env.PERF_TEMPLATES ?? 200);
 const RATES = (process.env.PERF_RATES ?? "1,4").split(",").map(Number);
-const OUT =
-  process.env.PERF_MD ??
-  "/Users/kalon/Opensource/excalidraw/personal/feature/templates/perf-numbers.md";
+const OUT = process.env.PERF_MD;
 const OPEN_BUDGET_MS = 100;
 const LONG_TASK_BUDGET_MS = 50;
 
 test.skip(!PERF, "set E2E_PERF=1 to run the template picker perf measurements");
 test.describe.configure({ mode: "serial", timeout: 240_000 });
+// Tracing snapshots the DOM inside the measured tasks; keep it out of the numbers.
+test.use({ trace: "off" });
 
 const pct = (values: number[], p: number) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -37,8 +38,8 @@ const record = (title: string, rows: Record<string, unknown>) => {
   console.log(`PERF ${line}`);
 };
 
-test.afterAll(() => {
-  if (report.length === 0) {
+test.afterAll(({ browserName }) => {
+  if (!OUT || report.length === 0) {
     return;
   }
   const body = [
@@ -51,7 +52,7 @@ test.afterAll(() => {
     ...report,
     "",
   ].join("\n");
-  writeFileSync(OUT, body);
+  writeFileSync(`${OUT.replace(/\.md$/, "")}-${browserName}.md`, body);
 });
 
 const installProbes = (page: Page) =>
@@ -122,18 +123,23 @@ const closePicker = async (page: Page) => {
 };
 
 test("picker open to first row, cold (fresh page each run)", async ({
-  page,
+  browser,
   browserName,
-}) => {
+}, testInfo) => {
   const rowMs: number[] = [];
   const paintMs: number[] = [];
   for (let run = 0; run < RUNS; run++) {
+    // A fresh context per run: nothing persisted (e.g. the last vault) leaks
+    // between runs, so every run starts from the same cold state.
+    const context = await browser.newContext(testInfo.project.use);
+    const page = await context.newPage();
     await installProbes(page);
     await openVault(page, `?templates=${COUNT}`);
     const r = await openPicker(page);
     await expect(page.locator(".template-picker__row")).toHaveCount(COUNT + 1);
     rowMs.push(r.rowMs);
     paintMs.push(r.paintMs);
+    await context.close();
   }
   record(`open ${browserName} cpu1x`, {
     templates: COUNT,
