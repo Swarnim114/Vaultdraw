@@ -12,6 +12,7 @@ export type SettingsPageId =
   | "appearance"
   | "interface"
   | "drawing"
+  | "pens"
   | "files"
   | "hotkeys";
 
@@ -31,6 +32,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "appearance", label: "Appearance", group: "Options" },
   { id: "interface", label: "Interface", group: "Options" },
   { id: "drawing", label: "Drawing", group: "Options" },
+  { id: "pens", label: "Pens & laser", group: "Options" },
   { id: "files", label: "Files", group: "Options" },
   { id: "hotkeys", label: "Hotkeys", group: "Options" },
 ];
@@ -215,6 +217,60 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     description: "Hand-drawn sketch intensity.",
     keywords: ["sloppiness", "architect", "artist", "cartoonist", "sketch"],
     configKey: "editor.roughness",
+  },
+
+  // ---- Pens & laser ----
+  {
+    id: "pen-presets",
+    page: "pens",
+    label: "Pen Presets",
+    description:
+      "Saved pens for freehand drawing. Select one with Alt+1 to Alt+9 or from the pen bar.",
+    keywords: [
+      "pen",
+      "pens",
+      "highlighter",
+      "marker",
+      "brush",
+      "pressure",
+      "smoothing",
+      "opacity",
+      "freedraw",
+      "Alt+1",
+    ],
+    configKey: "pens.presets",
+  },
+  {
+    id: "laser-color",
+    page: "pens",
+    label: "Laser Colour",
+    description: "Colour of the laser pointer trail.",
+    keywords: ["laser", "pointer", "trail", "presentation", "color", "colour"],
+    configKey: "laser.color",
+  },
+  {
+    id: "laser-size",
+    page: "pens",
+    label: "Laser Size",
+    description: "Thickness of the laser pointer trail in pixels.",
+    keywords: ["laser", "pointer", "trail", "presentation", "thickness"],
+    configKey: "laser.size",
+  },
+  {
+    id: "laser-fade",
+    page: "pens",
+    label: "Laser Fade Time",
+    description: "How long the laser trail takes to fade out, in milliseconds.",
+    keywords: ["laser", "pointer", "trail", "presentation", "decay", "ms"],
+    configKey: "laser.decay_ms",
+  },
+  {
+    id: "laser-length",
+    page: "pens",
+    label: "Laser Tail Length",
+    description: "Number of trail points over which the tail tapers off.",
+    keywords: ["laser", "pointer", "trail", "presentation", "tail"],
+    configKey: "laser.length",
   },
 
   // ---- Files ----

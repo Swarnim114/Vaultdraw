@@ -1,4 +1,16 @@
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
+import {
+  DEFAULT_LASER,
+  LASER_LIMITS,
+  inRange,
+  type LaserSettings,
+} from "../pens/laserSettings";
+import {
+  DEFAULT_PEN_PRESETS,
+  isPenPresets,
+  withPenDefaults,
+  type PenPreset,
+} from "../pens/penPresets";
 
 import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from "./sortOrder";
 
@@ -74,6 +86,12 @@ export interface VaultPreferences {
   templatesFolder: string;
   /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
   hotkeys: Record<string, string[]>;
+  /** Saved pens (1 to 9), selected with Alt+1..9. */
+  penPresets: PenPreset[];
+  laserColor: string;
+  laserSize: number;
+  laserDecayMs: number;
+  laserLength: number;
 }
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
@@ -108,7 +126,20 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   newDrawingFolder: "",
   templatesFolder: DEFAULT_TEMPLATES_FOLDER,
   hotkeys: {},
+  penPresets: DEFAULT_PEN_PRESETS.map((p) => ({ ...p })),
+  laserColor: DEFAULT_LASER.color,
+  laserSize: DEFAULT_LASER.size,
+  laserDecayMs: DEFAULT_LASER.decayMs,
+  laserLength: DEFAULT_LASER.length,
 };
+
+/** The laser fields of the preferences as one settings object. */
+export const getLaserSettings = (prefs: VaultPreferences): LaserSettings => ({
+  color: prefs.laserColor,
+  size: prefs.laserSize,
+  decayMs: prefs.laserDecayMs,
+  length: prefs.laserLength,
+});
 
 export const MIN_ZOOM = 50;
 export const MAX_ZOOM = 200;
@@ -150,6 +181,12 @@ const isNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value);
 const isString = (value: unknown) => typeof value === "string";
 const isBoolean = (value: unknown) => typeof value === "boolean";
+
+/** Presets with missing optional fields filled in; invalid -> fallback. */
+const normalizePenPresets = (value: unknown, fallback: PenPreset[]) => {
+  const filled = withPenDefaults(value);
+  return isPenPresets(filled) ? filled : fallback.map((p) => ({ ...p }));
+};
 
 /**
  * Field-by-field normalization of an untrusted preferences object: anything
@@ -244,6 +281,23 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       d.templatesFolder,
     ),
     hotkeys: normalizeHotkeys(parsed.hotkeys),
+    penPresets: normalizePenPresets(parsed.penPresets, d.penPresets),
+    laserColor: pick(parsed.laserColor, isString, d.laserColor),
+    laserSize: pick(
+      parsed.laserSize,
+      (v) => inRange(v, LASER_LIMITS.size),
+      d.laserSize,
+    ),
+    laserDecayMs: pick(
+      parsed.laserDecayMs,
+      (v) => inRange(v, LASER_LIMITS.decayMs),
+      d.laserDecayMs,
+    ),
+    laserLength: pick(
+      parsed.laserLength,
+      (v) => inRange(v, LASER_LIMITS.length),
+      d.laserLength,
+    ),
   };
 }
 
@@ -252,6 +306,7 @@ const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
   recentVaults: [...prefs.recentVaults],
   expandedFolders: { ...prefs.expandedFolders },
   hotkeys: { ...prefs.hotkeys },
+  penPresets: prefs.penPresets.map((p) => ({ ...p })),
 });
 
 // ---------------------------------------------------------------------------

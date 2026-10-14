@@ -11,6 +11,13 @@
  */
 import { isCommandId } from "../commands/commands";
 import { parseChord } from "../commands/keys";
+import { inRange, LASER_LIMITS } from "../pens/laserSettings";
+import {
+  isPenPresets,
+  MAX_PEN_PRESETS,
+  penPresetProblem,
+  withPenDefaults,
+} from "../pens/penPresets";
 
 import { isSortOrder, SORT_ORDERS } from "./sortOrder";
 import { isTauriAvailable } from "./DesktopVaultRepository";
@@ -119,13 +126,20 @@ type ConfigField =
   | "showTagChips"
   | "navigatorSort"
   | "newDrawingFolder"
-  | "templatesFolder";
+  | "templatesFolder"
+  | "penPresets"
+  | "laserColor"
+  | "laserSize"
+  | "laserDecayMs"
+  | "laserLength";
 
 interface ConfigMapping {
   field: ConfigField;
   key: string;
   /** Human description of what is accepted, used in problem messages. */
-  expected: string;
+  expected: string | ((value: unknown) => string);
+  /** Fills in hand-written gaps before validation; the result is stored. */
+  normalize?: (value: unknown) => unknown;
   valid: (value: unknown) => boolean;
 }
 
@@ -285,6 +299,46 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
     expected: 'a non-empty folder path inside the vault like "Templates"',
     valid: (v) => isVaultRelativeFolder(v) && v !== "",
   },
+  {
+    field: "penPresets",
+    key: "pens.presets",
+    expected: (value) => {
+      if (!Array.isArray(value)) {
+        return `a list of 1 to ${MAX_PEN_PRESETS} pens`;
+      }
+      if (value.length < 1 || value.length > MAX_PEN_PRESETS) {
+        return `1 to ${MAX_PEN_PRESETS} pens, found ${value.length}`;
+      }
+      const index = value.findIndex((p) => penPresetProblem(p) !== null);
+      return `pen ${index + 1} ${penPresetProblem(value[index])}`;
+    },
+    normalize: withPenDefaults,
+    valid: isPenPresets,
+  },
+  {
+    field: "laserColor",
+    key: "laser.color",
+    expected: 'a colour like "red" or "#e03131"',
+    valid: isColor,
+  },
+  {
+    field: "laserSize",
+    key: "laser.size",
+    expected: `a number between ${LASER_LIMITS.size.min} and ${LASER_LIMITS.size.max} (pixels)`,
+    valid: (v) => inRange(v, LASER_LIMITS.size),
+  },
+  {
+    field: "laserDecayMs",
+    key: "laser.decay_ms",
+    expected: `a number between ${LASER_LIMITS.decayMs.min} and ${LASER_LIMITS.decayMs.max} (milliseconds)`,
+    valid: (v) => inRange(v, LASER_LIMITS.decayMs),
+  },
+  {
+    field: "laserLength",
+    key: "laser.length",
+    expected: `a number between ${LASER_LIMITS.length.min} and ${LASER_LIMITS.length.max} (trail points)`,
+    valid: (v) => inRange(v, LASER_LIMITS.length),
+  },
 ];
 
 export const STATE_FIELDS = [
@@ -392,7 +446,8 @@ export function configToPreferences(config: Record<string, unknown>): {
   const problems: SettingsProblem[] = [];
   for (const mapping of CONFIG_MAPPING) {
     const fallback = DEFAULT_PREFERENCES[mapping.field];
-    const { present, value } = readDotted(config, mapping.key);
+    const { present, value: raw } = readDotted(config, mapping.key);
+    const value = mapping.normalize ? mapping.normalize(raw) : raw;
     if (!present) {
       values[mapping.field] = fallback;
     } else if (mapping.valid(value)) {
@@ -404,9 +459,11 @@ export function configToPreferences(config: Record<string, unknown>): {
         key: mapping.key,
         message: `config.toml: ${mapping.key} = ${show(
           value,
-        )} is not valid (expected ${mapping.expected}); using ${show(
-          fallback,
-        )}`,
+        )} is not valid (expected ${
+          typeof mapping.expected === "function"
+            ? mapping.expected(value)
+            : mapping.expected
+        }); using ${show(fallback)}`,
       });
     }
   }

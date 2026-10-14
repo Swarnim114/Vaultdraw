@@ -82,7 +82,11 @@ describe("settings schema", () => {
     expect(ids("   ")).toEqual([]);
     expect(ids("nothing-matches-this")).toEqual([]);
     const groups = groupByPage(searchSettings("colour"));
-    expect(groups.map((g) => g.page.id)).toEqual(["appearance", "drawing"]);
+    expect(groups.map((g) => g.page.id)).toEqual([
+      "appearance",
+      "drawing",
+      "pens",
+    ]);
   });
 });
 
@@ -113,7 +117,7 @@ describe("settings search", () => {
     const groups = within(results())
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label"));
-    expect(groups).toEqual(["Appearance", "Drawing"]);
+    expect(groups).toEqual(["Appearance", "Drawing", "Pens & laser"]);
   });
 
   it("editing a control in the results persists like on its page", () => {

@@ -7,7 +7,7 @@ export interface PenPreset {
   name: string;
   /** Stroke colour (hex or CSS name). */
   color: string;
-  /** Element strokeWidth in freedraw units: 0.5 thin, 1 medium, 2 bold, ~10 highlighter. */
+  /** Visual stroke thickness in px (the widest point for pressure pens). The element strokeWidth is derived from it, see penApply. */
   width: number;
   /** 1 to 100. */
   opacity: number;
@@ -21,8 +21,8 @@ export interface PenPreset {
 
 /** Alt+1 .. Alt+9 select a preset. */
 export const MAX_PEN_PRESETS = 9;
-export const MIN_PEN_WIDTH = 0.25;
-export const MAX_PEN_WIDTH = 24;
+export const MIN_PEN_WIDTH = 0.5;
+export const MAX_PEN_WIDTH = 40;
 
 export const DEFAULT_PEN_PRESETS: readonly PenPreset[] = [
   {
