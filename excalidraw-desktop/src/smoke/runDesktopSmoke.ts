@@ -142,6 +142,8 @@ const DEFAULT_CONFIG_JSON = {
   files: {},
   paper: {},
   hotkeys: {},
+  pens: {},
+  laser: {},
 };
 
 /** Recursive key-order-insensitive comparison; returns mismatching paths. */
