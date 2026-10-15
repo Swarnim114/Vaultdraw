@@ -179,6 +179,17 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
     );
   }, []);
 
+  /** The text to put inside `[[...]]` for the drawing at `path`. */
+  const targetFor = useCallback((path: string): string => {
+    const { settings, currentPath } = latest.current;
+    return linkTargetFor(
+      path,
+      currentPath,
+      resolverRef.current,
+      settings.newLinkFormat,
+    );
+  }, []);
+
   const applyEdits = useCallback((edits: readonly ElementEdit[]): number => {
     const api = latest.current.api;
     return api ? applyEditsTo(api, edits) : 0;
@@ -207,6 +218,7 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
     startLinkHints,
     openLinkUnderSelection,
     linkSelectionTo,
+    targetFor,
     applyEdits,
     remeasure,
     overlays,

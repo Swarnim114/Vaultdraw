@@ -87,6 +87,8 @@ export interface QuickSwitcherProps {
   collectItems(): readonly PaletteItem[];
   platform: Platform;
   onOpenDrawing(path: string): void;
+  /** Pick mode: a drawing row calls `onOpenDrawing` as usual, but commands are not offered; the label replaces the placeholder. */
+  pickLabel?: string;
   /** Enter: the shell closes the palette, then runs it. Mod+Enter (keepOpen): the shell runs it in place. */
   onRunItem(item: PaletteItem, keepOpen: boolean): void;
   /** Esc, backdrop click, or the current mode's own shortcut. */
@@ -292,6 +294,7 @@ export const QuickSwitcher = ({
   collectItems,
   platform,
   onOpenDrawing,
+  pickLabel,
   onRunItem,
   onClose,
   ownerDocument,
@@ -379,6 +382,9 @@ export const QuickSwitcher = ({
   }, [onClose, ownerDocument]);
 
   const changeQuery = (next: string) => {
+    if (pickLabel && modeOf(next) === "commands") {
+      return;
+    }
     setQuery(next);
     setActive(0);
     setShown(FIRST_ROWS);
@@ -537,8 +543,8 @@ export const QuickSwitcher = ({
           aria-expanded="true"
           aria-controls={listId}
           aria-activedescendant={rows.length ? optionId(selected) : undefined}
-          aria-label={MODE_TEXT[mode].label}
-          placeholder={MODE_TEXT[mode].placeholder}
+          aria-label={pickLabel ?? MODE_TEXT[mode].label}
+          placeholder={pickLabel ?? MODE_TEXT[mode].placeholder}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           spellCheck={false}

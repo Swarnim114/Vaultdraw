@@ -37,7 +37,12 @@ export type UseVaultDocumentResult = {
   close: () => Promise<void>;
   reload: () => Promise<void>;
   saveCopy: (path: string) => Promise<void>;
-  relocate: (from: string, to: string) => Promise<void>;
+  /** `move` replaces the plain repository move (a links-aware move). */
+  relocate: (
+    from: string,
+    to: string,
+    move?: (from: string, to: string) => Promise<unknown>,
+  ) => Promise<void>;
 };
 
 type Active = VaultDocument & {
@@ -470,7 +475,11 @@ export const useVaultDocument = (
   const relocation = useRef<Promise<unknown> | null>(null);
 
   const relocate = useCallback(
-    async (from: string, to: string) => {
+    async (
+      from: string,
+      to: string,
+      move?: (from: string, to: string) => Promise<unknown>,
+    ) => {
       const current = active.current;
       const currentVault = vaultRef.current;
       if (!currentVault) {
@@ -497,7 +506,10 @@ export const useVaultDocument = (
       });
       relocation.current = pending;
       try {
-        await repositoryRef.current.move(currentVault.handle, from, to);
+        await (
+          move ??
+          ((f, t) => repositoryRef.current.move(currentVault.handle, f, t))
+        )(from, to);
       } finally {
         settle();
         // The path update below is synchronous, so a waiting event handler

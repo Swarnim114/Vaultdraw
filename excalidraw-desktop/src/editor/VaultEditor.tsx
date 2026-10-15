@@ -33,6 +33,7 @@ import { useToolDefaults } from "../toolDefaults/useToolDefaults";
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
 import { useEditorPalette } from "./useEditorPalette";
+import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
 import {
   exportOptionsToAppState,
   loadExportOptions,
@@ -42,6 +43,7 @@ import { focusElement } from "./focusElement";
 import { renderImageExport } from "./imageExport";
 import { getSaveSignature } from "./saveSignature";
 
+import type { EditorLinksWiring } from "./links/useVaultEditorLinks";
 import type { SettingsTarget } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
 import type { LibraryRepository } from "../library/types";
@@ -70,6 +72,8 @@ type Props = {
   } | null;
   /** Persisted library; omit to run with Excalidraw's in-memory library. */
   library?: { store: LibraryStore; repository: LibraryRepository };
+  /** Links (open/insert/hints, rename edits, re-measure); omit for none. */
+  links?: EditorLinksWiring;
 };
 
 type Snapshot = Parameters<
@@ -92,8 +96,14 @@ const VaultEditorComponent = ({
   onOpenSettings,
   focusRequest = null,
   library,
+  links,
 }: Props) => {
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLDivElement | null>(null);
+  const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
+  const hostRef = useCallback((el: HTMLDivElement | null) => {
+    host.current = el;
+    setHostEl(el);
+  }, []);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const callbackRef = useRef(onChange);
   const exportRef = useRef(onExport);
@@ -117,6 +127,7 @@ const VaultEditorComponent = ({
     null,
   );
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
+  const editorLinks = useVaultEditorLinks(libraryApi, hostEl, links);
   const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
   const toolDefaults = useToolDefaults(apiRef, !readOnly && !disabled);
@@ -480,7 +491,7 @@ const VaultEditorComponent = ({
 
   return (
     <div
-      ref={host}
+      ref={hostRef}
       className="vault-editor"
       data-document-id={documentId}
       onDropCapture={guardSceneDrop}
@@ -500,6 +511,7 @@ const VaultEditorComponent = ({
         viewModeEnabled={readOnly}
         interaction={disabled ? false : undefined}
         onExportImage={handleExportImage}
+        onLinkOpen={editorLinks.onLinkOpen}
         aiEnabled={false}
         freedrawPen={pens.freedrawPen}
         currentItemStrokeWidth={toolDefaults.currentItemStrokeWidth}
@@ -518,6 +530,7 @@ const VaultEditorComponent = ({
       >
         {editorChildren}
       </Excalidraw>
+      {editorLinks.overlays}
       {pens.freedrawActive && !readOnly && !disabled && (
         <PenBar
           presets={pens.presets}

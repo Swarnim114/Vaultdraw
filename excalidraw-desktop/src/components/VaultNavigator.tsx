@@ -128,6 +128,8 @@ interface VaultNavigatorProps {
   confirmDelete: boolean;
   /** Show tag chips after drawing names (default on). */
   showTagChips?: boolean;
+  /** Rendered between the tree and the footer (the Links dock). */
+  dockSlot?: ReactNode;
   ownerDocument?: Document | null;
 }
 
@@ -163,6 +165,7 @@ export const VaultNavigator = ({
   onSortChange,
   confirmDelete,
   showTagChips = true,
+  dockSlot,
   ownerDocument,
 }: VaultNavigatorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -684,6 +687,8 @@ export const VaultNavigator = ({
           </div>
         )}
       </div>
+
+      {dockSlot}
 
       {/* Vault switcher and settings (Obsidian-style footer) */}
       <div className="vault-navigator__footer">

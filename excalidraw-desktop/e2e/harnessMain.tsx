@@ -7,6 +7,7 @@ import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgro
 
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
+import { FakeVaultLinks } from "../src/tests/fakeVaultLinks";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
 import {
@@ -236,7 +237,96 @@ for (let i = 0; i < templateCount; i++) {
   repository.setModified(path, 1_700_000_000_000);
 }
 
+if (params.get("seed") === "links") {
+  // Opt-in (?seed=links): text links, a shape link, an unresolved link, an
+  // ambiguous basename (Folder A/Dupe, Folder B/Dupe) and a folder.
+  const base = {
+    angle: 0,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 1,
+    strokeStyle: "solid",
+    roughness: 1,
+    opacity: 100,
+    groupIds: [],
+    roundness: null,
+    locked: false,
+    frameId: null,
+    isDeleted: false,
+  };
+  const text = (id: string, t: string, y: number, extra = {}) => ({
+    ...base,
+    id,
+    type: "text",
+    x: 20,
+    y,
+    width: 360,
+    height: 25,
+    text: t,
+    originalText: t,
+    fontSize: 20,
+    fontFamily: 1,
+    textAlign: "left",
+    verticalAlign: "top",
+    containerId: null,
+    lineHeight: 1.25,
+    link: null,
+    boundElements: [],
+    ...extra,
+  });
+  const scene = (...elements: object[]) =>
+    JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      source: "e2e-links",
+      elements,
+      appState: {},
+      files: {},
+    });
+  repository.seedFolder("Folder A");
+  repository.seedFolder("Folder B");
+  repository.seedFolder("Folder");
+  repository.seedDrawing(
+    "Hub.excalidraw",
+    scene(
+      text("hub-t1", "See [[Alpha]] now", 20),
+      text("hub-t2", "Todo [[Missing Note]]", 80),
+      text("hub-t3", "Which [[Dupe]]?", 140),
+      {
+        ...base,
+        id: "hub-shape",
+        type: "rectangle",
+        x: 20,
+        y: 220,
+        width: 160,
+        height: 80,
+        link: "[[Alpha]]",
+        boundElements: [],
+      },
+    ),
+  );
+  repository.seedDrawing(
+    "Alpha.excalidraw",
+    scene(text("alpha-t1", "Back to [[Hub]]", 20)),
+  );
+  repository.seedDrawing(
+    "Folder/Inner.excalidraw",
+    scene(text("inner-t1", "Points at [[Alpha]]", 20)),
+  );
+  repository.seedDrawing(
+    "Folder A/Dupe.excalidraw",
+    scene(text("dupe-a", "dupe A", 20)),
+  );
+  repository.seedDrawing(
+    "Folder B/Dupe.excalidraw",
+    scene(text("dupe-b", "dupe B", 20)),
+  );
+}
+
 const libraryRepository = new FakeLibraryRepository();
+const vaultLinks = new FakeVaultLinks(repository);
+(ownerWindow as any).__vaultLinks = vaultLinks;
 
 (ownerWindow as any).__vaultRepo = repository;
 (ownerWindow as any).__updatePreferences = updatePreferences;
@@ -258,6 +348,7 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         ownerWindow={ownerWindow}
         repository={repository}
         search={new FakeVaultSearch(repository)}
+        links={vaultLinks}
         libraryRepository={libraryRepository}
       />
     </StrictMode>,

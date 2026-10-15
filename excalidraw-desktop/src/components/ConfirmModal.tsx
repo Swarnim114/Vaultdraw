@@ -5,6 +5,8 @@ import { IconClose } from "./Icons";
 interface ConfirmModalProps {
   title: string;
   message: string;
+  /** Optional list under the message (e.g. affected links). */
+  details?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   isDanger?: boolean;
@@ -16,6 +18,7 @@ interface ConfirmModalProps {
 export const ConfirmModal = ({
   title,
   message,
+  details,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   isDanger = false,
@@ -75,6 +78,23 @@ export const ConfirmModal = ({
         </div>
         <div className="vault-modal__body">
           <p style={{ margin: 0 }}>{message}</p>
+          {details && details.length > 0 && (
+            <ul
+              className="vault-modal__details"
+              style={{
+                margin: "8px 0 0",
+                paddingLeft: 18,
+                maxHeight: 160,
+                overflowY: "auto",
+                fontSize: "0.85em",
+              }}
+            >
+              {details.slice(0, 50).map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+              {details.length > 50 && <li>…and {details.length - 50} more</li>}
+            </ul>
+          )}
         </div>
         <div className="vault-modal__footer">
           <button

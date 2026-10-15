@@ -6,9 +6,14 @@ import {
   isTauriAvailable,
 } from "./vault/DesktopVaultRepository";
 import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
+import { DesktopVaultLinks } from "./links/DesktopVaultLinks";
+import { useAppLinks } from "./links/useAppLinks";
+import { usePalettePick } from "./palette/usePalettePick";
+import { LinksDock } from "./components/links/LinksDock";
 import {
   addRecentVault,
   getExpandedFolders,
+  getLinksSettings,
   getLastVaultPath,
   getNavigatorCollapsed,
   getPreferences,
@@ -93,6 +98,7 @@ import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
+import type { VaultLinks } from "./links/types";
 
 import type { LibraryRepository } from "./library/types";
 import type {
@@ -108,6 +114,8 @@ export interface VaultAppProps {
   repository?: VaultRepository;
   /** Vault-wide search; defaults to the native index under Tauri, else name-only. */
   search?: VaultSearch | null;
+  /** Link index; defaults to the native one under Tauri, else none. */
+  links?: VaultLinks | null;
   initialVault?: VaultInfo | null;
   libraryRepository?: LibraryRepository;
 }
@@ -117,6 +125,7 @@ export const VaultApp = ({
   ownerWindow: propWin,
   repository = desktopRepository,
   search,
+  links,
   initialVault = null,
   libraryRepository = desktopLibraryRepository,
 }: VaultAppProps) => {
@@ -138,6 +147,11 @@ export const VaultApp = ({
     [win],
   );
   const vaultSearch = search === undefined ? defaultSearch : search;
+  const defaultLinks = useMemo(
+    () => (isTauriAvailable(win) ? new DesktopVaultLinks() : null),
+    [win],
+  );
+  const vaultLinks = links === undefined ? defaultLinks : links;
   const setRootNode = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       setMountedDocument(node.ownerDocument);
@@ -1006,6 +1020,84 @@ export const VaultApp = ({
   });
   const { openPicker: openTemplatePicker } = templates;
 
+  // Links: history, dock, create, links-aware rename/move, commands.
+  const prefsNow = getPreferences(win);
+  const linksSettings = useMemo(
+    () => getLinksSettings(prefsNow),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      prefsNow.linkNewFormat,
+      prefsNow.linkShapeFormat,
+      prefsNow.linkOpenModifier,
+      prefsNow.linkUpdateOnRename,
+      prefsNow.linkAutocomplete,
+      prefsNow.linkHintChars,
+    ],
+  );
+  const palettePick = usePalettePick();
+  const appLinks = useAppLinks({
+    links: vaultLinks,
+    search: vaultSearch,
+    repository,
+    vault,
+    win,
+    doc,
+    settings: linksSettings,
+    entries: allIndexedEntries,
+    indexing: isIndexing,
+    activePath: activeDoc?.path ?? null,
+    navigatorCollapsed,
+    open: handleOpenSearchResult
+      ? (path, elementId) =>
+          handleOpenSearchResult(
+            path,
+            elementId ? { elementId, containerId: null } : undefined,
+          )
+      : async () => {},
+    prepareParent: prepareNewDrawingParent,
+    createDrawing: handleCreateDrawing,
+    loadDirectory,
+    expandFolder: handleExpandFolder,
+    showNavigator: () => showNavigator(),
+    openHotkeys: () => openSettings("hotkeys"),
+    notify: (message, type) => {
+      setGlobalAlert({ message, type });
+      if (type === "info") {
+        (win ?? window).setTimeout(
+          () => setGlobalAlert((a) => (a?.message === message ? null : a)),
+          6000,
+        );
+      }
+    },
+  });
+  const editorLinks = useMemo(
+    () =>
+      vaultLinks
+        ? {
+            settings: linksSettings,
+            names: appLinks.names,
+            currentPath: activeDoc?.path ?? null,
+            callbacks: appLinks.editorCallbacks,
+            links: vaultLinks,
+            handle: vault?.handle ?? null,
+            pickDrawing: palettePick.pickDrawing,
+            bridge: appLinks.bridge,
+            remeasureIds: appLinks.remeasureIdsFor(activeDoc?.path ?? null),
+            onRemeasured: () => appLinks.onRemeasured(activeDoc?.path ?? null),
+          }
+        : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      vaultLinks,
+      linksSettings,
+      appLinks.names,
+      appLinks.editorCallbacks,
+      activeDoc?.path,
+      vault?.handle,
+      palettePick.pickDrawing,
+    ],
+  );
+
   // Create folder
   const handleCreateFolder = async (parentPath: string, name: string) => {
     if (!vault) {
@@ -1030,6 +1122,16 @@ export const VaultApp = ({
     }
   };
 
+  // One path for rename, move and drag-and-drop: links-aware (see useAppLinks).
+  // The open drawing is flushed and relocated by relocateDoc as before.
+  const moveWithLinks = (from: string, to: string) =>
+    appLinks.moveEntry(from, to, (move) =>
+      activeDoc &&
+      (activeDoc.path === from || activeDoc.path.startsWith(`${from}/`))
+        ? relocateDoc(from, to, move)
+        : move(from, to).then(() => undefined),
+    );
+
   // Rename entry
   const handleRenameEntry = async (oldPath: string, newName: string) => {
     if (!vault) {
@@ -1041,13 +1143,8 @@ export const VaultApp = ({
       const parent = getParentPath(oldPath);
       const newPath = joinPath(parent, newName);
 
-      if (
-        activeDoc &&
-        (activeDoc.path === oldPath || activeDoc.path.startsWith(`${oldPath}/`))
-      ) {
-        await relocateDoc(oldPath, newPath);
-      } else {
-        await repository.move(vault.handle, oldPath, newPath);
+      if (!(await moveWithLinks(oldPath, newPath))) {
+        return;
       }
       rebaseFolders(oldPath, newPath);
       await loadDirectory(parent);
@@ -1077,14 +1174,8 @@ export const VaultApp = ({
       const newPath = joinPath(destinationParentPath, base);
       const oldParent = getParentPath(sourcePath);
 
-      if (
-        activeDoc &&
-        (activeDoc.path === sourcePath ||
-          activeDoc.path.startsWith(`${sourcePath}/`))
-      ) {
-        await relocateDoc(sourcePath, newPath);
-      } else {
-        await repository.move(vault.handle, sourcePath, newPath);
+      if (!(await moveWithLinks(sourcePath, newPath))) {
+        return;
       }
       rebaseFolders(sourcePath, newPath);
       await loadDirectory(oldParent);
@@ -1663,6 +1754,7 @@ export const VaultApp = ({
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
                 library={libraryBundle}
+                links={editorLinks}
               />
             </div>
           ) : (
@@ -1722,6 +1814,7 @@ export const VaultApp = ({
         </div>
 
         {templates.dialogs}
+        {appLinks.dialogs}
         <VaultNavigator
           vault={vault}
           activePath={activeDoc?.path ?? null}
@@ -1764,6 +1857,22 @@ export const VaultApp = ({
             void refreshRecovery();
           }}
           ownerDocument={doc}
+          dockSlot={
+            vaultLinks && appLinks.dockVisible ? (
+              <LinksDock
+                ref={appLinks.dockRef}
+                links={vaultLinks}
+                handle={vault.handle}
+                path={activeDoc?.path ?? null}
+                refreshKey={appLinks.refreshKey}
+                onOpen={(path, elementId) =>
+                  void appLinks.openLink(path, elementId)
+                }
+                onCreate={(target) => void appLinks.createTarget(target)}
+                visible={!navigatorCollapsed}
+              />
+            ) : null
+          }
         />
       </div>
 
@@ -1794,6 +1903,7 @@ export const VaultApp = ({
           initialPage={settingsPage}
           onClose={() => setShowSettingsModal(false)}
           onAppearanceChanged={refreshAppearance}
+          pickDrawing={vaultLinks ? () => palettePick.pickDrawing() : undefined}
           themeRegistry={appearance.registry}
           onRevealVault={(path) => {
             void handleRevealEntry(path);
@@ -1802,23 +1912,34 @@ export const VaultApp = ({
         />
       )}
 
-      {switcher && (
+      {(switcher || palettePick.pick) && (
         <QuickSwitcher
+          key={palettePick.pick ? "pick" : "palette"}
           search={vaultSearch}
           handle={vault.handle}
           fallbackPaths={allIndexedEntries
             .filter((e) => e.kind === "drawing")
             .map((e) => e.path)
             .sort()}
-          initialMode={switcher}
+          initialMode={palettePick.pick ? "files" : switcher ?? "files"}
+          pickLabel={palettePick.pick?.label}
           collectItems={collectPaletteItems}
           platform={commandRunner.platform}
           onOpenDrawing={(path) => {
+            if (palettePick.pick) {
+              palettePick.finish(path);
+              return;
+            }
             setSwitcher(null);
             void handleOpenDrawing(path);
           }}
           onRunItem={runPaletteItem}
-          onClose={closeSwitcher}
+          onClose={() => {
+            if (palettePick.pick) {
+              palettePick.finish(null);
+            }
+            closeSwitcher();
+          }}
           ownerDocument={doc}
         />
       )}
