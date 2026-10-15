@@ -30,7 +30,7 @@ const startText = async (page: Page, sx = 600, sy = 400) => {
   await expect(page.locator(textarea)).toBeFocused();
 };
 
-const drawRect = async (page: Page, sx = 400, sy = 300) => {
+const drawRect = async (page: Page, sx = 700, sy = 300) => {
   const p = await scenePoint(page, sx, sy);
   await page.keyboard.press("r");
   await page.mouse.move(p.x, p.y);
@@ -150,10 +150,10 @@ test("Mod+Alt+K links a selected shape; its link opens the target in place", asy
     )
     .toContain("[[Inner]]");
 
-  // The drawn rectangle spans scene (400,300)-(520,370); its link icon sits at
+  // The drawn rectangle spans scene (700,300)-(820,370); its link icon sits at
   // the top-right corner.
   await page.keyboard.press("Escape");
-  const icon = await scenePoint(page, 527, 292);
+  const icon = await scenePoint(page, 827, 292);
   await page.mouse.move(icon.x - 30, icon.y + 30);
   await page.mouse.move(icon.x, icon.y, { steps: 4 });
   await page.mouse.click(icon.x, icon.y);
@@ -170,8 +170,8 @@ test("the seeded shape link opens its target through the link icon", async ({
   page.on("popup", (pop) => popups.push(pop.url()));
   await openLinksVault(page);
   const startUrl = page.url();
-  // Rectangle hub-shape: scene (20,220)-(180,300).
-  const icon = await scenePoint(page, 187, 212);
+  // Rectangle hub-shape: scene (200,420)-(360,500).
+  const icon = await scenePoint(page, 367, 412);
   await page.mouse.click(icon.x, icon.y);
   await expectOpen(page, "Alpha");
   expect(page.url()).toBe(startUrl);

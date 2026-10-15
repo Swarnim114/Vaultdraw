@@ -255,12 +255,15 @@ if (params.get("seed") === "links") {
     frameId: null,
     isDeleted: false,
   };
+  // Clear of the hamburger menu, toolbar and left properties panel.
+  const OX = 180;
+  const OY = 200;
   const text = (id: string, t: string, y: number, extra = {}) => ({
     ...base,
     id,
     type: "text",
-    x: 20,
-    y,
+    x: 20 + OX,
+    y: y + OY,
     width: 360,
     height: 25,
     text: t,
@@ -297,8 +300,8 @@ if (params.get("seed") === "links") {
         ...base,
         id: "hub-shape",
         type: "rectangle",
-        x: 20,
-        y: 220,
+        x: 20 + OX,
+        y: 220 + OY,
         width: 160,
         height: 80,
         link: "[[Alpha]]",

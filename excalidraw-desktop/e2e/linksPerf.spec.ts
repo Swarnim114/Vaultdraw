@@ -255,7 +255,7 @@ test.describe("links perf", () => {
       const paint: number[] = [];
       for (let i = 0; i < 16; i++) {
         const fromHub = i % 2 === 0;
-        const at = fromHub ? SEED.alphaText : { x: 118, y: 31 };
+        const at = fromHub ? SEED.alphaText : { x: 298, y: 231 };
         const pt = await scenePoint(page, at.x, at.y);
         await withMeta(page, async () => {
           await page.mouse.move(pt.x, pt.y);

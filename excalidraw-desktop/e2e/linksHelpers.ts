@@ -38,10 +38,10 @@ export const scenePoint = async (page: Page, sx: number, sy: number) => {
 
 /** Where the seeded links sit (scene coordinates, Excalifont 20px). */
 export const SEED = {
-  alphaText: { x: 110, y: 31 }, // "See [[Alpha]] now" (hub-t1)
-  missingText: { x: 160, y: 92 }, // "Todo [[Missing Note]]" (hub-t2)
-  dupeText: { x: 105, y: 150 }, // "Which [[Dupe]]?" (hub-t3)
-  shape: { x: 100, y: 260 }, // hub-shape rectangle centre
+  alphaText: { x: 290, y: 231 }, // "See [[Alpha]] now" (hub-t1)
+  missingText: { x: 340, y: 292 }, // "Todo [[Missing Note]]" (hub-t2)
+  dupeText: { x: 285, y: 350 }, // "Which [[Dupe]]?" (hub-t3)
+  shape: { x: 280, y: 460 }, // hub-shape rectangle centre
 };
 
 export const breadcrumbs = (page: Page) => page.locator(".vault-breadcrumbs");

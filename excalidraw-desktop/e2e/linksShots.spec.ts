@@ -44,7 +44,7 @@ for (const theme of THEMES) {
 
     test("autocomplete popup", async ({ page }) => {
       await open(page);
-      const p = await scenePoint(page, 300, 380);
+      const p = await scenePoint(page, 600, 300);
       await page.mouse.dblclick(p.x, p.y);
       await page.keyboard.type("Link to [[Al");
       await expect(page.locator(".vault-suggest__row").first()).toBeVisible();
