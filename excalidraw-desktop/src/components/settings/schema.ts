@@ -250,7 +250,7 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     page: "page",
     label: "Paper Theme",
     description:
-      "Normal is clean white paper; Old school is yellowed paper with blue lines; Match current theme follows the app theme.",
+      "Normal is clean white paper; Old school is yellowed paper with blue lines and a red margin; Match current theme follows the app theme.",
     keywords: [
       "page",
       "paper",

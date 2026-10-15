@@ -4,6 +4,7 @@ import {
   IconKeyboard,
   IconLink,
   IconLayout,
+  IconPage,
   IconPalette,
   IconPenTool,
   IconSearch,
@@ -21,6 +22,7 @@ const NAV_ICON = { width: 14, height: 14, "aria-hidden": true } as const;
 export const PAGE_ICONS: Record<SettingsPageId, ReactNode> = {
   general: <IconSettings {...NAV_ICON} />,
   appearance: <IconPalette {...NAV_ICON} />,
+  page: <IconPage {...NAV_ICON} />,
   interface: <IconLayout {...NAV_ICON} />,
   drawing: <IconPenTool {...NAV_ICON} />,
   tools: <IconTools {...NAV_ICON} />,

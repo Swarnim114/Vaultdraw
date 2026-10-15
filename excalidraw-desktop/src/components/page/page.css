@@ -41,3 +41,8 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.paper-tiles.paper-tiles--themes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0;
+}

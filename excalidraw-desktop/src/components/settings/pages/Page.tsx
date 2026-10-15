@@ -15,14 +15,19 @@ import {
 import {
   LAYOUT_OPTIONS,
   ORIENTATION_OPTIONS,
-  PAPER_THEME_OPTIONS,
   orientationChanges,
 } from "../../page/pageOptions";
 import { PageSizeControl } from "../../page/PageSizeControl";
+import { PaperThemeTiles } from "../../page/PaperThemeTiles";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
+import "../paperSetting.css";
+
 import { Segmented } from "./controls";
+
+/** Segmented rows drop under their text at narrow widths. */
+const NARROW = "vault-setting-row--stack-narrow";
 
 const MODE_OPTIONS = [
   { label: "Normal canvas", val: "normal" },
@@ -44,7 +49,7 @@ const useDefaultPageSetup = () => {
 const ModeSetting = () => {
   const { setup, change } = useDefaultPageSetup();
   return (
-    <SettingRow id="page-mode">
+    <SettingRow id="page-mode" className={NARROW}>
       <Segmented
         options={MODE_OPTIONS}
         value={setup.enabled ? "page" : "normal"}
@@ -57,7 +62,7 @@ const ModeSetting = () => {
 const LayoutSetting = () => {
   const { setup, change } = useDefaultPageSetup();
   return (
-    <SettingRow id="page-layout">
+    <SettingRow id="page-layout" className={NARROW}>
       <Segmented
         options={LAYOUT_OPTIONS}
         value={setup.layout}
@@ -70,7 +75,7 @@ const LayoutSetting = () => {
 const SizeSetting = () => {
   const { setup, change } = useDefaultPageSetup();
   return (
-    <SettingRow id="page-size">
+    <SettingRow id="page-size" className={NARROW}>
       <PageSizeControl
         size={setup.size}
         width={setup.width}
@@ -84,7 +89,7 @@ const SizeSetting = () => {
 const OrientationSetting = () => {
   const { setup, change } = useDefaultPageSetup();
   return (
-    <SettingRow id="page-orientation">
+    <SettingRow id="page-orientation" className={NARROW}>
       <Segmented
         options={ORIENTATION_OPTIONS}
         value={setup.orientation}
@@ -97,9 +102,8 @@ const OrientationSetting = () => {
 const PaperThemeSetting = () => {
   const { setup, change } = useDefaultPageSetup();
   return (
-    <SettingRow id="page-paper-theme">
-      <Segmented
-        options={PAPER_THEME_OPTIONS}
+    <SettingRow id="page-paper-theme" layout="stacked">
+      <PaperThemeTiles
         value={setup.paperTheme}
         onChange={(paperTheme) => change({ paperTheme })}
       />
