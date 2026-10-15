@@ -1,0 +1,27 @@
+.vault-history-note {
+  resize: vertical;
+  min-height: 3.5rem;
+  max-height: 12rem;
+  line-height: 1.4;
+}
+
+.vault-history-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 110;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  color: var(--vault-text);
+  background-color: var(--vault-bg);
+  border: 1px solid var(--vault-border-strong);
+  border-radius: var(--vault-radius);
+  box-shadow: var(--vault-shadow-lg);
+}
+
+.vault-history-toast--error {
+  color: var(--vault-danger);
+  background-color: var(--vault-danger-bg);
+  border-color: var(--vault-danger-border);
+}

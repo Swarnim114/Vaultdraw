@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgroundPattern";
 
+import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import { FakeVaultLinks } from "../src/tests/fakeVaultLinks";
@@ -364,6 +365,29 @@ const libraryRepository = new FakeLibraryRepository();
 const vaultLinks = new FakeVaultLinks(repository);
 (ownerWindow as any).__vaultLinks = vaultLinks;
 
+// File history: in-memory fake that sees the vault's committed writes (the real
+// service watches the save path natively, so autosave costs no history IPC).
+const historyRepository = new FakeHistoryRepository(repository.handle, {
+  readOnly: repository.vault.readOnly,
+  source: async (handle, path) =>
+    (await repository.readDrawing(handle, path)).json,
+  createCopy: (path, json) =>
+    repository.writeDrawing({
+      handle: repository.handle,
+      path,
+      json,
+      expectedRevision: null,
+      operationId: `history-copy-${path}`,
+    }),
+});
+const writeDrawing = repository.writeDrawing.bind(repository);
+repository.writeDrawing = async (input) => {
+  const result = await writeDrawing(input);
+  historyRepository.noteCommitted(input.handle, input.path, input.json);
+  return result;
+};
+(ownerWindow as any).__historyRepo = historyRepository;
+
 (ownerWindow as any).__vaultRepo = repository;
 (ownerWindow as any).__updatePreferences = updatePreferences;
 // Paper perf spec: the canvas renderer, for a micro-benchmark.
@@ -386,6 +410,7 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         search={new FakeVaultSearch(repository)}
         links={vaultLinks}
         libraryRepository={libraryRepository}
+        history={historyRepository}
       />
     </StrictMode>,
   );

@@ -22,6 +22,11 @@ import {
   type ShapeLinkFormat,
   type UpdateOnRename,
 } from "../links/types";
+import {
+  HISTORY_DEFAULTS,
+  normalizeHistoryPreferences,
+  type HistoryPreferences,
+} from "../history/historySettings";
 
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
@@ -178,6 +183,7 @@ interface VaultPreferencesBase {
 
 /** Saved default style per drawing tool (`[tools.<tool>]`); {} = none. */
 export type VaultPreferences = VaultPreferencesBase &
+  HistoryPreferences &
   Record<ToolField, ToolStyle>;
 
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
@@ -261,6 +267,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   laserSize: DEFAULT_LASER.size,
   laserDecayMs: DEFAULT_LASER.decayMs,
   laserLength: DEFAULT_LASER.length,
+  ...HISTORY_DEFAULTS,
   ...emptyToolStyles(),
 };
 
@@ -529,6 +536,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       (v) => inRange(v, LASER_LIMITS.length),
       d.laserLength,
     ),
+    ...normalizeHistoryPreferences(parsed as Record<string, unknown>),
     ...normalizeToolStyles(parsed as Partial<Record<ToolField, unknown>>),
   };
 }

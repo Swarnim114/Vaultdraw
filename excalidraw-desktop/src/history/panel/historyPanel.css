@@ -1,0 +1,77 @@
+.vault-history-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 300px;
+  width: 300px;
+  min-height: 0;
+  background-color: var(--vault-surface);
+  color: var(--vault-text);
+  border-left: 1px solid var(--vault-border);
+  overflow: hidden;
+}
+
+.vault-history-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 4px 14px;
+}
+
+.vault-history-panel__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.vault-history-panel__last {
+  margin: 0;
+  padding: 0 14px 8px;
+  font-size: 0.78rem;
+  color: var(--vault-text-muted);
+  border-bottom: 1px solid var(--vault-border);
+}
+
+.vault-history-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  outline: none;
+}
+
+.vault-history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--vault-border);
+  font-size: 0.85rem;
+}
+
+.vault-history-row__label {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.vault-history-row__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--vault-text-muted);
+}
+
+.vault-history-row__device {
+  padding: 0 6px;
+  border: 1px solid var(--vault-border-strong);
+  border-radius: var(--vault-radius);
+  color: var(--vault-text-muted);
+}
+
+.vault-history-row__note {
+  font-size: 0.75rem;
+  color: var(--vault-text-faint);
+  overflow-wrap: anywhere;
+}

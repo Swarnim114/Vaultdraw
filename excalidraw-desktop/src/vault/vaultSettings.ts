@@ -8,6 +8,7 @@
  * The runtime is a module-level singleton (like settingsSync): one vault is
  * attached at a time. All native calls are serialised in one queue.
  */
+import { HISTORY_FIELDS } from "../history/historySettings";
 import { TOOL_FIELDS } from "../toolDefaults/toolStyles";
 
 import { isTauriAvailable } from "./DesktopVaultRepository";
@@ -28,6 +29,7 @@ export const PER_VAULT_FIELDS = [
   "newDrawingFolder",
   "templatesFolder",
   "paperStyle",
+  ...HISTORY_FIELDS,
   ...TOOL_FIELDS,
 ] as const;
 export type VaultField = typeof PER_VAULT_FIELDS[number];

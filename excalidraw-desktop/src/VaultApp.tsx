@@ -77,6 +77,9 @@ import { focusCanvasIfIdle } from "./palette/focus";
 import { createCommandsProvider } from "./palette/providers/commands";
 import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
+import { HistoryHost } from "./history/HistoryHost";
+import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
+import { toHistorySettings } from "./history/historySettings";
 import { LibraryStore } from "./library/libraryStore";
 import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
@@ -111,6 +114,7 @@ import type { VaultSearch } from "./search/types";
 import type { VaultLinks } from "./links/types";
 
 import type { LibraryRepository } from "./library/types";
+import type { HistoryRepository } from "./history/types";
 import type {
   VaultChange,
   VaultEntry,
@@ -135,6 +139,8 @@ export interface VaultAppProps {
   links?: VaultLinks | null;
   initialVault?: VaultInfo | null;
   libraryRepository?: LibraryRepository;
+  /** File history; defaults to the native service. */
+  history?: HistoryRepository;
 }
 
 export const VaultApp = ({
@@ -145,6 +151,7 @@ export const VaultApp = ({
   links,
   initialVault = null,
   libraryRepository = desktopLibraryRepository,
+  history = desktopHistoryRepository,
 }: VaultAppProps) => {
   const libraryBundle = useMemo(
     () => ({
@@ -1840,6 +1847,14 @@ export const VaultApp = ({
           )}
         </div>
 
+        <HistoryHost
+          repository={history}
+          vault={vault}
+          settings={toHistorySettings(vaultSettings.effective)}
+          document={activeDoc}
+          flush={() => flushDoc({ commitText: false })}
+          ownerDocument={doc}
+        />
         {templates.dialogs}
         {appLinks.dialogs}
         <VaultNavigator

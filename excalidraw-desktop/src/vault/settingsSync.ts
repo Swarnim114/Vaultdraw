@@ -22,6 +22,10 @@ import {
 } from "@excalidraw/excalidraw/data/pageSetup";
 
 import { isCommandId } from "../commands/commands";
+import {
+  HISTORY_MAPPINGS,
+  type HistoryField,
+} from "../history/historySettings";
 import { parseChord } from "../commands/keys";
 import { inRange, LASER_LIMITS } from "../pens/laserSettings";
 import {
@@ -189,9 +193,10 @@ type ConfigField =
   | "laserSize"
   | "laserDecayMs"
   | "laserLength"
+  | HistoryField
   | ToolField;
 
-interface ConfigMapping {
+export interface ConfigMapping {
   field: ConfigField;
   key: string;
   /** Human description of what is accepted, used in problem messages. */
@@ -544,6 +549,7 @@ const TOOL_MAPPINGS: readonly ConfigMapping[] = TOOL_DEFAULT_TOOLS.map(
 
 export const CONFIG_MAPPING: readonly ConfigMapping[] = [
   ...CORE_MAPPING,
+  ...HISTORY_MAPPINGS,
   ...TOOL_MAPPINGS,
 ];
 

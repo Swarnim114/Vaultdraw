@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { HISTORY_DEFAULTS } from "../history/historySettings";
 import {
   DEFAULT_PREFERENCES,
   subscribePreferences,
@@ -118,6 +119,7 @@ describe("parse and merge", () => {
       newDrawingFolder: "A",
       templatesFolder: "Templates",
       paperStyle: "plain",
+      ...HISTORY_DEFAULTS,
       toolRectangle: {},
       toolDiamond: {},
       toolEllipse: {},

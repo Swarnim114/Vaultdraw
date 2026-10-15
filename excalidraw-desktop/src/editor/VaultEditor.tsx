@@ -35,6 +35,7 @@ import { usePens } from "../pens/usePens";
 import { useToolDefaults } from "../toolDefaults/useToolDefaults";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
+import { registerEditorApi } from "./editorApi";
 import { registerEditorFlush } from "./editorFlush";
 import { useEditorPalette } from "./useEditorPalette";
 import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
@@ -260,6 +261,14 @@ const VaultEditorComponent = ({
   useEffect(
     () => registerEditorFlush(documentId, flushImmediate),
     [documentId, flushImmediate],
+  );
+
+  useEffect(
+    () =>
+      apiReady && apiRef.current
+        ? registerEditorApi(documentId, apiRef.current)
+        : undefined,
+    [documentId, apiReady],
   );
 
   // Canvas sync: the display colour transform changed (theme, mode, sync
