@@ -857,7 +857,7 @@ fn apply_with(k: &Scene, body: &[u8], sink: &mut dyn Sink) -> Result<()> {
         .len()
         .saturating_add(suffix.len())
         .saturating_add(elems.iter().map(|e| e.len()).sum::<usize>())
-        .saturating_add(sep.len().saturating_mul(gaps))
+        .saturating_add(sep.len().saturating_mul(gaps - exceptions.len()))
         .saturating_add(exc_len);
     if total > MAX_TEXT_BYTES {
         return Err(corrupt("reconstructed text too large"));
