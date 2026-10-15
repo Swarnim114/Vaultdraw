@@ -10323,11 +10323,17 @@ class App extends React.Component<AppProps, AppState> {
       );
 
       if (newElement?.type === "freedraw") {
-        const pointerCoords = clampGesturePointer(
-          this.state.pageSetup,
-          pointerDownState.origin,
-          viewportCoordsToSceneCoords(childEvent, this.state),
+        const scenePointer = viewportCoordsToSceneCoords(
+          childEvent,
+          this.state,
         );
+        const pointerCoords = this.state.pageSetup
+          ? clampGesturePointer(
+              this.state.pageSetup,
+              pointerDownState.origin,
+              scenePointer,
+            )
+          : scenePointer;
 
         const points = newElement.points;
         let dx = pointerCoords.x - newElement.x;

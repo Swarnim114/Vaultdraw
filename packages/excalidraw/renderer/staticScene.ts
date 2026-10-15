@@ -295,6 +295,22 @@ const renderLinkIcon = (
     context.restore();
   }
 };
+/** View of the pattern and the page surround (screen pixels). */
+const patternView = (
+  appState: StaticCanvasAppState,
+  scale: number,
+  canvas: HTMLCanvasElement,
+  renderConfig: StaticCanvasRenderConfig,
+) => ({
+  scrollX: appState.scrollX,
+  scrollY: appState.scrollY,
+  zoom: appState.zoom.value,
+  scale,
+  width: canvas.width,
+  height: canvas.height,
+  isDarkMode: renderConfig.theme === THEME.DARK,
+});
+
 const _renderStaticScene = ({
   canvas,
   rc,
@@ -335,15 +351,6 @@ const _renderStaticScene = ({
     viewBackgroundColor: appState.viewBackgroundColor,
   });
 
-  const patternView = {
-    scrollX: appState.scrollX,
-    scrollY: appState.scrollY,
-    zoom: appState.zoom.value,
-    scale,
-    width: canvas.width,
-    height: canvas.height,
-    isDarkMode: renderConfig.theme === THEME.DARK,
-  };
   // Notebook paper: the snap grid replaces it; exports need the background
   if (
     appState.viewBackgroundPattern &&
@@ -352,8 +359,11 @@ const _renderStaticScene = ({
       (appState.exportBackgroundPattern !== false &&
         appState.viewBackgroundColor !== null))
   ) {
-    const pattern = appState.viewBackgroundPattern;
-    renderBackgroundPattern(context, pattern, patternView);
+    renderBackgroundPattern(
+      context,
+      appState.viewBackgroundPattern,
+      patternView(appState, scale, canvas, renderConfig),
+    );
   }
 
   // Apply zoom
@@ -377,7 +387,11 @@ const _renderStaticScene = ({
 
   // Page mode (on screen): paint only the surround outside the pages
   if (pageMode) {
-    renderPageSurround(context, appState.pageSetup, patternView);
+    renderPageSurround(
+      context,
+      appState.pageSetup,
+      patternView(appState, scale, canvas, renderConfig),
+    );
   }
 
   const groupsToBeAddedToFrame = new Set<string>();
