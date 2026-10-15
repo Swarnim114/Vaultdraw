@@ -118,6 +118,12 @@ describe("parse and merge", () => {
       newDrawingFolder: "A",
       templatesFolder: "Templates",
       paperStyle: "plain",
+      toolRectangle: {},
+      toolDiamond: {},
+      toolEllipse: {},
+      toolArrow: {},
+      toolLine: {},
+      toolText: {},
     });
     expect(resolveSettings({ templatesFolder: "T/x" }, prefs)).toMatchObject({
       templatesFolder: "T/x",

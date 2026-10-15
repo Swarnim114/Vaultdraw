@@ -74,6 +74,7 @@ export const ColorSwatches = ({
   customValue,
   customTitle,
   disabled = false,
+  inputTestId,
 }: {
   colors: readonly string[];
   value: string;
@@ -84,6 +85,7 @@ export const ColorSwatches = ({
   customValue: string;
   customTitle: string;
   disabled?: boolean;
+  inputTestId?: string;
 }) => (
   <fieldset className="vault-color-options vault-fieldset" disabled={disabled}>
     {colors.map((color) => {
@@ -118,6 +120,7 @@ export const ColorSwatches = ({
       value={customValue}
       onChange={(e) => onChange(e.target.value)}
       title={customTitle}
+      data-testid={inputTestId}
     />
   </fieldset>
 );

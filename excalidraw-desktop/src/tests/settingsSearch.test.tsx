@@ -89,6 +89,7 @@ describe("settings schema", () => {
       "appearance",
       "drawing",
       "pens",
+      "tools",
     ]);
   });
 });
@@ -120,7 +121,12 @@ describe("settings search", () => {
     const groups = within(results())
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label"));
-    expect(groups).toEqual(["Appearance", "Drawing", "Pens & laser"]);
+    expect(groups).toEqual([
+      "Appearance",
+      "Drawing",
+      "Pens & laser",
+      "Tool defaults",
+    ]);
   });
 
   it("editing a control in the results persists like on its page", () => {

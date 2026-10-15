@@ -4,7 +4,7 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 import { ColorSwatches, Segmented } from "./controls";
 
 // Excalidraw's real FONT_FAMILY ids (packages/common/src/constants.ts).
-const FONT_OPTIONS = [
+export const FONT_OPTIONS = [
   { id: 5, label: "Excalifont (Hand-drawn)" },
   { id: 6, label: "Nunito (Clean / Normal)" },
   { id: 8, label: "Comic Shanns (Code / Monospace)" },
@@ -13,7 +13,7 @@ const FONT_OPTIONS = [
   { id: 3, label: "Cascadia (Classic code)" },
 ] as const;
 
-const STROKE_COLORS = [
+export const STROKE_COLORS = [
   "#1e1e1e",
   "#e03131",
   "#2f9e44",
@@ -24,7 +24,7 @@ const STROKE_COLORS = [
   "#ffffff",
 ];
 
-const BG_COLORS = [
+export const BG_COLORS = [
   "transparent",
   "#ffc9c9",
   "#b2f2bb",

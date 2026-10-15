@@ -18,6 +18,14 @@ import {
   type PenPreset,
 } from "../pens/penPresets";
 
+import {
+  isToolStyle,
+  TOOL_DEFAULT_TOOLS,
+  toolField,
+  type ToolField,
+  type ToolStyle,
+} from "../toolDefaults/toolStyles";
+
 import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from "./sortOrder";
 
 export type VaultTheme = "light" | "dark" | "system";
@@ -58,7 +66,7 @@ export function normalizeExportOptions(input: unknown): ExportOptions {
 /** Paper style of new drawings; "plain" = no pattern. */
 export type PaperStyle = "plain" | BackgroundPatternType;
 
-export interface VaultPreferences {
+interface VaultPreferencesBase {
   recentVaults: string[];
   lastVaultPath: string | null;
   navigatorCollapsed: boolean;
@@ -118,10 +126,39 @@ export interface VaultPreferences {
   laserLength: number;
 }
 
+/** Saved default style per drawing tool (`[tools.<tool>]`); {} = none. */
+export type VaultPreferences = VaultPreferencesBase &
+  Record<ToolField, ToolStyle>;
+
 const STORAGE_KEY = "excalidraw-vault-preferences-v1";
 
 /** Excalidraw's FONT_FAMILY.Excalifont (packages/common/src/constants.ts). */
 export const DEFAULT_FONT_FAMILY = 5;
+
+const emptyToolStyles = () =>
+  Object.fromEntries(
+    TOOL_DEFAULT_TOOLS.map((tool) => [toolField(tool), {}]),
+  ) as Record<ToolField, ToolStyle>;
+
+const cloneToolStyles = (prefs: Record<ToolField, ToolStyle>) =>
+  Object.fromEntries(
+    TOOL_DEFAULT_TOOLS.map((tool) => [
+      toolField(tool),
+      { ...prefs[toolField(tool)] },
+    ]),
+  ) as Record<ToolField, ToolStyle>;
+
+/** Untrusted -> a valid style per tool; anything invalid becomes {}. */
+const normalizeToolStyles = (parsed: Partial<Record<ToolField, unknown>>) =>
+  Object.fromEntries(
+    TOOL_DEFAULT_TOOLS.map((tool) => {
+      const value = parsed[toolField(tool)];
+      return [
+        toolField(tool),
+        isToolStyle(tool, value) ? { ...(value as ToolStyle) } : {},
+      ];
+    }),
+  ) as Record<ToolField, ToolStyle>;
 
 export const DEFAULT_PREFERENCES: VaultPreferences = {
   recentVaults: [],
@@ -161,6 +198,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   laserSize: DEFAULT_LASER.size,
   laserDecayMs: DEFAULT_LASER.decayMs,
   laserLength: DEFAULT_LASER.length,
+  ...emptyToolStyles(),
 };
 
 /** The laser fields of the preferences as one settings object. */
@@ -356,6 +394,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       (v) => inRange(v, LASER_LIMITS.length),
       d.laserLength,
     ),
+    ...normalizeToolStyles(parsed as Partial<Record<ToolField, unknown>>),
   };
 }
 
@@ -365,6 +404,7 @@ const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
   expandedFolders: { ...prefs.expandedFolders },
   hotkeys: { ...prefs.hotkeys },
   penPresets: prefs.penPresets.map((p) => ({ ...p })),
+  ...cloneToolStyles(prefs),
 });
 
 // ---------------------------------------------------------------------------
@@ -462,7 +502,7 @@ export function getPreferences(win?: Window | null): VaultPreferences {
   }
   const parsed = readLocalStoragePreferences(win);
   if (!parsed) {
-    return { ...DEFAULT_PREFERENCES };
+    return clonePreferences(DEFAULT_PREFERENCES);
   }
   return normalizePreferences(parsed);
 }

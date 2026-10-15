@@ -8,6 +8,8 @@
  * The runtime is a module-level singleton (like settingsSync): one vault is
  * attached at a time. All native calls are serialised in one queue.
  */
+import { TOOL_FIELDS } from "../toolDefaults/toolStyles";
+
 import { isTauriAvailable } from "./DesktopVaultRepository";
 
 import {
@@ -26,12 +28,18 @@ export const PER_VAULT_FIELDS = [
   "newDrawingFolder",
   "templatesFolder",
   "paperStyle",
+  ...TOOL_FIELDS,
 ] as const;
 export type VaultField = typeof PER_VAULT_FIELDS[number];
 export type VaultOverrides = Partial<Pick<VaultPreferences, VaultField>>;
 export type EffectiveVaultSettings = Pick<VaultPreferences, VaultField>;
 
 export const VAULT_SETTINGS_CHANGE_EVENT = "vault-settings-change";
+
+const describe = (
+  expected: string | ((value: unknown) => string),
+  value: unknown,
+) => (typeof expected === "function" ? expected(value) : expected);
 
 const mappingOf = (field: VaultField) => {
   const mapping = CONFIG_MAPPING.find((m) => m.field === field);
@@ -69,7 +77,7 @@ export function parseVaultSettings(json: unknown): {
         key,
         message: `settings.toml: ${key} = ${show(
           value,
-        )} is not valid (expected ${expected}); ignored`,
+        )} is not valid (expected ${describe(expected, value)}); ignored`,
       });
     }
   }
@@ -85,12 +93,13 @@ export const resolveSetting = <F extends VaultField>(
 export const resolveSettings = (
   overrides: VaultOverrides,
   prefs: EffectiveVaultSettings,
-): EffectiveVaultSettings => ({
-  navigatorSort: resolveSetting("navigatorSort", overrides, prefs),
-  newDrawingFolder: resolveSetting("newDrawingFolder", overrides, prefs),
-  templatesFolder: resolveSetting("templatesFolder", overrides, prefs),
-  paperStyle: resolveSetting("paperStyle", overrides, prefs),
-});
+): EffectiveVaultSettings =>
+  Object.fromEntries(
+    PER_VAULT_FIELDS.map((field) => [
+      field,
+      resolveSetting(field, overrides, prefs),
+    ]),
+  ) as EffectiveVaultSettings;
 
 // ---------------------------------------------------------------------------
 // Runtime store
@@ -330,7 +339,7 @@ export async function setVaultOverride<F extends VaultField>(
         key,
         message: `settings.toml: ${key} = ${show(
           value,
-        )} is not valid (expected ${expected})`,
+        )} is not valid (expected ${describe(expected, value)})`,
       },
     ];
     publish(s, snapshot.loaded);

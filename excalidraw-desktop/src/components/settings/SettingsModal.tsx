@@ -231,7 +231,13 @@ export const SettingsModal = ({
                 role="tabpanel"
                 aria-labelledby={settingsTabId(activePage)}
                 data-page={activePage}
+                data-testid={getPage(activePage).testId}
               >
+                {getPage(activePage).intro && (
+                  <p className="vault-settings-intro">
+                    {getPage(activePage).intro}
+                  </p>
+                )}
                 <SettingList
                   settings={settingsForPage(activePage, available)}
                 />

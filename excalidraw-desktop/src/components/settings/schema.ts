@@ -7,12 +7,19 @@
  * settings) can import it without rendering anything.
  */
 
+import {
+  TOOL_DEFAULT_TOOLS,
+  TOOL_LABELS,
+  toolConfigKey,
+} from "../../toolDefaults/toolStyles";
+
 export type SettingsPageId =
   | "general"
   | "appearance"
   | "interface"
   | "drawing"
   | "pens"
+  | "tools"
   | "files"
   | "hotkeys";
 
@@ -21,6 +28,10 @@ export interface SettingsPage {
   label: string;
   /** Sidebar group heading (Obsidian's "Options"). */
   group: string;
+  /** Short text shown above the page's settings. */
+  intro?: string;
+  /** data-testid of the page body (e2e). */
+  testId?: string;
 }
 
 /**
@@ -33,6 +44,14 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "interface", label: "Interface", group: "Options" },
   { id: "drawing", label: "Drawing", group: "Options" },
   { id: "pens", label: "Pens & laser", group: "Options" },
+  {
+    id: "tools",
+    label: "Tool defaults",
+    group: "Options",
+    intro:
+      "Each tool starts with its default style. Only the keys you set apply; the rest keep the editor's current style. Save the current canvas style from the command palette: Tool defaults: Save current style for \u2026",
+    testId: "tool-defaults-page",
+  },
   { id: "files", label: "Files", group: "Options" },
   { id: "hotkeys", label: "Hotkeys", group: "Options" },
 ];
@@ -293,6 +312,31 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["laser", "pointer", "trail", "presentation", "tail"],
     configKey: "laser.length",
   },
+
+  // ---- Tool defaults ----
+  ...TOOL_DEFAULT_TOOLS.map(
+    (tool): SettingSchema => ({
+      id: `tool-${tool}`,
+      page: "tools",
+      label: TOOL_LABELS[tool],
+      description: `Default style for new ${TOOL_LABELS[
+        tool
+      ].toLowerCase()} elements.`,
+      keywords: [
+        tool,
+        "tool",
+        "default style",
+        "style",
+        "stroke",
+        "colour",
+        "color",
+        ...(tool === "arrow" ? ["arrowhead", "arrow type", "elbow"] : []),
+        ...(tool === "text" ? ["font", "font size", "align"] : []),
+      ],
+      configKey: toolConfigKey(tool),
+      perVault: true,
+    }),
+  ),
 
   // ---- Files ----
   {

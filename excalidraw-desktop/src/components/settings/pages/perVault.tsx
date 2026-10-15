@@ -23,6 +23,8 @@ export const PerVaultRow = <F extends VaultField>({
   details,
   description,
   onReset,
+  layout,
+  testId,
 }: {
   id: string;
   field: F;
@@ -33,6 +35,8 @@ export const PerVaultRow = <F extends VaultField>({
   details?: ReactNode;
   description?: ReactNode;
   onReset?: () => void;
+  layout?: "row" | "block";
+  testId?: string;
 }) => {
   const { vault, vaultSettings, setPerVaultValue, setPerVaultStored } =
     useSettings();
@@ -50,6 +54,8 @@ export const PerVaultRow = <F extends VaultField>({
       thisVault={stored}
       description={description}
       onReset={onReset}
+      layout={layout}
+      testId={testId}
       details={
         <>
           {details}

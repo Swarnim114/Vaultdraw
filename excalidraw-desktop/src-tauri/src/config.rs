@@ -1230,6 +1230,11 @@ mod tests {
         let out = apply_toml_changes("[tools]\n[tools.arrow]\nstroke_width = 2\n", &[change("tools.arrow", Json::Null)], name, 1 << 20).unwrap();
         assert_eq!(out, "");
         assert_eq!(apply_toml_changes("a = 1\n", &[change("tools.arrow", Json::Null)], name, 1 << 20).unwrap(), "a = 1\n");
+        // An empty object is a real (empty) table: "no defaults for this tool in this vault".
+        let empty = apply_toml_changes("", &[change("tools.arrow", json!({}))], name, 1 << 20).unwrap();
+        assert_eq!(parse_config(&empty).unwrap()["tools"]["arrow"], json!({}), "{empty}");
+        let refill = apply_toml_changes(&empty, &[change("tools.arrow", arrow())], name, 1 << 20).unwrap();
+        assert_eq!(parse_config(&refill).unwrap()["tools"]["arrow"], arrow());
     }
 
     #[test]

@@ -24,6 +24,19 @@ import {
   withPenDefaults,
 } from "../pens/penPresets";
 
+import {
+  isToolStyle,
+  orderedStyle,
+  TOOL_DEFAULT_TOOLS,
+  toolConfigKey,
+  TOOL_FIELDS,
+  toolField,
+  toolStyleProblem,
+  type StyledTool,
+  type ToolField,
+  type ToolStyle,
+} from "../toolDefaults/toolStyles";
+
 import { isSortOrder, SORT_ORDERS } from "./sortOrder";
 import { isTauriAvailable } from "./DesktopVaultRepository";
 import {
@@ -147,7 +160,8 @@ type ConfigField =
   | "laserColor"
   | "laserSize"
   | "laserDecayMs"
-  | "laserLength";
+  | "laserLength"
+  | ToolField;
 
 interface ConfigMapping {
   field: ConfigField;
@@ -195,7 +209,7 @@ export const isVaultRelativeFolder = (v: unknown): v is string =>
         part.toLowerCase() !== ".excalidraw-vault",
     );
 
-export const CONFIG_MAPPING: readonly ConfigMapping[] = [
+const CORE_MAPPING: readonly ConfigMapping[] = [
   {
     field: "colorTheme",
     key: "appearance.theme",
@@ -395,6 +409,35 @@ export const CONFIG_MAPPING: readonly ConfigMapping[] = [
   },
 ];
 
+/** orderedStyle drops unknown keys; keep them so validation can report them. */
+const orderedStyleOrKeep = (tool: StyledTool, style: ToolStyle): ToolStyle => {
+  const known = orderedStyle(tool, style);
+  const unknown = Object.fromEntries(
+    Object.entries(style).filter(([k]) => !(k in known)),
+  );
+  return { ...known, ...unknown } as ToolStyle;
+};
+
+/** One `[tools.<tool>]` table per styled tool. */
+const TOOL_MAPPINGS: readonly ConfigMapping[] = TOOL_DEFAULT_TOOLS.map(
+  (tool) => ({
+    field: toolField(tool),
+    key: toolConfigKey(tool),
+    expected: (value: unknown) =>
+      `a valid ${tool} style (${toolStyleProblem(tool, value)})`,
+    normalize: (value: unknown) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? orderedStyleOrKeep(tool, value as ToolStyle)
+        : value,
+    valid: (value: unknown) => isToolStyle(tool, value),
+  }),
+);
+
+export const CONFIG_MAPPING: readonly ConfigMapping[] = [
+  ...CORE_MAPPING,
+  ...TOOL_MAPPINGS,
+];
+
 export const STATE_FIELDS = [
   "recentVaults",
   "lastVaultPath",
@@ -532,6 +575,9 @@ export function configToPreferences(config: Record<string, unknown>): {
   };
 }
 
+const isToolField = (field: ConfigField): field is ToolField =>
+  (TOOL_FIELDS as readonly string[]).includes(field);
+
 /** Changed config-mapped fields -> update_config changes (dotted keys). */
 export function preferencesToConfigChanges(
   prev: VaultPreferences,
@@ -541,7 +587,10 @@ export function preferencesToConfigChanges(
   for (const { field, key } of CONFIG_MAPPING) {
     if (!sameValue(prev[field], next[field])) {
       const value = next[field];
-      changes.push({ key, value: value === undefined ? null : value });
+      const empty =
+        value === undefined ||
+        (isToolField(field) && Object.keys(value as object).length === 0);
+      changes.push({ key, value: empty ? null : value });
     }
   }
   // [hotkeys]: one change per command id; null deletes the line (= defaults).
