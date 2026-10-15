@@ -5,13 +5,6 @@ import {
 } from "@excalidraw/excalidraw/data/backgroundPattern";
 
 import {
-  DEFAULT_LINKS_SETTINGS,
-  type LinksSettings,
-  type NewLinkFormat,
-  type OpenModifier,
-  type ShapeLinkFormat,
-  type UpdateOnRename,
-} from "../links/types";
   PAGE_LIMITS,
   isPageLayout,
   isPageOrientation,
@@ -20,6 +13,15 @@ import {
   type PageOrientation,
   type PageSize,
 } from "@excalidraw/excalidraw/data/pageSetup";
+
+import {
+  DEFAULT_LINKS_SETTINGS,
+  type LinksSettings,
+  type NewLinkFormat,
+  type OpenModifier,
+  type ShapeLinkFormat,
+  type UpdateOnRename,
+} from "../links/types";
 
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
