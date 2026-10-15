@@ -331,6 +331,42 @@ fn noop_hooks() -> Hooks {
     Hooks { indexed: Box::new(|_, _, _| {}), done: Box::new(|_| {}), before_write: Box::new(|_| {}), dir: None }
 }
 
+/// Cost of `hash8` on the F1 bench's file mix (90% small drawings, 10% with 1-2 MB images).
+#[test]
+#[ignore]
+fn bench_hash8_cost() {
+    use sha2::{Digest, Sha256};
+    let small = big_drawing(40, 0);
+    let med = big_drawing(40, 1_100_000);
+    let big = big_drawing(40, 2_000_000);
+    let files: Vec<&str> = (0..5000).map(|i| if i % 10 != 3 { small.as_str() } else if i % 20 == 3 { big.as_str() } else { med.as_str() }).collect();
+    let total: usize = files.iter().map(|f| f.len()).sum();
+    let mut best = [f64::MAX; 4];
+    for _ in 0..5 {
+        let t = Instant::now();
+        let n: usize = files.iter().map(|f| crate::search::extract_items(f.as_bytes()).unwrap().len()).sum();
+        best[0] = best[0].min(t.elapsed().as_secs_f64() * 1e3);
+        let t = Instant::now();
+        let h: u8 = files.iter().map(|f| Sha256::digest(f.as_bytes())[0]).fold(0, |a, b| a ^ b);
+        best[1] = best[1].min(t.elapsed().as_secs_f64() * 1e3);
+        let t = Instant::now();
+        let h2: u8 = files
+            .iter()
+            .map(|f| {
+                let b = f.as_bytes();
+                let mut s = Sha256::new();
+                s.update((b.len() as u64).to_le_bytes());
+                s.update(&b[..b.len().min(4096)]);
+                s.update(&b[b.len().saturating_sub(4096)..]);
+                s.finalize()[0]
+            })
+            .fold(0, |a, b| a ^ b);
+        best[2] = best[2].min(t.elapsed().as_secs_f64() * 1e3);
+        std::hint::black_box((n, h, h2));
+    }
+    println!("{} files, {:.0} MB: parse {:.0} ms, full sha256 {:.0} ms ({:+.0}%), head+tail 4 KB sha256 {:.1} ms ({:+.1}%)", files.len(), total as f64 / 1e6, best[0], best[1], best[1] / best[0] * 100.0, best[2], best[2] / best[0] * 100.0);
+}
+
 #[test]
 #[ignore]
 fn bench_build_breakdown() {

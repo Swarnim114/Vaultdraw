@@ -43,7 +43,7 @@ pub(crate) struct DocEntry {
     pub items: Vec<TextItem>,
     /// `link` fields of live elements (any non-empty value).
     pub elinks: Vec<ElementLink>,
-    /// First 8 bytes of the SHA-256 of the file bytes (all zero for name-only entries).
+    /// Content fingerprint of the file (`extract::fingerprint8`; all zero for name-only entries).
     pub hash8: [u8; 8],
     /// Normalised items joined with `\n`.
     buf: String,

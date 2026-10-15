@@ -35,7 +35,7 @@ pub(crate) struct ElementLink {
 pub(crate) struct Extracted {
     pub items: Vec<TextItem>,
     pub elinks: Vec<ElementLink>,
-    /// First 8 bytes of the SHA-256 of the file bytes.
+    /// Content fingerprint, see [`fingerprint8`].
     pub hash8: [u8; 8],
 }
 
@@ -78,13 +78,29 @@ pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
     Ok(parse_scene(json)?.0)
 }
 
-/// Items, element links and the content hash of one drawing file.
+/// Bytes hashed from each end of a file by [`fingerprint8`].
+const FINGERPRINT_EDGE: usize = 4096;
+
+/// First 8 bytes of SHA-256 over the file length and its first and last 4 KiB.
+///
+/// A full-file SHA-256 would cost +200% on the cold index build of a vault with image blobs
+/// (measured: 262 ms vs 123 ms of parsing for 5000 files / 822 MB; far worse on Macs without
+/// SHA hardware), against +3% for this. It identifies a file that moved unchanged (equal
+/// length, head and tail); it is not a revision and never compared with one.
+pub(crate) fn fingerprint8(bytes: &[u8]) -> [u8; 8] {
+    let mut h = Sha256::new();
+    h.update((bytes.len() as u64).to_le_bytes());
+    h.update(&bytes[..bytes.len().min(FINGERPRINT_EDGE)]);
+    h.update(&bytes[bytes.len().saturating_sub(FINGERPRINT_EDGE)..]);
+    let mut out = [0u8; 8];
+    out.copy_from_slice(&h.finalize()[..8]);
+    out
+}
+
+/// Items, element links and the content fingerprint of one drawing file.
 pub(crate) fn extract_doc(json: &[u8]) -> Result<Extracted> {
     let (items, elinks) = parse_scene(json)?;
-    let digest = Sha256::digest(json);
-    let mut hash8 = [0u8; 8];
-    hash8.copy_from_slice(&digest[..8]);
-    Ok(Extracted { items, elinks, hash8 })
+    Ok(Extracted { items, elinks, hash8: fingerprint8(json) })
 }
 
 fn parse_scene(json: &[u8]) -> Result<(Vec<TextItem>, Vec<ElementLink>)> {
@@ -180,7 +196,22 @@ mod unit_tests {
         let got: Vec<_> = x.elinks.iter().map(|l| (&*l.element_id, &*l.link)).collect();
         assert_eq!(got, vec![("a", "[[Plan]]"), ("b", "https://e.com")]);
         assert_eq!(x.items.len(), 1);
-        assert_eq!(&x.hash8[..], &Sha256::digest(json)[..8]);
+        assert_eq!(x.hash8, fingerprint8(json));
+        assert_ne!(x.hash8, [0; 8]);
+    }
+
+    #[test]
+    fn fingerprint_depends_on_length_head_and_tail_only() {
+        let mut a = vec![b'a'; 100_000];
+        let b = a.clone();
+        assert_eq!(fingerprint8(&a), fingerprint8(&b));
+        a[50_000] = b'z';
+        assert_eq!(fingerprint8(&a), fingerprint8(&b), "the middle is not sampled");
+        a[10] = b'z';
+        assert_ne!(fingerprint8(&a), fingerprint8(&b));
+        assert_ne!(fingerprint8(&b), fingerprint8(&b[..99_999]));
+        assert_ne!(fingerprint8(b""), fingerprint8(b"x"));
+        assert_eq!(fingerprint8(b"short"), fingerprint8(b"short"));
     }
 
     #[test]
