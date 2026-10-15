@@ -47,7 +47,7 @@ describe("DesktopVaultLinks", () => {
   });
   it("normalises errors", async () => {
     const invoke = vi.fn(async () => {
-      throw { code: "NOT_FOUND", message: "nope" };
+      return Promise.reject({ code: "NOT_FOUND", message: "nope" });
     });
     await expect(
       new DesktopVaultLinks({ invoke: invoke as never }).links("h", "x"),

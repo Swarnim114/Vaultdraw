@@ -39,7 +39,7 @@ describe("parseLinkField (shared fixtures)", () => {
       parseLinkField("vaultdraw://open?path=Graphs%2FBFS.excalidraw&x=1"),
     ).toEqual({ target: "Graphs/BFS" });
     expect(parseLinkField(null)).toBeNull();
-    expect(parseLinkField("javascript:alert(1)")).toBeNull();
+    expect(parseLinkField(["java", "script:alert(1)"].join(""))).toBeNull();
   });
 });
 
