@@ -6,7 +6,12 @@
  * Drawn on a white "canvas"; in dark mode the box gets the same invert
  * filter Excalidraw uses for its canvas, so colours read as they will there.
  */
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, type ReactNode } from "react";
+
+import { getFontFamilyString } from "@excalidraw/common";
+import { Fonts } from "@excalidraw/excalidraw";
+
+import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import type { StyledTool, ToolStyle } from "../../../toolDefaults/toolStyles";
 
@@ -24,16 +29,27 @@ export interface PreviewFallback {
   fontSize: number;
 }
 
-const FONT_CSS: Record<number, string> = {
-  1: "Virgil",
-  2: "Helvetica",
-  3: "Cascadia",
-  5: "Excalifont",
-  6: "Nunito",
-  7: "Lilita One",
-  8: "Comic Shanns",
-  9: "Liberation Sans",
-  10: "Assistant",
+const SAMPLE_TEXT = "Sample text";
+
+/**
+ * Excalidraw registers its fonts lazily and loads a face only when a scene
+ * text uses it, so the effective default font may not be loaded while the
+ * settings dialog is open (the browser then shows its fallback). Load it.
+ */
+const useLoadedFont = (fontFamily: number | null) => {
+  useEffect(() => {
+    if (
+      fontFamily === null ||
+      typeof document === "undefined" ||
+      !document.fonts
+    ) {
+      return;
+    }
+    const sample = { type: "text", fontFamily, text: SAMPLE_TEXT };
+    Fonts.loadElementsFonts([sample as unknown as ExcalidrawElement]).catch(
+      () => {},
+    );
+  }, [fontFamily]);
 };
 
 const clamp = (v: number, min: number, max: number) =>
@@ -258,11 +274,12 @@ export const ToolStylePreview = ({
   const stroke = style.stroke_color ?? fallback.strokeColor;
   const opacity = (style.opacity ?? 100) / 100;
   const testId = `tool-preview-${tool}`;
+  const fontFamily = style.font_family ?? fallback.fontFamily;
+  useLoadedFont(tool === "text" ? fontFamily : null);
 
   if (tool === "text") {
     const align = style.text_align ?? "left";
     const x = align === "center" ? W / 2 : align === "right" ? W - 14 : 14;
-    const family = FONT_CSS[style.font_family ?? fallback.fontFamily];
     const size = clamp(style.font_size ?? fallback.fontSize, 10, 40);
     return (
       <PreviewBox testId={testId}>
@@ -276,11 +293,11 @@ export const ToolStylePreview = ({
           fill={stroke}
           opacity={opacity}
           style={{
-            fontFamily: `"${family ?? "Excalifont"}", sans-serif`,
+            fontFamily: getFontFamilyString({ fontFamily }),
             fontSize: size,
           }}
         >
-          Sample text
+          {SAMPLE_TEXT}
         </text>
       </PreviewBox>
     );
