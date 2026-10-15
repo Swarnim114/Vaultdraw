@@ -1,4 +1,6 @@
-/* Excalidraw Vault desktop shell styles.
+@import "./theme/designSystem.css";
+
+/* Vaultdraw desktop shell styles.
  *
  * The editor itself ships its own scss via @excalidraw/excalidraw imports
  * (pulled in by the editor worker's VaultEditor). This file only styles the
@@ -21,7 +23,9 @@ body {
 }
 
 body {
-  font-family: "Assistant", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--vd-font);
+  font-size: var(--vd-fs-body);
+  line-height: var(--vd-line);
   /* --vault-* come from the active colour theme (inline on <html>) or
      VaultShell.css; the fallbacks cover the moment before either loads. */
   background: var(--vault-bg, #ffffff);

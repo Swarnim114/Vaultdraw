@@ -9,22 +9,73 @@
  *   --vault-menu-bg               = a raised surface (lighter in dark mode,
  *                                   brightest surface in light mode)
  * Guarantees (WCAG): text ≥ 7:1, muted ≥ 4.5:1, faint ≥ 3:1 on bg, surface
- * and menu; on-primary ≥ 4.5:1 on primary (hover/active only move away from it).
+ * and menu; on-primary ≥ 4.5:1 on primary (hover/active only move away from it);
+ * on-danger ≥ 4.5:1 on danger; accent-text ≥ 4.5:1 on bg, surface and menu;
+ * text ≥ 4.5:1 on every state tint (hover / selected / chip) over those.
+ *
+ * Design system (personal/feature/ui-redesign/PLAN.md): state tints are
+ * translucent rgba literals computed here once per theme, not CSS color-mix,
+ * so nothing is re-resolved per element and every pair is unit-tested.
  */
 
 import {
   adjustLightness,
+  blendOver,
   contrastRatio,
   ensureContrast,
   ensureContrastAll,
   hexToOklab,
   mix,
   oklabDistance,
+  pickOn,
   stepToward,
   toRgba,
 } from "./color";
 
 import type { ThemeMode, ThemeTokens, ThemeVariant } from "./types";
+
+/** Largest OKLab step that still reads as "the accent" when used as text. */
+export const ACCENT_TEXT_MAX_NUDGE = 0.06;
+
+/** Alphas of the translucent state tokens (design system, board 1). */
+export const STATE_ALPHA = {
+  hover: { dark: 0.06, light: 0.05 },
+  chip: 0.08,
+  chipStrong: 0.14,
+  selected: 0.14,
+  selectedStrong: 0.26,
+  ring: 0.75,
+  scrim: 0.32,
+} as const;
+
+/** Token names whose value is not a plain `#rrggbb` (rgba, shadows, rings). */
+export const NON_HEX_TOKENS: ReadonlySet<string> = new Set([
+  "--vault-shadow-sm",
+  "--vault-shadow-md",
+  "--vault-shadow-lg",
+  "--vault-shadow-island",
+  "--vault-shadow-pop",
+  "--vault-hover",
+  "--vault-chip",
+  "--vault-chip-strong",
+  "--vault-sel",
+  "--vault-sel-strong",
+  "--vault-ring",
+  "--vault-scrim",
+]);
+
+/**
+ * Text colour for a filled control: the palette's own when it reads, else
+ * whichever of surface / on-surface contrasts better (design rule), nudged
+ * to `min` only if neither does.
+ */
+const onFill = (fill: string, own: string, bg: string, text: string) => {
+  const [best, other] =
+    contrastRatio(bg, fill) >= contrastRatio(text, fill)
+      ? [bg, text]
+      : [text, bg];
+  return pickOn(fill, [own, best, other], CONTRAST.onPrimary);
+};
 
 export const CONTRAST = {
   text: 7,
@@ -98,11 +149,7 @@ export const deriveTokens = (
 
   // Primary: keep the palette accent, only nudged if it vanishes into the UI.
   const primary = ensureContrastAll(variant.mPrimary, [bg, surface], 3);
-  const onPrimary = ensureContrast(
-    variant.mOnPrimary,
-    primary,
-    CONTRAST.onPrimary,
-  );
+  const onPrimary = onFill(primary, variant.mOnPrimary, bg, text);
   // Hover/active move away from the on-primary colour so its label only
   // gains contrast (light label → darker states, dark label → lighter).
   const away = hexToOklab(onPrimary).l > hexToOklab(primary).l ? -1 : 1;
@@ -134,6 +181,32 @@ export const deriveTokens = (
     CONTRAST.status,
   );
 
+  const onDanger = onFill(danger.fg, variant.mOnError, bg, text);
+  // The accent may be used as text only where it reads everywhere. A
+  // borderline accent (a just-visible nudge away) is nudged; otherwise accent
+  // text falls back to on-surface and the accent stays a tint (design rule).
+  const nudgedAccent = ensureContrastAll(primary, textBgs, CONTRAST.status);
+  const accentText =
+    textBgs.every((b) => contrastRatio(nudgedAccent, b) >= CONTRAST.status) &&
+    oklabDistance(nudgedAccent, primary) <= ACCENT_TEXT_MAX_NUDGE
+      ? nudgedAccent
+      : text;
+
+  // Translucent state tints. Their alpha is lowered (rarely needed) until
+  // text keeps ≥ 4.5:1 and muted text ≥ 3:1 on the tint over every surface.
+  const readableOn = (painted: string) =>
+    contrastRatio(text, painted) >= CONTRAST.status &&
+    contrastRatio(textMuted, painted) >= CONTRAST.faint;
+  const tintReadable = (color: string, a: number) =>
+    textBgs.every((b) => readableOn(blendOver(color, a, b)));
+  const tint = (color: string, alpha: number) => {
+    let a = alpha;
+    while (a > 0.02 && !tintReadable(color, a)) {
+      a -= 0.02;
+    }
+    return toRgba(color, a);
+  };
+
   const shadow =
     hexToOklab(variant.mShadow).l < 0.35 ? variant.mShadow : "#000000";
   const [sa, ma, la] = SHADOW_ALPHA[mode];
@@ -156,6 +229,8 @@ export const deriveTokens = (
     "--vault-primary-light": primaryLight,
     "--vault-primary-border": primaryBorder,
     "--vault-on-primary": onPrimary,
+    "--vault-on-danger": onDanger,
+    "--vault-accent-text": accentText,
     "--vault-success": success.fg,
     "--vault-success-bg": success.bg,
     "--vault-success-border": success.border,
@@ -169,5 +244,18 @@ export const deriveTokens = (
     "--vault-shadow-sm": `0 1px 2px ${toRgba(shadow, sa)}`,
     "--vault-shadow-md": `0 4px 12px ${toRgba(shadow, ma)}`,
     "--vault-shadow-lg": `0 12px 32px ${toRgba(shadow, la)}`,
+    // Elevation (borders first): level 1 islands, level 2 popovers/dialogs.
+    "--vault-shadow-island": `0 1px 2px ${toRgba(shadow, 0.14)}`,
+    "--vault-shadow-pop": `0 8px 24px ${toRgba(shadow, 0.26)}`,
+    "--vault-scrim": toRgba(shadow, STATE_ALPHA.scrim),
+    "--vault-hover": tint(text, STATE_ALPHA.hover[mode]),
+    "--vault-chip": tint(text, STATE_ALPHA.chip),
+    "--vault-chip-strong": tint(text, STATE_ALPHA.chipStrong),
+    "--vault-sel": tint(primary, STATE_ALPHA.selected),
+    "--vault-sel-strong": tint(primary, STATE_ALPHA.selectedStrong),
+    "--vault-ring": `0 0 0 2px ${bg}, 0 0 0 4px ${toRgba(
+      primary,
+      STATE_ALPHA.ring,
+    )}`,
   };
 };

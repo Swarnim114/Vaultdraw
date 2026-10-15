@@ -249,6 +249,22 @@ export const toRgba = (hex: string, alpha: number): string => {
   return `rgba(${ch(r)}, ${ch(g)}, ${ch(b)}, ${+alpha.toFixed(3)})`;
 };
 
+/**
+ * The opaque colour a browser paints for `fg` at `alpha` over `bg` (CSS
+ * source-over in gamma sRGB). Used to check text contrast on translucent
+ * state tints such as `--vault-sel`.
+ */
+export const blendOver = (fg: string, alpha: number, bg: string): string => {
+  const f = hex6(fg);
+  const b = hex6(bg);
+  const k = clamp01(alpha);
+  return formatHex({
+    r: f.r * k + b.r * (1 - k),
+    g: f.g * k + b.g * (1 - k),
+    b: f.b * k + b.b * (1 - k),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // WCAG contrast
 // ---------------------------------------------------------------------------

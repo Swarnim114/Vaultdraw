@@ -1,10 +1,8 @@
-/* Excalidraw Vault Shell UI Styles */
+/* Vaultdraw shell UI styles (tokens and scales: theme/designSystem.css) */
 
 :root {
-  --vault-font: "Assistant", system-ui, -apple-system, "Segoe UI", Roboto,
-    sans-serif;
-  --vault-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    monospace;
+  --vault-font: var(--vd-font);
+  --vault-mono-font: var(--vd-mono);
 
   --vault-bg: #ffffff;
   --vault-surface: #f6f6f7;
@@ -26,7 +24,6 @@
   --vault-primary-border: #d0ceff;
   /* Text/icons on primary buttons (themes derive a readable one). */
   --vault-on-primary: #ffffff;
-  --vault-on-danger: #ffffff;
 
   --vault-success: #1b8a3e;
   --vault-success-bg: #eaf8ee;
@@ -44,9 +41,9 @@
   --vault-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --vault-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --vault-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
-  --vault-radius-sm: 4px;
-  --vault-radius: 6px;
-  --vault-radius-lg: 10px;
+  --vault-radius-sm: var(--vd-radius-chip);
+  --vault-radius: var(--vd-radius-control);
+  --vault-radius-lg: var(--vd-radius-dialog);
 }
 
 /* Theme follows the app preference (html.dark), not the OS media query, so a
@@ -69,8 +66,7 @@ html.dark {
   --vault-primary-active: #7875e8;
   --vault-primary-light: #242338;
   --vault-primary-border: #444275;
-  --vault-on-primary: #ffffff;
-  --vault-on-danger: #ffffff;
+  --vault-on-primary: #121212;
 
   --vault-success: #4ecb71;
   --vault-success-bg: #132b1a;

@@ -19,13 +19,13 @@ mark("main-start");
 const mountNode = document.getElementById("root");
 
 if (!mountNode) {
-  throw new Error("Excalidraw Vault: #root mount node not found");
+  throw new Error("Vaultdraw: #root mount node not found");
 }
 
 const ownerDocument = mountNode.ownerDocument;
 const ownerWindow = ownerDocument.defaultView;
 if (!ownerWindow) {
-  throw new Error("Excalidraw Vault: mount window is unavailable");
+  throw new Error("Vaultdraw: mount window is unavailable");
 }
 
 ownerWindow.__EXCALIDRAW_DESKTOP__ = true;
@@ -117,9 +117,7 @@ void initSettings(ownerWindow)
     }
   })
   .catch((error: unknown) => {
-    mountNode.textContent = `Could not start Excalidraw Vault: ${String(
-      error,
-    )}`;
+    mountNode.textContent = `Could not start Vaultdraw: ${String(error)}`;
   });
 
 declare global {

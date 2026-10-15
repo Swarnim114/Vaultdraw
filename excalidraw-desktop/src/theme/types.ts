@@ -121,6 +121,8 @@ export const TOKEN_NAMES = [
   "--vault-primary-light",
   "--vault-primary-border",
   "--vault-on-primary",
+  "--vault-on-danger",
+  "--vault-accent-text",
   "--vault-success",
   "--vault-success-bg",
   "--vault-success-border",
@@ -134,6 +136,15 @@ export const TOKEN_NAMES = [
   "--vault-shadow-sm",
   "--vault-shadow-md",
   "--vault-shadow-lg",
+  "--vault-shadow-island",
+  "--vault-shadow-pop",
+  "--vault-scrim",
+  "--vault-hover",
+  "--vault-chip",
+  "--vault-chip-strong",
+  "--vault-sel",
+  "--vault-sel-strong",
+  "--vault-ring",
 ] as const;
 
 export type TokenName = typeof TOKEN_NAMES[number];

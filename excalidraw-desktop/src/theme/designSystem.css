@@ -1,0 +1,77 @@
+/* Vaultdraw design system: the static scales (spacing, sizes, type, radii)
+ * and fallbacks for the colour tokens the theme engine computes.
+ *
+ * Colours: every component reads --vault-* tokens. The theme engine
+ * (theme/tokens.ts) writes them inline on <html> per theme, including the
+ * computed ones (on-primary, on-danger, accent-text) and the translucent
+ * state tints (hover, chip, sel, ring, scrim), so the values below only show
+ * for the moment before a theme applies. See
+ * personal/feature/ui-redesign/PLAN.md "Token layer".
+ *
+ * Performance: plain values only. No color-mix, backdrop-filter or filter;
+ * shadows are limited to --vault-shadow-island (1 px) and --vault-shadow-pop
+ * (popovers and dialogs, never on canvas-sized or per-row elements).
+ */
+
+:root {
+  /* Spacing: 4 px base. */
+  --vd-space-1: 4px;
+  --vd-space-2: 8px;
+  --vd-space-3: 12px;
+  --vd-space-4: 16px;
+  --vd-space-5: 20px;
+  --vd-space-6: 24px;
+  --vd-space-8: 32px;
+
+  /* Component heights. */
+  --vd-row: 26px; /* tree rows, menu items, list rows */
+  --vd-bar: 38px; /* app bar, navigator header/footer */
+  --vd-control: 28px; /* buttons, inputs, selects, steppers */
+  --vd-control-sm: 24px;
+  --vd-control-lg: 34px; /* dialog buttons */
+
+  /* Type: system UI font, line-height 1.4; mono only for keys and paths. */
+  --vd-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, sans-serif;
+  --vd-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --vd-line: 1.4;
+  --vd-fs-caption: 11px; /* captions, counts, section labels */
+  --vd-fs-small: 12px; /* menus, descriptions */
+  --vd-fs-body: 13px; /* default */
+  --vd-fs-emph: 14px; /* emphasis (weight 500) */
+  --vd-fs-title: 16px; /* modal titles (weight 600) */
+  --vd-fs-display: 20px; /* empty states (weight 600) */
+
+  /* Radii: 4 kbd/chips, 6 buttons/inputs/rows, 8 popovers/islands, 10 dialogs. */
+  --vd-radius-chip: 4px;
+  --vd-radius-control: 6px;
+  --vd-radius-pop: 8px;
+  --vd-radius-dialog: 10px;
+
+  /* Disabled controls. */
+  --vd-disabled-opacity: 0.45;
+
+  /* Fallbacks for the computed colour tokens (light Default). */
+  --vault-on-danger: #ffffff;
+  --vault-accent-text: #1d1d20;
+  --vault-hover: rgba(29, 29, 32, 0.05);
+  --vault-chip: rgba(29, 29, 32, 0.08);
+  --vault-chip-strong: rgba(29, 29, 32, 0.14);
+  --vault-sel: rgba(105, 101, 219, 0.14);
+  --vault-sel-strong: rgba(105, 101, 219, 0.26);
+  --vault-ring: 0 0 0 2px #ffffff, 0 0 0 4px rgba(105, 101, 219, 0.75);
+  --vault-shadow-island: 0 1px 2px rgba(0, 0, 0, 0.14);
+  --vault-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.26);
+  --vault-scrim: rgba(0, 0, 0, 0.32);
+}
+
+html.dark {
+  --vault-on-danger: #121212;
+  --vault-accent-text: #8e8bf0;
+  --vault-hover: rgba(230, 230, 233, 0.06);
+  --vault-chip: rgba(230, 230, 233, 0.08);
+  --vault-chip-strong: rgba(230, 230, 233, 0.14);
+  --vault-sel: rgba(142, 139, 240, 0.14);
+  --vault-sel-strong: rgba(142, 139, 240, 0.26);
+  --vault-ring: 0 0 0 2px #121212, 0 0 0 4px rgba(142, 139, 240, 0.75);
+}

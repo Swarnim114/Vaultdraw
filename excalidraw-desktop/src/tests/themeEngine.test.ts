@@ -9,6 +9,7 @@ import {
   ANSI_KEYS,
   CONTRAST,
   EXCALIDRAW_OVERRIDE_STYLE_ID,
+  NON_HEX_TOKENS,
   ROLE_KEYS,
   TERMINAL_EXTRA_KEYS,
   TOKEN_NAMES,
@@ -126,7 +127,7 @@ const expectTokenGuarantees = (
   const t = deriveTokens(variant, mode);
   for (const name of TOKEN_NAMES) {
     expect(t[name], `${label} ${name}`).toBeTruthy();
-    if (!name.startsWith("--vault-shadow")) {
+    if (!NON_HEX_TOKENS.has(name)) {
       expect(isHexColor(t[name]), `${label} ${name}=${t[name]}`).toBe(true);
     }
   }
