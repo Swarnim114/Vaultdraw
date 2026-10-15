@@ -445,6 +445,7 @@ describe("settingsSync mapping", () => {
       navigatorCollapsed: false,
       navigatorWidth: 300,
       expandedFolders: { "/a": ["", "x"] },
+      hasPanned: false,
       exportOptions: {
         scale: expect.any(Number),
         background: true,
@@ -555,6 +556,7 @@ describe("settingsSync runtime", () => {
       navigatorCollapsed: true,
       navigatorWidth: 300,
       expandedFolders: {},
+      hasPanned: false,
       exportOptions: {
         scale: expect.any(Number),
         background: true,

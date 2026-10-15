@@ -1,0 +1,172 @@
+/*
+ * Excalidraw chrome restyle (UI redesign P1-B): what CSS variables cannot
+ * reach (see excalidrawVars.ts for the variable half). Imported after the
+ * editor so equal-specificity rules win. Cheap rules only: no filters, no
+ * blur, shadows only on islands and popovers.
+ */
+
+/* Islands: surface-variant, 1 px outline, 8 px radius, 1 px shadow. */
+.excalidraw .Island,
+.excalidraw .layer-ui__wrapper__footer-left .Island {
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-pop);
+}
+
+/* Popovers: raised menu surface, pop shadow. */
+.excalidraw .dropdown-menu,
+.excalidraw .context-menu-popover,
+.excalidraw .color-picker,
+.excalidraw .ToolPopover,
+.excalidraw .picker {
+  --island-bg-color: var(--vault-menu-bg);
+  --shadow-island: var(--vault-shadow-pop);
+  --box-shadow: var(--vault-shadow-pop);
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-container,
+.excalidraw.theme--dark .dropdown-menu .dropdown-menu-container,
+.excalidraw .color-picker,
+.excalidraw .picker {
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-pop);
+  box-shadow: var(--vault-shadow-pop);
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-container {
+  padding: 4px;
+  gap: 0;
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-item-base {
+  font-size: 12.5px;
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-item,
+.excalidraw .dropdown-menu .dropdown-menu-item-bare {
+  height: 26px;
+  border-radius: var(--vd-radius-chip);
+  --icon-fill-color: var(--vault-text-muted);
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-item__text {
+  gap: 8px;
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-item__shortcut {
+  opacity: 1;
+  color: var(--vault-text-faint);
+  font-family: var(--vd-mono);
+  font-size: 10.5px;
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-item--selected {
+  background: var(--vault-sel);
+}
+
+.excalidraw .dropdown-menu .dropdown-menu-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vault-text-faint);
+  margin: 0;
+  padding: 6px 8px 2px;
+}
+
+/* Context menu. */
+.excalidraw .context-menu {
+  background: var(--vault-menu-bg);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-pop);
+  box-shadow: var(--vault-shadow-pop);
+  padding: 4px;
+}
+
+.excalidraw .context-menu-item {
+  min-width: 9.5rem;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12.5px;
+  border-radius: var(--vd-radius-chip);
+}
+
+.excalidraw .context-menu-item:hover,
+.excalidraw .context-menu-item:focus {
+  color: var(--vault-text);
+  background: var(--vault-hover);
+}
+
+.excalidraw .context-menu-item.dangerous .context-menu-item__label {
+  color: var(--vault-danger);
+}
+
+.excalidraw .context-menu-item.dangerous:hover {
+  background: var(--vault-danger-bg);
+}
+
+.excalidraw .context-menu-item.dangerous:hover .context-menu-item__label {
+  color: var(--vault-danger);
+}
+
+.excalidraw .context-menu-item__shortcut {
+  opacity: 1;
+  color: var(--vault-text-faint);
+  font-family: var(--vd-mono);
+  font-size: 10.5px;
+}
+
+.excalidraw .context-menu-item-separator {
+  border-top: 1px solid var(--vault-border);
+  margin: 4px 0;
+}
+
+/* Tools: 32 px, 6 px radius, hover tint, selected tint (design .tool). */
+.excalidraw .ToolIcon,
+.excalidraw .ToolIcon .ToolIcon__icon {
+  border-radius: var(--vd-radius-control);
+}
+
+.excalidraw .ToolIcon__keybinding,
+.excalidraw
+  .ToolIcon.ToolIcon_type_toggle.ToolIcon--checked
+  .ToolIcon__keybinding {
+  font-family: var(--vd-mono);
+  font-size: 8.5px;
+  line-height: 1;
+  right: 3px;
+  bottom: 2px;
+  color: var(--vault-text-faint);
+}
+
+.excalidraw .App-toolbar .divider,
+.excalidraw .divider {
+  background-color: var(--vault-border);
+  margin: 6px 4px;
+}
+
+/* Pan hint: 11.5 px faint caption, kbd chips per the design kbd style;
+   hidden after the user's first pan (editor/panHint.ts). */
+.excalidraw .HintViewer {
+  font-size: 11.5px;
+  color: var(--vault-text-faint);
+}
+
+.excalidraw .HintViewer kbd,
+.excalidraw.theme--dark .HintViewer kbd {
+  font-family: var(--vd-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: var(--vd-radius-chip);
+  border: 1px solid var(--vault-border);
+  background: var(--vault-chip);
+  color: var(--vault-text-muted);
+}
+
+.excalidraw.theme--dark .HintViewer {
+  color: var(--vault-text-faint);
+}
+
+.vd-has-panned .HintViewer--canvas-panning {
+  display: none;
+}

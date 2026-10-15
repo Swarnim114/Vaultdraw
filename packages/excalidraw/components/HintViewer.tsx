@@ -40,6 +40,12 @@ const getTaggedShortcutKey = (key: string | string[]) =>
     ? `<kbd>${key.map(getShortcutKey).join(" + ")}</kbd>`
     : `<kbd>${getShortcutKey(key)}</kbd>`;
 
+const getCanvasPanningHint = () =>
+  t("hints.canvasPanning", {
+    shortcut_1: getTaggedShortcutKey(t("keys.mmb")),
+    shortcut_2: getTaggedShortcutKey("Space"),
+  });
+
 const getHints = ({
   appState,
   isMobile,
@@ -219,10 +225,7 @@ const getHints = ({
     }
 
     if (!selectedElements.length && !isMobile) {
-      return t("hints.canvasPanning", {
-        shortcut_1: getTaggedShortcutKey(t("keys.mmb")),
-        shortcut_2: getTaggedShortcutKey("Space"),
-      });
+      return getCanvasPanningHint();
     }
 
     if (selectedElements.length === 1) {
@@ -327,7 +330,13 @@ export const HintViewer = ({
   });
 
   return (
-    <div className="HintViewer">
+    <div
+      className={
+        hints === getCanvasPanningHint()
+          ? "HintViewer HintViewer--canvas-panning"
+          : "HintViewer"
+      }
+    >
       <span>{hintJSX}</span>
     </div>
   );

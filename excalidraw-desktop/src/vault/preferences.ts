@@ -112,6 +112,8 @@ interface VaultPreferencesBase {
   navigatorWidth: number;
   expandedFolders: Record<string, string[]>;
   exportOptions: ExportOptions;
+  /** The user has panned the canvas once: the "move canvas" hint stays hidden (machine state). */
+  hasPanned: boolean;
   theme: VaultTheme;
   /** Colour theme name: a built-in name or a theme in the config themes/ folder. */
   colorTheme: string;
@@ -239,6 +241,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   navigatorWidth: 280,
   expandedFolders: {},
   exportOptions: DEFAULT_EXPORT_OPTIONS,
+  hasPanned: false,
   theme: "system",
   colorTheme: "Default",
   syncCanvas: false,
@@ -445,6 +448,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
         ? (parsed.expandedFolders as Record<string, string[]>)
         : {},
     exportOptions: normalizeExportOptions(parsed.exportOptions),
+    hasPanned: pick(parsed.hasPanned, isBoolean, d.hasPanned),
     theme: isVaultTheme(parsed.theme) ? parsed.theme : d.theme,
     colorTheme:
       typeof parsed.colorTheme === "string" && parsed.colorTheme.trim()

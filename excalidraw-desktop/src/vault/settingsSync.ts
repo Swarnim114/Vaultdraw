@@ -598,6 +598,7 @@ export const STATE_FIELDS = [
   "navigatorWidth",
   "expandedFolders",
   "exportOptions",
+  "hasPanned",
 ] as const;
 
 type StateField = typeof STATE_FIELDS[number];
@@ -786,6 +787,7 @@ export function stateToPreferences(
       ? s.expandedFolders
       : { ...d.expandedFolders },
     exportOptions: normalizeExportOptions(s.exportOptions),
+    hasPanned: typeof s.hasPanned === "boolean" ? s.hasPanned : d.hasPanned,
   };
 }
 
@@ -797,6 +799,7 @@ export function preferencesToState(prefs: VaultPreferences): PersistedState {
     navigatorWidth: prefs.navigatorWidth,
     expandedFolders: prefs.expandedFolders,
     exportOptions: prefs.exportOptions,
+    hasPanned: prefs.hasPanned,
   };
 }
 

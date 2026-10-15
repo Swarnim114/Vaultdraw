@@ -13,13 +13,7 @@
  * here when the dark block hard-codes a value.
  */
 
-import {
-  adjustLightness,
-  ensureContrast,
-  hexToOklab,
-  mix,
-  toRgba,
-} from "./color";
+import { adjustLightness, hexToOklab, mix, toRgba } from "./color";
 
 import type { ThemeMode, ThemeTokens } from "./types";
 
@@ -37,12 +31,11 @@ export const excalidrawVariableOverrides = (
   const strengthen = (step: number) =>
     adjustLightness(primary, dark ? 0.035 * step : -0.05 * step);
 
-  const primaryContainer = mix(menu, primary, dark ? 0.38 : 0.22);
-  const onPrimaryContainer = ensureContrast(
-    mix(text, primary, 0.3),
-    primaryContainer,
-    4.5,
-  );
+  // Selected tool / toggle: translucent selection tint with on-surface
+  // content (no filled primary tile). Contrast of text on the tint over every
+  // surface is guaranteed by the token tests.
+  const primaryContainer = t["--vault-sel"];
+  const onPrimaryContainer = text;
   const lightEnd = hexToOklab(bg).l > hexToOklab(text).l ? bg : text;
   const darkEnd = lightEnd === bg ? text : bg;
   const gray = (pct: number) => mix(lightEnd, darkEnd, pct / 100);
@@ -51,8 +44,18 @@ export const excalidrawVariableOverrides = (
     // --- surfaces ----------------------------------------------------------
     // Default page/canvas-area background (welcome screen etc.) = canvas.
     "--default-bg-color": t["--vault-canvas"],
-    // Floating islands (main toolbar, properties panel, menus) = vault menus.
-    "--island-bg-color": menu,
+    // Floating islands (toolbar, properties panel, zoom/undo, library button)
+    // = surface-variant with the 1 px island shadow. Popovers re-point these
+    // to the menu surface in theme/excalidrawChrome.css.
+    "--island-bg-color": t["--vault-surface"],
+    "--shadow-island": t["--vault-shadow-island"],
+    "--shadow-island-stronger": t["--vault-shadow-pop"],
+    // Tool buttons: 32 px, 6 px radius (design .tool).
+    "--lg-button-size": "2rem",
+    "--border-radius-md": "6px",
+    "--border-radius-lg": "8px",
+    "--button-hover-bg": t["--vault-hover"],
+    "--button-active-bg": t["--vault-sel"],
     // Alternate island bg (used by a few nested panels) = chrome surface.
     "--island-bg-color-alt": t["--vault-surface"],
     // Popovers / dropdowns (light block references island; dark hard-codes).

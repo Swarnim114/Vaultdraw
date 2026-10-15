@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   CaptureUpdateAction,
@@ -29,11 +37,14 @@ import { PageNotice } from "../page/PageNotice";
 import { usePageMode } from "../page/usePageMode";
 import { useVaultLibrary } from "../library/useVaultLibrary";
 import { copyToClipboard } from "../vault/clipboard";
+import { getPreferences, updatePreferences } from "../vault/preferences";
 
 import { PenBar } from "../pens/PenBar";
 
 import { usePens } from "../pens/usePens";
 import { useToolDefaults } from "../toolDefaults/useToolDefaults";
+
+import "../theme/excalidrawChrome.css";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorApi } from "./editorApi";
@@ -46,6 +57,7 @@ import {
   rememberExportOptions,
 } from "./exportOptions";
 import { focusElement } from "./focusElement";
+import { PANNED_CLASS, watchFirstPan } from "./panHint";
 import { renderImageExport } from "./imageExport";
 import { getSaveSignature } from "./saveSignature";
 
@@ -161,6 +173,26 @@ const VaultEditorComponent = ({
     openPageSetup: () => setPageSetupOpen(true),
   });
   const onPageChange = pageMode.onChange;
+
+  // The "move canvas" hint disappears after the user's first pan (persisted).
+  useLayoutEffect(() => {
+    const el = host.current;
+    if (!el) {
+      return;
+    }
+    if (getPreferences().hasPanned) {
+      el.classList.add(PANNED_CLASS);
+      return;
+    }
+    return watchFirstPan(
+      el,
+      () => apiRef.current?.getAppState().activeTool.type,
+      () => {
+        el.classList.add(PANNED_CLASS);
+        updatePreferences({ hasPanned: true });
+      },
+    );
+  }, []);
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
