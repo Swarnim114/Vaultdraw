@@ -7,7 +7,7 @@ import {
   updatePreferences,
 } from "../vault/preferences";
 
-import { COMMANDS, getCommand } from "./commands";
+import { allCommands, getCommand } from "./commands";
 import { readContext, whenHolds, type AppContext } from "./context";
 import { installCommandDispatcher, runHandler } from "./dispatcher";
 import { getRegisteredHandler } from "./handlerRegistry";
@@ -96,7 +96,7 @@ export function useCommandDispatcher(
   const platform = useMemo(() => detectPlatform(win), [win]);
   const overrides = useHotkeyOverrides(win);
   const keymap = useMemo(
-    () => buildKeymap(COMMANDS, overrides, platform),
+    () => buildKeymap(allCommands(overrides), overrides, platform),
     [overrides, platform],
   );
 

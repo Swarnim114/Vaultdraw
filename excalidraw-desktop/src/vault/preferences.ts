@@ -4,6 +4,14 @@ import {
   type BackgroundPatternType,
 } from "@excalidraw/excalidraw/data/backgroundPattern";
 
+import {
+  DEFAULT_LINKS_SETTINGS,
+  type LinksSettings,
+  type NewLinkFormat,
+  type OpenModifier,
+  type ShapeLinkFormat,
+  type UpdateOnRename,
+} from "../links/types";
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
   DEFAULT_LASER,
@@ -116,6 +124,18 @@ interface VaultPreferencesBase {
    * settings.toml may override it.
    */
   templatesFolder: string;
+  /** links.new_link_format */
+  linkNewFormat: NewLinkFormat;
+  /** links.shape_link_format */
+  linkShapeFormat: ShapeLinkFormat;
+  /** links.open_modifier */
+  linkOpenModifier: OpenModifier;
+  /** links.update_on_rename */
+  linkUpdateOnRename: UpdateOnRename;
+  /** links.autocomplete */
+  linkAutocomplete: boolean;
+  /** links.hint_chars */
+  linkHintChars: string;
   /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
   hotkeys: Record<string, string[]>;
   /** Saved pens (1 to 9), selected with the pen.selectN commands (Alt+1..9). */
@@ -192,6 +212,12 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
   templatesFolder: DEFAULT_TEMPLATES_FOLDER,
+  linkNewFormat: DEFAULT_LINKS_SETTINGS.newLinkFormat,
+  linkShapeFormat: DEFAULT_LINKS_SETTINGS.shapeLinkFormat,
+  linkOpenModifier: DEFAULT_LINKS_SETTINGS.openModifier,
+  linkUpdateOnRename: DEFAULT_LINKS_SETTINGS.updateOnRename,
+  linkAutocomplete: DEFAULT_LINKS_SETTINGS.autocomplete,
+  linkHintChars: DEFAULT_LINKS_SETTINGS.hintChars,
   hotkeys: {},
   penPresets: DEFAULT_PEN_PRESETS.map((p) => ({ ...p })),
   laserColor: DEFAULT_LASER.color,
@@ -208,6 +234,33 @@ export const getLaserSettings = (prefs: VaultPreferences): LaserSettings => ({
   decayMs: prefs.laserDecayMs,
   length: prefs.laserLength,
 });
+
+/** The links fields of the preferences as one settings object. */
+export const getLinksSettings = (prefs: VaultPreferences): LinksSettings => ({
+  newLinkFormat: prefs.linkNewFormat,
+  shapeLinkFormat: prefs.linkShapeFormat,
+  openModifier: prefs.linkOpenModifier,
+  updateOnRename: prefs.linkUpdateOnRename,
+  autocomplete: prefs.linkAutocomplete,
+  hintChars: prefs.linkHintChars,
+});
+
+export const isNewLinkFormat = (v: unknown): v is NewLinkFormat =>
+  v === "shortest" || v === "relative" || v === "absolute";
+export const isShapeLinkFormat = (v: unknown): v is ShapeLinkFormat =>
+  v === "wikilink" || v === "vaultdraw-url";
+export const isOpenModifier = (v: unknown): v is OpenModifier =>
+  v === "mod" || v === "alt" || v === "ctrl" || v === "shift";
+export const isUpdateOnRename = (v: unknown): v is UpdateOnRename =>
+  typeof v === "boolean" || v === "ask";
+/** At least 2 distinct characters, no whitespace, nothing uppercase. */
+export const isHintChars = (v: unknown): v is string => {
+  if (typeof v !== "string" || /\s/.test(v) || v !== v.toLowerCase()) {
+    return false;
+  }
+  const chars = Array.from(v);
+  return chars.length >= 2 && new Set(chars).size === chars.length;
+};
 
 const PAPER_LIMITS = BACKGROUND_PATTERN_LIMITS;
 
@@ -376,6 +429,28 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       (v) => isString(v) && (v as string).trim() !== "",
       d.templatesFolder,
     ),
+    linkNewFormat: pick(parsed.linkNewFormat, isNewLinkFormat, d.linkNewFormat),
+    linkShapeFormat: pick(
+      parsed.linkShapeFormat,
+      isShapeLinkFormat,
+      d.linkShapeFormat,
+    ),
+    linkOpenModifier: pick(
+      parsed.linkOpenModifier,
+      isOpenModifier,
+      d.linkOpenModifier,
+    ),
+    linkUpdateOnRename: pick(
+      parsed.linkUpdateOnRename,
+      isUpdateOnRename,
+      d.linkUpdateOnRename,
+    ),
+    linkAutocomplete: pick(
+      parsed.linkAutocomplete,
+      isBoolean,
+      d.linkAutocomplete,
+    ),
+    linkHintChars: pick(parsed.linkHintChars, isHintChars, d.linkHintChars),
     hotkeys: normalizeHotkeys(parsed.hotkeys),
     penPresets: normalizePenPresets(parsed.penPresets, d.penPresets),
     laserColor: pick(parsed.laserColor, isString, d.laserColor),

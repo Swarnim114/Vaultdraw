@@ -1,5 +1,5 @@
 /** Palette provider: every command in the registry that can run right now. */
-import { COMMANDS } from "../../commands/commands";
+import { allCommands } from "../../commands/commands";
 import { commandShortcutLabel } from "../shortcuts";
 
 import type { CommandRunner } from "../../commands/useCommands";
@@ -24,7 +24,7 @@ export function createCommandsProvider({
     items(): PaletteItem[] {
       const live = overrides();
       const items: PaletteItem[] = [];
-      for (const command of COMMANDS) {
+      for (const command of allCommands(live)) {
         if (
           command.palette === false ||
           !runner.isAvailable(command.id, { fromPalette: true })

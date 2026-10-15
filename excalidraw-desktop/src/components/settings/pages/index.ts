@@ -4,6 +4,7 @@ import { filesControls } from "./Files";
 import { generalControls } from "./General";
 import { hotkeysControls } from "./Hotkeys";
 import { interfaceControls } from "./Interface";
+import { linksControls } from "./Links";
 import { pensControls } from "./Pens";
 import { toolDefaultsControls } from "./ToolDefaults";
 
@@ -18,5 +19,6 @@ export const SETTING_CONTROLS: SettingControls = {
   ...pensControls,
   ...toolDefaultsControls,
   ...filesControls,
+  ...linksControls,
   ...hotkeysControls,
 };

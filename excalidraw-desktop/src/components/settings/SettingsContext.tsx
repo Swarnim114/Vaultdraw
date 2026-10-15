@@ -10,6 +10,7 @@ import {
 import {
   getEditorDefaults,
   getPreferences,
+  getLinksSettings,
   getTheme,
   resolveTheme,
   setAutosaveDelayMs,
@@ -35,6 +36,7 @@ import {
 import { clampZoom } from "../../vault/zoom";
 import { useVaultSettingsView } from "../../vault/useVaultSettingsView";
 
+import type { LinksSettings } from "../../links/types";
 import type { UseVaultSettings } from "../../vault/useVaultSettings";
 import type { VaultPreferences } from "../../vault/preferences";
 import type { VaultInfo } from "../../vault/types";
@@ -72,6 +74,15 @@ export interface SettingsContextValue {
   setConfirmDelete: (next: boolean) => void;
   showTagChips: boolean;
   setShowTagChips: (next: boolean) => void;
+
+  /** The `[links]` settings. */
+  links: LinksSettings;
+  setLinks: (partial: Partial<LinksSettings>) => void;
+  /**
+   * Asks the user for a drawing (vault-relative path, null = cancelled).
+   * Supplied by the app shell; without it "Add drawing shortcut" is hidden.
+   */
+  pickDrawing?: () => Promise<string | null>;
 
   /** Read-only view of the per-vault store (overrides, effective values). */
   vaultSettings: UseVaultSettings;
@@ -113,6 +124,7 @@ export interface SettingsControllerOptions {
   onThemeChanged?: (resolvedTheme: "light" | "dark") => void;
   onAppearanceChanged?: () => void;
   onRevealVault?: (path: string) => void;
+  pickDrawing?: () => Promise<string | null>;
 }
 
 export const useSettingsController = ({
@@ -123,6 +135,7 @@ export const useSettingsController = ({
   onThemeChanged,
   onAppearanceChanged,
   onRevealVault,
+  pickDrawing,
 }: SettingsControllerOptions): SettingsContextValue => {
   const [mode, setModeState] = useState<VaultTheme>(() => getTheme(win));
   const [colorTheme, setColorThemeState] = useState(
@@ -152,6 +165,9 @@ export const useSettingsController = ({
   const [showTagChips, setShowTagChipsState] = useState(
     () => getPreferences(win).showTagChips,
   );
+  const [links, setLinksState] = useState(() =>
+    getLinksSettings(getPreferences(win)),
+  );
   const vaultSettings = useVaultSettingsView(win);
   const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
 
@@ -177,6 +193,7 @@ export const useSettingsController = ({
       setZoomState(prefs.zoom);
       setConfirmDeleteState(prefs.confirmDelete);
       setShowTagChipsState(prefs.showTagChips);
+      setLinksState(getLinksSettings(prefs));
     };
     const handleStatus = () => setSettingsStatus(getSettingsStatus());
     win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
@@ -237,6 +254,22 @@ export const useSettingsController = ({
     updatePreferences({ showTagChips: next }, win);
   };
 
+  const setLinks = (partial: Partial<LinksSettings>) => {
+    const next = { ...links, ...partial };
+    setLinksState(next);
+    updatePreferences(
+      {
+        linkNewFormat: next.newLinkFormat,
+        linkShapeFormat: next.shapeLinkFormat,
+        linkOpenModifier: next.openModifier,
+        linkUpdateOnRename: next.updateOnRename,
+        linkAutocomplete: next.autocomplete,
+        linkHintChars: next.hintChars,
+      },
+      win,
+    );
+  };
+
   const setPerVaultValue = <F extends VaultField>(
     field: F,
     value: VaultPreferences[F],
@@ -284,6 +317,9 @@ export const useSettingsController = ({
     setConfirmDelete,
     showTagChips,
     setShowTagChips,
+    links,
+    setLinks,
+    pickDrawing,
     vaultSettings,
     setPerVaultValue,
     setPerVaultStored,

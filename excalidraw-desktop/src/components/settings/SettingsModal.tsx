@@ -33,6 +33,8 @@ export interface SettingsModalProps {
   /** Built-in + user themes; defaults to the cached registry. */
   themeRegistry?: ThemeRegistry;
   onRevealVault?: (path: string) => void;
+  /** Lets the Hotkeys page bind a key to a drawing; absent = not offered. */
+  pickDrawing?: () => Promise<string | null>;
   ownerDocument?: Document | null;
   /** Page (or Tools section, "tools:pen") shown when Settings opens. */
   initialPage?: SettingsTarget;
@@ -70,6 +72,7 @@ export const SettingsModal = ({
   onAppearanceChanged,
   themeRegistry,
   onRevealVault,
+  pickDrawing,
   ownerDocument,
   initialPage = DEFAULT_SETTINGS_PAGE,
 }: SettingsModalProps) => {
@@ -87,6 +90,7 @@ export const SettingsModal = ({
     onThemeChanged,
     onAppearanceChanged,
     onRevealVault,
+    pickDrawing,
   });
 
   const [initial] = useState(() => parseSettingsTarget(initialPage));
