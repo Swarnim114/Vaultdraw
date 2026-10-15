@@ -9,10 +9,13 @@
 import {
   createElement,
   Fragment,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -24,12 +27,10 @@ import { applyEdits as applyEditsTo, setElementLinks } from "./applyEdits";
 import { CmdHoverOverlay } from "./CmdHoverOverlay";
 import { LinkHintsOverlay } from "./LinkHintsOverlay";
 import { LinkHints } from "./linkHints";
-import { LinkSuggest } from "./LinkSuggest";
 import { createLinkOpener, createOnLinkOpen } from "./onLinkOpen";
 import { remeasureElements } from "./remeasure";
 import { linksOf } from "./textLinkHitTest";
 import { useModifierLinks } from "./useModifierLinks";
-import { WikiAutocomplete } from "./wikiAutocomplete";
 
 import type { ReactNode } from "react";
 
@@ -40,6 +41,7 @@ import type {
   VaultLinks,
 } from "../../links/types";
 import type { LinkOpenCallbacks } from "./onLinkOpen";
+import type { WikiAutocomplete } from "./wikiAutocomplete";
 import type { TextLike } from "./textLinkHitTest";
 
 export type EditorLinksCallbacks = LinkOpenCallbacks & {
@@ -62,6 +64,10 @@ export type UseEditorLinksOptions = {
   /** Palette recents (`drawing:<path>` keys) to rank autocomplete rows. */
   getRecent?: () => readonly string[];
 };
+
+const LinkSuggest = lazy(() =>
+  import("./LinkSuggest").then((m) => ({ default: m.LinkSuggest })),
+);
 
 type El = TextLike & { link?: string | null };
 
@@ -107,21 +113,37 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
   );
   useEffect(() => () => hints.cancel(), [hints]);
 
-  const autocomplete = useMemo(
-    () =>
-      opts.containerEl
-        ? new WikiAutocomplete({
-            container: opts.containerEl,
+  // The autocomplete engine and its popup load in their own chunk, so the
+  // startup bundle pays nothing for links until an editor mounts.
+  const [autocomplete, setAutocomplete] = useState<WikiAutocomplete | null>(
+    null,
+  );
+  const { containerEl } = opts;
+  useEffect(() => {
+    if (!containerEl) {
+      setAutocomplete(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void import("./wikiAutocomplete").then(({ WikiAutocomplete: Engine }) => {
+      if (!cancelled) {
+        setAutocomplete(
+          new Engine({
+            container: containerEl,
             getNames: () => latest.current.names,
             getResolver: () => resolverRef.current,
             getSettings: () => latest.current.settings,
             getCurrentPath: () => latest.current.currentPath,
             getRecent: () => latest.current.getRecent?.() ?? [],
             onCreate: (t) => latest.current.callbacks.onCreate(t),
-          })
-        : null,
-    [opts.containerEl],
-  );
+          }),
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [containerEl]);
   const autocompleteOn = opts.settings.autocomplete;
   useEffect(() => {
     if (!autocomplete || !autocompleteOn) {
@@ -207,7 +229,11 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
         null,
         modifier && createElement(CmdHoverOverlay, { links: modifier }),
         autocomplete &&
-          createElement(LinkSuggest, { controller: autocomplete }),
+          createElement(
+            Suspense,
+            { fallback: null },
+            createElement(LinkSuggest, { controller: autocomplete }),
+          ),
         createElement(LinkHintsOverlay, { hints }),
       ),
     [modifier, autocomplete, hints],

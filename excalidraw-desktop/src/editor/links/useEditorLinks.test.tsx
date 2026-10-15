@@ -63,11 +63,12 @@ function mount(
 }
 
 describe("useEditorLinks", () => {
-  it("costs only the idle listeners until a link is used", () => {
+  it("costs only the idle listeners until a link is used", async () => {
     const observe = vi.spyOn(MutationObserver.prototype, "observe");
     const docAdd = vi.spyOn(document, "addEventListener");
     const { hook, containerEl } = mount(fakeApi([]).api);
-    expect(observe).toHaveBeenCalledTimes(1);
+    // The autocomplete engine loads as its own chunk.
+    await vi.waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
     expect(observe.mock.calls[0][1]).toEqual({
       childList: true,
       subtree: true,

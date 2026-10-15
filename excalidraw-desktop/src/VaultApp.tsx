@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { errorMessage, isNotFoundError } from "./vault/types";
 import {
@@ -9,7 +17,6 @@ import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
 import { DesktopVaultLinks } from "./links/DesktopVaultLinks";
 import { useAppLinks } from "./links/useAppLinks";
 import { usePalettePick } from "./palette/usePalettePick";
-import { LinksDock } from "./components/links/LinksDock";
 import {
   addRecentVault,
   getExpandedFolders,
@@ -107,6 +114,13 @@ import type {
   VaultInfo,
   VaultRepository,
 } from "./vault/types";
+
+// The dock loads on demand: nothing about links is in the startup bundle.
+const LinksDock = lazy(() =>
+  import("./components/links/LinksDock").then((m) => ({
+    default: m.LinksDock,
+  })),
+);
 
 export interface VaultAppProps {
   ownerDocument?: Document | null;
@@ -1859,18 +1873,20 @@ export const VaultApp = ({
           ownerDocument={doc}
           dockSlot={
             vaultLinks && appLinks.dockVisible ? (
-              <LinksDock
-                ref={appLinks.dockRef}
-                links={vaultLinks}
-                handle={vault.handle}
-                path={activeDoc?.path ?? null}
-                refreshKey={appLinks.refreshKey}
-                onOpen={(path, elementId) =>
-                  void appLinks.openLink(path, elementId)
-                }
-                onCreate={(target) => void appLinks.createTarget(target)}
-                visible={!navigatorCollapsed}
-              />
+              <Suspense fallback={null}>
+                <LinksDock
+                  ref={appLinks.dockRef}
+                  links={vaultLinks}
+                  handle={vault.handle}
+                  path={activeDoc?.path ?? null}
+                  refreshKey={appLinks.refreshKey}
+                  onOpen={(path, elementId) =>
+                    void appLinks.openLink(path, elementId)
+                  }
+                  onCreate={(target) => void appLinks.createTarget(target)}
+                  visible={!navigatorCollapsed}
+                />
+              </Suspense>
             ) : null
           }
         />
