@@ -8,7 +8,7 @@ import {
   applyBackgroundPolicy, trackChild, startMemoryPressure,
 } from "./procs.mjs";
 
-const BUNDLE_REL = "excalidraw-desktop/src-tauri/target/release/bundle/macos/Excalidraw Vault.app";
+const BUNDLE_REL = "excalidraw-desktop/src-tauri/target/release/bundle/macos/Vaultdraw.app";
 export const BINARY_REL = "Contents/MacOS/excalidraw-vault";
 const MARK_PREFIX = "VAULTDRAW_SMOKE_LOG ";
 
@@ -26,7 +26,7 @@ export function isScreenLocked() {
 }
 
 export const perfCacheDir = (wtRoot) => path.join(wtRoot, ".cache", "perf");
-export const perfAppPath = (wtRoot) => path.join(perfCacheDir(wtRoot), "app", "Excalidraw Vault.app");
+export const perfAppPath = (wtRoot) => path.join(perfCacheDir(wtRoot), "app", "Vaultdraw.app");
 
 export function gitInfo(wtRoot) {
   const g = (...a) => { try { return execFileSync("git", ["-C", wtRoot, ...a], { encoding: "utf8" }).trim(); } catch { return ""; } };

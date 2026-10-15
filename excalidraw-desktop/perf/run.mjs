@@ -26,7 +26,7 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
   --compare <file>       gate against a baseline (single result or combined {modes:{normal,"low-end"}}); exit 1 on regression
   --out <file>           result JSON (default <wt>/.cache/perf/results/<timestamp>-<mode>.json)
   --update-baseline <f>  merge this result into modes[mode] of combined file <f> (+ sibling .md)
-  --no-build             reuse <wt>/.cache/perf/app/Excalidraw Vault.app
+  --no-build             reuse <wt>/.cache/perf/app/Vaultdraw.app
   --skip-browser         skip Chromium mode (lib/browser.mjs; skipped automatically if absent)
   --skip-app             skip the packaged-app mode
   --memory-pressure      run 'memory_pressure -S' (simulated; needs root, else noted and ignored) in normal mode too

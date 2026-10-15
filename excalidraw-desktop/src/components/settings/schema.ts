@@ -114,7 +114,7 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   {
     id: "about",
     page: "general",
-    label: "About Excalidraw Vault",
+    label: "About Vaultdraw",
     description:
       "Your vault is an ordinary folder stored on your local hard drive. Drawings are standard .excalidraw JSON files with atomic writes, crash recovery store, and complete offline privacy. Zero network tracking, zero accounts, zero lock-in.",
     keywords: ["version", "offline", "privacy", "private", "local", "info"],

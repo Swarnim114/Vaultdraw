@@ -8,7 +8,7 @@ set -u
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 WT=$(cd "$HERE/.." && pwd)
 LOCK=/Users/kalon/Opensource/excalidraw/.cache/build.lock
-APP="$HERE/src-tauri/target/release/bundle/macos/Excalidraw Vault.app/Contents/MacOS/excalidraw-vault"
+APP="$HERE/src-tauri/target/release/bundle/macos/Vaultdraw.app/Contents/MacOS/excalidraw-vault"
 T=$(date +%s); D="$WT/.cache/smoke-run-$T"; C="$WT/.cache/smoke-config-$T"
 mkdir -p "$D" "$C/config/themes/Test Palette" "$C/state"
 printf '{\n  "dark": { "mSurface": "#1b2b34", "mOnSurface": "#d8dee9", "mPrimary": "#ec5f67" }\n}\n' > "$C/config/themes/Test Palette/Test Palette.json"

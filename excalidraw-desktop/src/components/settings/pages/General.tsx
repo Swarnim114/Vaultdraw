@@ -106,7 +106,7 @@ const AboutSetting = () => (
   >
     <div className="vault-settings-about__hero">
       <IconDrawing width="44" height="44" />
-      <h3 className="vault-settings-about__name">Excalidraw Vault</h3>
+      <h3 className="vault-settings-about__name">Vaultdraw</h3>
       <div className="vault-settings-about__version">
         Version 0.1.0 • Offline Private Local Vault
       </div>

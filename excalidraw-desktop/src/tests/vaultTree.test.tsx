@@ -34,7 +34,7 @@ describe("VaultApp Onboarding (no vault chosen)", () => {
     render(<VaultApp repository={repo} initialVault={null} />);
 
     expect(
-      screen.getByRole("heading", { name: /Excalidraw Vault/i }),
+      screen.getByRole("heading", { name: /Vaultdraw/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Open Vault Folder/i }),

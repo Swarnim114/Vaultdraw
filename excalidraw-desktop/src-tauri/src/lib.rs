@@ -648,12 +648,12 @@ async fn choose_vault(
         Some(smoke::test_dir().map_err(|e| err("SMOKE_CONFIG", e))?)
     } else {
         rfd::FileDialog::new()
-            .set_title(if create { "Choose or create an Excalidraw vault" } else { "Open Excalidraw vault" })
+            .set_title(if create { "Choose or create a Vaultdraw vault" } else { "Open a Vaultdraw vault" })
             .pick_folder()
     };
     #[cfg(not(feature = "smoke-test"))]
     let selected = rfd::FileDialog::new()
-        .set_title(if create { "Choose or create an Excalidraw vault" } else { "Open Excalidraw vault" })
+        .set_title(if create { "Choose or create a Vaultdraw vault" } else { "Open a Vaultdraw vault" })
         .pick_folder();
     let Some(path) = selected else { return Ok(None); };
     let info = open_vault(path, &app, &state)?;
@@ -1510,7 +1510,7 @@ pub fn run() {
         startup_trace("builder configured");
         let app = builder
             .build(tauri::generate_context!())
-            .expect("error while building Excalidraw Vault");
+            .expect("error while building Vaultdraw");
         startup_trace("app built");
         app.run(|handle, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {

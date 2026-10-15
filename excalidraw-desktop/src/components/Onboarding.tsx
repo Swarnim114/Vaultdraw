@@ -41,7 +41,7 @@ export const Onboarding = ({
         <div className="vault-onboarding__logo" aria-hidden="true">
           <IconDrawing width={28} height={28} />
         </div>
-        <h1 className="vault-onboarding__title">Excalidraw Vault</h1>
+        <h1 className="vault-onboarding__title">Vaultdraw</h1>
         <p className="vault-onboarding__desc">
           Your offline, local canvas notebook. All drawings are standard files
           stored inside normal folders directly on your filesystem.
@@ -57,7 +57,7 @@ export const Onboarding = ({
               <div style={{ marginTop: "4px" }}>
                 Tauri desktop backend is not active in this browser tab. Native
                 filesystem folders, atomic saving, and background watching
-                require running inside the Excalidraw Vault desktop application.
+                require running inside the Vaultdraw desktop application.
               </div>
             </div>
           </div>

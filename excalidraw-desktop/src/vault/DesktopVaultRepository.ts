@@ -72,7 +72,7 @@ export async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
   }
   throw new VaultError(
     "TAURI_UNAVAILABLE",
-    "Excalidraw Vault desktop backend is not available. Browser preview cannot persist files to disk.",
+    "Vaultdraw desktop backend is not available. Browser preview cannot persist files to disk.",
   );
 }
 
@@ -91,7 +91,7 @@ export async function resolveListen(custom?: ListenFn): Promise<ListenFn> {
   }
   throw new VaultError(
     "TAURI_UNAVAILABLE",
-    "Event listening is not available outside the Excalidraw Vault desktop app.",
+    "Event listening is not available outside the Vaultdraw desktop app.",
   );
 }
 

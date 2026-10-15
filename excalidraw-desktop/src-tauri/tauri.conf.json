@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Excalidraw Vault",
+  "productName": "Vaultdraw",
+  "mainBinaryName": "excalidraw-vault",
   "version": "0.1.0",
   "identifier": "com.excalidraw.vault.local",
   "build": {
@@ -13,7 +14,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Excalidraw Vault",
+        "title": "Vaultdraw",
         "width": 1280,
         "height": 850,
         "minWidth": 760,

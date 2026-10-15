@@ -230,7 +230,7 @@ describe("settings search", () => {
     fireEvent.change(search, { target: { value: "autosave" } });
     fireEvent.click(screen.getByRole("tab", { name: "General" }));
     expect(search).toHaveValue("");
-    expect(screen.getByText("Excalidraw Vault")).toBeInTheDocument();
+    expect(screen.getByText("Vaultdraw")).toBeInTheDocument();
   });
 
   it("focuses the search box when Settings opens", () => {

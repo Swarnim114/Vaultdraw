@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Excalidraw Vault — offline Tauri 2 desktop shell around the real Excalidraw editor. User-selected filesystem vault; no cloud, telemetry, or accounts.",
+  "description": "Vaultdraw — offline Tauri 2 desktop shell around the real Excalidraw editor. User-selected filesystem vault; no cloud, telemetry, or accounts.",
   "engines": {
     "node": ">=18.0.0"
   },

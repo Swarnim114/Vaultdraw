@@ -102,7 +102,7 @@ export const ConflictDialog = ({
         <div className="vault-modal__body">
           <p style={{ marginTop: 0 }}>
             <strong>{fileName}</strong> was changed or deleted on disk outside
-            Excalidraw Vault while you had unsaved edits.
+            Vaultdraw while you had unsaved edits.
           </p>
           {errorMessage && (
             <div

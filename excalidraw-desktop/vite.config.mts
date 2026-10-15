@@ -39,7 +39,7 @@ const preloadVaultApp = (): Plugin => ({
   },
 });
 
-// Offline desktop frontend for Excalidraw Vault (Tauri 2 WebView shell).
+// Offline desktop frontend for Vaultdraw (Tauri 2 WebView shell).
 //
 // - Dev server is pinned to port 1420 with strictPort: `tauri dev` waits on
 //   exactly this port, so it must never silently shift.
