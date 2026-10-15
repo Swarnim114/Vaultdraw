@@ -160,6 +160,22 @@ test("2. create a drawing inside a folder, draw, and save", async ({
   expect(errors).toEqual([]);
 });
 
+test("2b. create a subfolder from a folder's menu", async ({ page }) => {
+  const errors = trackErrors(page);
+  await (await rowAction(page, "DSA", "New folder here")).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("New Folder in /DSA");
+  await dialog.getByLabel("Name").fill("Trees");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await expect(treeRow(page, "Trees")).toBeVisible();
+  await expect
+    .poll(async () => listDir(page, "DSA"), { timeout: 5000 })
+    .toContainEqual({ path: "DSA/Trees", kind: "folder" });
+  expect(errors).toEqual([]);
+});
+
 test("3. rename a drawing", async ({ page }, info) => {
   const errors = trackErrors(page);
   await expandFolder(page, "DSA");

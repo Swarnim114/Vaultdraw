@@ -770,12 +770,7 @@ export const VaultNavigator = ({
           readOnly={vault.readOnly}
           ownerDocument={asideRef.current?.ownerDocument ?? ownerDocument}
           onClose={() => setMenu(null)}
-          onNewInside={(folderPath) => {
-            setCreateParent(folderPath);
-            setCreateKind("drawing");
-            setCreateName("");
-            setCreateError(null);
-          }}
+          onNewInside={onRowNewInside}
           onDuplicate={(entry) => void onDuplicateDrawing(entry.path)}
           onSaveAsTemplate={
             onSaveAsTemplate && ((entry) => onSaveAsTemplate(entry.path))
@@ -1126,7 +1121,7 @@ interface RowMenuProps {
   readOnly: boolean;
   ownerDocument?: Document | null;
   onClose: () => void;
-  onNewInside: (folderPath: string) => void;
+  onNewInside: (folderPath: string, kind: "folder" | "drawing") => void;
   onDuplicate: (entry: VaultEntry) => void;
   onSaveAsTemplate?: (entry: VaultEntry) => void;
   onRename: (entry: VaultEntry) => void;
@@ -1293,11 +1288,16 @@ const RowMenu = ({
       ownerDocument={ownerDocument}
       onClose={onClose}
     >
-      {isFolder &&
-        !readOnly &&
-        item("New drawing here", <IconNewDrawing />, () =>
-          onNewInside(entry.path),
-        )}
+      {isFolder && !readOnly && (
+        <>
+          {item("New drawing here", <IconNewDrawing />, () =>
+            onNewInside(entry.path, "drawing"),
+          )}
+          {item("New folder here", <IconFolderPlus />, () =>
+            onNewInside(entry.path, "folder"),
+          )}
+        </>
+      )}
       {!isFolder &&
         !readOnly &&
         item("Duplicate", <IconCopy />, () => onDuplicate(entry))}
