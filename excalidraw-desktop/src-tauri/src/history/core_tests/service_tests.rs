@@ -364,3 +364,23 @@ fn events_are_debounced_and_index_bin_survives_a_restart() {
     svc2.start("h", fx.root.clone(), true, fx.emitter());
     assert_eq!(svc2.vault("h").unwrap().list(P).unwrap().versions.len(), n);
 }
+
+#[test]
+fn clearing_the_canvas_with_tombstones_still_versions_the_previous_state() {
+    let fx = Fx::new();
+    fx.start_configured(5);
+    let mut sc = scene(51, 400, 0, 0);
+    fx.save(P, &sc.json());
+    fx.open(Some(P));
+    sc.edit();
+    fx.save(P, &sc.json());
+    fx.barrier();
+    // Cmd+Delete: every element stays in the file, marked isDeleted
+    for e in sc.elements.iter_mut() {
+        e["isDeleted"] = serde_json::json!(true);
+    }
+    fx.save(P, &sc.json());
+    fx.barrier();
+    let vs = fx.versions(P);
+    assert!(vs.iter().any(|v| v.reason == "before-clear"), "{:?}", vs.iter().map(|v| v.reason).collect::<Vec<_>>());
+}

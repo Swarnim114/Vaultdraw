@@ -410,8 +410,8 @@ impl Backend for RealBackend {
     fn remove_clone(&mut self, file: &Path) {
         staging::remove_clone(file);
     }
-    fn live_size(&mut self, _file: &Path, raw: u64) -> u64 {
-        raw
+    fn live_size(&mut self, file: &Path, raw: u64) -> u64 {
+        store::open_regular(file).ok().and_then(|mut f| codec::live_size_from_reader(&mut f, raw).ok().flatten()).unwrap_or(raw)
     }
     fn note_path(&mut self, path: &str) {
         let key = staging::key_for(path, self.flags.fold.load(std::sync::atomic::Ordering::Relaxed));
