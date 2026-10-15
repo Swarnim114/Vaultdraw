@@ -62,7 +62,7 @@ const SESSIONS = [
 describe("[[ autocomplete ranking (keystroke -> rows, excluding paint)", () => {
   for (const [count, budget] of [
     [10_000, 8],
-    [50_000, 20], // plan budget 16 ms; measured 17-19 ms alone (the shared ranker DP cost)
+    [50_000, 16],
   ] as const) {
     // 50k is only meaningful alone: it runs when LINKS_PERF_STRICT=1.
     it.skipIf(count > 10_000 && !process.env.LINKS_PERF_STRICT)(

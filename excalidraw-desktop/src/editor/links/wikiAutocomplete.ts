@@ -175,6 +175,7 @@ export class WikiAutocomplete {
   private listeners = new Set<(s: SuggestState | null) => void>();
   private ranker = new SuggestRanker();
   private inserting = false;
+  private cancelWarm: (() => void) | null = null;
 
   constructor(private readonly deps: WikiAutocompleteDeps) {}
 
@@ -235,6 +236,9 @@ export class WikiAutocomplete {
     }
     this.detach();
     this.ranker.reset();
+    if (this.deps.getSettings().autocomplete) {
+      this.cancelWarm = this.ranker.warm(this.deps.getNames());
+    }
     this.textarea = ta;
     ta.addEventListener("input", this.onInput);
     ta.addEventListener("blur", this.onBlur);
@@ -243,6 +247,8 @@ export class WikiAutocomplete {
   private detach() {
     const ta = this.textarea;
     this.textarea = null;
+    this.cancelWarm?.();
+    this.cancelWarm = null;
     if (ta) {
       ta.removeEventListener("input", this.onInput);
       ta.removeEventListener("blur", this.onBlur);
