@@ -29,7 +29,7 @@ const RETRY_MIN_MS: u64 = 60_000;
 /// Ordered (urgent) messages: everything that must be seen in the order it was sent.
 pub enum Msg {
     Configure(HistorySettings),
-    Opened { path: Option<String>, revision: Option<String> },
+    Opened { path: Option<String>, revision: Option<String>, clone: Option<PathBuf> },
     Committed { path: String, revision: String, size: u64, staged: Option<PathBuf> },
     Snapshot { path: String, reason: Reason, ack: Option<Sender<Result<SnapshotOutcome>>> },
     Checkpoint { path: String, name: String, note: String, ack: Sender<Result<Written>> },
@@ -242,7 +242,7 @@ impl<B: Backend> Core<B> {
     pub fn dispatch(&mut self, m: Msg) {
         match m {
             Msg::Configure(s) => self.configure(s),
-            Msg::Opened { path, revision } => self.on_opened(path, revision),
+            Msg::Opened { path, revision, clone } => self.on_opened(path, revision, clone),
             Msg::Committed { path, revision, size, staged } => self.on_committed(path, revision, size, staged),
             Msg::Snapshot { path, reason, ack } => {
                 let r = self.snapshot(&path, reason);
@@ -318,13 +318,22 @@ impl<B: Backend> Core<B> {
         }
     }
 
-    pub fn on_opened(&mut self, path: Option<String>, revision: Option<String>) {
+    /// `clone` = the open-time clone made when the command arrived (so a quick first save can't beat it).
+    pub fn on_opened(&mut self, path: Option<String>, revision: Option<String>, clone: Option<PathBuf>) {
         if let Some(prev) = self.open.take() {
             self.leave(&prev);
         }
         self.open = path.clone();
-        let (Some(path), Some(revision)) = (path, revision) else { return };
+        let (Some(path), Some(revision)) = (path, revision) else {
+            if let Some(c) = clone {
+                self.b.remove_clone(&c);
+            }
+            return;
+        };
         if !self.on() {
+            if let Some(c) = clone {
+                self.b.remove_clone(&c);
+            }
             return;
         }
         if let Some(old) = self.tracks.entry(path.clone()).or_default().open_clone.take() {
@@ -333,7 +342,7 @@ impl<B: Backend> Core<B> {
         self.tracks.entry(path.clone()).or_default().first_done = false;
         self.b.note_path(&path);
         self.tracks.entry(path.clone()).or_default().noted = true;
-        if let Some(file) = self.b.clone_open(&path, &revision) {
+        if let Some(file) = clone {
             let size = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
             if let Some(t) = self.tracks.get_mut(&path) {
                 t.open_clone = Some(OpenClone { file, rev: revision, size });

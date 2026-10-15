@@ -353,7 +353,13 @@ impl VaultHistory {
             }
         }
         if self.has_worker {
-            self.inbox.send(worker::Msg::Opened { path, revision });
+            // Cloned here (on the command thread), not on the worker: the state at open time must be
+            // captured before any later save can replace the file.
+            let clone = match (&path, &revision) {
+                (Some(p), Some(r)) => staging::clone_open(&self.flags, &self.staged_dir, &self.root, p, r),
+                _ => None,
+            };
+            self.inbox.send(worker::Msg::Opened { path, revision, clone });
         }
         Ok(())
     }

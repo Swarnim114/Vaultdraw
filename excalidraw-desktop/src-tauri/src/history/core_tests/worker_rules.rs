@@ -42,11 +42,6 @@ impl Backend for Fake {
         self.latest.insert(req.path.clone(), Latest { revision: rev.clone(), created_ms: self.clock.now_ms() });
         Ok(Outcome::Written(Written { id: format!("id{}", self.next), lineage: "L".into(), revision: rev, bytes: 1 }))
     }
-    fn clone_open(&mut self, path: &str, revision: &str) -> Option<PathBuf> {
-        let p = self.dir.join(format!("o-{}-{}", path.replace('/', "_"), &revision[..4.min(revision.len())]));
-        std::fs::write(&p, vec![0u8; self.open_size as usize]).unwrap();
-        Some(p)
-    }
     fn remove_clone(&mut self, file: &Path) {
         self.removed.push(file.to_path_buf());
     }
@@ -74,7 +69,22 @@ fn harness(interval: u32) -> H {
     H { core, clock, _dir: dir }
 }
 
+impl Fake {
+    fn open_clone(&self, path: &str, revision: &str) -> PathBuf {
+        let p = self.dir.join(format!("o-{}-{}", path.replace('/', "_"), &revision[..4.min(revision.len())]));
+        std::fs::write(&p, vec![0u8; self.open_size as usize]).unwrap();
+        p
+    }
+}
+
 impl H {
+    fn open(&mut self, path: Option<&str>, rev: Option<&str>) {
+        let clone = match (path, rev) {
+            (Some(p), Some(r)) => Some(self.core.b.open_clone(p, r)),
+            _ => None,
+        };
+        self.core.on_opened(path.map(Into::into), rev.map(Into::into), clone);
+    }
     fn commit(&mut self, path: &str, rev: &str, size: u64) -> PathBuf {
         let f = self._dir.path().join(format!("c-{rev}"));
         std::fs::write(&f, b"x").unwrap();
@@ -97,7 +107,7 @@ fn unconfigured_is_off_and_nothing_is_written_or_kept() {
     let clock = TestClock::new(T0);
     let mut core = Core::new(Fake { clock: clock.clone(), dir: dir.path().into(), writes: vec![], latest: HashMap::new(), removed: vec![], open_size: 1, next: 0, disk_low_calls: 0, live_rev: None }, clock.clone());
     assert!(!core.on());
-    core.on_opened(Some(P.into()), Some("r".repeat(64)));
+    core.on_opened(Some(P.into()), Some("r".repeat(64)), None);
     let f = dir.path().join("c");
     std::fs::write(&f, b"x").unwrap();
     core.on_committed(P.into(), "r1".into(), 5000, Some(f.clone()));
@@ -150,13 +160,13 @@ fn timer_needs_interval_and_idle_and_is_forced_at_three_intervals() {
 fn interval_zero_means_no_timed_versions() {
     let mut h = harness(0);
     h.seed_version(P, "v0");
-    h.core.on_opened(Some(P.into()), None);
+    h.core.on_opened(Some(P.into()), None, None);
     h.commit(P, "r1", 5000);
     assert!(h.core.next_deadline().is_none());
     h.clock.advance(1000 * MIN);
     h.core.tick();
     assert!(h.core.b.writes.is_empty());
-    h.core.on_opened(None, None);
+    h.core.on_opened(None, None, None);
     assert_eq!(h.reasons(), vec![Reason::Leave], "leave still versions");
 }
 
@@ -164,12 +174,12 @@ fn interval_zero_means_no_timed_versions() {
 fn leave_versions_a_dirty_drawing_only() {
     let mut h = harness(5);
     h.seed_version(P, "v0");
-    h.core.on_opened(Some(P.into()), Some("v0".repeat(32)));
-    h.core.on_opened(Some("b.excalidraw".into()), Some("e".repeat(64)));
+    h.open(Some(P), Some(&"v0".repeat(32)));
+    h.open(Some("b.excalidraw"), Some(&"e".repeat(64)));
     assert!(h.core.b.writes.is_empty(), "opening and leaving an untouched drawing versions nothing");
     h.seed_version("b.excalidraw", "v0");
     h.commit("b.excalidraw", "r1", 9000);
-    h.core.on_opened(Some(P.into()), Some("d".repeat(64)));
+    h.open(Some(P), Some(&"d".repeat(64)));
     assert_eq!(h.reasons(), vec![Reason::Leave]);
     assert_eq!(h.core.b.writes[0].path, "b.excalidraw");
 }
@@ -178,10 +188,10 @@ fn leave_versions_a_dirty_drawing_only() {
 fn unchanged_content_is_skipped_and_clears_dirty() {
     let mut h = harness(5);
     h.seed_version(P, "r1");
-    h.core.on_opened(Some(P.into()), None);
+    h.core.on_opened(Some(P.into()), None, None);
     h.commit(P, "r2", 5000);
     h.commit(P, "r1", 5000); // back to the versioned content
-    h.core.on_opened(None, None);
+    h.core.on_opened(None, None, None);
     assert!(h.core.b.writes.is_empty());
     assert!(!h.core.is_dirty(P));
 }
@@ -190,9 +200,9 @@ fn unchanged_content_is_skipped_and_clears_dirty() {
 fn only_own_commits_make_a_drawing_dirty() {
     let mut h = harness(5);
     for i in 0..500 {
-        h.core.on_opened(Some(format!("d{}.excalidraw", i % 7)), Some("a".repeat(64)));
+        h.core.on_opened(Some(format!("d{}.excalidraw", i % 7)), Some("a".repeat(64)), None);
     }
-    h.core.on_opened(None, None);
+    h.core.on_opened(None, None, None);
     assert_eq!(h.core.tracked_pending(), 0);
     assert!(h.core.b.writes.is_empty());
     assert!(h.core.next_deadline().is_none());
@@ -202,7 +212,7 @@ fn only_own_commits_make_a_drawing_dirty() {
 fn first_edit_versions_the_open_time_state() {
     let mut h = harness(5);
     let rev = "f".repeat(64);
-    h.core.on_opened(Some(P.into()), Some(rev.clone()));
+    h.open(Some(P), Some(&rev.clone()));
     h.commit(P, "r1", 9000);
     assert_eq!(h.reasons(), vec![Reason::First]);
     let w = &h.core.b.writes[0];
@@ -214,7 +224,7 @@ fn first_edit_versions_the_open_time_state() {
     // a drawing that already has history gets no f version
     let mut h = harness(5);
     h.seed_version(P, "old");
-    h.core.on_opened(Some(P.into()), Some(rev));
+    h.open(Some(P), Some(&rev));
     h.commit(P, "r1", 9000);
     assert!(h.core.b.writes.is_empty());
 }
@@ -237,7 +247,7 @@ fn shrink_rule_versions_the_previous_state_first() {
     let mut h = harness(5);
     h.seed_version(P, "v0");
     h.core.b.open_size = 30_000;
-    h.core.on_opened(Some(P.into()), Some("c".repeat(64)));
+    h.open(Some(P), Some(&"c".repeat(64)));
     h.commit(P, "r1", 100);
     assert_eq!(h.reasons(), vec![Reason::BeforeClear]);
     // without a clone of the previous state nothing can be versioned
@@ -294,7 +304,7 @@ fn disabling_drops_clones_and_stops_everything() {
     assert!(h.core.b.removed.contains(&c));
     assert!(!h.core.is_dirty(P));
     h.commit(P, "r2", 5000);
-    h.core.on_opened(None, None);
+    h.core.on_opened(None, None, None);
     assert!(h.core.b.writes.is_empty());
 }
 
@@ -303,12 +313,12 @@ fn urgent_messages_are_drained_before_background_work() {
     let inbox = Inbox::default();
     inbox.send_task(Task::Reconcile);
     inbox.send_task(Task::LoadHeaders(vec![]));
-    inbox.send(Msg::Opened { path: None, revision: None });
+    inbox.send(Msg::Opened { path: None, revision: None, clone: None });
     inbox.stop();
     assert!(matches!(inbox.pop(None, false), Popped::Stop), "stop wins");
     let inbox = Inbox::default();
     inbox.send_task(Task::Reconcile);
-    inbox.send(Msg::Opened { path: None, revision: None });
+    inbox.send(Msg::Opened { path: None, revision: None, clone: None });
     assert!(matches!(inbox.pop(None, true), Popped::Msg(Msg::Opened { .. })));
     assert!(matches!(inbox.pop(None, true), Popped::Task(Task::Reconcile)));
     assert!(matches!(inbox.pop(None, true), Popped::Timeout), "poll mode never blocks");

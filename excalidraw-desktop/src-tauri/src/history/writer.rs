@@ -90,8 +90,6 @@ pub trait Backend {
     /// Newest version of `path` across lineages (header loaded if needed).
     fn latest(&mut self, path: &str) -> Option<Latest>;
     fn write(&mut self, req: &VersionRequest) -> Result<Outcome>;
-    /// Clones the drawing's current live state as its open-time state.
-    fn clone_open(&mut self, path: &str, revision: &str) -> Option<PathBuf>;
     fn remove_clone(&mut self, file: &Path);
     /// Records which drawing a staged key stands for (so a crash-survivor clone can be attributed).
     fn note_path(&mut self, path: &str);
@@ -406,9 +404,6 @@ impl Backend for RealBackend {
         let out = self.writer.write_version(req);
         self.writing.store(false, std::sync::atomic::Ordering::Relaxed);
         out
-    }
-    fn clone_open(&mut self, path: &str, revision: &str) -> Option<PathBuf> {
-        staging::clone_open(&self.flags, &self.staged_dir, &self.writer.store.root, path, revision)
     }
     fn remove_clone(&mut self, file: &Path) {
         staging::remove_clone(file);

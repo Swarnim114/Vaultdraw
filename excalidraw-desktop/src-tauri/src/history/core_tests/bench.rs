@@ -310,7 +310,8 @@ fn bench_history_heavy_day() {
     let mut sc = scene(1, 5000, IMG_COUNT, IMG_BYTES);
     std::fs::write(root.join(P), sc.json()).unwrap();
     let rev0 = crate::current_revision(&root.join(P)).unwrap().unwrap();
-    core.on_opened(Some(P.into()), Some(rev0));
+    let c = staging::clone_open(&flags, &staged_dir, &root, P, &rev0);
+    core.on_opened(Some(P.into()), Some(rev0), c);
     let mut commits = 0;
     // 8 hours: 25 min of editing (a save every 20 s), 5 min away, repeated; a leave every 2 h
     for slot in 0..16 {
@@ -330,9 +331,10 @@ fn bench_history_heavy_day() {
             core.tick();
         }
         if slot % 4 == 3 {
-            core.on_opened(None, None);
+            core.on_opened(None, None, None);
             let rev = crate::current_revision(&root.join(P)).unwrap().unwrap();
-            core.on_opened(Some(P.into()), Some(rev));
+            let c = staging::clone_open(&flags, &staged_dir, &root, P, &rev);
+            core.on_opened(Some(P.into()), Some(rev), c);
         }
     }
     let hist = root.join(".excalidraw-vault/history");
