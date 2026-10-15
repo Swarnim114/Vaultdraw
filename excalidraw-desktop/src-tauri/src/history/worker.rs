@@ -15,7 +15,7 @@ use crate::{err, Result};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{mpsc::Sender, Arc, Condvar, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, mpsc::{channel, Receiver, RecvTimeoutError, Sender}, Arc, Mutex},
     time::Duration,
 };
 
@@ -44,18 +44,33 @@ pub enum Task {
     LoadHeaders(Vec<String>),
 }
 
-#[derive(Default)]
-struct InboxState {
-    urgent: VecDeque<Msg>,
-    bg: VecDeque<Task>,
-    stop: bool,
+enum Item {
+    Msg(Msg),
+    Task(Task),
+    Wake,
 }
 
-/// Two queues behind one mutex + condvar: the save path pays a short lock and a notify.
-#[derive(Default)]
+/// Worker-side state (touched by the worker thread only, so its mutex is never contended).
+struct Rx {
+    rx: Receiver<Item>,
+    urgent: VecDeque<Msg>,
+    bg: VecDeque<Task>,
+}
+
+/// Lock-free for senders: `mpsc::Sender::send` never blocks on the receiver, so the save path can't
+/// wait behind a descheduled worker (no priority inversion). The worker drains the channel into
+/// two local queues and serves urgent messages first.
 pub struct Inbox {
-    state: Mutex<InboxState>,
-    cv: Condvar,
+    tx: Sender<Item>,
+    rx: Mutex<Rx>,
+    stopped: AtomicBool,
+}
+
+impl Default for Inbox {
+    fn default() -> Self {
+        let (tx, rx) = channel();
+        Inbox { tx, rx: Mutex::new(Rx { rx, urgent: VecDeque::new(), bg: VecDeque::new() }), stopped: AtomicBool::new(false) }
+    }
 }
 
 pub enum Popped {
@@ -65,29 +80,36 @@ pub enum Popped {
     Stop,
 }
 
+impl Rx {
+    fn file(&mut self, item: Item) {
+        match item {
+            Item::Msg(m) => self.urgent.push_back(m),
+            Item::Task(t) => self.bg.push_back(t),
+            Item::Wake => {}
+        }
+    }
+}
+
 impl Inbox {
     pub fn send(&self, m: Msg) {
-        let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        s.urgent.push_back(m);
-        drop(s);
-        self.cv.notify_one();
+        let _ = self.tx.send(Item::Msg(m));
     }
     pub fn send_task(&self, t: Task) {
-        let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        s.bg.push_back(t);
-        drop(s);
-        self.cv.notify_one();
+        let _ = self.tx.send(Item::Task(t));
     }
     pub fn stop(&self) {
-        self.state.lock().unwrap_or_else(|p| p.into_inner()).stop = true;
-        self.cv.notify_all();
+        self.stopped.store(true, Ordering::SeqCst);
+        let _ = self.tx.send(Item::Wake);
     }
     /// Next item: urgent first, then background; blocks up to `wait` (forever for `None`).
     /// `poll_only` = return `Timeout` instead of blocking (background chunks pending).
     pub fn pop(&self, wait: Option<Duration>, poll_only: bool) -> Popped {
-        let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        let mut s = self.rx.lock().unwrap_or_else(|p| p.into_inner());
         loop {
-            if s.stop {
+            while let Ok(item) = s.rx.try_recv() {
+                s.file(item);
+            }
+            if self.stopped.load(Ordering::SeqCst) {
                 return Popped::Stop;
             }
             if let Some(m) = s.urgent.pop_front() {
@@ -99,21 +121,16 @@ impl Inbox {
             if poll_only {
                 return Popped::Timeout;
             }
-            match wait {
-                None => s = self.cv.wait(s).unwrap_or_else(|p| p.into_inner()),
-                Some(d) => {
-                    let (g, r) = self.cv.wait_timeout(s, d).unwrap_or_else(|p| p.into_inner());
-                    s = g;
-                    if r.timed_out() && s.urgent.is_empty() && s.bg.is_empty() && !s.stop {
-                        return Popped::Timeout;
-                    }
-                }
+            let got = match wait {
+                None => s.rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                Some(d) => s.rx.recv_timeout(d),
+            };
+            match got {
+                Ok(item) => s.file(item),
+                Err(RecvTimeoutError::Timeout) => return Popped::Timeout,
+                Err(RecvTimeoutError::Disconnected) => return Popped::Stop,
             }
         }
-    }
-    pub fn urgent_pending(&self) -> bool {
-        let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        !s.urgent.is_empty() || s.stop
     }
 }
 
@@ -547,7 +564,7 @@ impl<B: Backend> Core<B> {
 // ---------------------------------------------------------------------------------------------
 
 use super::{index, staging, store, writer, HistoryEvent, ChangeEvent, VaultHistory};
-use std::{path::Path, sync::atomic::Ordering, time::Instant};
+use std::{path::Path, time::Instant};
 
 const CHUNK: Duration = Duration::from_millis(5);
 const STATE_SWEEP_MS: u64 = 90 * 24 * 3600 * 1000;
