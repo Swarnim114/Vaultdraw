@@ -93,6 +93,20 @@ autosave_delay_ms = 500
 # Override a command's keys; [] removes them. Example:
 # "vault.newDrawing" = ["Mod+N"]
 
+[links]
+# How new [[links]] are written: shortest | relative | absolute
+# new_link_format = "shortest"
+# Link stored on a shape: wikilink | vaultdraw-url
+# shape_link_format = "wikilink"
+# Modifier that opens a link on click
+# open_modifier = "mod"
+# Rewrite links when a drawing is renamed or moved: true | false | "ask"
+# update_on_rename = true
+# Suggest drawings while typing [[
+# autocomplete = true
+# Letters used by link hint mode
+# hint_chars = "asdfghjkl"
+
 [pens]
 # Saved pens of the freedraw tool (Alt+1 .. Alt+9 by default, see [hotkeys] pen.select1..9). width: 0.5 thin, 1 medium, 2 bold, ~10 highlighter.
 # pressure = variable width; smoothing 0 (raw) to 1 (smooth); highlighter = drawn behind everything.
@@ -360,8 +374,12 @@ fn split_key(key: &str) -> Result<(Option<&str>, &str)> {
             && !s.ends_with('.')
             && !s.contains("..")
     };
+    // Dynamic hotkey ids (`hotkeys.drawing.open:Graphs/BFS.excalidraw`) may hold any
+    // non-control character; the TOML writer quotes the key.
+    let free_hotkey = |s: &str| !s.is_empty() && s.chars().count() <= 1024 && !s.chars().any(char::is_control);
     match key.split_once('.') {
         None if valid(key, false) => Ok((None, key)),
+        Some(("hotkeys", k)) if free_hotkey(k) => Ok((Some("hotkeys"), k)),
         Some((t, k)) if valid(t, false) && valid(k, true) => Ok((Some(t), k)),
         _ => Err(bad()),
     }
@@ -1264,6 +1282,20 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_per_drawing_hotkey_ids_round_trip() {
+        let id = "hotkeys.drawing.open:Graphs/BFS and \"DFS\" #1.excalidraw";
+        assert!(split_key(id).is_ok());
+        assert!(split_key("hotkeys.bad\u{7}").is_err());
+        assert!(split_key(&format!("hotkeys.{}", "a".repeat(1025))).is_err());
+        assert!(split_key("saving.a/b").is_err());
+        let out = apply_changes("[hotkeys]\n", &[change(id, json!(["Mod+1"]))]).unwrap();
+        let v = parse_config(&out).unwrap();
+        assert_eq!(v["hotkeys"]["drawing.open:Graphs/BFS and \"DFS\" #1.excalidraw"], json!(["Mod+1"]));
+        let out = apply_changes(&out, &[change(id, Json::Null)]).unwrap();
+        assert_eq!(out, "[hotkeys]\n");
+    }
+
+    #[test]
     fn dotted_hotkey_keys_round_trip_quoted_with_comments_preserved() {
         let src = "# top\n[hotkeys]\n# mine\n\"file.save\" = [\"Mod+S\"] # keep\n\n[saving]\nautosave_delay_ms = 500\n";
         let out = apply_changes(
@@ -1300,7 +1332,7 @@ mod tests {
         let text = fs::read_to_string(d.config.join(CONFIG_FILE)).unwrap();
         // The commented example is replaced by the real binding; its explanation stays above it.
         assert!(
-            text.contains("[hotkeys]\n# Override a command's keys; [] removes them. Example:\n\"vault.newDrawing\" = [\"Mod+N\"]\n\"file.rename\" = []\n\n[pens]\n"),
+            text.contains("[hotkeys]\n# Override a command's keys; [] removes them. Example:\n\"vault.newDrawing\" = [\"Mod+N\"]\n\"file.rename\" = []\n\n[links]\n"),
             "{text}"
         );
     }
@@ -1394,7 +1426,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 16, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 22, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
