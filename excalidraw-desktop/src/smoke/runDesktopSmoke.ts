@@ -20,6 +20,7 @@ import {
 } from "./exportSmoke";
 import { explorerExportStep } from "./explorerExportSmoke";
 import { runLibrarySmoke } from "./librarySmoke";
+import { runLinksSmoke } from "./linksSmoke";
 import {
   paperDefaultStampedStep,
   paperDrawingPngExportStep,
@@ -893,6 +894,14 @@ export async function runDesktopSmoke(): Promise<void> {
         (p) => !p.includes(first) && p.includes(second),
       );
       return { dir, tag: parent, firstTagsMs: tagsMs };
+    });
+
+    await runLinksSmoke({
+      win,
+      handle: activeVault.handle,
+      runId,
+      step,
+      invoke: invokeNative,
     });
 
     await step("ui-create-drawing-and-open-editor", async () => {
