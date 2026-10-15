@@ -145,7 +145,9 @@ describe("PaperControls", () => {
         onChange={vi.fn()}
       />,
     );
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(
+      screen.queryByRole("radiogroup", { name: "Paper style" }),
+    ).toBeNull();
   });
 });
 

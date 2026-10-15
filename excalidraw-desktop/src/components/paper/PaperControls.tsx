@@ -21,7 +21,6 @@ const PATTERN_COLORS = [
   "#868e96",
   "#74c0fc",
   "#8ce99a",
-  "#ffa8a8",
 ] as const;
 
 type Props = {

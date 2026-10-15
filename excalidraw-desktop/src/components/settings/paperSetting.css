@@ -100,7 +100,17 @@
   }
 }
 
-.paper-row .vault-cp {
+.paper-row .vault-cp.vault-fieldset {
   padding: 0;
   gap: 7px;
+}
+
+(max-width: 760px) {
+  .paper-row .vault-cp.vault-fieldset {
+    gap: 5px;
+  }
+
+  .paper-row .paper-row__label {
+    flex-basis: 84px;
+  }
 }
