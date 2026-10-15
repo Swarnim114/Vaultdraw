@@ -46,6 +46,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter as _, State};
 
+pub(crate) use store::HISTORY_DIR;
 pub(crate) use writer::{Clock, SystemClock};
 
 const CHANGE_DEBOUNCE: Duration = Duration::from_millis(250);

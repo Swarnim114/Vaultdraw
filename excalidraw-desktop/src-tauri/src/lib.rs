@@ -488,7 +488,7 @@ fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
     if text == META_DIR || text == format!("{META_DIR}/{}", vault_settings::SETTINGS_FILE) {
         return WatchedPath::Settings;
     }
-    if text.starts_with(&format!("{META_DIR}/{}/", history_dir_name())) {
+    if text.starts_with(&format!("{META_DIR}/{}/", history::HISTORY_DIR)) {
         return WatchedPath::History(text);
     }
     if text.starts_with(&format!("{META_DIR}/")) || text == format!("{META_DIR}.lock") {
@@ -499,9 +499,6 @@ fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
     } else {
         WatchedPath::Rescan
     }
-}
-fn history_dir_name() -> &'static str {
-    "history"
 }
 fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<VaultInfo> {
     let root = root.canonicalize().map_err(ioerr)?;
