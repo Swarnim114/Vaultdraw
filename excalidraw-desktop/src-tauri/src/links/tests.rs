@@ -825,6 +825,11 @@ fn a_file_changed_underneath_is_skipped_and_reported_never_overwritten() {
     assert_eq!(done.failed.len(), 1);
     assert_eq!((done.failed[0].path.as_str(), done.failed[0].code.as_str()), ("a.excalidraw", "CONFLICT"));
     assert!(!journal::journal_exists(&e.links_dir()), "journal removed even with failures");
+    // The rewrite path makes no recovery copy and leaves no temp file behind.
+    let meta = e.root.join(".excalidraw-vault");
+    let files = |d: &Path| -> usize { fs::read_dir(d).map(|r| r.flatten().filter(|x| x.path().is_file()).count()).unwrap_or(0) };
+    assert_eq!(files(&meta.join("recovery")), 0);
+    assert!(fs::read_dir(&e.root).unwrap().flatten().all(|x| !x.file_name().to_string_lossy().starts_with(".excalidraw-tmp-")));
 }
 
 #[test]

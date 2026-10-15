@@ -813,6 +813,33 @@ where F: FnOnce(&Path, &[u8], bool) -> Result<()> {
     remove_recovery(&snapshot);
     Ok(serde_json::json!({"revision": rev}))
 }
+/// Write for the link rewriter (closed drawings only). Same path, size and JSON validation and the
+/// same revision check (before the write and again right before the rename) as
+/// `write_drawing_file`, but no recovery copy: the original stays intact until the atomic rename
+/// and the rewrite journal makes the job re-runnable. One fsync of the temp file; the parent
+/// directory is NOT synced here, the caller syncs each distinct parent once per batch
+/// (`sync_dirs`). The caller holds the vault mutation guard. Returns the parent directory.
+fn write_drawing_file_rewrite(v: &Vault, path: &str, json: &str, expected_revision: &str) -> Result<PathBuf> {
+    ensure_json(json)?;
+    if path.is_empty() || !path.to_ascii_lowercase().ends_with(".excalidraw") { return Err(err("INVALID_PATH", "Drawing filenames must end in .excalidraw")); }
+    let p = safe_path(&v.root, path, false)?;
+    if current_revision(&p)?.as_deref() != Some(expected_revision) { return Err(err("CONFLICT", "Drawing changed on disk; rewrite was not applied")); }
+    let parent = p.parent().ok_or_else(|| err("INVALID_PATH", "File has no parent"))?.to_path_buf();
+    let temp = parent.join(format!(".excalidraw-tmp-{}-{}", std::process::id(), random_id()));
+    let result = (|| -> Result<()> {
+        let mut f = OpenOptions::new().write(true).create_new(true).open(&temp).map_err(ioerr)?;
+        f.write_all(json.as_bytes()).map_err(ioerr)?;
+        f.sync_all().map_err(ioerr)?;
+        if current_revision(&p)?.as_deref() != Some(expected_revision) { return Err(err("CONFLICT", "Drawing changed immediately before commit; rewrite was not applied")); }
+        fs::rename(&temp, &p).map_err(ioerr)
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temp); }
+    result.map(|_| parent)
+}
+/// fsyncs directories (best effort), making renames into them durable.
+fn sync_dirs<'a>(dirs: impl IntoIterator<Item = &'a PathBuf>) {
+    for d in dirs { if let Ok(f) = File::open(d) { let _ = f.sync_all(); } }
+}
 /// Arguments carried in the headers of the raw `write_drawing` request (percent-encoded).
 #[derive(Debug)]
 struct WriteHeaders { handle: String, path: String, expected_revision: Option<String>, operation_id: String }

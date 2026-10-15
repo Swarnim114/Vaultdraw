@@ -117,7 +117,7 @@ fn failure(path: &str, code: &str, message: impl Into<String>) -> RewriteFailure
 }
 
 /// Rewrites one closed drawing; `Ok(None)` when nothing needed changing.
-fn rewrite_file(v: &Vault, f: &FilePlan, job_id: u32, n: usize, hooks: &Hooks) -> std::result::Result<Option<(u32, Vec<String>)>, RewriteFailure> {
+fn rewrite_file(v: &Vault, f: &FilePlan, hooks: &Hooks, parents: &mut std::collections::BTreeSet<PathBuf>) -> std::result::Result<Option<(u32, Vec<String>)>, RewriteFailure> {
     let fail = |e: crate::NativeError| failure(&f.to_path, if e.code == "CONFLICT" { "CONFLICT" } else if e.code == "INVALID_FILE" { "INVALID_FILE" } else { "IO" }, e.message);
     let abs = crate::safe_path(&v.root, &f.to_path, false).map_err(fail)?;
     let bytes = match crate::read_bounded(&abs, MAX_DRAWING_BYTES) {
@@ -129,11 +129,10 @@ fn rewrite_file(v: &Vault, f: &FilePlan, job_id: u32, n: usize, hooks: &Hooks) -
     let rules = FileRules { old_dir: dir_of(&f.from_path), new_dir: dir_of(&f.to_path), elements: &f.elements, now_ms: now_ms(SystemTime::now()) };
     let Some(out) = rewrite(&bytes, &rules).map_err(fail)? else { return Ok(None) };
     let json = String::from_utf8(out.bytes).map_err(|_| failure(&f.to_path, "INVALID_FILE", "Rewritten drawing is not UTF-8"))?;
-    let op = format!("links-{job_id}-{n}-{}", crate::now_ms(SystemTime::now()));
     (hooks.before_write)(&f.to_path);
     {
         let _mutation = crate::mutation_guard(v).map_err(fail)?;
-        crate::write_drawing_file(v, &f.to_path, &json, Some(&revision), &op).map_err(fail)?;
+        parents.insert(crate::write_drawing_file_rewrite(v, &f.to_path, &json, &revision).map_err(fail)?);
     }
     let stat = std::fs::metadata(&abs).map(|m| (m.len(), m.modified().map(now_ms).unwrap_or(0))).unwrap_or((json.len() as u64, 0));
     (hooks.indexed)(&f.to_path, stat, json.as_bytes());
@@ -148,8 +147,9 @@ fn run_job(v: &Vault, files: &[FilePlan], job_id: u32, hooks: &Hooks, state: &Li
     if let Err(e) = crate::writable(v) {
         done.failed = files.iter().map(|f| failure(&f.to_path, "IO", e.message.clone())).collect();
     } else {
-        for (n, f) in files.iter().enumerate() {
-            match rewrite_file(v, f, job_id, n, hooks) {
+        let mut parents = std::collections::BTreeSet::new();
+        for f in files {
+            match rewrite_file(v, f, hooks, &mut parents) {
                 Ok(Some((links, texts))) => {
                     done.rewritten += 1;
                     done.links += links;
@@ -161,6 +161,8 @@ fn run_job(v: &Vault, files: &[FilePlan], job_id: u32, hooks: &Hooks, state: &Li
                 Err(f) => done.failed.push(f),
             }
         }
+        // One directory fsync per folder makes all the renames durable; only then is the journal dropped.
+        crate::sync_dirs(&parents);
     }
     if let Some(dir) = &hooks.dir {
         let _io = state.io.lock().unwrap_or_else(|p| p.into_inner());
