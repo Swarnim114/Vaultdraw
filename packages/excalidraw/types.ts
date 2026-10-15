@@ -930,6 +930,14 @@ export interface ExcalidrawProps {
    */
   freedrawPen?: () => FreedrawPen | null;
   /**
+   * Host-controlled stroke width in px for new elements, read when an element
+   * of `elementType` is created. Returns null to use the width key chosen in
+   * the properties panel (thin / medium / bold).
+   */
+  currentItemStrokeWidth?: (
+    elementType: ExcalidrawElement["type"],
+  ) => number | null;
+  /**
    * Host-controlled laser pointer look, read when a laser stroke starts.
    * Returns null for the built-in look.
    */

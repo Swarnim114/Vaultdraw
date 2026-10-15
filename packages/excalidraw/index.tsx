@@ -85,6 +85,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     isCollaborating = false,
     onPointerUpdate,
     freedrawPen,
+    currentItemStrokeWidth,
     laserPointerOptions,
     renderTopLeftUI,
     renderTopRightUI,
@@ -231,6 +232,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           isCollaborating={isCollaborating}
           onPointerUpdate={onPointerUpdate}
           freedrawPen={freedrawPen}
+          currentItemStrokeWidth={currentItemStrokeWidth}
           laserPointerOptions={laserPointerOptions}
           renderTopLeftUI={renderTopLeftUI}
           renderTopRightUI={renderTopRightUI}

@@ -9003,9 +9003,9 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   public getCurrentItemStrokeWidth(elementType: ExcalidrawElement["type"]) {
-    return getStrokeWidthByKey(
-      elementType,
-      this.state.currentItemStrokeWidthKey,
+    return (
+      this.props.currentItemStrokeWidth?.(elementType) ??
+      getStrokeWidthByKey(elementType, this.state.currentItemStrokeWidthKey)
     );
   }
 

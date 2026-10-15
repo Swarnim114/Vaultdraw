@@ -1,0 +1,133 @@
+import { useCallback, useEffect, useRef } from "react";
+
+import { CaptureUpdateAction } from "@excalidraw/excalidraw";
+
+import type {
+  AppState,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+
+import type { ExcalidrawElement } from "@excalidraw/element/types";
+
+import { registerCommandHandlers } from "../commands/handlerRegistry";
+import {
+  getEffectiveToolDefaults,
+  subscribeToolDefaults,
+} from "../vault/toolDefaultsStore";
+
+import { createToolDefaultHandlers } from "./toolDefaultCommands";
+import { newToolSession, switchTool } from "./toolApply";
+import { isStyledTool, type StyledTool } from "./toolStyles";
+
+import type { RefObject } from "react";
+
+/**
+ * Applies each tool's saved default style when the tool becomes active (and
+ * undoes it when it stops being). Observes the editor's onChange: every
+ * change costs two ref writes and one string compare; work happens only when
+ * the active tool changes. Nothing here re-renders React.
+ */
+export function useToolDefaults(
+  apiRef: RefObject<ExcalidrawImperativeAPI | null>,
+  enabled: boolean,
+) {
+  const session = useRef(newToolSession());
+  const tool = useRef<string | null>(null);
+  const state = useRef<AppState | null>(null);
+  const styleKey = useRef("null");
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  const enter = useCallback(
+    (type: string | null, appState: AppState) => {
+      const defaults = getEffectiveToolDefaults();
+      const style = isStyledTool(type) ? defaults[type] : undefined;
+      styleKey.current = JSON.stringify(style ?? null);
+      const out = switchTool(session.current, type, appState, defaults);
+      session.current = out.session;
+      // the editor reports the patched state on its next change; until then
+      // that is what was last seen
+      session.current.lastSeen = { ...appState, ...out.patch };
+      const api = apiRef.current;
+      if (api && enabledRef.current && Object.keys(out.patch).length > 0) {
+        api.updateScene({
+          appState: out.patch as AppState,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }
+    },
+    [apiRef],
+  );
+
+  /** Called with every editor change. */
+  const onAppState = useCallback(
+    (appState: AppState) => {
+      const type = appState.activeTool.type;
+      state.current = appState;
+      if (type !== tool.current) {
+        tool.current = type;
+        // session.lastSeen is still the state before this change; enter()
+        // leaves it at the patched state
+        enter(type, appState);
+      } else {
+        session.current.lastSeen = appState;
+      }
+    },
+    [enter],
+  );
+
+  // Defaults edited (settings, live reload, vault switch) for the active tool.
+  useEffect(
+    () =>
+      subscribeToolDefaults(() => {
+        const current = state.current;
+        if (!current || tool.current === null) {
+          return;
+        }
+        const type = tool.current;
+        const style = isStyledTool(type)
+          ? getEffectiveToolDefaults()[type]
+          : undefined;
+        if (JSON.stringify(style ?? null) !== styleKey.current) {
+          // re-apply: everything we applied is restored first (nothing was
+          // changed by someone else as far as this call is concerned)
+          const live = apiRef.current?.getAppState() ?? current;
+          session.current.lastSeen = live;
+          enter(type, live);
+        }
+      }),
+    [enter, apiRef],
+  );
+
+  /** Width in px for a new element, or null (use the panel's width key). */
+  const currentItemStrokeWidth = useCallback(
+    (elementType: ExcalidrawElement["type"]) => {
+      const s = session.current;
+      const live = apiRef.current?.getAppState() ?? state.current;
+      if (
+        s.tool === null ||
+        s.strokeWidthPx === null ||
+        s.tool !== elementType ||
+        !live ||
+        live.currentItemStrokeWidthKey !== s.applied.currentItemStrokeWidthKey
+      ) {
+        return null;
+      }
+      return s.strokeWidthPx;
+    },
+    [apiRef],
+  );
+
+  useEffect(
+    () =>
+      registerCommandHandlers(
+        createToolDefaultHandlers({
+          api: () => apiRef.current,
+          strokePx: (t: StyledTool) => currentItemStrokeWidth(t),
+        }),
+      ),
+    [apiRef, currentItemStrokeWidth],
+  );
+
+  return { onAppState, currentItemStrokeWidth };
+}

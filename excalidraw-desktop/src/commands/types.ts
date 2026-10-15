@@ -14,6 +14,7 @@ export type CommandCategory =
   | "Appearance"
   | "Palette"
   | "Pens"
+  | "Tool defaults"
   | "Export"
   | "Templates"
   | "Tags"

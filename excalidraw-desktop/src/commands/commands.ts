@@ -5,6 +5,12 @@
  */
 import { SETTINGS_PAGES } from "../components/settings/schema";
 import { MAX_PEN_PRESETS } from "../pens/penPresets";
+import {
+  TOOL_DEFAULT_SAVE_ACTIVE_ID,
+  toolDefaultResetId,
+  toolDefaultSaveId,
+} from "../toolDefaults/toolDefaultIds";
+import { TOOL_DEFAULT_TOOLS, TOOL_LABELS } from "../toolDefaults/toolStyles";
 import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
 import { EDITOR_COMMANDS } from "./editorCommands";
@@ -31,6 +37,33 @@ const PEN_COMMANDS: CommandDefinition[] = Array.from(
     palette: false,
   }),
 );
+
+/** "toolDefaults.save.arrow" / ".reset.arrow" / ".saveActive": rebindable, no keys. */
+const TOOL_DEFAULT_COMMANDS: CommandDefinition[] = [
+  ...TOOL_DEFAULT_TOOLS.flatMap((tool): CommandDefinition[] => [
+    {
+      id: toolDefaultSaveId(tool),
+      title: `Tool defaults: Save current style for ${TOOL_LABELS[tool]}`,
+      category: "Tool defaults",
+      keys: { default: [] },
+      when: ["drawingOpen", "!textEditing", "!modalOpen"],
+    },
+    {
+      id: toolDefaultResetId(tool),
+      title: `Tool defaults: Reset ${TOOL_LABELS[tool]}`,
+      category: "Tool defaults",
+      keys: { default: [] },
+      when: ["drawingOpen", "!textEditing", "!modalOpen"],
+    },
+  ]),
+  {
+    id: TOOL_DEFAULT_SAVE_ACTIVE_ID,
+    title: "Tool defaults: Save current style for this tool",
+    category: "Tool defaults",
+    keys: { default: [] },
+    when: ["drawingOpen", "!textEditing", "!modalOpen"],
+  },
+];
 
 /** "settings.page.appearance": open one settings page (Hotkeys has its own). */
 export const settingsPageCommandId = (page: string) => `settings.page.${page}`;
@@ -301,6 +334,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...SORT_COMMANDS,
   ...EDITOR_COMMANDS,
   ...PEN_COMMANDS,
+  ...TOOL_DEFAULT_COMMANDS,
 ];
 
 const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(

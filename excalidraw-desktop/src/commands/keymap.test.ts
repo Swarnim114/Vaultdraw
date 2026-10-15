@@ -17,7 +17,7 @@ describe("commands registry", () => {
     const ids = COMMANDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) {
-      expect(id).toMatch(/^[a-z]+(\.[a-zA-Z][a-zA-Z0-9_]*)+$/);
+      expect(id).toMatch(/^[a-z][a-zA-Z]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/);
     }
     expect(isCommandId("file.save")).toBe(true);
     expect(isCommandId("nope.nope")).toBe(false);

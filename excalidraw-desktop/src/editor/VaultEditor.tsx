@@ -27,6 +27,7 @@ import { copyToClipboard } from "../vault/clipboard";
 import { PenBar } from "../pens/PenBar";
 
 import { usePens } from "../pens/usePens";
+import { useToolDefaults } from "../toolDefaults/useToolDefaults";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorFlush } from "./editorFlush";
@@ -117,6 +118,8 @@ const VaultEditorComponent = ({
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
   const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
+  const toolDefaults = useToolDefaults(apiRef, !readOnly && !disabled);
+  const onToolAppState = toolDefaults.onAppState;
   useEditorPalette({
     apiRef,
     disabled,
@@ -257,6 +260,7 @@ const VaultEditorComponent = ({
       latest.current = [elements, appState, files];
       onAppState(appState);
       onPenAppState(appState);
+      onToolAppState(appState);
       if (!ready.current) {
         return;
       }
@@ -287,7 +291,7 @@ const VaultEditorComponent = ({
         maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
       }
     },
-    [serializePending, onAppState, onPenAppState],
+    [serializePending, onAppState, onPenAppState, onToolAppState],
   );
 
   const onInitialize = useCallback((api: ExcalidrawImperativeAPI) => {
@@ -495,6 +499,7 @@ const VaultEditorComponent = ({
         onExportImage={handleExportImage}
         aiEnabled={false}
         freedrawPen={pens.freedrawPen}
+        currentItemStrokeWidth={toolDefaults.currentItemStrokeWidth}
         laserPointerOptions={pens.laserPointerOptions}
         libraryUIOptions={libraryUIOptions}
         UIOptions={{
