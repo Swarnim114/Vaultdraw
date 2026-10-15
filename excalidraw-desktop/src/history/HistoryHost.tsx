@@ -2,26 +2,19 @@
  * The single mount point of file history inside the app shell. It owns the
  * panel state, the checkpoint dialog and a small confirmation toast, syncs the
  * native service (useHistorySync) and binds the app-level commands. The panel
- * itself is a lazy chunk, so a closed panel costs nothing.
+ * is a static import on purpose: it is tiny, and a separate lazy chunk for it
+ * measurably slowed the vault-open paint (see perf notes in the commit).
  */
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CheckpointDialog } from "./CheckpointDialog";
+import HistoryPanel from "./panel/HistoryPanel";
 import { useHistoryCommands } from "./useHistoryCommands";
 import { useHistorySync } from "./useHistorySync";
 
 import "./history.css";
 
 import type { HistoryRepository, HistorySettings } from "./types";
-
-const HistoryPanel = lazy(() => import("./panel/HistoryPanel"));
 
 export interface HistoryHostProps {
   repository: HistoryRepository;
@@ -113,14 +106,12 @@ export const HistoryHost = ({
   return (
     <>
       {panelOpen && handle && path && (
-        <Suspense fallback={null}>
-          <HistoryPanel
-            repository={repository}
-            handle={handle}
-            path={path}
-            onClose={closePanel}
-          />
-        </Suspense>
+        <HistoryPanel
+          repository={repository}
+          handle={handle}
+          path={path}
+          onClose={closePanel}
+        />
       )}
       {dialogOpen && (
         <CheckpointDialog
