@@ -457,7 +457,10 @@ pub fn strip(
         Edit { start: at, end: at, with: b"@".to_vec() }
     }));
     edits.sort_by_key(|e| (e.start, e.end));
-    let mut text = Vec::with_capacity(file.len());
+    // Exact output size: the edits are known, so no slack is allocated.
+    let added: usize = edits.iter().map(|e| e.with.len()).sum();
+    let removed: usize = edits.iter().map(|e| e.end - e.start).sum();
+    let mut text = Vec::with_capacity((file.len() + added).saturating_sub(removed));
     let mut at = 0usize;
     for e in &edits {
         if e.start < at {
@@ -726,7 +729,53 @@ fn encode_with(k: &Scene, new: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Receives the reconstructed text piece by piece.
+trait Sink {
+    fn begin(&mut self, total: usize);
+    /// `false` aborts the walk.
+    fn put(&mut self, piece: &[u8]) -> bool;
+}
+
+struct VecSink(Vec<u8>);
+impl Sink for VecSink {
+    fn begin(&mut self, total: usize) {
+        self.0.reserve_exact(total);
+    }
+    fn put(&mut self, piece: &[u8]) -> bool {
+        self.0.extend_from_slice(piece);
+        true
+    }
+}
+
+/// Compares the stream with `expect` as it arrives (no output buffer).
+struct CompareSink<'a> {
+    expect: &'a [u8],
+    pos: usize,
+}
+impl Sink for CompareSink<'_> {
+    fn begin(&mut self, total: usize) {
+        if total != self.expect.len() {
+            self.pos = usize::MAX;
+        }
+    }
+    fn put(&mut self, piece: &[u8]) -> bool {
+        match self.expect.get(self.pos..).and_then(|r| r.get(..piece.len())) {
+            Some(r) if r == piece => {
+                self.pos += piece.len();
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 fn apply(k: &Scene, body: &[u8]) -> Result<Vec<u8>> {
+    let mut sink = VecSink(Vec::new());
+    apply_with(k, body, &mut sink)?;
+    Ok(sink.0)
+}
+
+fn apply_with(k: &Scene, body: &[u8], sink: &mut dyn Sink) -> Result<()> {
     let mut r = Reader { buf: body, pos: 0 };
     if body.get(..4) != Some(DELTA_MAGIC) {
         return Err(corrupt("bad delta magic"));
@@ -813,16 +862,20 @@ fn apply(k: &Scene, body: &[u8]) -> Result<Vec<u8>> {
     if total > MAX_TEXT_BYTES {
         return Err(corrupt("reconstructed text too large"));
     }
-    let mut out = Vec::with_capacity(total);
-    out.extend_from_slice(prefix);
+    sink.begin(total);
+    let mut ok = sink.put(prefix);
     for (i, e) in elems.iter().enumerate() {
         if i > 0 {
-            out.extend_from_slice(exceptions.get(&(i - 1)).copied().unwrap_or(sep));
+            ok = ok && sink.put(exceptions.get(&(i - 1)).copied().unwrap_or(sep));
         }
-        out.extend_from_slice(e);
+        ok = ok && sink.put(e);
     }
-    out.extend_from_slice(suffix);
-    Ok(out)
+    ok = ok && sink.put(suffix);
+    if ok {
+        Ok(())
+    } else {
+        Err(corrupt("reconstruction aborted"))
+    }
 }
 
 /// A delta from `key` (stripped keyframe text) to `new` (stripped text), or `None` when the scene
@@ -841,5 +894,8 @@ pub fn reconstruct(key: &[u8], delta: Option<&[u8]>) -> Result<Vec<u8>> {
 pub fn proven_delta(key: &[u8], new: &[u8]) -> Option<Vec<u8>> {
     let k = parse_scene(key)?;
     let body = encode_with(&k, new)?;
-    (apply(&k, &body).ok()? == new).then_some(body)
+    // Streaming proof: the reconstruction is compared against `new` as it is produced.
+    let mut cmp = CompareSink { expect: new, pos: 0 };
+    apply_with(&k, &body, &mut cmp).ok()?;
+    (cmp.pos == new.len()).then_some(body)
 }

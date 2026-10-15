@@ -5,3 +5,5 @@ mod codec_props;
 mod fuzz_container;
 mod codec_support;
 mod codec_review;
+#[cfg(history_codec_peak)]
+mod codec_peak;
