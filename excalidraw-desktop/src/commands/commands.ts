@@ -439,6 +439,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen", "writable", "!modalOpen"],
   },
   {
+    id: "navigator.newDrawingInFolder",
+    title: "Navigator: New drawing in selected folder",
+    category: "Navigator",
+    keys: { default: [] },
+    when: ["vaultOpen", "writable", "!modalOpen"],
+  },
+  {
     id: "navigator.collapseAll",
     title: "Navigator: Collapse all folders",
     category: "Navigator",

@@ -385,7 +385,8 @@ svg.vault-tree-item__icon {
 }
 
 /* Folder count (computed once per tree build); swaps for the actions on hover. */
-.vault-tree-item__count {
+.vault-tree-item[data-count]::after {
+  content: attr(data-count);
   flex: none;
   margin-left: 6px;
   color: var(--vault-text-faint);
@@ -411,8 +412,8 @@ svg.vault-tree-item__icon {
   display: flex;
 }
 
-.vault-tree-item:hover .vault-tree-item__count,
-.vault-tree-item:focus-within .vault-tree-item__count {
+.vault-tree-item[data-count]:hover::after,
+.vault-tree-item[data-count]:focus-within::after {
   display: none;
 }
 
