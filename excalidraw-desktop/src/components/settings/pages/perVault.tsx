@@ -35,7 +35,7 @@ export const PerVaultRow = <F extends VaultField>({
   details?: ReactNode;
   description?: ReactNode;
   onReset?: () => void;
-  layout?: "row" | "block";
+  layout?: "row" | "block" | "stacked";
   testId?: string;
 }) => {
   const { vault, vaultSettings, setPerVaultValue, setPerVaultStored } =
@@ -47,7 +47,23 @@ export const PerVaultRow = <F extends VaultField>({
     : vault.readOnly
     ? "This vault is read-only"
     : "Store this value in the vault instead of the global config";
+  const stacked = layout === "stacked";
   const errors = vaultSettings.problems.filter((p) => p.kind === "io");
+  const control = children(vaultSettings.effective[field], (value) =>
+    setPerVaultValue(field, value),
+  );
+  const perVaultSwitch = (
+    <label className="vault-setting-pervault" title={title}>
+      <Switch
+        checked={stored}
+        disabled={unavailable}
+        label="This vault"
+        title={title}
+        onChange={(on) => setPerVaultStored(field, on)}
+      />
+      <span>This vault</span>
+    </label>
+  );
   return (
     <SettingRow
       id={id}
@@ -55,6 +71,7 @@ export const PerVaultRow = <F extends VaultField>({
       description={description}
       onReset={onReset}
       layout={layout}
+      aside={stacked ? perVaultSwitch : undefined}
       testId={testId}
       details={
         <>
@@ -71,21 +88,14 @@ export const PerVaultRow = <F extends VaultField>({
         </>
       }
     >
-      <div className="vault-setting-inline">
-        {children(vaultSettings.effective[field], (value) =>
-          setPerVaultValue(field, value),
-        )}
-        <label className="vault-setting-pervault" title={title}>
-          <Switch
-            checked={stored}
-            disabled={unavailable}
-            label="This vault"
-            title={title}
-            onChange={(on) => setPerVaultStored(field, on)}
-          />
-          <span>This vault</span>
-        </label>
-      </div>
+      {stacked ? (
+        control
+      ) : (
+        <div className="vault-setting-inline">
+          {control}
+          {perVaultSwitch}
+        </div>
+      )}
     </SettingRow>
   );
 };

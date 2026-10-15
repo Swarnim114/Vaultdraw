@@ -1,0 +1,86 @@
+/* Settings -> Appearance -> Background Pattern: stacked row + icon tiles. */
+
+.vault-setting-row.vault-setting-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.vault-setting-stacked-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vault-setting-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.paper-tiles {
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.paper-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 4px 8px;
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+  background: var(--vault-bg);
+  color: var(--vault-text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.paper-tile svg {
+  width: 26px;
+  height: 26px;
+}
+
+.paper-tile__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-tile:hover {
+  background: var(--vault-surface-hover);
+  color: var(--vault-text);
+}
+
+.paper-tile[data-checked="true"] {
+  background: var(--vault-primary-light);
+  border-color: var(--vault-primary-border);
+  color: var(--vault-primary);
+  font-weight: 600;
+}
+
+.paper-tile:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 1px;
+}
+
+@media (max-width: 760px) {
+  .paper-tile {
+    padding: 10px 1px 8px;
+  }
+
+  .paper-tile__label {
+    font-size: 0.56rem;
+    letter-spacing: -0.01em;
+  }
+}

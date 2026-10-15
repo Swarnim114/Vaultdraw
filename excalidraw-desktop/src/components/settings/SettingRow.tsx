@@ -13,8 +13,14 @@ export interface SettingRowProps {
   details?: ReactNode;
   /** The control(s). */
   children?: ReactNode;
-  /** "row": control beside the text; "block": control below it. */
-  layout?: "row" | "block";
+  /**
+   * "row": control beside the text; "block": control below it;
+   * "stacked": a wide control on its own full-width line under the label and
+   * description, with `aside` on the title line.
+   */
+  layout?: "row" | "block" | "stacked";
+  /** Stacked layout only: right-aligned on the title line (e.g. a switch). */
+  aside?: ReactNode;
   /** Label element targets this control id. */
   htmlFor?: string;
   disabled?: boolean;
@@ -32,6 +38,7 @@ export const SettingRow = ({
   details,
   children,
   layout = "row",
+  aside,
   htmlFor,
   disabled = false,
   onReset,
@@ -42,30 +49,51 @@ export const SettingRow = ({
   const schema = getSettingSchema(id);
   const classes = [
     layout === "block" ? "vault-setting-block" : "vault-setting-row",
+    layout === "stacked" && "vault-setting-row--stacked",
     disabled && "vault-setting-row--disabled",
     className,
   ]
     .filter(Boolean)
     .join(" ");
+  const labelNode = htmlFor ? (
+    <label className="vault-setting-label" htmlFor={htmlFor}>
+      {schema.label}
+    </label>
+  ) : (
+    <div className="vault-setting-label">{schema.label}</div>
+  );
+  const badgeNode = thisVault && (
+    <span
+      className="vault-setting-badge"
+      title="Stored in this vault's settings"
+    >
+      This vault
+    </span>
+  );
+  if (layout === "stacked") {
+    return (
+      <div className={classes} data-setting-id={id} data-testid={testId}>
+        <div className="vault-setting-stacked-head">
+          <div className="vault-setting-label-line">
+            {labelNode}
+            {badgeNode}
+          </div>
+          {aside}
+        </div>
+        <div className="vault-setting-desc">
+          {description ?? schema.description}
+        </div>
+        {children && <div className="vault-setting-wide">{children}</div>}
+        {details}
+      </div>
+    );
+  }
   return (
     <div className={classes} data-setting-id={id} data-testid={testId}>
       <div className="vault-setting-info">
         <div className="vault-setting-label-line">
-          {htmlFor ? (
-            <label className="vault-setting-label" htmlFor={htmlFor}>
-              {schema.label}
-            </label>
-          ) : (
-            <div className="vault-setting-label">{schema.label}</div>
-          )}
-          {thisVault && (
-            <span
-              className="vault-setting-badge"
-              title="Stored in this vault's settings"
-            >
-              This vault
-            </span>
-          )}
+          {labelNode}
+          {badgeNode}
         </div>
         <div className="vault-setting-desc">
           {description ?? schema.description}

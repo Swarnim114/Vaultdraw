@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { BACKGROUND_PATTERN_TYPES } from "@excalidraw/excalidraw/data/backgroundPattern";
-
 import type { BackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 
 import {
@@ -17,18 +15,12 @@ import {
 } from "../../../vault/preferences";
 import { PaperControls } from "../../paper/PaperControls";
 import { PaperPreview } from "../../paper/PaperPreview";
+import { PaperTilePicker } from "../../paper/PaperTilePicker";
 import { useSettings } from "../SettingsContext";
 
-import { Segmented } from "./controls";
-import { PerVaultRow } from "./perVault";
+import "../paperSetting.css";
 
-const STYLES: readonly { label: string; val: PaperStyle }[] = [
-  { label: "Plain", val: "plain" },
-  ...BACKGROUND_PATTERN_TYPES.map((type) => ({
-    label: type[0].toUpperCase() + type.slice(1),
-    val: type,
-  })),
-];
+import { PerVaultRow } from "./perVault";
 
 /** Re-renders when any preference changes (the pattern is derived on read). */
 const usePreferencesVersion = (win: Window | null) =>
@@ -66,6 +58,7 @@ export const PaperSetting = () => {
     <PerVaultRow
       id="paper"
       field="paperStyle"
+      layout="stacked"
       details={
         pattern && (
           <div className="vault-setting-field">
@@ -75,9 +68,7 @@ export const PaperSetting = () => {
         )
       }
     >
-      {(value) => (
-        <Segmented options={STYLES} value={value} onChange={selectStyle} />
-      )}
+      {(value) => <PaperTilePicker value={value} onChange={selectStyle} />}
     </PerVaultRow>
   );
 };
