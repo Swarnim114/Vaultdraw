@@ -16,12 +16,7 @@ import { selectPaperStyle } from "./selectPaperStyle";
 import "./paper.css";
 
 // A few quiet line colours; "Default" follows the theme.
-const PATTERN_COLORS = [
-  "#adb5bd",
-  "#868e96",
-  "#74c0fc",
-  "#8ce99a",
-] as const;
+const PATTERN_COLORS = ["#adb5bd", "#868e96", "#74c0fc", "#8ce99a"] as const;
 
 type Props = {
   value: BackgroundPattern | null;
