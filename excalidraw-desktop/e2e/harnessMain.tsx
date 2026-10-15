@@ -324,6 +324,39 @@ if (params.get("seed") === "links") {
   );
 }
 
+// ?names=N (links perf): N empty drawings with realistic names in nested
+// folders, for the `[[` autocomplete at 10k names.
+const nameCount = Number(params.get("names")) || 0;
+if (nameCount > 0) {
+  const words = [
+    "alpha",
+    "design",
+    "vault",
+    "roadmap",
+    "notes",
+    "sketch",
+    "graph",
+    "plan",
+    "review",
+    "draft",
+  ];
+  const empty = JSON.stringify({
+    type: "excalidraw",
+    version: 2,
+    elements: [],
+    appState: {},
+    files: {},
+  });
+  for (let i = 0; i < nameCount; i++) {
+    repository.seedDrawing(
+      `Gen ${i % 40}/${words[i % 10]} ${Math.floor(i / 400) % 10}/${
+        words[(i * 7) % 10]
+      } ${words[(i * 3) % 10]} ${i}.excalidraw`,
+      empty,
+    );
+  }
+}
+
 const libraryRepository = new FakeLibraryRepository();
 const vaultLinks = new FakeVaultLinks(repository);
 (ownerWindow as any).__vaultLinks = vaultLinks;
