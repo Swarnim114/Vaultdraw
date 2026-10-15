@@ -7,9 +7,10 @@
 //! Owner (H1): agent B. Codec modules (`names`, `container`, `codec`) are owned by agent A.
 
 #![allow(dead_code)]
-// Skeleton only: removed once the codec bodies land.
-#![allow(unused_variables)]
 
 pub(crate) mod codec;
 pub(crate) mod container;
 pub(crate) mod names;
+
+#[cfg(test)]
+mod tests;
