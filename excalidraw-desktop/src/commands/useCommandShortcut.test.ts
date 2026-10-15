@@ -15,7 +15,7 @@ describe("useCommandShortcut", () => {
   it("follows a custom binding live and an explicit unassign", () => {
     const { result } = renderHook(() => useCommandShortcut("settings.open"));
     act(() => setHotkeyOverride("settings.open", ["Mod+Alt+P"], window));
-    expect(result.current).toMatch(/^(Option\+Cmd\+P|Ctrl\+Alt\+P)$/);
+    expect(result.current).toMatch(/^(Cmd\+Option\+P|Ctrl\+Alt\+P)$/);
     act(() => setHotkeyOverride("settings.open", [], window));
     expect(result.current).toBe("");
   });

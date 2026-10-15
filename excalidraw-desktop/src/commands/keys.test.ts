@@ -245,8 +245,8 @@ describe("isModifierFree", () => {
 describe("formatChordWords", () => {
   it("uses Excalidraw's word style per platform", () => {
     expect(formatChordWords("Mod+Comma", "mac")).toBe("Cmd+,");
-    expect(formatChordWords("Mod+Alt+KeyJ", "mac")).toBe("Option+Cmd+J");
-    expect(formatChordWords("Mod+Shift+KeyE", "mac")).toBe("Shift+Cmd+E");
+    expect(formatChordWords("Mod+Alt+KeyJ", "mac")).toBe("Cmd+Option+J");
+    expect(formatChordWords("Mod+Shift+KeyE", "mac")).toBe("Cmd+Shift+E");
     expect(formatChordWords("Mod+Alt+KeyJ", "win")).toBe("Ctrl+Alt+J");
   });
 });

@@ -372,16 +372,16 @@ export function formatChordWords(chord: Chord, platform: Platform): string {
   const mac = platform === "mac";
   const names = mac
     ? [
-        mods.has("Ctrl") && "Ctrl",
-        mods.has("Alt") && "Option",
-        mods.has("Shift") && "Shift",
         (mods.has("Mod") || mods.has("Meta")) && "Cmd",
+        mods.has("Ctrl") && "Ctrl",
+        mods.has("Shift") && "Shift",
+        mods.has("Alt") && "Option",
       ]
     : [
         (mods.has("Mod") || mods.has("Ctrl")) && "Ctrl",
-        mods.has("Alt") && "Alt",
-        mods.has("Shift") && "Shift",
         mods.has("Meta") && "Meta",
+        mods.has("Shift") && "Shift",
+        mods.has("Alt") && "Alt",
       ];
   return [...names.filter(Boolean), keyLabel(parts.key, false)].join("+");
 }

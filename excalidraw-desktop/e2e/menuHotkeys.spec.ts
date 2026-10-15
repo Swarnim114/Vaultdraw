@@ -47,6 +47,6 @@ test("main menu shows Vaultdraw hotkeys and follows rebinding", async ({
 
   await openMenu(page);
   await expect(item(page, /Vault settings/)).toContainText(
-    /(Option\+Cmd\+J|Ctrl\+Alt\+J)/,
+    /(Cmd\+Option\+J|Ctrl\+Alt\+J)/,
   );
 });
