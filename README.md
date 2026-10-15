@@ -326,6 +326,112 @@ Matching rules:
 
 The index is stored outside the vault, in the state folder (`~/.local/state/vaultdraw/index/` by default; `VAULTDRAW_STATE_DIR` changes the folder). Nothing is written into your vault. The index is rebuilt automatically when it is missing or damaged, and it is safe to delete. When a large vault is indexed for the first time, the status line shows progress, such as "Indexing 1,234 of 5,000 drawings…", and results cover only the drawings indexed so far.
 
+## Links and backlinks
+
+Link drawings to each other, as in a wiki. A link is plain text in the drawing, so it stays readable in any editor, and the drawing keeps working when you copy it elsewhere.
+
+### Writing links
+
+Type `[[Name]]` in any text: free text, shape labels or arrow labels. Use `[[Name|label]]` to show a different label. Matching ignores case and accents. When two drawings share a name, use the path: `[[Graphs/BFS]]`.
+
+Typing `[[` in a text element opens a list of drawings that narrows as you type:
+
+| Key | Action |
+| --- | --- |
+| ↑ ↓, or Ctrl+N / Ctrl+P | Choose a drawing |
+| Enter or Tab | Insert the link |
+| `\|` | Start a label |
+| Esc | Close the list |
+
+The last row, **Create 'x'**, makes a new drawing in the default folder for new drawings. Cmd+clicking an unresolved link offers the same. Set `links.autocomplete = false` to turn the list off.
+
+### Shape links
+
+Select a shape and press ⌥⌘K (**Links: Link selection to drawing…**) to pick a drawing. The shape stores `[[Name]]` in its link field, and Cmd+clicking the shape opens the drawing. Set `links.shape_link_format = "vaultdraw-url"` to store a `vaultdraw://open?file=…` link instead. Vaultdraw also reads relative paths such as `./x.excalidraw`, so drawings made with the Obsidian Excalidraw plugin work.
+
+### Opening links
+
+- **Cmd+click** a `[[link]]` or a linked shape. Holding the modifier underlines every link. The modifier is set by `links.open_modifier`: `mod` (default), `alt`, `ctrl` or `shift`.
+- **Keyboard:** ⌥⌘↵ opens the link of the selected element. ⌥⌘← and ⌥⌘→ go back and forward.
+- **Link hints:** Shift+F shows a letter on every visible link. Type the letters to open one, as in Vimium. The letters come from `links.hint_chars`.
+
+### Backlinks panel
+
+⌥⌘B shows or hides the backlinks panel at the bottom of the navigator. It has two tabs:
+
+- **Backlinks** lists the drawings that link to the open drawing, with a snippet of each link.
+- **Outgoing** lists the links in the open drawing. Links to drawings that don't exist yet have a **Create** button.
+
+A collapsed **Unlinked mentions** section finds text that matches the drawing's name but isn't linked. It is computed only when you expand it.
+
+| Key | Action |
+| --- | --- |
+| j / k or ↑ ↓ | Move |
+| Enter or o | Open the drawing at the linking element |
+| Tab | Switch tabs |
+| h / l | Collapse / expand |
+| g / G | First / last row |
+
+### Renaming and moving
+
+Renaming or moving a drawing or folder inside Vaultdraw also updates the links that point to it, in every drawing. A toast reports the result, for example "Updated 3 links in 2 drawings". The `links.update_on_rename` setting controls this:
+
+| Value | Behaviour |
+| --- | --- |
+| `true` (default) | Update links automatically |
+| `false` | Leave links unchanged |
+| `"ask"` | Ask first. Vaultdraw also asks when a rename would make other links point to a different drawing |
+
+Files changed on disk during the update are skipped, never overwritten.
+
+### Link format
+
+`links.new_link_format` sets the form Vaultdraw writes for new links: `"shortest"` (default), `"relative"` or `"absolute"`. With `"shortest"`, a bare name is used when it is unique in the vault, and the path from the vault root otherwise.
+
+### Drawing shortcuts
+
+Give a drawing its own key with **Assign hotkey to this drawing**, or in **Settings → Hotkeys → Drawing shortcuts → Add drawing shortcut…**. The key is stored in `[hotkeys]`:
+
+```toml
+[hotkeys]
+"drawing.open:Folder/Name.excalidraw" = ["Mod+Alt+1"]
+```
+
+### Commands
+
+All of these are in the Cmd+Shift+P palette, and each can be rebound on the Hotkeys page or in `[hotkeys]`:
+
+| Command | macOS | Windows / Linux |
+| --- | --- | --- |
+| Links: Link selection to drawing… | ⌥⌘K | Ctrl+Alt+K |
+| Links: Insert link… | — | — |
+| Links: Open link under selection | ⌥⌘↵ | Ctrl+Alt+Enter |
+| Links: Toggle backlinks panel | ⌥⌘B | Ctrl+Alt+B |
+| Links: Go back | ⌥⌘← | Ctrl+Alt+← |
+| Links: Go forward | ⌥⌘→ | Ctrl+Alt+→ |
+| Links: Copy link to this drawing | — | — |
+| Links: Show link hints | Shift+F | Shift+F |
+| Links: Assign hotkey to this drawing | — | — |
+
+### Settings
+
+All of these can be set in **Settings → Links** or in `config.toml`. The values shown are the defaults:
+
+```toml
+[links]
+new_link_format = "shortest"       # shortest | relative | absolute
+shape_link_format = "wikilink"     # wikilink ([[Name]]) | vaultdraw-url
+open_modifier = "mod"              # mod | alt | ctrl | shift
+update_on_rename = true            # true | false | "ask"
+autocomplete = true                # the list that opens on [[
+hint_chars = "asdfghjkl"           # letters used by Shift+F hints
+```
+
+### Notes
+
+- **excalidraw.com** reads `[[links]]` as plain text, and shape links show the normal link icon. Nothing is lost when a file is saved there.
+- **Speed.** Links cost nothing until you use them. The link index is built on first use, off the UI thread.
+
 ## Templates
 
 A template is an ordinary `.excalidraw` file, so any drawing can become one, and a template can be opened and edited like any other drawing.
