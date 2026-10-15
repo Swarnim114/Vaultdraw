@@ -2,6 +2,7 @@ import {
   IconClose,
   IconFolder,
   IconKeyboard,
+  IconLink,
   IconLayout,
   IconPalette,
   IconPenTool,
@@ -24,6 +25,7 @@ export const PAGE_ICONS: Record<SettingsPageId, ReactNode> = {
   drawing: <IconPenTool {...NAV_ICON} />,
   tools: <IconTools {...NAV_ICON} />,
   files: <IconFolder {...NAV_ICON} />,
+  links: <IconLink {...NAV_ICON} />,
   hotkeys: <IconKeyboard {...NAV_ICON} />,
 };
 

@@ -26,5 +26,38 @@ export function getRegisteredHandler(id: string): CommandHandler | undefined {
       return handler;
     }
   }
-  return undefined;
+  return prefixHandlerFor(id);
 }
+
+const prefixLayers: {
+  prefix: string;
+  run: (rest: string) => void | Promise<void>;
+}[] = [];
+
+/**
+ * Bind every id starting with `prefix` (e.g. "drawing.open:") to `run`, which
+ * gets the rest of the id. Exact handlers win. Returns the unbind function.
+ */
+export function registerCommandPrefixHandler(
+  prefix: string,
+  run: (rest: string) => void | Promise<void>,
+): () => void {
+  const layer = { prefix, run };
+  prefixLayers.push(layer);
+  return () => {
+    const i = prefixLayers.lastIndexOf(layer);
+    if (i >= 0) {
+      prefixLayers.splice(i, 1);
+    }
+  };
+}
+
+const prefixHandlerFor = (id: string): CommandHandler | undefined => {
+  for (let i = prefixLayers.length - 1; i >= 0; i--) {
+    const { prefix, run } = prefixLayers[i];
+    if (id.startsWith(prefix) && id.length > prefix.length) {
+      return () => run(id.slice(prefix.length));
+    }
+  }
+  return undefined;
+};

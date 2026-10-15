@@ -213,3 +213,21 @@
   outline: 2px solid var(--vault-primary);
   outline-offset: 1px;
 }
+
+.vault-hotkeys__drawings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.vault-hotkeys__drawings .vault-hotkeys__list {
+  align-self: stretch;
+}
+
+.vault-hotkeys__heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}

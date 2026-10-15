@@ -13,9 +13,19 @@ import {
 import { TOOL_DEFAULT_TOOLS, TOOL_LABELS } from "../toolDefaults/toolStyles";
 import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
+import {
+  drawingOpenCommands,
+  makeDrawingOpenCommand,
+  parseDrawingOpenCommandId,
+} from "./drawingCommands";
 import { EDITOR_COMMANDS } from "./editorCommands";
 
-import type { Chord, CommandDefinition, Platform } from "./types";
+import type {
+  Chord,
+  CommandDefinition,
+  HotkeyOverrides,
+  Platform,
+} from "./types";
 
 /** The palette's two modes (VS Code style): Cmd+P files, Cmd+Shift+P commands. */
 export const PALETTE_FILES_ID = "palette.files";
@@ -101,6 +111,84 @@ const SORT_COMMANDS: CommandDefinition[] = SORT_ORDERS.map((order) => ({
   keys: { default: [] },
   when: ["vaultOpen", "!modalOpen"],
 }));
+
+const WHEN_LINK_SELECTION = [
+  "drawingOpen",
+  "!textEditing",
+  "!modalOpen",
+] as const;
+
+/**
+ * Links (P1). The key set follows Obsidian's Mod+Alt family, which Excalidraw
+ * leaves free (its link key is plain Mod+K). Link hints would be a plain "F"
+ * like Vimium, but F is Excalidraw's Frame tool and the dispatcher claims keys
+ * first, so the default is Shift+F (free in Excalidraw); rebindable.
+ */
+const LINKS_COMMANDS: CommandDefinition[] = [
+  {
+    id: "links.linkSelection",
+    title: "Links: Link selection to drawing…",
+    category: "Links",
+    keys: { default: ["Mod+Alt+K"] },
+    when: [...WHEN_LINK_SELECTION, "writable"],
+  },
+  {
+    id: "links.insert",
+    title: "Links: Insert link…",
+    category: "Links",
+    keys: { default: [] },
+    when: [...WHEN_LINK_SELECTION, "writable"],
+  },
+  {
+    id: "links.openUnderSelection",
+    title: "Links: Open link under selection",
+    category: "Links",
+    keys: { default: ["Mod+Alt+Enter"] },
+    when: [...WHEN_LINK_SELECTION],
+  },
+  {
+    id: "links.toggleDock",
+    title: "Links: Toggle backlinks panel",
+    category: "Links",
+    keys: { default: ["Mod+Alt+B"] },
+    when: ["drawingOpen", "!modalOpen"],
+  },
+  {
+    id: "links.back",
+    title: "Links: Go back",
+    category: "Links",
+    keys: { default: ["Mod+Alt+ArrowLeft"] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "links.forward",
+    title: "Links: Go forward",
+    category: "Links",
+    keys: { default: ["Mod+Alt+ArrowRight"] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "links.copyLinkToDrawing",
+    title: "Links: Copy link to this drawing",
+    category: "Links",
+    keys: { default: [] },
+    when: ["drawingOpen", "!modalOpen"],
+  },
+  {
+    id: "links.hints",
+    title: "Links: Show link hints",
+    category: "Links",
+    keys: { default: ["Shift+F"] },
+    when: ["canvasFocus", "!textEditing", "!modalOpen", "drawingOpen"],
+  },
+  {
+    id: "links.bindDrawingHotkey",
+    title: "Links: Assign hotkey to this drawing",
+    category: "Links",
+    keys: { default: [] },
+    when: ["drawingOpen", "!modalOpen"],
+  },
+];
 
 export const COMMANDS: readonly CommandDefinition[] = [
   {
@@ -348,14 +436,28 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...EDITOR_COMMANDS,
   ...PEN_COMMANDS,
   ...TOOL_DEFAULT_COMMANDS,
+  ...LINKS_COMMANDS,
 ];
 
 const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(
   COMMANDS.map((command) => [command.id, command]),
 );
 
-export const getCommand = (id: string): CommandDefinition | undefined =>
-  BY_ID.get(id);
+/** A static command, or the "Open drawing" command of a `drawing.open:` id. */
+export const getCommand = (id: string): CommandDefinition | undefined => {
+  const path = parseDrawingOpenCommandId(id);
+  return (
+    BY_ID.get(id) ?? (path === null ? undefined : makeDrawingOpenCommand(path))
+  );
+};
+
+/** The static registry plus one command per drawing bound in `[hotkeys]`. */
+export const allCommands = (
+  overrides: HotkeyOverrides,
+): readonly CommandDefinition[] => {
+  const dynamic = drawingOpenCommands(overrides);
+  return dynamic.length > 0 ? [...COMMANDS, ...dynamic] : COMMANDS;
+};
 
 /** Older ids still accepted in `[hotkeys]` (see CommandDefinition.legacy). */
 const LEGACY_IDS: ReadonlySet<string> = new Set(
@@ -363,7 +465,7 @@ const LEGACY_IDS: ReadonlySet<string> = new Set(
 );
 
 export const isCommandId = (id: string): boolean =>
-  BY_ID.has(id) || LEGACY_IDS.has(id);
+  BY_ID.has(id) || LEGACY_IDS.has(id) || parseDrawingOpenCommandId(id) !== null;
 
 /** Default chords on a platform ([] = unassigned). */
 export const defaultKeys = (

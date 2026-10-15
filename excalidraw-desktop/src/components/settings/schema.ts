@@ -22,6 +22,7 @@ export type SettingsPageId =
   | "drawing"
   | "tools"
   | "files"
+  | "links"
   | "hotkeys";
 
 export interface SettingsPage {
@@ -53,6 +54,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
     testId: "tool-defaults-page",
   },
   { id: "files", label: "Files", group: "Options" },
+  { id: "links", label: "Links", group: "Options" },
   { id: "hotkeys", label: "Hotkeys", group: "Options" },
 ];
 
@@ -428,6 +430,75 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["templates", "template", "folder", "location"],
     configKey: "files.templates_folder",
     perVault: true,
+  },
+
+  // ---- Links ----
+  {
+    id: "link-format",
+    page: "links",
+    label: "New Link Format",
+    description:
+      "How a link to another drawing is written: the shortest unique name, a path relative to this drawing, or the full path from the vault root.",
+    keywords: [
+      "wikilink",
+      "path",
+      "shortest",
+      "relative",
+      "absolute",
+      "format",
+    ],
+    configKey: "links.new_link_format",
+  },
+  {
+    id: "link-shape-format",
+    page: "links",
+    label: "Shape Link Format",
+    description:
+      "How a link on a shape is stored: [[Name]] (works with Obsidian) or a vaultdraw:// URL (opens in other Excalidraw apps).",
+    keywords: ["wikilink", "url", "vaultdraw", "obsidian", "element link"],
+    configKey: "links.shape_link_format",
+  },
+  {
+    id: "link-open-modifier",
+    page: "links",
+    label: "Open Link Modifier",
+    description:
+      "Key to hold while clicking a link to open the drawing it points to.",
+    keywords: ["click", "modifier", "cmd", "ctrl", "alt", "shift", "mod"],
+    configKey: "links.open_modifier",
+  },
+  {
+    id: "link-update-on-rename",
+    page: "links",
+    label: "Update Links on Rename",
+    description:
+      "When a drawing is renamed or moved, rewrite the links that point to it: always, never, or ask each time.",
+    keywords: [
+      "rename",
+      "move",
+      "rewrite",
+      "automatically",
+      "ask",
+      "internal links",
+    ],
+    configKey: "links.update_on_rename",
+  },
+  {
+    id: "link-autocomplete",
+    page: "links",
+    label: "Link Suggestions",
+    description: "Suggest drawings while you type [[ in a text element.",
+    keywords: ["autocomplete", "suggest", "popup", "wikilink", "[["],
+    configKey: "links.autocomplete",
+  },
+  {
+    id: "link-hint-chars",
+    page: "links",
+    label: "Hint Characters",
+    description:
+      "Letters used for link hints (Vim style). At least 2 different lowercase characters, no spaces.",
+    keywords: ["hint", "vimium", "keys", "letters", "alphabet", "keyboard"],
+    configKey: "links.hint_chars",
   },
 
   // ---- Hotkeys ----

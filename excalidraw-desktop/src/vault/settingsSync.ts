@@ -49,6 +49,11 @@ import {
   isExpandedFolders,
   isPaperColor,
   isPaperMajorEvery,
+  isHintChars,
+  isNewLinkFormat,
+  isOpenModifier,
+  isShapeLinkFormat,
+  isUpdateOnRename,
   isPaperOpacity,
   isPaperSpacing,
   isPaperStyle,
@@ -156,6 +161,12 @@ type ConfigField =
   | "navigatorSort"
   | "newDrawingFolder"
   | "templatesFolder"
+  | "linkNewFormat"
+  | "linkShapeFormat"
+  | "linkOpenModifier"
+  | "linkUpdateOnRename"
+  | "linkAutocomplete"
+  | "linkHintChars"
   | "penPresets"
   | "laserColor"
   | "laserSize"
@@ -366,6 +377,43 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     key: "files.templates_folder",
     expected: 'a non-empty folder path inside the vault like "Templates"',
     valid: (v) => isVaultRelativeFolder(v) && v !== "",
+  },
+  {
+    field: "linkNewFormat",
+    key: "links.new_link_format",
+    expected: '"shortest", "relative" or "absolute"',
+    valid: isNewLinkFormat,
+  },
+  {
+    field: "linkShapeFormat",
+    key: "links.shape_link_format",
+    expected: '"wikilink" or "vaultdraw-url"',
+    valid: isShapeLinkFormat,
+  },
+  {
+    field: "linkOpenModifier",
+    key: "links.open_modifier",
+    expected: '"mod", "alt", "ctrl" or "shift"',
+    valid: isOpenModifier,
+  },
+  {
+    field: "linkUpdateOnRename",
+    key: "links.update_on_rename",
+    expected: 'true, false or "ask"',
+    valid: isUpdateOnRename,
+  },
+  {
+    field: "linkAutocomplete",
+    key: "links.autocomplete",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "linkHintChars",
+    key: "links.hint_chars",
+    expected:
+      'at least 2 different lowercase characters with no spaces, like "asdfghjkl"',
+    valid: isHintChars,
   },
   {
     field: "penPresets",

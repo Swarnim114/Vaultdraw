@@ -19,7 +19,8 @@ export type CommandCategory =
   | "Templates"
   | "Tags"
   | "Paper"
-  | "Library";
+  | "Library"
+  | "Links";
 
 /**
  * Facts the dispatcher checks before claiming a key.
