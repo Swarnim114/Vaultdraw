@@ -83,12 +83,12 @@ test("Dracula via Settings themes the app, Excalidraw UI and (with sync) the can
 
   // App chrome tokens
   await expect.poll(() => rootVar(page, "--vault-bg")).not.toBe(defaultBg);
-  const menuBg = await rootVar(page, "--vault-menu-bg");
+  const surfaceBg = await rootVar(page, "--vault-surface");
   const canvasColor = await rootVar(page, "--vault-canvas");
-  expect(menuBg).toMatch(/^#/);
+  expect(surfaceBg).toMatch(/^#/);
 
   // Excalidraw's islands follow the theme
-  const [r, g, b] = hexToRgb(menuBg);
+  const [r, g, b] = hexToRgb(surfaceBg);
   await expect.poll(() => islandBackground(page)).toBe(`rgb(${r}, ${g}, ${b})`);
   expect(await islandBackground(page)).not.toBe(defaultIsland);
 
