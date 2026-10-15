@@ -338,9 +338,8 @@ test("8. keyboard shortcuts work immediately on a new drawing", async ({
   page,
 }, info) => {
   const errors = trackErrors(page);
-  await page
-    .locator(".vault-header button[title='New drawing in the current folder']")
-    .click();
+  // The header button is gone; the command (Mod+N) creates in the current folder.
+  await page.keyboard.press("ControlOrMeta+KeyN");
   await expect(page.locator(canvas)).toBeVisible();
   await page.waitForTimeout(500);
 

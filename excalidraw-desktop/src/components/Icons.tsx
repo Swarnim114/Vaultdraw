@@ -621,8 +621,8 @@ export const IconFolderOpen = strokeIcon(
   <path d="m6 14 1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6a2 2 0 0 1-1.9 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2" />,
 );
 
-/** Collapse all folders (chevrons pointing in). */
+/** Collapse all folders (list with collapse chevrons). */
 export const IconCollapseAll = strokeIcon(
   15,
-  <path d="m7 20 5-5 5 5M7 4l5 5 5-5" />,
+  <path d="m3 10 2.5-2.5L3 5M3 19l2.5-2.5L3 14M10 6h11M10 12h11M10 18h11" />,
 );

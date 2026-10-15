@@ -135,7 +135,8 @@ test("default folder is created and receives the new drawing", async ({
   const errors = trackErrors(page);
   await seedPreferences(page, { newDrawingFolder: "Inbox/Deep" });
   await openVault(page);
-  await page.getByRole("button", { name: "New Drawing" }).first().click();
+  // The header button is gone; the command (Mod+N) creates in the default folder.
+  await page.keyboard.press("ControlOrMeta+KeyN");
   await expect(page.locator(".vault-editor canvas.interactive")).toBeVisible();
 
   const listing = await page.evaluate(async () => {
