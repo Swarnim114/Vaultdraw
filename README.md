@@ -11,6 +11,7 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - Detects changes made outside the app without losing unsaved edits
 - Export image dialog (Shift+Cmd+E): PNG or SVG at 1x, 2x or 3x, with or without background, dark mode, embedded scene and selection only. The last-used scale, background and embed setting are remembered. Exports always use the drawing's own colours, even with "Sync canvas with theme" on
 - Copy PNG or SVG to the clipboard, from the export dialog or the right-click menu. On macOS the image goes to the native clipboard
+- Page mode: draw on simulated pages (A4, Letter, tablet, custom, ...) with vertical scrolling, separate sheets or one continuous page, and export them as a PDF with one page per page
 - Insert Mermaid diagrams from the main menu or More tools. Conversion runs fully offline, with no AI
 - Works fully offline (fonts and assets are bundled)
 - Keyboard first: Cmd/Ctrl+P opens any drawing by name, Cmd/Ctrl+Shift+P runs any command (every editor action and every Vaultdraw feature), with customisable hotkeys (Settings → Hotkeys)
@@ -58,6 +59,15 @@ color = ""                  # "#rrggbb"; "" = automatic
 opacity = 1                 # 0.1 to 1
 major_every = 0             # grid and graph: a stronger line every N, 1 to 20 (0 = the style's own)
 margin_line = true          # ruled lines: draw the margin line
+
+[page]                       # page mode for new drawings; see "Page mode"
+mode = "normal"              # normal (infinite canvas) | page
+layout = "separate"          # separate (sheets with a gap) | continuous (one long page)
+size = "a4"                  # a3 | a4 | a5 | b5 | letter | legal | tablet | tabletLarge | phone | custom
+orientation = "portrait"     # portrait | landscape
+width = 0                    # custom size in px, 100 to 5000 (0 = unset)
+height = 0
+paper_theme = "normal"       # normal | old_school | match
 
 [saving]
 autosave_delay_ms = 500      # idle time before an edit is written to disk
@@ -276,6 +286,18 @@ A drawing can sit on paper: plain, grid, ruled lines (optionally with a margin l
 - **Per drawing.** Choose **Paper** in the canvas main menu to change the open drawing's style, or **Paper settings…** to tune it. **Use app default** returns the drawing to the app default. **Make app default** uses the drawing's pattern for new drawings. Changing the default does not change existing drawings.
 - **In the file.** The pattern is stored as `appState.viewBackgroundPattern`. Drawings without it, such as older files, open plain. excalidraw.com opens these files with a plain background, and saving there drops the pattern.
 - **Display and export.** On screen the pattern follows dark mode and **Sync canvas with theme**. Exports use Excalidraw's standard colours. The export dialog has a **Background pattern** switch, shown only for drawings with a pattern; it needs **Background** on.
+
+## Page mode
+
+A drawing can be an infinite canvas (Normal) or simulated paper (Page), like a notes app: the pages are a fixed width, you scroll vertically, and the view always fits the page width.
+
+- **Layouts.** **Separate pages** are fixed-size sheets stacked with a gap; drawing near the end of the last page adds a new one. **Continuous** is one long page of fixed width that grows downward as you fill it.
+- **Sizes.** A3, A4, A5, B5, Letter, Legal, iPad 11-inch and 13-inch, Phone, or a custom width and height in pixels; portrait or landscape.
+- **Outside the page is off limits.** You can't start a stroke, drag, resize or paste outside the pages, and with separate pages a shape stays on its page. Sideways panning is locked; PageUp/PageDown jump between pages. A drawing switched to page mode keeps everything it had: content outside the pages stays visible but can't be edited there, and **Fit content to page** moves it in.
+- **Paper themes.** **Normal** is clean white paper, **Old school** is warm cream paper with blue ruled lines and a red margin (a plain drawing becomes ruled; pick another paper style afterwards if you prefer), and **Match current theme** follows the app theme on screen, like **Sync canvas with theme**. The paper style itself (lines, grid, dots, ...) is the drawing's background pattern (see Notebook backgrounds).
+- **Export.** **Export: PDF** (command palette, or **Export as PDF…** in a drawing's navigator menu) writes one PDF page per page, fully offline; a continuous page is split at the page size. PNG and SVG export the content as before; the export dialog's **Page shape** switch exports whole pages instead.
+- **Defaults and per drawing.** **Settings → Page** sets the mode, layout, size, orientation and paper theme of new drawings (the `[page]` table in `config.toml`). The canvas main menu's **Page** row opens the drawing's page setup, with **Make app default**. The setup is saved in the drawing (`appState.pageSetup`), so it reopens the same; other Excalidraw apps open the file as a normal canvas.
+- **Keyboard.** Every action is a palette command and can get a key on the Hotkeys page: `Page mode: On/Off/Toggle`, `Page layout: Continuous/Separate pages`, `Page size: A4` (every size), `Page orientation: Portrait/Landscape`, `Paper theme: Normal/Old school/Match current theme`, `Page setup…`, `Fit content to page`, `Next page`/`Previous page` (PageDown/PageUp) and `Export: PDF`.
 
 ## Tool defaults
 
