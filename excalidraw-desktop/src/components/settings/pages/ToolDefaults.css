@@ -6,13 +6,15 @@
 
 .vault-tooldef {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
 }
 
 .vault-tooldef-grid {
+  align-self: stretch;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px 12px;
@@ -32,7 +34,9 @@
   color: var(--vault-text-muted);
 }
 
-.vault-tooldef-field .vault-input {
+.vault-tooldef-field .vault-input,
+.vault-tooldef-field .vault-input--number {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
 }
