@@ -26,6 +26,7 @@ struct Fake {
     next: u32,
     disk_low_calls: u32,
     live_rev: Option<String>,
+    live_sizes: HashMap<PathBuf, u64>,
 }
 
 impl Backend for Fake {
@@ -48,6 +49,9 @@ impl Backend for Fake {
     fn disk_low(&mut self, _keep: &HashSet<PathBuf>) {
         self.disk_low_calls += 1;
     }
+    fn live_size(&mut self, file: &Path, raw: u64) -> u64 {
+        self.live_sizes.get(file).copied().unwrap_or(raw)
+    }
     fn note_path(&mut self, _: &str) {}
     fn disk_ok(&mut self) {}
     fn error(&mut self, _: &str, _: &str) {}
@@ -63,7 +67,7 @@ struct H {
 fn harness(interval: u32) -> H {
     let dir = tempfile::tempdir().unwrap();
     let clock = TestClock::new(T0);
-    let fake = Fake { clock: clock.clone(), dir: dir.path().to_path_buf(), writes: vec![], latest: HashMap::new(), removed: vec![], open_size: 10_000, next: 0, disk_low_calls: 0, live_rev: None };
+    let fake = Fake { clock: clock.clone(), dir: dir.path().to_path_buf(), writes: vec![], latest: HashMap::new(), removed: vec![], open_size: 10_000, next: 0, disk_low_calls: 0, live_rev: None, live_sizes: HashMap::new() };
     let mut core = Core::new(fake, clock.clone());
     core.configure(settings(interval));
     H { core, clock, _dir: dir }
@@ -105,7 +109,7 @@ const P: &str = "a.excalidraw";
 fn unconfigured_is_off_and_nothing_is_written_or_kept() {
     let dir = tempfile::tempdir().unwrap();
     let clock = TestClock::new(T0);
-    let mut core = Core::new(Fake { clock: clock.clone(), dir: dir.path().into(), writes: vec![], latest: HashMap::new(), removed: vec![], open_size: 1, next: 0, disk_low_calls: 0, live_rev: None }, clock.clone());
+    let mut core = Core::new(Fake { clock: clock.clone(), dir: dir.path().into(), writes: vec![], latest: HashMap::new(), removed: vec![], open_size: 1, next: 0, disk_low_calls: 0, live_rev: None, live_sizes: HashMap::new() }, clock.clone());
     assert!(!core.on());
     core.on_opened(Some(P.into()), Some("r".repeat(64)), None);
     let f = dir.path().join("c");
@@ -254,6 +258,27 @@ fn shrink_rule_versions_the_previous_state_first() {
     let mut h = harness(5);
     h.core.on_committed(P.into(), "r1".into(), 50_000, None);
     h.core.on_committed(P.into(), "r2".into(), 10, None);
+    assert!(h.core.b.writes.is_empty());
+}
+
+#[test]
+fn shrink_rule_compares_live_size_so_tombstones_do_not_hide_a_cleared_canvas() {
+    // Cmd+Delete keeps every element as an isDeleted tombstone: the raw file barely shrinks.
+    let mut h = harness(5);
+    h.seed_version(P, "v0");
+    let c1 = h.commit(P, "r1", 100_000);
+    h.core.b.live_sizes.insert(c1, 100_000);
+    let f = h._dir.path().join("c-r2");
+    std::fs::write(&f, b"x").unwrap();
+    h.core.b.live_sizes.insert(f.clone(), 3_000); // raw 98 KB, live 3 KB
+    h.core.on_committed(P.into(), "r2".into(), 98_000, Some(f));
+    assert_eq!(h.reasons(), vec![Reason::BeforeClear]);
+    assert_eq!(h.core.b.writes[0].revision.as_deref(), Some("r1"));
+    // the same raw sizes without tombstone knowledge do not fire
+    let mut h = harness(5);
+    h.seed_version(P, "v0");
+    h.commit(P, "r1", 100_000);
+    h.core.on_committed(P.into(), "r2".into(), 98_000, None);
     assert!(h.core.b.writes.is_empty());
 }
 

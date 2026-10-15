@@ -91,6 +91,8 @@ pub trait Backend {
     fn latest(&mut self, path: &str) -> Option<Latest>;
     fn write(&mut self, req: &VersionRequest) -> Result<Outcome>;
     fn remove_clone(&mut self, file: &Path);
+    /// Size of a staged clone without `isDeleted` tombstones (shrink rule); `raw` when unknown.
+    fn live_size(&mut self, file: &Path, raw: u64) -> u64;
     /// Records which drawing a staged key stands for (so a crash-survivor clone can be attributed).
     fn note_path(&mut self, path: &str);
     /// Free space fell below the floor: raise the flag, drop clones that are not `keep`.
@@ -407,6 +409,9 @@ impl Backend for RealBackend {
     }
     fn remove_clone(&mut self, file: &Path) {
         staging::remove_clone(file);
+    }
+    fn live_size(&mut self, _file: &Path, raw: u64) -> u64 {
+        raw
     }
     fn note_path(&mut self, path: &str) {
         let key = staging::key_for(path, self.flags.fold.load(std::sync::atomic::Ordering::Relaxed));

@@ -81,11 +81,11 @@ impl HistorySettings {
     /// Clamps every field into its valid range (interval 0 = no timed versions, cap 0 = none).
     pub fn clamped(mut self) -> HistorySettings {
         self.interval_minutes = self.interval_minutes.min(24 * 60);
-        self.keep_all_hours = self.keep_all_hours.min(24 * 365);
-        self.keep_hourly_hours = self.keep_hourly_hours.min(24 * 365);
+        self.keep_all_hours = self.keep_all_hours.min(720);
+        self.keep_hourly_hours = self.keep_hourly_hours.min(8760);
         self.keep_daily_days = self.keep_daily_days.min(3650);
-        self.keep_weekly_weeks = self.keep_weekly_weeks.min(520);
-        self.size_cap_mb = self.size_cap_mb.min(1024 * 1024);
+        self.keep_weekly_weeks = self.keep_weekly_weeks.min(5200);
+        self.size_cap_mb = self.size_cap_mb.min(1_000_000);
         self
     }
 }

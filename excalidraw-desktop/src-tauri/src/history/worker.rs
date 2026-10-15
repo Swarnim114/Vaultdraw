@@ -128,6 +128,8 @@ pub struct CatchUp {
 struct Pending {
     rev: String,
     size: u64,
+    /// Size without `isDeleted` tombstones (what the shrink rule compares).
+    live: u64,
     staged: Option<PathBuf>,
 }
 
@@ -136,6 +138,7 @@ struct OpenClone {
     file: PathBuf,
     rev: String,
     size: u64,
+    live: u64,
 }
 
 #[derive(Default)]
@@ -344,8 +347,9 @@ impl<B: Backend> Core<B> {
         self.tracks.entry(path.clone()).or_default().noted = true;
         if let Some(file) = clone {
             let size = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+            let live = self.b.live_size(&file, size);
             if let Some(t) = self.tracks.get_mut(&path) {
-                t.open_clone = Some(OpenClone { file, rev: revision, size });
+                t.open_clone = Some(OpenClone { file, rev: revision, size, live });
             }
         }
     }
@@ -371,6 +375,8 @@ impl<B: Backend> Core<B> {
             return;
         }
         let now = self.clock.now_ms();
+        // Live size (tombstones excluded) of this commit, computed here on the worker, never on the save path.
+        let live = staged.as_ref().map_or(size, |f| self.b.live_size(f, size));
         if staged.is_some() && !self.tracks.get(&path).is_some_and(|t| t.noted) {
             self.b.note_path(&path);
             self.tracks.entry(path.clone()).or_default().noted = true;
@@ -398,7 +404,7 @@ impl<B: Backend> Core<B> {
         } else if let Some((src_size, source, rev, vsize, verify)) = Self::previous_state(&prev_pending, &open) {
             // Shrink rule (x): a commit ≤ 50% of the previous state (previous ≥ 4 KB) versions the
             // previous state first (Cmd+Delete, select-all + Delete, paste-over, clear canvas).
-            if src_size >= SHRINK_MIN_BYTES && size * 2 <= src_size {
+            if src_size >= SHRINK_MIN_BYTES && live * 2 <= src_size {
                 let req = self.request(&path, Reason::BeforeClear, source, Some(rev), Some(vsize), verify);
                 if matches!(self.run(&req), Ok(Outcome::Written(_))) {
                     if let Some(t) = self.tracks.get_mut(&path) {
@@ -413,7 +419,7 @@ impl<B: Backend> Core<B> {
             t.base_ms = base_fallback;
         }
         // Coalescing: only the latest pending clone is kept; superseded ones are deleted.
-        let old = t.pending.replace(Pending { rev: revision, size, staged: staged.clone() });
+        let old = t.pending.replace(Pending { rev: revision, size, live, staged: staged.clone() });
         t.last_commit_ms = now;
         t.retry_at = None;
         if let Some(o) = old.and_then(|o| o.staged) {
@@ -427,9 +433,9 @@ impl<B: Backend> Core<B> {
     #[allow(clippy::type_complexity)]
     fn previous_state(pending: &Option<Pending>, open: &Option<OpenClone>) -> Option<(u64, Source, String, u64, bool)> {
         if let Some(p) = pending {
-            return p.staged.clone().map(|f| (p.size, Source::Clone(f), p.rev.clone(), p.size, false));
+            return p.staged.clone().map(|f| (p.live, Source::Clone(f), p.rev.clone(), p.size, false));
         }
-        open.as_ref().map(|o| (o.size, Source::Clone(o.file.clone()), o.rev.clone(), o.size, true))
+        open.as_ref().map(|o| (o.live, Source::Clone(o.file.clone()), o.rev.clone(), o.size, true))
     }
 
     pub fn snapshot(&mut self, path: &str, reason: Reason) -> Result<SnapshotOutcome> {
