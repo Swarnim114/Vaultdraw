@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getCommand } from "../commands/commands";
 import { getRegisteredHandler } from "../commands/handlerRegistry";
+import { toastStore } from "../toasts/toastStore";
 
 import { clearAllToolMemory, getToolMemory } from "./toolMemory";
 import { TOOL_DEFAULT_TOOLS } from "./toolStyles";
@@ -48,10 +49,10 @@ function setup() {
   const updateScene = vi.fn(({ appState }: { appState: object }) => {
     state = { ...state, ...appState };
   });
-  const setToast = vi.fn();
+  const setToast = vi.spyOn(toastStore, "push").mockImplementation(() => {});
+  setToast.mockClear();
   const api = {
     updateScene,
-    setToast,
     getAppState: () => state,
     getSceneElements: () => elements,
   };

@@ -18,6 +18,8 @@ import type {
   LibraryUIOptions,
 } from "@excalidraw/excalidraw/types";
 
+import { toastStore } from "../toasts/toastStore";
+
 import { LibraryStore } from "./libraryStore";
 
 import type { LibraryRepository } from "./types";
@@ -80,7 +82,7 @@ export const useVaultLibrary = (
     for (const message of store.getErrors()) {
       if (api && !toasted.current.has(message)) {
         toasted.current.add(message);
-        api.setToast({ message, duration: 10000, closable: true });
+        toastStore.push({ message, kind: "error", durationMs: 10000 });
       }
     }
   }, [api, store, version]);

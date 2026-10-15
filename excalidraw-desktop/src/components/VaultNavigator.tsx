@@ -57,6 +57,7 @@ import { TagChips } from "./tags/TagChips";
 import { TagsPanel, type TagsPanelHandle } from "./tags/TagsPanel";
 
 import { ConfirmModal } from "./ConfirmModal";
+import { Dialog } from "./Dialog";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
 import { flattenTree, folderDrawingCounts } from "./tree/flattenTree";
@@ -901,84 +902,60 @@ export const VaultNavigator = ({
 
       {/* Create Modal */}
       {createKind && (
-        <div
-          className="vault-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setCreateKind(null);
-            }
-          }}
+        <Dialog
+          title={`New ${createKind === "drawing" ? "Drawing" : "Folder"}${
+            createParent ? ` in /${createParent}` : ""
+          }`}
+          titleId="create-entry-title"
+          onClose={() => setCreateKind(null)}
+          onSubmit={handleCreateSubmit}
+          footer={
+            <>
+              <button
+                type="button"
+                className="vault-btn"
+                onClick={() => setCreateKind(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="vault-btn vault-btn--primary"
+                disabled={!createName.trim()}
+              >
+                Create
+              </button>
+            </>
+          }
         >
-          <div className="vault-modal">
-            <form onSubmit={handleCreateSubmit}>
-              <div className="vault-modal__header">
-                <h3 className="vault-modal__title">
-                  New {createKind === "drawing" ? "Drawing" : "Folder"}
-                  {createParent && ` in /${createParent}`}
-                </h3>
-                <button
-                  type="button"
-                  className="vault-btn vault-btn--ghost vault-btn--icon"
-                  onClick={() => setCreateKind(null)}
-                >
-                  <IconClose />
-                </button>
-              </div>
-              <div className="vault-modal__body">
-                <div className="vault-field">
-                  <label htmlFor="create-entry-name">Name</label>
-                  <input
-                    id="create-entry-name"
-                    type="text"
-                    className="vault-input"
-                    autoFocus
-                    value={createName}
-                    onChange={(e) => {
-                      setCreateName(e.target.value);
-                      if (createError) {
-                        setCreateError(null);
-                      }
-                    }}
-                    placeholder={
-                      createKind === "drawing" ? "My Drawing" : "Folder Name"
-                    }
-                  />
-                  {createKind === "drawing" && (
-                    <span
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--vault-text-faint)",
-                      }}
-                    >
-                      Extension .excalidraw will be added automatically
-                    </span>
-                  )}
-                  {createError && (
-                    <div className="vault-error-text">{createError}</div>
-                  )}
-                </div>
-              </div>
-              <div className="vault-modal__footer">
-                <button
-                  type="button"
-                  className="vault-btn"
-                  onClick={() => setCreateKind(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="vault-btn vault-btn--primary"
-                  disabled={!createName.trim()}
-                >
-                  Create
-                </button>
-              </div>
-            </form>
+          <div className="vault-field">
+            <label htmlFor="create-entry-name">Name</label>
+            <input
+              id="create-entry-name"
+              type="text"
+              className="vault-input"
+              autoFocus
+              value={createName}
+              onChange={(e) => {
+                setCreateName(e.target.value);
+                if (createError) {
+                  setCreateError(null);
+                }
+              }}
+              placeholder={
+                createKind === "drawing" ? "My Drawing" : "Folder Name"
+              }
+            />
+            {createKind === "drawing" && (
+              <span className="vd-dialog__hint">
+                Extension .excalidraw will be added automatically
+              </span>
+            )}
+            {createError && (
+              <div className="vault-error-text">{createError}</div>
+            )}
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Rename Modal */}
@@ -991,7 +968,6 @@ export const VaultNavigator = ({
             setRenameTarget(null);
           }}
           onCancel={() => setRenameTarget(null)}
-          ownerDocument={ownerDocument}
         />
       )}
 
@@ -1006,7 +982,6 @@ export const VaultNavigator = ({
             setMoveTarget(null);
           }}
           onCancel={() => setMoveTarget(null)}
-          ownerDocument={ownerDocument}
         />
       )}
 
@@ -1018,8 +993,8 @@ export const VaultNavigator = ({
           }`}
           message={
             trashTarget.kind === "folder"
-              ? `Move "${trashTarget.name}" to OS Trash? Note: Non-empty folders cannot be trashed to prevent losing drawings.`
-              : `Move "${trashTarget.name}" to OS Trash?`
+              ? `Move the folder “${trashTarget.name}” to the trash? You can restore it from the system Trash. Only empty folders can be trashed, so move or delete its drawings first.`
+              : `Move “${trashTarget.name}” to the trash? You can restore it from the system Trash.`
           }
           confirmLabel="Move to Trash"
           isDanger
@@ -1028,7 +1003,6 @@ export const VaultNavigator = ({
             setTrashTarget(null);
           }}
           onCancel={() => setTrashTarget(null)}
-          ownerDocument={ownerDocument}
         />
       )}
     </aside>

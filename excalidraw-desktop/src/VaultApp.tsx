@@ -103,8 +103,10 @@ import { ConflictDialog } from "./components/ConflictDialog";
 import { RecoveryDialog } from "./components/RecoveryDialog";
 
 import { QuickSwitcher } from "./components/QuickSwitcher";
+import { Banner } from "./components/Banner";
+import { Toasts } from "./components/Toasts";
+import { toastStore } from "./toasts/toastStore";
 import { ConfirmModal } from "./components/ConfirmModal";
-import { IconClose } from "./components/Icons";
 import { VaultHome } from "./components/VaultHome";
 
 import "./components/VaultShell.css";
@@ -1179,12 +1181,11 @@ export const VaultApp = ({
     showNavigator: () => showNavigator(),
     openHotkeys: () => openSettings("hotkeys"),
     notify: (message, type) => {
-      setGlobalAlert({ message, type });
+      // Confirmations are toasts; failures stay a banner until dismissed.
       if (type === "info") {
-        (win ?? window).setTimeout(
-          () => setGlobalAlert((a) => (a?.message === message ? null : a)),
-          6000,
-        );
+        toastStore.push({ message });
+      } else {
+        setGlobalAlert({ message, type });
       }
     },
   });
@@ -1745,21 +1746,14 @@ export const VaultApp = ({
         className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
       >
         {visibleProblem && (
-          <div
-            className="vault-global-alert vault-settings-alert"
-            role="alert"
-            data-testid="settings-problem-banner"
-          >
-            <span>{visibleProblem}</span>
-            <button
-              type="button"
-              className="vault-btn vault-btn--ghost vault-btn--icon"
-              onClick={() => setDismissedProblem(problemText)}
-              aria-label="Dismiss settings problem"
-            >
-              <IconClose />
-            </button>
-          </div>
+          <Banner
+            kind="warning"
+            className="vault-settings-alert"
+            testId="settings-problem-banner"
+            message={visibleProblem}
+            onDismiss={() => setDismissedProblem(problemText)}
+            dismissLabel="Dismiss settings problem"
+          />
         )}
         <Onboarding
           recentVaults={recentVaults}
@@ -1840,54 +1834,6 @@ export const VaultApp = ({
       ref={setRootNode}
       className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
     >
-      {visibleProblem && (
-        <div
-          className="vault-global-alert vault-settings-alert"
-          role="alert"
-          data-testid="settings-problem-banner"
-        >
-          <span>{visibleProblem}</span>
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={() => setDismissedProblem(problemText)}
-            aria-label="Dismiss settings problem"
-          >
-            <IconClose />
-          </button>
-        </div>
-      )}
-      {globalAlert && (
-        <div
-          className="vault-global-alert"
-          role="alert"
-          style={{
-            backgroundColor:
-              globalAlert.type === "info"
-                ? "var(--vault-primary-light)"
-                : "var(--vault-danger-bg)",
-            color:
-              globalAlert.type === "info"
-                ? "var(--vault-primary)"
-                : "var(--vault-danger)",
-            borderColor:
-              globalAlert.type === "info"
-                ? "var(--vault-primary-border)"
-                : "var(--vault-danger-border)",
-          }}
-        >
-          <span>{globalAlert.message}</span>
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={() => setGlobalAlert(null)}
-            aria-label="Dismiss alert"
-          >
-            <IconClose />
-          </button>
-        </div>
-      )}
-
       <VaultHeader
         vault={vault}
         activePath={activeDoc?.path ?? null}
@@ -1907,6 +1853,24 @@ export const VaultApp = ({
             graphOpen ? "vault-editor-pane--graph" : ""
           }`}
         >
+          {visibleProblem && (
+            <Banner
+              kind="warning"
+              className="vault-settings-alert"
+              testId="settings-problem-banner"
+              message={visibleProblem}
+              onDismiss={() => setDismissedProblem(problemText)}
+              dismissLabel="Dismiss settings problem"
+            />
+          )}
+          {globalAlert && (
+            <Banner
+              kind={globalAlert.type}
+              message={globalAlert.message}
+              onDismiss={() => setGlobalAlert(null)}
+              dismissLabel="Dismiss alert"
+            />
+          )}
           {activeDoc ? (
             <div
               inert={graphOpen}
@@ -2052,7 +2016,6 @@ export const VaultApp = ({
           onReload={handleReloadConflict}
           onSaveCopy={handleSaveConflictCopy}
           onClose={() => setShowConflictDialog(false)}
-          ownerDocument={doc}
         />
       )}
 
@@ -2062,7 +2025,6 @@ export const VaultApp = ({
           repository={repository}
           onOpenRecovered={handleOpenRecovered}
           onClose={() => setShowRecoveryDialog(false)}
-          ownerDocument={doc}
         />
       )}
 
@@ -2133,7 +2095,7 @@ export const VaultApp = ({
       {showCloseDiscardConfirm && (
         <ConfirmModal
           title="Unsaved Changes"
-          message="You have unsaved changes that could not be saved to disk. Discard unsaved changes and close window?"
+          message="Vaultdraw could not save your latest changes to disk. If you close the window now, those changes are lost."
           confirmLabel="Discard and Close"
           cancelLabel="Keep Window Open"
           isDanger
@@ -2157,9 +2119,10 @@ export const VaultApp = ({
             closeAttemptRef.current = false;
             setIsClosing(false);
           }}
-          ownerDocument={doc}
         />
       )}
+
+      <Toasts />
     </div>
   );
 };

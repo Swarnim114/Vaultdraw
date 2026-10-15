@@ -485,7 +485,6 @@ export function useAppLinks(deps: AppLinksDeps) {
       cancelLabel={confirm.cancelLabel}
       onConfirm={() => answer(true)}
       onCancel={() => answer(false)}
-      ownerDocument={deps.doc}
     />
   ) : null;
 

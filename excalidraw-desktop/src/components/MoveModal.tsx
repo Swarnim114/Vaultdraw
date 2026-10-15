@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { getBaseName, isMoveAllowed } from "../vault/treeStore";
+import { getBaseName, getParentPath, isMoveAllowed } from "../vault/treeStore";
 
-import { IconClose, IconFolder } from "./Icons";
+import { Dialog } from "./Dialog";
+import { IconChevronDown, IconChevronRight, IconFolder } from "./Icons";
+import { moveRows } from "./moveTree";
+
+import type { KeyboardEvent } from "react";
 
 interface MoveModalProps {
   sourcePath: string;
@@ -10,48 +14,79 @@ interface MoveModalProps {
   folders: string[]; // List of all known folder paths in vault, e.g. ["", "DSA", "DSA/Dynamic Programming"]
   onMove: (destinationParentPath: string) => void | Promise<void>;
   onCancel: () => void;
-  ownerDocument?: Document | null;
 }
 
+/** Root, and every ancestor of the current location, so it is visible. */
+const initialExpanded = (sourcePath: string): Set<string> => {
+  const open = new Set<string>([""]);
+  let path = getParentPath(sourcePath);
+  while (path !== "") {
+    open.add(path);
+    path = getParentPath(path);
+  }
+  return open;
+};
+
+/**
+ * Move dialog: a mini-tree of the vault's folders with a type-ahead filter.
+ * Keyboard: type to filter, Up/Down to move, Right/Left to expand/collapse (or
+ * step into/out of a folder), Enter to move, Escape to cancel.
+ */
 export const MoveModal = ({
   sourcePath,
   sourceKind,
   folders,
   onMove,
   onCancel,
-  ownerDocument,
 }: MoveModalProps) => {
-  const [selectedFolder, setSelectedFolder] = useState<string>("");
+  const [active, setActive] = useState("");
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(() => initialExpanded(sourcePath));
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const baseId = useId();
 
   useEffect(() => {
-    const doc = ownerDocument;
-    if (!doc) {
-      return;
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
+    inputRef.current?.focus();
+  }, []);
+
+  const rows = useMemo(
+    () => moveRows(folders, expanded, query),
+    [folders, expanded, query],
+  );
+  // Filtering can hide the active row: fall back to the first match.
+  const activeIndex = Math.max(
+    0,
+    rows.findIndex((r) => r.entry.path === active),
+  );
+  const activePath = rows[activeIndex]?.entry.path ?? "";
+
+  useEffect(() => {
+    treeRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [activePath]);
+
+  const select = (path: string) => {
+    setActive(path);
+    setError(null);
+  };
+
+  const setOpen = (path: string, open: boolean) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open) {
+        next.add(path);
+      } else {
+        next.delete(path);
       }
-    };
-    doc.addEventListener("keydown", handleKeyDown);
-    return () => doc.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel, ownerDocument]);
+      return next;
+    });
 
-  const sortedFolders = Array.from(new Set(["", ...folders])).sort((a, b) => {
-    if (a === "") {
-      return -1;
-    }
-    if (b === "") {
-      return 1;
-    }
-    return a.localeCompare(b);
-  });
-
-  const handleConfirm = async () => {
-    const check = isMoveAllowed(sourcePath, selectedFolder);
+  const confirm = async (target: string) => {
+    const check = isMoveAllowed(sourcePath, target);
     if (!check.allowed) {
       setError(check.reason ?? "Invalid move target");
       return;
@@ -59,124 +94,69 @@ export const MoveModal = ({
     setMoving(true);
     setError(null);
     try {
-      await onMove(selectedFolder);
+      await onMove(target);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
       setMoving(false);
     }
   };
 
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.nativeEvent.isComposing || moving) {
+      return;
+    }
+    const row = rows[activeIndex];
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        select(rows[Math.min(rows.length - 1, activeIndex + 1)].entry.path);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        select(rows[Math.max(0, activeIndex - 1)].entry.path);
+        break;
+      case "ArrowRight":
+        // With text in the filter the arrows belong to the caret.
+        if (query === "" && row) {
+          e.preventDefault();
+          if (row.hasChildren && !row.expanded) {
+            setOpen(row.entry.path, true);
+          } else if (row.hasChildren) {
+            select(rows[activeIndex + 1].entry.path);
+          }
+        }
+        break;
+      case "ArrowLeft":
+        if (query === "" && row) {
+          e.preventDefault();
+          if (row.expanded) {
+            setOpen(row.entry.path, false);
+          } else if (row.entry.path !== "") {
+            select(getParentPath(row.entry.path));
+          }
+        }
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (row) {
+          void confirm(row.entry.path);
+        }
+        break;
+    }
+  };
+
   const entryName = getBaseName(sourcePath);
+  const destLabel = activePath === "" ? "the vault root" : `/${activePath}`;
 
   return (
-    <div
-      className="vault-modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="move-modal-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onCancel();
-        }
-      }}
-    >
-      <div className="vault-modal">
-        <div className="vault-modal__header">
-          <h3 id="move-modal-title" className="vault-modal__title">
-            Move {sourceKind === "drawing" ? "Drawing" : "Folder"}
-          </h3>
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onCancel}
-            aria-label="Close"
-          >
-            <IconClose />
-          </button>
-        </div>
-        <div className="vault-modal__body">
-          <p
-            style={{
-              margin: "0 0 12px 0",
-              fontSize: "0.85rem",
-              color: "var(--vault-text-muted)",
-            }}
-          >
-            Select destination folder for <strong>{entryName}</strong>:
-          </p>
-          <div
-            style={{
-              maxHeight: "220px",
-              overflowY: "auto",
-              border: "1px solid var(--vault-border)",
-              borderRadius: "var(--vault-radius)",
-              padding: "4px 0",
-              backgroundColor: "var(--vault-surface)",
-            }}
-          >
-            {sortedFolders.map((f) => {
-              const check = isMoveAllowed(sourcePath, f);
-              const isSelected = selectedFolder === f;
-              const depth = f === "" ? 0 : f.split("/").length;
-              const label = f === "" ? "/ (Vault root)" : f;
-
-              return (
-                <div
-                  key={f}
-                  role="button"
-                  tabIndex={check.allowed ? 0 : -1}
-                  aria-disabled={!check.allowed}
-                  onClick={() => {
-                    if (check.allowed) {
-                      setSelectedFolder(f);
-                      setError(null);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (check.allowed && (e.key === "Enter" || e.key === " ")) {
-                      setSelectedFolder(f);
-                      setError(null);
-                    }
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "6px 12px",
-                    paddingLeft: `${12 + depth * 12}px`,
-                    fontSize: "0.82rem",
-                    cursor: check.allowed ? "pointer" : "not-allowed",
-                    opacity: check.allowed ? 1 : 0.45,
-                    backgroundColor: isSelected
-                      ? "var(--vault-surface-active)"
-                      : "transparent",
-                    color: isSelected
-                      ? "var(--vault-primary)"
-                      : "var(--vault-text)",
-                    fontWeight: isSelected ? 600 : 400,
-                  }}
-                >
-                  <IconFolder />
-                  <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {error && (
-            <div className="vault-error-text" style={{ marginTop: "10px" }}>
-              {error}
-            </div>
-          )}
-        </div>
-        <div className="vault-modal__footer">
+    <Dialog
+      title={`Move ${sourceKind === "drawing" ? "Drawing" : "Folder"}`}
+      titleId="move-modal-title"
+      className="vd-dialog--wide"
+      onClose={onCancel}
+      busy={moving}
+      footer={
+        <>
           <button
             type="button"
             className="vault-btn"
@@ -188,13 +168,91 @@ export const MoveModal = ({
           <button
             type="button"
             className="vault-btn vault-btn--primary"
-            onClick={() => void handleConfirm()}
+            onClick={() => void confirm(activePath)}
             disabled={moving}
           >
             {moving ? "Moving..." : "Move Here"}
           </button>
+        </>
+      }
+    >
+      <div onKeyDown={onKeyDown}>
+        <p className="vd-dialog__lede">
+          Choose a destination folder for <strong>{entryName}</strong>. Type to
+          filter, arrow keys to navigate, Enter to move.
+        </p>
+        <input
+          ref={inputRef}
+          type="text"
+          className="vault-input vd-move__filter"
+          style={{ marginTop: 12 }}
+          placeholder="Filter folders…"
+          aria-label="Filter folders"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls={`${baseId}-tree`}
+          aria-activedescendant={`${baseId}-${activeIndex}`}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setError(null);
+          }}
+        />
+        <div
+          ref={treeRef}
+          id={`${baseId}-tree`}
+          className="vd-move__tree"
+          role="tree"
+          aria-label="Destination folders"
+        >
+          {rows.length <= 1 && query.trim() !== "" && (
+            <div className="vd-move__empty">No folder matches “{query}”.</div>
+          )}
+          {rows.map((row, i) => {
+            const path = row.entry.path;
+            const allowed = isMoveAllowed(sourcePath, path).allowed;
+            return (
+              <div
+                key={path}
+                id={`${baseId}-${i}`}
+                role="treeitem"
+                aria-level={row.depth + 1}
+                aria-expanded={row.hasChildren ? row.expanded : undefined}
+                aria-selected={i === activeIndex}
+                aria-disabled={!allowed}
+                className="vd-move__row"
+                style={{ paddingLeft: 4 + row.depth * 14 }}
+                onClick={() => select(path)}
+                onDoubleClick={() => void confirm(path)}
+              >
+                <span
+                  className="vd-move__chev"
+                  onClick={(e) => {
+                    if (row.hasChildren) {
+                      e.stopPropagation();
+                      setOpen(path, !row.expanded);
+                    }
+                  }}
+                >
+                  {row.hasChildren &&
+                    (row.expanded ? <IconChevronDown /> : <IconChevronRight />)}
+                </span>
+                <IconFolder />
+                <span className="vd-move__name">{row.entry.name}</span>
+              </div>
+            );
+          })}
         </div>
+        <div className="vd-move__dest">
+          {sourceKind === "drawing" ? "Drawing" : "Folder"} will move into{" "}
+          {destLabel}.
+        </div>
+        {error && (
+          <div className="vault-error-text" style={{ marginTop: "8px" }}>
+            {error}
+          </div>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 };

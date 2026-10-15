@@ -1,0 +1,139 @@
+/* Banners (32 px strip at the top of the canvas) and toasts (bottom-right).
+ * Tokens only; the one shadow is the toast's pop shadow. No blur, no layout
+ * transitions, no animation (a toast simply appears). */
+
+.vd-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--vd-space-3);
+  flex: none;
+  height: 32px;
+  padding: 0 var(--vd-space-2) 0 var(--vd-space-3);
+  border-bottom: 1px solid var(--vault-border);
+  background-color: var(--vault-sel);
+  color: var(--vault-text);
+  font-size: var(--vd-fs-small);
+  line-height: var(--vd-line);
+}
+
+.vd-banner--error {
+  background-color: var(--vault-danger-bg);
+  color: var(--vault-danger);
+}
+
+.vd-banner--warning {
+  background-color: var(--vault-warning-bg);
+  color: var(--vault-warning);
+}
+
+.vd-banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vd-banner .vd-banner__close {
+  flex: none;
+  width: var(--vd-control-sm);
+  height: var(--vd-control-sm);
+  color: inherit;
+}
+
+/* Toasts */
+.vd-toasts {
+  position: fixed;
+  right: var(--vd-space-4);
+  bottom: var(--vd-space-4);
+  z-index: 120;
+  width: min(340px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.vd-toasts__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vd-space-2);
+}
+
+.vd-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vd-space-3);
+  box-sizing: border-box;
+  padding: 10px var(--vd-space-3);
+  background-color: var(--vault-menu-bg);
+  color: var(--vault-text);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-pop);
+  box-shadow: var(--vault-shadow-pop);
+  font-size: var(--vd-fs-small);
+  line-height: var(--vd-line);
+  pointer-events: auto;
+}
+
+.vd-toast--error {
+  border-color: var(--vault-danger-border);
+}
+
+.vd-toast__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vd-toast__action {
+  flex: none;
+  height: var(--vd-control-sm);
+  padding: 0 var(--vd-space-2);
+  border: 0;
+  border-radius: var(--vd-radius-chip);
+  background: transparent;
+  color: var(--vault-accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vd-toast__action:hover,
+.vd-toast__close:hover {
+  background-color: var(--vault-hover);
+}
+
+.vd-toast__close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--vd-control-sm);
+  height: var(--vd-control-sm);
+  margin: -2px -4px -2px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vd-radius-chip);
+  background: transparent;
+  color: var(--vault-text-muted);
+  cursor: pointer;
+}
+
+.vd-toast__action:focus-visible,
+.vd-toast__close:focus-visible {
+  outline: none;
+  box-shadow: var(--vault-ring);
+}
+
+/* Excalidraw's own toast (library errors, tool-default saves) takes the same
+ * look and corner through variables and position only. */
+.excalidraw .Toast {
+  border-radius: var(--vd-radius-pop);
+  border-color: var(--vault-border);
+  background-color: var(--vault-menu-bg);
+  box-shadow: var(--vault-shadow-pop);
+  animation: none;
+}
+
+.excalidraw .Toast .Toast__message {
+  text-align: left;
+  font-size: var(--vd-fs-small);
+}

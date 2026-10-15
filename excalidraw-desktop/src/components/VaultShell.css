@@ -449,25 +449,6 @@ html.dark {
   color: var(--vault-text-muted);
 }
 
-/* Global visible alert banner */
-.vault-global-alert {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  background-color: var(--vault-danger-bg);
-  border-bottom: 1px solid var(--vault-danger-border);
-  color: var(--vault-danger);
-  font-size: 0.85rem;
-  font-weight: 500;
-  z-index: 100;
-}
-
-/* Banners sit at the top of the window, beside the macOS window buttons. */
-html.vault-macos .vault-global-alert {
-  padding-left: 86px;
-}
-
 /* Busy & Readonly Editor Containers */
 .vault-editor-container--busy {
   pointer-events: none;
@@ -909,13 +890,6 @@ html.vault-macos .vault-global-alert {
   color: var(--vault-primary);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* Settings/theme problems: persistent, separate from the transient alert */
-.vault-settings-alert {
-  background-color: var(--vault-warning-bg);
-  border-bottom-color: var(--vault-warning-border);
-  color: var(--vault-warning);
 }
 
 /* Settings -> Appearance: colour theme picker */

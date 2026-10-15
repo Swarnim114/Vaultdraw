@@ -12,11 +12,14 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { resetToolDefault, saveToolDefault } from "../vault/toolDefaultsStore";
 
+import { toastStore } from "../toasts/toastStore";
+
 import {
   TOOL_DEFAULT_SAVE_ACTIVE_ID,
   toolDefaultResetId,
   toolDefaultSaveId,
 } from "./toolDefaultIds";
+
 import { clearToolMemory } from "./toolMemory";
 import { styleFromAppState, styleFromElement } from "./toolApply";
 import {
@@ -77,7 +80,7 @@ export function createToolDefaultHandlers(
   deps: ToolDefaultDeps,
 ): CommandHandlers {
   const toast = (message: string) =>
-    deps.api()?.setToast({ message, duration: TOAST_MS, closable: true });
+    toastStore.push({ message, durationMs: TOAST_MS });
 
   const save = async (tool: StyledTool) => {
     const api = deps.api();

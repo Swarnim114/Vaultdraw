@@ -481,6 +481,27 @@ test.describe("navigator collapsed", () => {
     expect(errors).toEqual([]);
   });
 
+  test("Escape closes dialogs opened from the palette (#19)", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openGraphs(page);
+    await collapse(page);
+    for (const [query, label, title] of [
+      ["new folder", "New folder", "New Folder"],
+      ["new drawing", "New drawing", "New Drawing"],
+      ["rename drawing", "Rename drawing", "Rename Drawing"],
+    ] as const) {
+      await runCommand(page, query, label);
+      await page.keyboard.press("Enter");
+      const dialog = page.locator(".vault-modal", { hasText: title });
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+    }
+    expect(errors).toEqual([]);
+  });
+
   test("'New folder' works", async ({ page }) => {
     const errors = trackErrors(page);
     await openGraphs(page);

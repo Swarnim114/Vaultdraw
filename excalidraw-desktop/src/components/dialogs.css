@@ -1,0 +1,307 @@
+/* Shared dialog frame (Dialog.tsx): the design's `.dlg`. Plain borders and one
+ * pop shadow on the frame; no blur, no layout transitions, no entry animation.
+ * Specificity `.vault-modal.vd-dialog` beats the legacy .vault-modal rules in
+ * VaultShell.css, which the settings modal, palette and pickers still use. */
+
+.vault-modal-backdrop.vd-dialog-scrim {
+  background-color: var(--vault-scrim);
+  backdrop-filter: none;
+  padding: var(--vd-space-4);
+}
+
+.vault-modal.vd-dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: var(--vd-space-5);
+  gap: var(--vd-space-3);
+  background-color: var(--vault-bg);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-dialog);
+  box-shadow: var(--vault-shadow-pop);
+  font-size: var(--vd-fs-body);
+  line-height: var(--vd-line);
+  animation: none;
+  overflow: visible;
+}
+
+.vault-modal.vd-dialog--wide {
+  max-width: 520px;
+}
+
+.vd-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vd-space-3);
+  min-height: 0;
+}
+
+.vd-dialog .vd-dialog__header {
+  padding: 0;
+  border: 0;
+  align-items: flex-start;
+}
+
+.vd-dialog__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--vd-space-2);
+  min-width: 0;
+  color: var(--vault-text);
+}
+
+.vd-dialog .vd-dialog__title {
+  font-size: var(--vd-fs-title);
+  font-weight: 600;
+  line-height: var(--vd-line);
+  overflow-wrap: anywhere;
+}
+
+.vd-dialog .vd-dialog__close {
+  margin: -4px -6px 0 var(--vd-space-2);
+  flex: none;
+}
+
+.vd-dialog .vd-dialog__body {
+  padding: 0;
+  font-size: var(--vd-fs-body);
+  color: var(--vault-text);
+  max-height: 60vh;
+}
+
+.vd-dialog .vd-dialog__body p {
+  margin: 0;
+}
+
+.vd-dialog .vd-dialog__footer {
+  padding: 0;
+  margin-top: var(--vd-space-1);
+  background: transparent;
+  border: 0;
+  gap: var(--vd-space-2);
+}
+
+/* Muted supporting copy under the title. */
+.vd-dialog__lede {
+  margin: 0;
+  color: var(--vault-text-muted);
+  font-size: var(--vd-fs-small);
+}
+
+.vd-dialog__hint {
+  font-size: var(--vd-fs-caption);
+  color: var(--vault-text-faint);
+}
+
+/* 34 px dialog buttons; secondary = outlined, ghost = flat, only the
+ * confirming action is filled (primary, or danger when destructive). */
+.vd-dialog .vault-btn:not(.vault-btn--icon) {
+  height: var(--vd-control-lg);
+  padding: 0 14px;
+  border-radius: var(--vd-radius-control);
+  font-size: var(--vd-fs-body);
+  transition: none;
+  background-color: transparent;
+  border-color: var(--vault-border);
+  color: var(--vault-text);
+}
+
+.vd-dialog .vault-btn:not(.vault-btn--icon):hover:not(:disabled) {
+  background-color: var(--vault-hover);
+  border-color: var(--vault-border);
+}
+
+.vd-dialog .vault-btn--ghost:not(.vault-btn--icon) {
+  border-color: transparent;
+  color: var(--vault-text-muted);
+}
+
+.vd-dialog .vault-btn--primary,
+.vd-dialog .vault-btn--primary:hover:not(:disabled) {
+  background-color: var(--vault-primary);
+  border-color: transparent;
+  color: var(--vault-on-primary);
+  font-weight: 500;
+}
+
+.vd-dialog .vault-btn--primary:hover:not(:disabled) {
+  background-color: var(--vault-primary-hover);
+}
+
+.vd-dialog .vault-btn--danger,
+.vd-dialog .vault-btn--danger:hover:not(:disabled) {
+  background-color: var(--vault-danger);
+  border-color: transparent;
+  color: var(--vault-on-danger);
+  font-weight: 500;
+}
+
+.vd-dialog .vault-btn--danger:hover:not(:disabled) {
+  background-color: var(--vault-danger-hover);
+}
+
+.vd-dialog .vault-btn:disabled {
+  opacity: var(--vd-disabled-opacity);
+}
+
+.vd-dialog .vault-btn:focus-visible,
+.vd-dialog .vault-input:focus-visible,
+.vd-dialog .vd-move__row:focus-visible {
+  outline: none;
+  box-shadow: var(--vault-ring);
+}
+
+.vd-dialog .vault-input {
+  height: var(--vd-control-lg);
+}
+
+.vd-dialog .vault-error-text {
+  font-size: var(--vd-fs-small);
+}
+
+/* Confirm: the item name stands out inside the sentence. */
+.vd-dialog__body strong {
+  font-weight: 600;
+}
+
+.vd-dialog__details {
+  margin: var(--vd-space-2) 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: var(--vd-fs-small);
+  color: var(--vault-text-muted);
+}
+
+/* Conflict: two described outcomes. */
+.vd-outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vd-space-2);
+}
+
+.vd-outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--vd-space-3);
+  padding: var(--vd-space-3);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-control);
+}
+
+.vd-outcome__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vd-outcome__title {
+  font-weight: 600;
+}
+
+.vd-outcome__desc {
+  margin-top: 2px;
+  font-size: var(--vd-fs-small);
+  color: var(--vault-text-muted);
+}
+
+.vd-dialog .vd-outcome .vault-btn {
+  flex: none;
+}
+
+.vd-notice {
+  padding: var(--vd-space-2) var(--vd-space-3);
+  border: 1px solid var(--vault-warning-border);
+  border-radius: var(--vd-radius-control);
+  background-color: var(--vault-warning-bg);
+  color: var(--vault-warning);
+  font-size: var(--vd-fs-small);
+}
+
+/* Recovery list. */
+.vd-dialog .vault-recovery-item {
+  padding: var(--vd-space-2) var(--vd-space-3);
+}
+
+.vd-dialog .vault-btn--sm:not(.vault-btn--icon) {
+  height: var(--vd-control);
+  padding: 0 10px;
+  font-size: var(--vd-fs-small);
+}
+
+/* Move: mini-tree with type-ahead. */
+.vd-move__filter {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vd-move__tree {
+  margin-top: var(--vd-space-2);
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-control);
+  padding: var(--vd-space-1);
+  background-color: var(--vault-surface);
+}
+
+.vd-move__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--vd-row);
+  padding-right: var(--vd-space-2);
+  border-radius: var(--vd-radius-control);
+  color: var(--vault-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.vd-move__row:hover {
+  background-color: var(--vault-hover);
+}
+
+.vd-move__row[aria-selected="true"] {
+  background-color: var(--vault-sel);
+}
+
+.vd-move__row[aria-disabled="true"] {
+  opacity: var(--vd-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.vd-move__chev {
+  width: 14px;
+  flex: none;
+  text-align: center;
+  color: var(--vault-text-faint);
+  font-size: 10px;
+}
+
+.vd-move__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vd-move__empty {
+  padding: var(--vd-space-3);
+  color: var(--vault-text-faint);
+  font-size: var(--vd-fs-small);
+}
+
+.vd-move__dest {
+  margin-top: var(--vd-space-2);
+  font-size: var(--vd-fs-small);
+  color: var(--vault-text-muted);
+}
+
+/* Non-confirming destructive action: error text on the error tint, unfilled. */
+.vd-dialog .vault-btn--danger-soft:not(.vault-btn--icon) {
+  background-color: var(--vault-danger-bg);
+  border-color: transparent;
+  color: var(--vault-danger);
+}
+
+.vd-dialog .vault-btn--danger-soft:not(.vault-btn--icon):hover:not(:disabled) {
+  background-color: var(--vault-danger-bg);
+  border-color: var(--vault-danger-border);
+}

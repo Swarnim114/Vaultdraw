@@ -216,7 +216,7 @@ test("save current style from a hand-styled rectangle", async ({ page }) => {
   );
   await page.screenshot({ path: `${SHOTS}/palette-save.png` });
   await run();
-  await expect(page.locator(".Toast")).toContainText("Saved Rectangle");
+  await expect(page.locator(".vd-toast")).toContainText("Saved Rectangle");
   await page.screenshot({ path: `${SHOTS}/saved-toast.png` });
 
   await page.keyboard.press("Escape");

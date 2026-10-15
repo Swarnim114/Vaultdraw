@@ -183,7 +183,8 @@ test("2c. keyboard only: palette command and menu key create inside the focused 
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("in /DSA");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  // #19: Escape closes the dialog even though it was opened from the palette.
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 
   await treeRow(page, "DSA").focus();
@@ -191,6 +192,48 @@ test("2c. keyboard only: palette command and menu key create inside the focused 
   await expect(
     page.getByRole("menuitem", { name: "New drawing here", exact: true }),
   ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("2d. Escape closes every dialog, however it was opened", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  const dialog = page.getByRole("dialog");
+
+  // New folder (toolbar button), focus in the name input.
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  // Same dialog from the palette command, focus anywhere.
+  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await page.keyboard.type("new drawing");
+  await page.keyboard.press("Enter");
+  await expect(dialog).toContainText("New Drawing");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await expandFolder(page, "DSA");
+  // Rename, Move and the trash confirmation, from the row menu.
+  await (await rowAction(page, "Graphs", "Rename")).click();
+  await expect(dialog).toContainText("Rename Drawing");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await (await rowAction(page, "Graphs", "Move to…")).click();
+  await expect(dialog).toContainText("Move Drawing");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await (await rowAction(page, "Graphs", "Move to Trash")).click();
+  await expect(dialog).toContainText("to the trash");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  // Nothing happened to the drawing.
+  expect(await pathExists(page, GRAPHS)).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -255,8 +298,18 @@ test("5. move a drawing into another folder", async ({ page }, info) => {
   await (await rowAction(page, "Graphs", "Move to…")).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "DSA/Dynamic Programming" }).click();
-  await dialog.getByRole("button", { name: "Move Here" }).click();
+  // Type-ahead filter, then pick with the keyboard.
+  await page.keyboard.type("dynamic");
+  await expect(dialog.getByRole("treeitem")).toHaveCount(3);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    dialog.getByRole("treeitem", {
+      name: "Dynamic Programming",
+      selected: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
 
   const dest = "DSA/Dynamic Programming/Graphs.excalidraw";
@@ -284,7 +337,7 @@ test("5b. moving an expanded folder keeps it open, with no error", async ({
 
   await (await rowAction(page, "Dynamic Programming", "Move to…")).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Archive", exact: true }).click();
+  await dialog.getByRole("treeitem", { name: "Archive", exact: true }).click();
   await dialog.getByRole("button", { name: "Move Here" }).click();
   await expect(dialog).toHaveCount(0);
   // The native watcher reports the old and new paths (the fake rescans).
