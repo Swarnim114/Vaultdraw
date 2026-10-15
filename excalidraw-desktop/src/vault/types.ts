@@ -54,6 +54,12 @@ export interface VaultRepository {
 export const joinPath = (parent: string, name: string) =>
   parent ? `${parent}/${name}` : name;
 
+/** A vault error with the native NOT_FOUND code (the path does not exist). */
+export const isNotFoundError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { code?: unknown }).code === "NOT_FOUND";
+
 export const errorMessage = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message;

@@ -17,6 +17,7 @@ import {
   getCleanDrawingName,
   getParentPath,
   isMoveAllowed,
+  rebaseFolderPath,
   scanVaultMetadata,
   searchEntries,
   searchPaths,
@@ -171,6 +172,21 @@ describe("treeStore move validation and hierarchical tree building", () => {
     expect(tree[0].children?.[0].entry.name).toBe("sub.excalidraw");
     expect(tree[1].entry.name).toBe("root.excalidraw");
     expect(tree[1].children).toBeUndefined();
+  });
+});
+
+describe("rebaseFolderPath", () => {
+  it("moves a folder and everything inside it", () => {
+    expect(rebaseFolderPath("A/B", "A/B", "C/B")).toBe("C/B");
+    expect(rebaseFolderPath("A/B/x/y", "A/B", "C/B")).toBe("C/B/x/y");
+  });
+  it("leaves other paths alone, including name-prefix siblings", () => {
+    expect(rebaseFolderPath("A/Bee", "A/B", "C/B")).toBe("A/Bee");
+    expect(rebaseFolderPath("A", "A/B", "C/B")).toBe("A");
+    expect(rebaseFolderPath("", "A/B", null)).toBe("");
+  });
+  it("drops removed folders", () => {
+    expect(rebaseFolderPath("A/B/x", "A/B", null)).toBeNull();
   });
 });
 

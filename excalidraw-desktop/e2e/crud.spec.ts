@@ -250,6 +250,42 @@ test("5. move a drawing into another folder", async ({ page }, info) => {
   expect(errors).toEqual([]);
 });
 
+test("5b. moving an expanded folder keeps it open, with no error", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Archive");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create" })
+    .click();
+  await expandFolder(page, "DSA");
+  await expandFolder(page, "Dynamic Programming");
+  await expect(treeRow(page, "01 Introduction")).toBeVisible();
+
+  await (await rowAction(page, "Dynamic Programming", "Move to…")).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Archive", exact: true }).click();
+  await dialog.getByRole("button", { name: "Move Here" }).click();
+  await expect(dialog).toHaveCount(0);
+  // The native watcher reports the old and new paths (the fake rescans).
+  await page.evaluate(() => {
+    const repo = (window as any).__vaultRepo;
+    repo.emit({
+      handle: repo.handle,
+      paths: ["DSA/Dynamic Programming", "Archive/Dynamic Programming"],
+      rescan: false,
+    });
+  });
+
+  await expandFolder(page, "Archive");
+  await expect(treeRow(page, "01 Introduction")).toBeVisible();
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("6. delete a drawing after confirmation", async ({ page }, info) => {
   const errors = trackErrors(page);
   await expandFolder(page, "DSA");

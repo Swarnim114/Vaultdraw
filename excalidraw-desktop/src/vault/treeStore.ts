@@ -59,6 +59,22 @@ export function getParentPath(path: string): string {
   return slash >= 0 ? path.slice(0, slash) : "";
 }
 
+/**
+ * Where a folder path ends up after the folder `from` (or an ancestor) is
+ * moved to `to`; `to === null` means it was removed (null result). Paths
+ * outside `from` are returned unchanged.
+ */
+export function rebaseFolderPath(
+  path: string,
+  from: string,
+  to: string | null,
+): string | null {
+  if (path !== from && !path.startsWith(`${from}/`)) {
+    return path;
+  }
+  return to === null ? null : to + path.slice(from.length);
+}
+
 export function getBaseName(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash >= 0 ? path.slice(slash + 1) : path;

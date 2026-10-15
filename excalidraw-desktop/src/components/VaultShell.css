@@ -1249,6 +1249,11 @@ button.vault-status:hover:not(:disabled) {
   z-index: 100;
 }
 
+/* Banners sit at the top of the window, beside the macOS window buttons. */
+html.vault-macos .vault-global-alert {
+  padding-left: 86px;
+}
+
 /* Busy & Readonly Editor Containers */
 .vault-editor-container--busy {
   pointer-events: none;

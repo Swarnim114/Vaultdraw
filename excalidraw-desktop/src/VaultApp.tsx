@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorMessage } from "./vault/types";
+import { errorMessage, isNotFoundError } from "./vault/types";
 import {
   desktopRepository,
   isTauriAvailable,
@@ -33,6 +33,7 @@ import {
   getBaseName,
   getParentPath,
   joinPath,
+  rebaseFolderPath,
   scanVaultMetadata,
 } from "./vault/treeStore";
 import { useVaultDocument } from "./vault/useVaultDocument";
@@ -399,6 +400,38 @@ export const VaultApp = ({
     }
   }, [activeDoc, flushDoc, isBusy, isClosing, vault?.readOnly]);
 
+  // Keep cached listings and expanded folders in step with a folder that was
+  // moved (`to`) or removed (`to === null`), along with everything inside it.
+  const rebaseFolders = useCallback(
+    (from: string, to: string | null) => {
+      if (!vault) {
+        return;
+      }
+      setDirectoryMap((prev) => {
+        const next = new Map<string, VaultEntry[]>();
+        for (const [dir, items] of prev) {
+          const rebased = rebaseFolderPath(dir, from, to);
+          if (rebased !== null && (rebased === dir || !prev.has(rebased))) {
+            next.set(rebased, items);
+          }
+        }
+        return next;
+      });
+      setExpandedFolders((prev) => {
+        const next = new Set<string>();
+        for (const dir of prev) {
+          const rebased = rebaseFolderPath(dir, from, to);
+          if (rebased !== null) {
+            next.add(rebased);
+          }
+        }
+        saveExpandedFolders(vault.path, Array.from(next), win);
+        return next;
+      });
+    },
+    [vault, win],
+  );
+
   // Load a directory's entries with generation check and error surfacing
   const loadDirectory = useCallback(
     async (dirPath: string, expectedGen?: number) => {
@@ -417,17 +450,23 @@ export const VaultApp = ({
           return next;
         });
       } catch (err) {
-        if (gen === vaultGeneration.current) {
-          setGlobalAlert({
-            message: `Could not load folder "${
-              dirPath || "root"
-            }": ${errorMessage(err)}`,
-            type: "error",
-          });
+        if (gen !== vaultGeneration.current) {
+          return;
         }
+        if (dirPath !== "" && isNotFoundError(err)) {
+          // Moved, renamed or deleted (here or outside the app): not an error.
+          rebaseFolders(dirPath, null);
+          return;
+        }
+        setGlobalAlert({
+          message: `Could not load folder "${
+            dirPath || "root"
+          }": ${errorMessage(err)}`,
+          type: "error",
+        });
       }
     },
-    [repository, vault],
+    [repository, vault, rebaseFolders],
   );
 
   // Background indexing with cancellation and generation guard
@@ -1005,6 +1044,7 @@ export const VaultApp = ({
       } else {
         await repository.move(vault.handle, oldPath, newPath);
       }
+      rebaseFolders(oldPath, newPath);
       await loadDirectory(parent);
       startIndexing();
     } catch (err) {
@@ -1041,6 +1081,7 @@ export const VaultApp = ({
       } else {
         await repository.move(vault.handle, sourcePath, newPath);
       }
+      rebaseFolders(sourcePath, newPath);
       await loadDirectory(oldParent);
       await loadDirectory(destinationParentPath);
       handleExpandFolder(destinationParentPath);
@@ -1109,6 +1150,7 @@ export const VaultApp = ({
         await closeDoc();
       }
       await repository.trash(vault.handle, path);
+      rebaseFolders(path, null);
       const parent = getParentPath(path);
       await loadDirectory(parent);
       startIndexing();
