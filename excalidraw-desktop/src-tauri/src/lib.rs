@@ -25,6 +25,7 @@ mod refresh_rate;
 mod templates;
 mod themes;
 mod vault_settings;
+mod history;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 

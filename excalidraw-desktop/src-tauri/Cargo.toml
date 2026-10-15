@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 hex = "0.4"
 fs2 = "0.4"
@@ -29,6 +29,8 @@ memchr = "2"
 unicode-normalization = "0.1"
 postcard = { version = "1", features = ["use-std"] }
 crc32fast = "1"
+# File history (PLAN D-Z): level-3 frames, no default features (no legacy formats, no zdict builder).
+zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
