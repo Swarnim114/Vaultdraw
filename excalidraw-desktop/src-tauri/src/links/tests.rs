@@ -721,7 +721,7 @@ impl Env {
     fn mv(&self, from: &str, to: &str, open: Option<&str>, before: impl Fn(&str) + Send + Sync + 'static) -> (MoveResult, Option<std::thread::JoinHandle<()>>) {
         let hooks = self.hooks(before);
         let root = self.root.clone();
-        move_with_links(&self.v, from, to, open, &self.search, &self.links, hooks, || crate::move_entry_paths(&root, from, to)).unwrap()
+        move_with_links(&self.v, &MoveRequest { from, to, open_path: open }, (&self.search, &self.links), hooks, || crate::move_entry_paths(&root, from, to)).unwrap()
     }
     fn mv_wait(&self, from: &str, to: &str, open: Option<&str>) -> MoveResult {
         let (r, h) = self.mv(from, to, open, |_| {});
@@ -887,7 +887,7 @@ fn rename_failure_leaves_no_journal() {
     let e = env(&[("Old.excalidraw", scene(&[])), ("a.excalidraw", scene(&[text_el("t", "[[Old]]")])), ("Taken.excalidraw", scene(&[]))]);
     let hooks = e.hooks(|_| {});
     let root = e.root.clone();
-    let res = move_with_links(&e.v, "Old.excalidraw", "Taken.excalidraw", None, &e.search, &e.links, hooks, || crate::move_entry_paths(&root, "Old.excalidraw", "Taken.excalidraw"));
+    let res = move_with_links(&e.v, &MoveRequest { from: "Old.excalidraw", to: "Taken.excalidraw", open_path: None }, (&e.search, &e.links), hooks, || crate::move_entry_paths(&root, "Old.excalidraw", "Taken.excalidraw"));
     assert!(res.is_err());
     assert!(!journal::journal_exists(&e.links_dir()));
     assert!(e.root.join("Old.excalidraw").exists());

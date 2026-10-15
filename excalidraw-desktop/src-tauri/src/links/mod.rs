@@ -54,10 +54,12 @@ pub(crate) struct LinksState {
     io: Arc<Mutex<()>>,
 }
 
+type IndexedFn = Box<dyn Fn(&str, (u64, u64), &[u8]) + Send + Sync>;
+
 /// What a background job needs from its environment (Tauri in the app, closures in tests).
 pub(crate) struct Hooks {
     /// A drawing was rewritten: `(path, (size, mtime), bytes)`.
-    pub indexed: Box<dyn Fn(&str, (u64, u64), &[u8]) + Send + Sync>,
+    pub indexed: IndexedFn,
     pub done: Box<dyn Fn(RewriteDone) + Send + Sync>,
     /// Called with the path just before a rewritten drawing is committed (a test seam).
     pub before_write: Box<dyn Fn(&str) + Send + Sync>,
@@ -73,6 +75,7 @@ fn links_dir_for(v: &Vault) -> Option<PathBuf> {
     crate::config::resolve_dirs().ok().map(|d| journal::links_dir(&d.state, &v.root))
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn tauri_hooks(app: &AppHandle, v: &Vault) -> Hooks {
     let (a1, a2, h1) = (app.clone(), app.clone(), v.handle.clone());
     Hooks {
@@ -132,7 +135,7 @@ fn rewrite_file(v: &Vault, f: &FilePlan, job_id: u32, n: usize, hooks: &Hooks) -
         let _mutation = crate::mutation_guard(v).map_err(fail)?;
         crate::write_drawing_file(v, &f.to_path, &json, Some(&revision), &op).map_err(fail)?;
     }
-    let stat = std::fs::metadata(&abs).map(|m| (m.len(), m.modified().map(|t| now_ms(t)).unwrap_or(0))).unwrap_or((json.len() as u64, 0));
+    let stat = std::fs::metadata(&abs).map(|m| (m.len(), m.modified().map(now_ms).unwrap_or(0))).unwrap_or((json.len() as u64, 0));
     (hooks.indexed)(&f.to_path, stat, json.as_bytes());
     Ok(Some((out.links, out.text_elements)))
 }
@@ -185,6 +188,7 @@ pub(crate) fn replay_journal(v: &Vault, hooks: &Hooks, state: &LinksState) -> Op
 }
 
 /// Starts the journal replay for a vault that was just opened (a no-op without a journal).
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn on_vault_open(app: &AppHandle, v: Arc<Vault>) {
     let Some(dir) = links_dir_for(&v) else { return };
     if !journal::journal_exists(&dir) {
@@ -207,18 +211,24 @@ fn wait_for(limit: Duration, mut cond: impl FnMut() -> bool) {
     }
 }
 
+/// One rename or move request.
+pub(crate) struct MoveRequest<'a> {
+    pub from: &'a str,
+    pub to: &'a str,
+    /// Pre-move path of the drawing open in the editor.
+    pub open_path: Option<&'a str>,
+}
+
 /// Plans, journals and renames; the closed drawings are rewritten on the returned thread.
 /// `rename` performs the actual move (the caller's `move_entry_paths`).
 pub(crate) fn move_with_links(
     v: &Arc<Vault>,
-    from: &str,
-    to: &str,
-    open_path: Option<&str>,
-    search: &SearchService,
-    state: &LinksState,
+    req: &MoveRequest,
+    (search, state): (&SearchService, &LinksState),
     hooks: Hooks,
     rename: impl FnOnce() -> Result<()>,
 ) -> Result<(MoveResult, Option<JoinHandle<()>>)> {
+    let MoveRequest { from, to, open_path } = *req;
     let Ok(vi) = search.vault(&v.handle) else {
         let _g = crate::mutation_guard(v)?;
         rename()?;
@@ -279,10 +289,11 @@ pub(crate) fn move_with_links(
 }
 
 /// Backs `move_entry_with_links` in lib.rs.
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn move_command(app: &AppHandle, v: &Arc<Vault>, from: &str, to: &str, open_path: Option<&str>, search: &SearchService, state: &LinksState) -> Result<MoveResult> {
     let hooks = tauri_hooks(app, v);
     let rename = || crate::move_entry_paths(&v.root, from, to);
-    move_with_links(v, from, to, open_path, search, state, hooks, rename).map(|(r, _)| r)
+    move_with_links(v, &MoveRequest { from, to, open_path }, (search, state), hooks, rename).map(|(r, _)| r)
 }
 
 // ---- commands ----

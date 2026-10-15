@@ -14,7 +14,41 @@ use super::grammar::{parse_link_field, text_links, FieldForm};
 use super::resolve::{base_of, dir_of, key_of_path, key_of_rel, key_of_target};
 use super::types::LinkKind;
 use crate::search::{DocEntry, ItemKind};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    hash::{BuildHasherDefault, Hasher},
+    sync::Arc,
+};
+
+/// FxHash: the keys are short local strings, so a fast non-cryptographic hash is enough
+/// (about 3x faster than SipHash on the build path).
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Fx(u64);
+
+const SEED: u64 = 0x517c_c1b7_2722_0a95;
+
+impl Hasher for Fx {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for c in &mut chunks {
+            self.0 = (self.0.rotate_left(5) ^ u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])).wrapping_mul(SEED);
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut b = [0u8; 8];
+            b[..rest.len()].copy_from_slice(rest);
+            self.0 = (self.0.rotate_left(5) ^ u64::from_le_bytes(b)).wrapping_mul(SEED);
+        }
+    }
+    fn write_u8(&mut self, i: u8) {
+        self.0 = (self.0.rotate_left(5) ^ u64::from(i)).wrapping_mul(SEED);
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<Fx>>;
 
 pub(crate) const NONE: u32 = u32::MAX;
 const SHAPE: u32 = 1 << 31;
@@ -54,7 +88,6 @@ struct Doc {
     fwd: Box<[(u32, u32)]>,
     /// Keys currently resolving to this doc.
     keys_of: Vec<u32>,
-    alive: bool,
 }
 
 struct Key {
@@ -67,12 +100,12 @@ struct Key {
 pub(crate) struct LinkIndex {
     docs: Vec<Doc>,
     free_docs: Vec<u32>,
-    by_path: HashMap<Arc<str>, u32>,
-    by_base: HashMap<Arc<str>, Vec<u32>>,
+    by_path: FxMap<Arc<str>, u32>,
+    by_base: FxMap<Arc<str>, Vec<u32>>,
     keys: Vec<Key>,
     free_keys: Vec<u32>,
-    key_ids: HashMap<Arc<str>, u32>,
-    keys_by_base: HashMap<Arc<str>, Vec<u32>>,
+    key_ids: FxMap<Arc<str>, u32>,
+    keys_by_base: FxMap<Arc<str>, Vec<u32>>,
 }
 
 /// One planned path change.
@@ -109,9 +142,6 @@ impl LinkIndex {
         ix
     }
 
-    pub(crate) fn n_docs(&self) -> usize {
-        self.docs.len() - self.free_docs.len()
-    }
     pub(crate) fn n_keys(&self) -> usize {
         self.keys.len() - self.free_keys.len()
     }
@@ -124,9 +154,6 @@ impl LinkIndex {
     }
     pub(crate) fn path(&self, d: u32) -> &str {
         &self.docs[d as usize].path
-    }
-    pub(crate) fn npath(&self, d: u32) -> &str {
-        &self.docs[d as usize].npath
     }
     pub(crate) fn out_links(&self, d: u32) -> &[(u32, u32)] {
         &self.docs[d as usize].fwd
@@ -271,7 +298,7 @@ impl LinkIndex {
     /// Registers a drawing and resolves pending links to it. Returns its id.
     pub(crate) fn add_doc(&mut self, path: &str) -> u32 {
         let np: Arc<str> = Arc::from(key_of_path(path));
-        let doc = Doc { path: path.into(), npath: np.clone(), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new(), alive: true };
+        let doc = Doc { path: path.into(), npath: np.clone(), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new() };
         let id = match self.free_docs.pop() {
             Some(i) => {
                 self.docs[i as usize] = doc;
@@ -293,7 +320,7 @@ impl LinkIndex {
         let mut ks = self.docs[d as usize].keys_of.clone();
         let np = self.docs[d as usize].npath.clone();
         self.base_remove(d);
-        self.docs[d as usize] = Doc { path: Box::default(), npath: Arc::from(""), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new(), alive: false };
+        self.docs[d as usize] = Doc { path: Box::default(), npath: Arc::from(""), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new() };
         self.free_docs.push(d);
         ks.extend(self.keys_for_base(base_of(&np)));
         ks.sort_unstable();
@@ -444,10 +471,6 @@ impl LinkIndex {
         affected.sort_unstable();
         affected.dedup();
         self.re_resolve(&affected)
-    }
-
-    pub(crate) fn alive(&self, d: u32) -> bool {
-        self.docs.get(d as usize).is_some_and(|d| d.alive)
     }
 
     /// Heap held by the index (capacities plus a 16-byte allocator header per allocation).

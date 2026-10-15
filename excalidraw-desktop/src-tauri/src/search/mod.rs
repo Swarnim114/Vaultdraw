@@ -174,13 +174,6 @@ impl SearchService {
         }
     }
 
-    /// Mirrors an in-app rename/move in the live indexes at once (the watcher confirms later).
-    pub(crate) fn apply_move(&self, handle: &str, from: &str, to: &str) {
-        if let Ok(v) = self.vault(handle) {
-            v.write().move_docs(from, to);
-        }
-    }
-
     /// Test helper: lets a second service object see the same vault index.
     #[cfg(test)]
     pub(crate) fn adopt(&self, other: &SearchService, handle: &str) {

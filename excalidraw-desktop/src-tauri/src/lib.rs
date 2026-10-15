@@ -877,6 +877,7 @@ async fn move_entry(
 }
 /// `move_entry` that also keeps links between drawings working (see `links::types`).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn move_entry_with_links(
     app: AppHandle,
     handle: String,

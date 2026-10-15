@@ -331,9 +331,6 @@ impl Index {
     pub(crate) fn links(&self) -> Option<&LinkIndex> {
         self.links.as_deref()
     }
-    pub(crate) fn links_mut(&mut self) -> Option<&mut LinkIndex> {
-        self.links.as_deref_mut()
-    }
     pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
@@ -353,9 +350,7 @@ impl Index {
         let Index { docs, links, .. } = self;
         links.as_deref_mut().map(|l| (l, &*docs))
     }
-    pub(crate) fn links_heap_bytes(&self) -> usize {
-        self.links.as_ref().map_or(0, |l| l.approx_heap_bytes())
-    }
+
     pub(crate) fn docs(&self) -> &HashMap<String, DocEntry> {
         &self.docs
     }
