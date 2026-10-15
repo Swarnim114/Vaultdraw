@@ -60,10 +60,10 @@ describe("history commands", () => {
   it("is rebindable and unbindable through [hotkeys]", () => {
     const rebound = buildKeymap(
       COMMANDS,
-      { "history.checkpoint": ["Mod+Alt+K"], "history.toggle": [] },
+      { "history.checkpoint": ["Mod+Alt+Y"], "history.toggle": [] },
       "mac",
     );
-    expect(rebound.get("Mod+Alt+K")?.map((c) => c.id)).toEqual([
+    expect(rebound.get("Mod+Alt+Y")?.map((c) => c.id)).toEqual([
       "history.checkpoint",
     ]);
     expect(rebound.has("Mod+Alt+S")).toBe(false);
