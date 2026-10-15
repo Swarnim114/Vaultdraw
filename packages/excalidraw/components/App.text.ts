@@ -698,12 +698,22 @@ export class AppText {
           : null) ||
         this.getTextElementAtPosition(sceneX, sceneY);
 
+    // the host's text style for new text; a sticky note's label keeps the
+    // note's own look
+    const textStyle =
+      existingTextElement ||
+      (shouldBindToContainer && isStickyNoteElement(container))
+        ? {}
+        : this.app.getNewTextStyle();
+
     const fontFamily =
-      existingTextElement?.fontFamily || this.app.state.currentItemFontFamily;
+      existingTextElement?.fontFamily ||
+      textStyle.fontFamily ||
+      this.app.state.currentItemFontFamily;
 
     const lineHeight =
       existingTextElement?.lineHeight || getLineHeight(fontFamily);
-    const fontSize = this.app.state.currentItemFontSize;
+    const fontSize = textStyle.fontSize ?? this.app.state.currentItemFontSize;
 
     if (
       !existingTextElement &&
@@ -787,13 +797,13 @@ export class AppText {
         strokeColor:
           shouldBindToContainer && isStickyNoteElement(container)
             ? container.strokeColor
-            : this.app.state.currentItemStrokeColor,
+            : textStyle.strokeColor ?? this.app.state.currentItemStrokeColor,
         backgroundColor: this.app.state.currentItemBackgroundColor,
         fillStyle: this.app.state.currentItemFillStyle,
         strokeWidth: this.app.getCurrentItemStrokeWidth("text"),
         strokeStyle: this.app.state.currentItemStrokeStyle,
         roughness: this.app.state.currentItemRoughness,
-        opacity: this.app.state.currentItemOpacity,
+        opacity: textStyle.opacity ?? this.app.state.currentItemOpacity,
         text: "",
         fontSize,
         baseFontSize:
@@ -805,7 +815,7 @@ export class AppText {
           arrowEndpointBinding?.textAlign ??
           (parentCenterPosition
             ? "center"
-            : this.app.state.currentItemTextAlign),
+            : textStyle.textAlign ?? this.app.state.currentItemTextAlign),
         verticalAlign:
           arrowEndpointBinding?.verticalAlign ??
           (parentCenterPosition

@@ -7,7 +7,7 @@ import { STROKE_WIDTH, STROKE_WIDTH_KEYS } from "@excalidraw/common";
 import { isArrowElement } from "@excalidraw/element";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { AppState } from "@excalidraw/excalidraw/types";
+import type { AppState, NewTextStyle } from "@excalidraw/excalidraw/types";
 
 import {
   STYLE_KEY_RULES,
@@ -254,4 +254,24 @@ export function switchTool(
     }
   }
   return { patch: patch as Partial<AppState>, session: next };
+}
+
+/**
+ * A text style as the fields of a new text element (what the editor's
+ * `newTextStyle` hook returns). Unset keys are left out.
+ */
+export function newTextStyleOf(style: ToolStyle): NewTextStyle {
+  const out: Loose = {
+    strokeColor: style.stroke_color,
+    opacity: style.opacity,
+    fontFamily: style.font_family,
+    fontSize: style.font_size,
+    textAlign: style.text_align,
+  };
+  for (const key of Object.keys(out)) {
+    if (out[key] === undefined) {
+      delete out[key];
+    }
+  }
+  return out as NewTextStyle;
 }

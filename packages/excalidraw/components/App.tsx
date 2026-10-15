@@ -454,6 +454,7 @@ import type { ContextMenuItems } from "./ContextMenu";
 import type {
   AppClassProperties,
   AppProps,
+  NewTextStyle,
   AppState,
   ImageExportType,
   ElementRenderOffsets,
@@ -9007,6 +9008,11 @@ class App extends React.Component<AppProps, AppState> {
       this.props.currentItemStrokeWidth?.(elementType) ??
       getStrokeWidthByKey(elementType, this.state.currentItemStrokeWidthKey)
     );
+  }
+
+  /** The host's style for new text (`newTextStyle`); {} = the current-item state. */
+  public getNewTextStyle(): NewTextStyle {
+    return this.props.newTextStyle?.() ?? {};
   }
 
   private createGenericElementOnPointerDown = (

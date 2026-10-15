@@ -423,21 +423,23 @@ export class AppClipboard {
       this.app.state,
     );
 
+    const textStyle = this.app.getNewTextStyle();
     const textElementProps = {
       x,
       y,
-      strokeColor: this.app.state.currentItemStrokeColor,
+      strokeColor:
+        textStyle.strokeColor ?? this.app.state.currentItemStrokeColor,
       backgroundColor: this.app.state.currentItemBackgroundColor,
       fillStyle: this.app.state.currentItemFillStyle,
       strokeWidth: this.app.getCurrentItemStrokeWidth("text"),
       strokeStyle: this.app.state.currentItemStrokeStyle,
       roundness: null,
       roughness: this.app.state.currentItemRoughness,
-      opacity: this.app.state.currentItemOpacity,
+      opacity: textStyle.opacity ?? this.app.state.currentItemOpacity,
       text,
-      fontSize: this.app.state.currentItemFontSize,
-      fontFamily: this.app.state.currentItemFontFamily,
-      textAlign: DEFAULT_TEXT_ALIGN,
+      fontSize: textStyle.fontSize ?? this.app.state.currentItemFontSize,
+      fontFamily: textStyle.fontFamily ?? this.app.state.currentItemFontFamily,
+      textAlign: textStyle.textAlign ?? DEFAULT_TEXT_ALIGN,
       verticalAlign: DEFAULT_VERTICAL_ALIGN,
       locked: false,
     };

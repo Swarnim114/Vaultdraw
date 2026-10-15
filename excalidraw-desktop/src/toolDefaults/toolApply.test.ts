@@ -4,6 +4,7 @@ import { API } from "../../../packages/excalidraw/tests/helpers/api";
 
 import {
   nearestStrokeWidthKey,
+  newTextStyleOf,
   newToolSession,
   styleFromAppState,
   styleFromElement,
@@ -357,5 +358,28 @@ describe("switchTool", () => {
     r.go("arrow", {});
     expect(r.state).toMatchObject(base as object);
     expect(r.session.applied).toEqual({});
+  });
+});
+
+describe("newTextStyleOf", () => {
+  it("maps the set text keys to text element fields", () => {
+    expect(
+      newTextStyleOf({
+        stroke_color: "#f08c00",
+        opacity: 50,
+        font_family: 6,
+        font_size: 28,
+        text_align: "right",
+      }),
+    ).toEqual({
+      strokeColor: "#f08c00",
+      opacity: 50,
+      fontFamily: 6,
+      fontSize: 28,
+      textAlign: "right",
+    });
+    expect(newTextStyleOf({ stroke_color: "#f08c00" })).toEqual({
+      strokeColor: "#f08c00",
+    });
   });
 });

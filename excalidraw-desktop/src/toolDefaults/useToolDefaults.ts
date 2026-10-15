@@ -16,9 +16,14 @@ import {
 } from "../vault/toolDefaultsStore";
 
 import { createToolDefaultHandlers } from "./toolDefaultCommands";
-import { captureToolStyle, newToolSession, switchTool } from "./toolApply";
+import {
+  captureToolStyle,
+  newTextStyleOf,
+  newToolSession,
+  switchTool,
+} from "./toolApply";
 import { getToolMemory, rememberToolStyle } from "./toolMemory";
-import { isStyledTool, type StyledTool } from "./toolStyles";
+import { isEmptyStyle, isStyledTool, type StyledTool } from "./toolStyles";
 
 import type { RefObject } from "react";
 
@@ -140,6 +145,23 @@ export function useToolDefaults(
     [apiRef],
   );
 
+  /**
+   * The Text tool's style for text created without it (double-click, Enter
+   * on a shape, labels, paste): remembered, else saved default. Null while
+   * the Text tool is active (its style is already the editor's) or when the
+   * Text tool has no default (the editor's current style, as upstream).
+   */
+  const newTextStyle = useCallback(() => {
+    if (!enabledRef.current || tool.current === "text") {
+      return null;
+    }
+    const saved = getEffectiveToolDefaults().text;
+    if (isEmptyStyle(saved)) {
+      return null;
+    }
+    return newTextStyleOf(getToolMemory("text") ?? saved!);
+  }, []);
+
   useEffect(
     () =>
       registerCommandHandlers(
@@ -151,5 +173,5 @@ export function useToolDefaults(
     [apiRef, currentItemStrokeWidth],
   );
 
-  return { onAppState, currentItemStrokeWidth };
+  return { onAppState, currentItemStrokeWidth, newTextStyle };
 }

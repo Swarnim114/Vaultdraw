@@ -938,6 +938,12 @@ export interface ExcalidrawProps {
     elementType: ExcalidrawElement["type"],
   ) => number | null;
   /**
+   * Host-controlled style of new text, read when a text element is created
+   * (any entry point: text tool, double-click, Enter on a shape, labels).
+   * Set fields win over the current-item state; null keeps the state.
+   */
+  newTextStyle?: () => NewTextStyle | null;
+  /**
    * Host-controlled laser pointer look, read when a laser stroke starts.
    * Returns null for the built-in look.
    */
@@ -1750,3 +1756,11 @@ export type LaserPointerSettings = {
   /** Number of trail points over which the tail tapers off. */
   length: number;
 };
+
+/** Style a host can give new text elements (see `newTextStyle`). */
+export type NewTextStyle = Partial<
+  Pick<
+    ExcalidrawTextElement,
+    "strokeColor" | "opacity" | "fontFamily" | "fontSize" | "textAlign"
+  >
+>;

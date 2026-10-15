@@ -813,16 +813,8 @@ export const textWysiwyg = ({
           container,
           app.scene.getNonDeletedElementsMap(),
         );
-        const font = getFontString({
-          fontSize:
-            isStickyNoteElement(container) && boundTextElement
-              ? boundTextElement.fontSize
-              : app.state.currentItemFontSize,
-          fontFamily:
-            isStickyNoteElement(container) && boundTextElement
-              ? boundTextElement.fontFamily
-              : app.state.currentItemFontFamily,
-        });
+        // the label's own font (it need not match the current-item state)
+        const font = getFontString(boundTextElement ?? element);
         const maxWidth = getBoundTextMaxWidth(container, boundTextElement);
         const { selectionStart, selectionEnd, value } = editable;
         const nextText =

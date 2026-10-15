@@ -391,3 +391,37 @@ describe("tool memory (last style per tool, until quit)", () => {
     expect(t.updateScene).not.toHaveBeenCalled();
   });
 });
+
+describe("newTextStyle (text created without the Text tool)", () => {
+  const textStyle = (t: ReturnType<typeof setup>) =>
+    t.hook.result.current.newTextStyle();
+
+  it("is null when the Text tool has no default", () => {
+    const t = setup();
+    t.emit();
+    expect(textStyle(t)).toBeNull();
+  });
+
+  it("gives the Text default to double-click / label text", () => {
+    store.defaults = { text: { stroke_color: "#f08c00", font_size: 28 } };
+    const t = setup();
+    t.emit();
+    expect(textStyle(t)).toEqual({ strokeColor: "#f08c00", fontSize: 28 });
+  });
+
+  it("is null while the Text tool is active (its style is the editor's)", () => {
+    store.defaults = { text: { stroke_color: "#f08c00" } };
+    const t = setup();
+    t.switchTo("text");
+    expect(textStyle(t)).toBeNull();
+  });
+
+  it("prefers the style the Text tool was last used with", () => {
+    store.defaults = { text: { stroke_color: "#f08c00" } };
+    const t = setup();
+    t.switchTo("text");
+    t.set({ currentItemStrokeColor: "#1971c2" });
+    t.switchTo("selection");
+    expect(textStyle(t)).toMatchObject({ strokeColor: "#1971c2" });
+  });
+});
