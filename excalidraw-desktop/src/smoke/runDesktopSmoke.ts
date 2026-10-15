@@ -419,6 +419,42 @@ export async function runDesktopSmoke(): Promise<void> {
     }
     return found;
   };
+  /** Runs a command through the palette (Cmd+Shift+P, type, Enter). */
+  const runPaletteCommand = async (query: string) => {
+    const dialog = () =>
+      doc.querySelector<HTMLElement>(
+        '[role="dialog"][aria-label="Command palette"]',
+      );
+    const key = (init: KeyboardEventInit, target: EventTarget = doc) =>
+      target.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        }),
+      );
+    key({
+      key: "p",
+      code: "KeyP",
+      metaKey: true,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    const input = await waitFor("command palette input", () =>
+      dialog()?.querySelector<HTMLInputElement>(".vault-quick__input"),
+    );
+    Object.getOwnPropertyDescriptor(
+      win.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, `>${query}`);
+    input.dispatchEvent(new win.Event("input", { bubbles: true }));
+    await waitFor(`command row for ${query}`, () =>
+      dialog()?.querySelector(".vault-quick__row"),
+    );
+    await delay(win, 100);
+    key({ key: "Enter", code: "Enter" }, input);
+    await waitFor("command palette closed", () => (dialog() ? null : true));
+  };
   const clickSubmit = async (dialog: Element, name: string) => {
     const input = dialog.querySelector<HTMLInputElement>("#create-entry-name");
     const submit = Array.from(
@@ -1419,7 +1455,7 @@ export async function runDesktopSmoke(): Promise<void> {
       );
       clear?.click();
       await call("create_folder", { handle: activeVault.handle, path: target });
-      button("Refresh files").click();
+      await runPaletteCommand("navigator: refresh files");
       const row = (path: string) =>
         root.querySelector<HTMLElement>(
           `.vault-tree-item[data-tree-path="${win.CSS.escape(path)}"]`,
@@ -2611,7 +2647,7 @@ export async function runDesktopSmoke(): Promise<void> {
         root.querySelector<HTMLElement>(
           `.vault-tree-item[data-tree-path="${win.CSS.escape(path)}"]`,
         );
-      button("Refresh files").click();
+      await runPaletteCommand("navigator: refresh files");
       const folderRow = await waitFor("sort probe folder row", () =>
         row(probe),
       );
@@ -2717,13 +2753,17 @@ export async function runDesktopSmoke(): Promise<void> {
       });
       try {
         await delay(win, 2000); // watcher debounce (~0.6 s) + vault-settings-change round trip
-        const header = root.querySelector<HTMLButtonElement>(
-          '.vault-header [aria-label="New Drawing"]',
+        // The header button is gone; Mod+N is the same command.
+        doc.dispatchEvent(
+          new win.KeyboardEvent("keydown", {
+            key: "n",
+            code: "KeyN",
+            metaKey: true,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
         );
-        if (!header) {
-          throw new Error("Header New Drawing button not found");
-        }
-        header.click();
         const created = await pollAsync(
           `new drawing in ${folder}`,
           async () => {
