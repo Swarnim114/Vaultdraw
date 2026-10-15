@@ -467,6 +467,8 @@ enum WatchedPath {
     Library,
     /// `.excalidraw-vault/settings.toml` (or the metadata folder itself) changed.
     Settings,
+    /// A path under `.excalidraw-vault/history/` (file history; kept out of `vault-change`).
+    History(String),
     /// A user-visible vault-relative path.
     Entry(String),
     /// Outside the root or not a valid vault path: the frontend should rescan.
@@ -486,6 +488,9 @@ fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
     if text == META_DIR || text == format!("{META_DIR}/{}", vault_settings::SETTINGS_FILE) {
         return WatchedPath::Settings;
     }
+    if text.starts_with(&format!("{META_DIR}/{}/", history_dir_name())) {
+        return WatchedPath::History(text);
+    }
     if text.starts_with(&format!("{META_DIR}/")) || text == format!("{META_DIR}.lock") {
         return WatchedPath::Ignore;
     }
@@ -494,6 +499,9 @@ fn classify_vault_event(root: &Path, p: &Path) -> WatchedPath {
     } else {
         WatchedPath::Rescan
     }
+}
+fn history_dir_name() -> &'static str {
+    "history"
 }
 fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<VaultInfo> {
     let root = root.canonicalize().map_err(ioerr)?;
@@ -529,6 +537,7 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
                 }
             }
             let mut paths = Vec::new();
+            let mut history_paths = Vec::new();
             let mut rescan = false;
             let mut settings_changed = false;
             let mut library_changed = false;
@@ -540,6 +549,7 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
                                 WatchedPath::Ignore => {}
                                 WatchedPath::Settings => settings_changed = true,
                                 WatchedPath::Library => library_changed = true,
+                                WatchedPath::History(text) => history_paths.push(text),
                                 WatchedPath::Entry(text) => paths.push(text),
                                 WatchedPath::Rescan => rescan = true,
                             }
@@ -556,6 +566,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
             paths.dedup();
             if let Some(search) = app_handle.try_state::<search::SearchService>() {
                 search.notify(&h, &paths, rescan);
+            }
+            if let Some(history) = app_handle.try_state::<history::HistoryService>() {
+                history.watched(&h, &paths, &history_paths, rescan);
             }
             if settings_changed {
                 let _ = app_handle.emit("vault-settings-change", VaultSettingsChange { handle: h.clone() });
@@ -609,6 +622,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         search.start(&handle, root.clone(), search::tauri_emitter(app));
     }
     links::on_vault_open(app, vault);
+    if let Some(history) = app.try_state::<history::HistoryService>() {
+        history.start(&handle, root.clone(), read_only, history::tauri_emitter(app));
+    }
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -683,6 +699,9 @@ async fn release_vault(handle: String, app: AppHandle, state: State<'_, Service>
         .remove(&handle);
     if let Some(search) = app.try_state::<search::SearchService>() {
         search.stop(&handle);
+    }
+    if let Some(history) = app.try_state::<history::HistoryService>() {
+        history.stop(&handle);
     }
     Ok(())
 }
@@ -861,13 +880,17 @@ fn write_drawing_raw(v: &Vault, args: &WriteHeaders, body: &[u8]) -> Result<serd
     write_drawing_file(v, &args.path, json, args.expected_revision.as_deref(), &args.operation_id)
 }
 #[tauri::command]
-async fn write_drawing(request: tauri::ipc::Request<'_>, state: State<'_, Service>) -> Result<serde_json::Value> {
+async fn write_drawing(request: tauri::ipc::Request<'_>, state: State<'_, Service>, history: State<'_, history::HistoryService>) -> Result<serde_json::Value> {
     let args = parse_write_headers(request.headers())?;
     let body = clipboard::raw_body(&request)?;
     let v = vault_for(&state, &args.handle)?;
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
     let result = write_drawing_raw(&v, &args, body);
+    // File history: one clonefile + one queue push, only after a successful commit (errors ignored).
+    if let Some(rev) = result.as_ref().ok().and_then(|o| o["revision"].as_str()) {
+        history.after_commit(&args.handle, &args.path, rev, body.len() as u64);
+    }
     memory::schedule_release();
     result
 }
@@ -899,11 +922,14 @@ async fn move_entry(
     from: String,
     to: String,
     state: State<'_, Service>,
+    history: State<'_, history::HistoryService>,
 ) -> Result<()> {
     let v = vault_for(&state, &handle)?;
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
-    move_entry_paths(&v.root, &from, &to)
+    move_entry_paths(&v.root, &from, &to)?;
+    history.moved(&handle, &from, &to);
+    Ok(())
 }
 /// `move_entry` that also keeps links between drawings working (see `links::types`).
 #[tauri::command]
@@ -918,18 +944,22 @@ async fn move_entry_with_links(
     state: State<'_, Service>,
     search: State<'_, search::SearchService>,
     links: State<'_, links::LinksState>,
+    history: State<'_, history::HistoryService>,
 ) -> Result<links::MoveResult> {
     let v = vault_for(&state, &handle)?;
     writable(&v)?;
     if !rewrite {
         let _mutation = mutation_guard(&v)?;
         move_entry_paths(&v.root, &from, &to)?;
+        history.moved(&handle, &from, &to);
         return Ok(links::MoveResult::default());
     }
-    links::move_command(&app, &v, &from, &to, open_path.as_deref(), &search, &links)
+    let moved = links::move_command(&app, &v, &from, &to, open_path.as_deref(), &search, &links)?;
+    history.moved(&handle, &from, &to);
+    Ok(moved)
 }
 #[tauri::command]
-async fn trash_entry(handle: String, path: String, state: State<'_, Service>) -> Result<()> {
+async fn trash_entry(handle: String, path: String, state: State<'_, Service>, history: State<'_, history::HistoryService>) -> Result<()> {
     let v = vault_for(&state, &handle)?;
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
@@ -948,7 +978,9 @@ async fn trash_entry(handle: String, path: String, state: State<'_, Service>) ->
             "TRASH_FAILED",
             format!("Could not move item to OS trash: {e}"),
         )
-    })
+    })?;
+    history.trashed(&handle, &path);
+    Ok(())
 }
 #[tauri::command]
 async fn reveal_entry(handle: String, path: String, state: State<'_, Service>) -> Result<()> {
@@ -1375,6 +1407,7 @@ pub fn run() {
             .manage(Service::default())
             .manage(search::SearchService::default())
             .manage(links::LinksState::default())
+            .manage(history::HistoryService::default())
             .setup(|app| {
                 startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
@@ -1435,6 +1468,7 @@ pub fn run() {
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
+                history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
@@ -1453,6 +1487,7 @@ pub fn run() {
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
+                history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir
@@ -1468,6 +1503,7 @@ pub fn run() {
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
             search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
+                history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
             library::read_library, library::write_library, library::pick_library_file,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir

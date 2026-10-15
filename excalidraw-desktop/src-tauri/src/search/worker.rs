@@ -22,7 +22,7 @@ const SAVE_DELAY: Duration = Duration::from_secs(5);
 /// Files modified this close to a reference time may have changed without a stat change.
 const RACY_MS: u64 = 2000;
 
-pub(super) struct Found {
+pub(crate) struct Found {
     pub path: String,
     pub size: u64,
     pub mtime: u64,
@@ -40,7 +40,7 @@ pub(crate) fn is_drawing_name(name: &str) -> bool {
 
 /// Recursively lists drawings under `root/rel` (never following symlinks, skipping
 /// the metadata folder and temp files). Paths are vault-relative with forward slashes.
-pub(super) fn walk(root: &Path, rel: &str) -> Vec<Found> {
+pub(crate) fn walk(root: &Path, rel: &str) -> Vec<Found> {
     let mut out = Vec::new();
     let mut stack = vec![(rel.to_string(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {

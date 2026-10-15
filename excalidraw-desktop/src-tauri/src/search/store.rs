@@ -15,7 +15,7 @@ const FORMAT_VERSION: u32 = 2;
 const HEADER_LEN: usize = 16;
 const MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
 
-/// First 16 hex chars of sha256(root): the per-vault folder name under the state dir.
+/// First 16 hex chars of sha256(root): the per-vault folder name under the state dir (shared with file history).
 pub(crate) fn vault_id(root: &Path) -> String {
     hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()))[..16].to_string()
 }
