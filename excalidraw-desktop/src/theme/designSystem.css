@@ -30,9 +30,12 @@
   --vd-control-sm: 24px;
   --vd-control-lg: 34px; /* dialog buttons */
 
-  /* Type: system UI font, line-height 1.4; mono only for keys and paths. */
-  --vd-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    system-ui, sans-serif;
+  /* Type: line-height 1.4; mono only for keys and paths. The UI font stays
+     Excalidraw's "Assistant" (already loaded for the editor UI): the system
+     font measured +35 % settings.open p95 and +15 % palette p95 in the
+     low-end harness (DECISIONS.md D7). */
+  --vd-font: "Assistant", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
   --vd-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --vd-line: 1.4;
   --vd-fs-caption: 11px; /* captions, counts, section labels */
