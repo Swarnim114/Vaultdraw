@@ -304,12 +304,22 @@ impl Store {
     }
 
     pub fn write_blob(&self, name: &BlobName, bytes: &[u8], full: bool) -> io::Result<()> {
+        let existed = full && matches!(self.blob_dir(name.shard(), false), Ok(Some(_)));
         let dir = self.blob_dir(name.shard(), true).ok().flatten().ok_or_else(|| io::Error::other("blob directory unavailable"))?;
+        if full && !existed {
+            sync_dir(&self.hist.join(BLOBS_DIR))?;
+        }
         durable_write(&dir, &name.format(), bytes, full, WriteKind::Blob)
     }
 
     pub fn write_version(&self, lineage: &str, name: &VersionName, bytes: &[u8], full: bool) -> io::Result<()> {
+        let existed = full && matches!(self.lineage_dir(lineage, false), Ok(Some(_)));
         let dir = self.lineage_dir(lineage, true).ok().flatten().ok_or_else(|| io::Error::other("lineage directory unavailable"))?;
+        // A new folder's own directory entry must be durable too, or a synced-to-disk checkpoint
+        // vanishes with its folder after a power loss.
+        if full && !existed {
+            sync_dir(&self.hist)?;
+        }
         durable_write(&dir, &name.format(), bytes, full, WriteKind::Version)
     }
 
@@ -470,7 +480,17 @@ pub fn durable_write(dir: &Path, name: &str, bytes: &[u8], full: bool, kind: Wri
     let tmp = dir.join(format!(".{name}.tmp"));
     let result = (|| -> io::Result<()> {
         fault::hit(s_tmp)?;
-        let mut f = OpenOptions::new().write(true).create_new(true).custom_flags(O_NOFOLLOW).open(&tmp)?;
+        let mut f = match OpenOptions::new().write(true).create_new(true).custom_flags(O_NOFOLLOW).open(&tmp) {
+            Ok(f) => f,
+            // Blob names are content-addressed, so their temp name repeats: a leftover of a killed
+            // write (younger than the startup cleanup age) would block every retry. It is ours
+            // (own device in the name) and the content is identical by construction.
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && kind == WriteKind::Blob => {
+                fs::remove_file(&tmp)?;
+                OpenOptions::new().write(true).create_new(true).custom_flags(O_NOFOLLOW).open(&tmp)?
+            }
+            Err(e) => return Err(e),
+        };
         f.write_all(bytes)?;
         fault::hit(s_sync)?;
         sync_file(&f, full)?;

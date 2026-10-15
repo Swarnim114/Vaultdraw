@@ -327,8 +327,8 @@ impl<B: Backend> Core<B> {
                 self.mark_versioned(path, now);
                 true
             }
-            Ok(Outcome::Skipped(_)) => false,
-            Ok(Outcome::DiskLow) | Err(_) => {
+            // A newer worker owns the vault: nothing to write, and no busy loop while waiting for the stop.
+            Ok(Outcome::Skipped(_)) | Ok(Outcome::DiskLow) | Err(_) => {
                 let retry = now + self.interval_ms().max(RETRY_MIN_MS);
                 if let Some(t) = self.tracks.get_mut(path) {
                     t.retry_at = Some(retry);
@@ -435,10 +435,16 @@ impl<B: Backend> Core<B> {
         if t.base_ms.is_none() {
             t.base_ms = base_fallback;
         }
+        // The open-time state is older than this commit now: the pending state (or a version of it)
+        // is the "previous state" from here on, so a stale open clone must never feed the shrink rule.
+        let stale_open = t.open_clone.take();
         // Coalescing: only the latest pending clone is kept; superseded ones are deleted.
         let old = t.pending.replace(Pending { rev: revision, size, live, staged: staged.clone() });
         t.last_commit_ms = now;
         t.retry_at = None;
+        if let Some(o) = stale_open {
+            self.b.remove_clone(&o.file);
+        }
         if let Some(o) = old.and_then(|o| o.staged) {
             if Some(&o) != staged.as_ref() {
                 self.b.remove_clone(&o);

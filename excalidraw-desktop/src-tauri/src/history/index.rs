@@ -263,13 +263,25 @@ impl Index {
 // Headers
 // ---------------------------------------------------------------------------------------------
 
+/// A header must describe the file it sits in: id, lineage folder, device and kind (synced files
+/// are untrusted; a copied or renamed file must not pass as another version).
+pub fn check_header(h: &container::Header, lineage: &str, name: &VersionName) -> Result<()> {
+    let kind_ok = match &name.kind {
+        NameKind::Keyframe(_) => h.kind == "keyframe",
+        NameKind::Delta(_, k) => h.kind == "delta" && h.keyframe.as_deref() == Some(k.as_str()),
+        NameKind::Path => h.kind == "path",
+    };
+    if h.id != name.id || h.lineage != lineage || h.device != name.dev || !kind_ok {
+        return Err(err("VERSION_CORRUPT", "Header does not match its file name or folder"));
+    }
+    Ok(())
+}
+
 /// Reads and validates the header of `name` (one 4 KiB pread normally).
 pub fn load_head(store: &Store, lineage: &str, name: &VersionName) -> Result<Head> {
     let prefix = store.read_prefix(lineage, name).map_err(ioerr)?;
     let h = container::read_header(&prefix)?;
-    if h.id != name.id || h.lineage != lineage || h.device != name.dev {
-        return Err(err("VERSION_CORRUPT", "Header does not match its file name or folder"));
-    }
+    check_header(&h, lineage, name)?;
     Ok(Head { path: h.path, name: h.name, note: h.note, rev: h.file_revision, element_count: h.element_count, blobs: h.blobs })
 }
 

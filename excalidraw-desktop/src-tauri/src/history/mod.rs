@@ -467,6 +467,7 @@ impl VaultHistory {
         let io = |e: std::io::Error| if e.kind() == std::io::ErrorKind::NotFound { err("VERSION_GONE", "This version is not available") } else { err("VERSION_CORRUPT", "This version could not be read") };
         let file = self.store.read_version_file(&lin, &name).map_err(io)?;
         let header = container::read_header(&file)?;
+        index::check_header(&header, &lin, &name)?;
         let body = container::read_body(&file, store::MAX_BODY_BYTES as usize)?;
         drop(file);
         let text = if header.kind == "delta" {
@@ -477,6 +478,7 @@ impl VaultHistory {
             };
             let kname = kname.ok_or_else(|| err("VERSION_GONE", "This version's keyframe is not available yet"))?;
             let kfile = self.store.read_version_file(&lin, &kname).map_err(io)?;
+            index::check_header(&container::read_header(&kfile)?, &lin, &kname)?;
             let kbody = container::read_body(&kfile, store::MAX_BODY_BYTES as usize)?;
             drop(kfile);
             codec::reconstruct(&kbody, Some(&body))?
@@ -632,7 +634,11 @@ impl HistoryService {
         let format_newer = store.format_newer();
         let read_only = read_only || format_newer;
 
-        let (gen, my_gen, old) = {
+        // Only a writable start owns the generation: a read-only second instance must neither
+        // supersede the writer nor wait for it (it would block `open_vault` and stop all writes).
+        let (gen, my_gen, old) = if read_only {
+            (Arc::new(AtomicU64::new(0)), 0, None)
+        } else {
             let mut slots = lock(&self.slots);
             let slot = slots.entry(vault_id.clone()).or_insert_with(|| Slot { gen: Arc::new(AtomicU64::new(0)), join: None });
             let my_gen = slot.gen.fetch_add(1, Ordering::SeqCst) + 1;

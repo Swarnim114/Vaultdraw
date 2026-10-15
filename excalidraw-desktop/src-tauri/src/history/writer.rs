@@ -158,7 +158,9 @@ impl Epoch {
             return;
         }
         if let Some(f) = &self.file {
-            let _ = fs::write(f, format!("{} {}", self.code, self.last_write_ms.max(now_ms)));
+            // The last real write, not "now": starting the app must not postpone the 7-day rotation.
+            let last = if self.last_write_ms == 0 { now_ms } else { self.last_write_ms };
+            let _ = fs::write(f, format!("{} {}", self.code, last));
             self.persisted_ms = now_ms;
         }
     }
