@@ -86,6 +86,7 @@ const clampWidth = (value: number) =>
  */
 export type NavigatorAction =
   | { kind: "newFolder" }
+  | { kind: "newDrawingInFolder" }
   | { kind: "rename" | "move" | "trash"; path: string }
   | { kind: "search"; query: string };
 
@@ -373,6 +374,17 @@ export const VaultNavigator = ({
       setCreateError(null);
       return;
     }
+    if (request.kind === "newDrawingInFolder") {
+      // The focused folder, else the focused row's (or open drawing's) folder.
+      const from = focusedPath ?? activePath;
+      const folder = !from
+        ? ""
+        : rows.find((r) => r.entry.path === from)?.entry.kind === "folder"
+        ? from
+        : getParentPath(from) ?? "";
+      onRowNewInside(folder, "drawing");
+      return;
+    }
     const entry = allIndexedEntries.find((e) => e.path === request.path) ?? {
       path: request.path,
       name: request.path.split("/").pop() ?? request.path,
@@ -506,6 +518,22 @@ export const VaultNavigator = ({
             } else {
               void onOpenDrawing(item.path);
             }
+          }
+        }
+        break;
+      }
+      case "ContextMenu":
+      case "F10": {
+        // Menu key / Shift+F10: the focused row's menu, beside the row.
+        if (focusedPath && (e.key === "ContextMenu" || e.shiftKey)) {
+          const item = visible.find((i) => i.path === focusedPath);
+          const rowEl = e.currentTarget.querySelector<HTMLElement>(
+            `[data-tree-path="${CSS.escape(focusedPath)}"]`,
+          );
+          if (item && rowEl) {
+            e.preventDefault();
+            const box = rowEl.getBoundingClientRect();
+            onRowMenu(item, box.left + 40, box.bottom);
           }
         }
         break;
@@ -1126,6 +1154,7 @@ const TreeRow = memo(
         style={{ "--depth": depth } as React.CSSProperties}
         data-tree-path={entry.path}
         data-tree-kind={entry.kind}
+        data-count={count || undefined}
         onPointerDown={(e) => onRowPointerDown(e, entry)}
         role="treeitem"
         aria-expanded={isFolder ? isExpanded : undefined}
@@ -1167,8 +1196,6 @@ const TreeRow = memo(
           </span>
           {tags && <TagChips tags={tags} onFilter={onFilterTag} />}
         </div>
-
-        {count ? <span className="vault-tree-item__count">{count}</span> : null}
 
         <div
           className="vault-tree-item__actions"

@@ -138,11 +138,11 @@ export const paperDefaultStampedStep = async (ctx: ExportSmokeContext) => {
         })) as VaultEntry[]
       ).filter((e) => e.kind === "drawing");
     const before = new Set((await list()).map((e) => e.path));
-    // The header button is gone; Mod+N is the same command.
+    // The header button is gone; Mod+N is the same command (no `code` + both
+    // modifiers set = plain Mod on every OS, see chordFromEvent).
     ctx.root.ownerDocument.dispatchEvent(
       new KeyboardEvent("keydown", {
         key: "n",
-        code: "KeyN",
         metaKey: true,
         ctrlKey: true,
         bubbles: true,

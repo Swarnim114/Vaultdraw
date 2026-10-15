@@ -435,7 +435,6 @@ export async function runDesktopSmoke(): Promise<void> {
       );
     key({
       key: "p",
-      code: "KeyP",
       metaKey: true,
       ctrlKey: true,
       shiftKey: true,
@@ -2753,11 +2752,11 @@ export async function runDesktopSmoke(): Promise<void> {
       });
       try {
         await delay(win, 2000); // watcher debounce (~0.6 s) + vault-settings-change round trip
-        // The header button is gone; Mod+N is the same command.
+        // The header button is gone; Mod+N is the same command (no `code` + both
+        // modifiers set = plain Mod on every OS, see chordFromEvent).
         doc.dispatchEvent(
           new win.KeyboardEvent("keydown", {
             key: "n",
-            code: "KeyN",
             metaKey: true,
             ctrlKey: true,
             bubbles: true,

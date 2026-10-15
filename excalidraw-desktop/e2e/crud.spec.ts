@@ -173,6 +173,27 @@ test("2b. create a subfolder from a folder's menu", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("2c. keyboard only: palette command and menu key create inside the focused folder", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await treeRow(page, "DSA").click();
+  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await page.keyboard.type("new drawing in selected");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("in /DSA");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await treeRow(page, "DSA").focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(
+    page.getByRole("menuitem", { name: "New drawing here", exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("3. rename a drawing", async ({ page }, info) => {
   const errors = trackErrors(page);
   await expandFolder(page, "DSA");

@@ -1601,6 +1601,7 @@ export const VaultApp = ({
       requestNavigator({ kind: "search", query: tagQuery("") });
     },
     newFolder: () => requestNavigator({ kind: "newFolder" }),
+    newDrawingInFolder: () => requestNavigator({ kind: "newDrawingInFolder" }),
     collapseAllFolders: handleCollapseAllFolders,
     refreshFiles,
     renameActive: () => {
