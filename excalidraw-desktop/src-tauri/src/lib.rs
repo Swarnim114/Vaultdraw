@@ -26,6 +26,8 @@ mod templates;
 mod themes;
 mod vault_settings;
 mod history;
+#[cfg(test)]
+mod test_alloc;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 

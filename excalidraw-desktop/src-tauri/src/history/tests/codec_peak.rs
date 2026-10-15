@@ -1,49 +1,17 @@
 //! Peak-allocation probe for `strip` and `proven_delta` (counting global allocator).
-//! The allocator is global to the test binary, so this module is compiled only with
-//! `RUSTFLAGS="--cfg history_codec_peak"` (it would clash with any other counting allocator):
+//! Uses the shared test allocator (`crate::test_alloc`). Compiled only with
+//! `RUSTFLAGS="--cfg history_codec_peak"`:
 //!
 //! `RUSTFLAGS="--cfg history_codec_peak" cargo test --release --offline history::tests::codec_peak -- --nocapture`
 #![allow(unexpected_cfgs)]
 use super::codec_support::*;
 use crate::history::codec::*;
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-
-static CUR: AtomicUsize = AtomicUsize::new(0);
-static PEAK: AtomicUsize = AtomicUsize::new(0);
-
-struct Counting;
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        let p = System.alloc(l);
-        if !p.is_null() {
-            let c = CUR.fetch_add(l.size(), Relaxed) + l.size();
-            PEAK.fetch_max(c, Relaxed);
-        }
-        p
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        System.dealloc(p, l);
-        CUR.fetch_sub(l.size(), Relaxed);
-    }
-    unsafe fn realloc(&self, p: *mut u8, l: Layout, new: usize) -> *mut u8 {
-        let q = System.realloc(p, l, new);
-        if !q.is_null() {
-            let c = if new >= l.size() { CUR.fetch_add(new - l.size(), Relaxed) + new - l.size() } else { CUR.fetch_sub(l.size() - new, Relaxed) - (l.size() - new) };
-            PEAK.fetch_max(c, Relaxed);
-        }
-        q
-    }
-}
-#[global_allocator]
-static ALLOC: Counting = Counting;
 
 /// Extra peak bytes allocated by `f` above what was live when it started.
 fn extra_peak<T>(f: impl FnOnce() -> T) -> (T, usize) {
-    let base = CUR.load(Relaxed);
-    PEAK.store(base, Relaxed);
+    let base = crate::test_alloc::reset_peak();
     let v = f();
-    (v, PEAK.load(Relaxed).saturating_sub(base))
+    (v, crate::test_alloc::peak().saturating_sub(base))
 }
 
 fn emit(name: &str, extra: usize, file_len: usize) {

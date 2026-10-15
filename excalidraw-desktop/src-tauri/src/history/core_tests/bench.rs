@@ -14,44 +14,11 @@ use crate::history::{
     Clock,
 };
 use std::{
-    alloc::{GlobalAlloc, Layout, System},
     path::Path,
-    sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock},
+    sync::{atomic::Ordering, Arc, RwLock},
     time::Instant,
 };
 
-// ---- counting allocator (peak bytes above a baseline) ----
-struct Counting;
-static CURRENT: AtomicUsize = AtomicUsize::new(0);
-static PEAK: AtomicUsize = AtomicUsize::new(0);
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        let p = System.alloc(l);
-        if !p.is_null() {
-            let c = CURRENT.fetch_add(l.size(), Ordering::Relaxed) + l.size();
-            PEAK.fetch_max(c, Ordering::Relaxed);
-        }
-        p
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        System.dealloc(p, l);
-        CURRENT.fetch_sub(l.size(), Ordering::Relaxed);
-    }
-    unsafe fn realloc(&self, p: *mut u8, l: Layout, new: usize) -> *mut u8 {
-        let q = System.realloc(p, l, new);
-        if !q.is_null() {
-            if new >= l.size() {
-                let c = CURRENT.fetch_add(new - l.size(), Ordering::Relaxed) + new - l.size();
-                PEAK.fetch_max(c, Ordering::Relaxed);
-            } else {
-                CURRENT.fetch_sub(l.size() - new, Ordering::Relaxed);
-            }
-        }
-        q
-    }
-}
-#[global_allocator]
-static ALLOC: Counting = Counting;
 
 fn profile() -> String {
     std::env::var("HISTORY_PERF_PROFILE").unwrap_or_else(|_| "normal".into())
@@ -170,11 +137,10 @@ fn bench_history_write() {
         let size = json.len();
         drop(json);
         drop(sc);
-        let base = CURRENT.load(Ordering::SeqCst);
-        PEAK.store(base, Ordering::SeqCst);
+        let base = crate::test_alloc::reset_peak();
         let o = w.write_version(&crate::history::core_tests::support::live_request(P, Reason::Auto)).unwrap();
         assert!(matches!(o, Outcome::Written(_)));
-        let peak = (PEAK.load(Ordering::SeqCst) - base) as f64;
+        let peak = (crate::test_alloc::peak() - base) as f64;
         let mb = peak / 1048576.0;
         emit(id, "MB", vec![mb], &format!(",\"fileMB\":{:.2},\"ratio\":{:.2}", size as f64 / 1048576.0, peak / size as f64));
     }
@@ -372,14 +338,12 @@ fn peak_phases_probe() {
         drop(sc);
         let mut memo = crate::history::core_tests::support::NoMemoLocal;
         let f = a.len() as f64;
-        let phase = |name: &str, base: usize| println!("PHASE {name}: peak +{:.2} F (F={:.1}MB)", (PEAK.load(Ordering::SeqCst) as f64 - base as f64) / f, f / 1048576.0);
-        let base = CURRENT.load(Ordering::SeqCst);
-        PEAK.store(base, Ordering::SeqCst);
+        let phase = |name: &str, base: usize| println!("PHASE {name}: peak +{:.2} F (F={:.1}MB)", (crate::test_alloc::peak() as f64 - base as f64) / f, f / 1048576.0);
+        let base = crate::test_alloc::reset_peak();
         let sa = codec::strip(&a, &mut memo, &|_| true, "aaaaaaaa", "0000").unwrap();
         phase("strip", base);
         let sb = codec::strip(&b, &mut memo, &|_| true, "aaaaaaaa", "0000").unwrap();
-        let base = CURRENT.load(Ordering::SeqCst);
-        PEAK.store(base, Ordering::SeqCst);
+        let base = crate::test_alloc::reset_peak();
         let d = codec::proven_delta(&sa.text, &sb.text);
         phase("proven_delta", base);
         println!("PHASE text={:.2}F delta={:?}", sa.text.len() as f64 / f, d.map(|d| d.len()));

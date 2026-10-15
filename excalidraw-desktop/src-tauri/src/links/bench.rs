@@ -9,38 +9,12 @@ use super::resolve::rel_path;
 use super::rewrite::{rewrite, FileRules, Replace};
 use super::*;
 use crate::search::{DocEntry, ElementLink, Index, ItemKind, TextItem};
+use crate::test_alloc::live;
 use std::{
-    alloc::{GlobalAlloc, Layout, System},
     collections::{BTreeMap, HashMap, HashSet},
     fs,
-    sync::atomic::AtomicUsize,
 };
 
-struct Counting;
-static LIVE: AtomicUsize = AtomicUsize::new(0);
-
-// SAFETY: forwards to the system allocator and only keeps a counter.
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        LIVE.fetch_add(l.size(), Ordering::Relaxed);
-        System.alloc(l)
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        LIVE.fetch_sub(l.size(), Ordering::Relaxed);
-        System.dealloc(p, l)
-    }
-    unsafe fn realloc(&self, p: *mut u8, l: Layout, new: usize) -> *mut u8 {
-        LIVE.fetch_add(new, Ordering::Relaxed);
-        LIVE.fetch_sub(l.size(), Ordering::Relaxed);
-        System.realloc(p, l, new)
-    }
-}
-#[global_allocator]
-static ALLOC: Counting = Counting;
-
-fn live() -> usize {
-    LIVE.load(Ordering::Relaxed)
-}
 
 struct Rng(u64);
 impl Rng {
