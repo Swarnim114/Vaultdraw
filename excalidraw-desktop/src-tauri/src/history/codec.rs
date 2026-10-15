@@ -899,3 +899,290 @@ pub fn proven_delta(key: &[u8], new: &[u8]) -> Option<Vec<u8>> {
     apply_with(&k, &body, &mut cmp).ok()?;
     (cmp.pos == new.len()).then_some(body)
 }
+
+// ---------------------------------------------------------------------------------------------
+// live size (shrink rule, PLAN D15): file length minus the raw bytes of `isDeleted: true` elements
+// ---------------------------------------------------------------------------------------------
+
+const fn structural_table() -> [bool; 256] {
+    let mut t = [false; 256];
+    t[b'"' as usize] = true;
+    t[b'{' as usize] = true;
+    t[b'}' as usize] = true;
+    t[b'[' as usize] = true;
+    t[b']' as usize] = true;
+    t
+}
+static STRUCTURAL: [bool; 256] = structural_table();
+
+#[derive(Clone, Copy, PartialEq)]
+enum LiveMode {
+    Normal,
+    /// the string `"elements"` just closed at depth 1: expect ':'
+    KeyElems,
+    /// `"elements":` seen: expect '['
+    ElemsColon,
+    /// the string `"isDeleted"` just closed at element level: expect ':'
+    KeyDel,
+    /// `"isDeleted":` seen: expect a literal
+    DelColon,
+    /// reading a literal after `"isDeleted":`
+    Literal,
+}
+
+/// Chunk-fed state machine behind `live_size` and `live_size_from_reader`. Memory is O(1): strings
+/// are skipped (only keys of at most 16 bytes are captured) and only the current element's start
+/// offset is kept.
+struct LiveScan {
+    depth: usize,
+    started: bool,
+    bad: bool,
+    done: bool,
+    in_str: bool,
+    esc: bool,
+    capturing: bool,
+    cap: [u8; 16],
+    cap_len: usize,
+    cap_over: bool,
+    mode: LiveMode,
+    lit: [u8; 5],
+    lit_len: usize,
+    in_elems: bool,
+    elems_seen: bool,
+    elem_start: u64,
+    deleted: bool,
+    dead: u64,
+}
+
+impl LiveScan {
+    fn new() -> LiveScan {
+        LiveScan {
+            depth: 0,
+            started: false,
+            bad: false,
+            done: false,
+            in_str: false,
+            esc: false,
+            capturing: false,
+            cap: [0; 16],
+            cap_len: 0,
+            cap_over: false,
+            mode: LiveMode::Normal,
+            lit: [0; 5],
+            lit_len: 0,
+            in_elems: false,
+            elems_seen: false,
+            elem_start: 0,
+            deleted: false,
+            dead: 0,
+        }
+    }
+
+    fn stop(&self) -> bool {
+        self.bad || self.done
+    }
+
+    /// Consumes string bytes of `chunk[*i..]`; returns true when the closing quote was reached.
+    fn string_bytes(&mut self, chunk: &[u8], i: &mut usize) -> bool {
+        while *i < chunk.len() {
+            if self.esc {
+                self.esc = false;
+                self.cap_over = true;
+                *i += 1;
+                continue;
+            }
+            let rest = &chunk[*i..];
+            let k = memchr2(b'"', b'\\', rest).unwrap_or(rest.len());
+            if self.capturing && !self.cap_over {
+                let take = k.min(self.cap.len() - self.cap_len);
+                self.cap[self.cap_len..self.cap_len + take].copy_from_slice(&rest[..take]);
+                self.cap_len += take;
+                if take < k {
+                    self.cap_over = true;
+                }
+            }
+            *i += k;
+            match chunk.get(*i) {
+                Some(b'"') => {
+                    *i += 1;
+                    return true;
+                }
+                Some(_) => {
+                    self.esc = true;
+                    *i += 1;
+                }
+                None => {}
+            }
+        }
+        false
+    }
+
+    fn string_closed(&mut self) {
+        self.in_str = false;
+        if !self.capturing || self.cap_over {
+            return;
+        }
+        let key = &self.cap[..self.cap_len];
+        if self.depth == 1 && !self.elems_seen && key == b"elements" {
+            self.mode = LiveMode::KeyElems;
+        } else if self.in_elems && self.depth == 3 && key == b"isDeleted" {
+            self.mode = LiveMode::KeyDel;
+        }
+    }
+
+    /// Handles one byte in a non-Normal mode; returns true if the byte was consumed.
+    fn mode_byte(&mut self, b: u8) -> bool {
+        let ws = matches!(b, b' ' | b'\n' | b'\r' | b'\t');
+        match self.mode {
+            LiveMode::Literal => {
+                if b.is_ascii_alphanumeric() {
+                    if self.lit_len < self.lit.len() {
+                        self.lit[self.lit_len] = b;
+                    }
+                    self.lit_len += 1;
+                    return true;
+                }
+                if self.lit_len == 4 && &self.lit[..4] == b"true" {
+                    self.deleted = true;
+                }
+                self.mode = LiveMode::Normal;
+                false
+            }
+            _ if ws => true,
+            LiveMode::KeyElems => {
+                self.mode = if b == b':' { LiveMode::ElemsColon } else { LiveMode::Normal };
+                b == b':'
+            }
+            LiveMode::ElemsColon => {
+                self.mode = LiveMode::Normal;
+                if b == b'[' {
+                    self.in_elems = true;
+                    self.depth += 1;
+                    true
+                } else {
+                    false
+                }
+            }
+            LiveMode::KeyDel => {
+                self.mode = if b == b':' { LiveMode::DelColon } else { LiveMode::Normal };
+                b == b':'
+            }
+            LiveMode::DelColon => {
+                if b == b't' {
+                    self.mode = LiveMode::Literal;
+                    self.lit[0] = b;
+                    self.lit_len = 1;
+                    true
+                } else {
+                    self.mode = LiveMode::Normal;
+                    false
+                }
+            }
+            LiveMode::Normal => false,
+        }
+    }
+
+    fn feed(&mut self, chunk: &[u8], base: u64) {
+        let mut i = 0;
+        while i < chunk.len() && !self.stop() {
+            if self.in_str {
+                if self.string_bytes(chunk, &mut i) {
+                    self.string_closed();
+                }
+                continue;
+            }
+            let b = chunk[i];
+            if !self.started {
+                match b {
+                    b' ' | b'\n' | b'\r' | b'\t' => i += 1,
+                    b'{' => {
+                        self.started = true;
+                        self.depth = 1;
+                        i += 1;
+                    }
+                    _ => self.bad = true,
+                }
+                continue;
+            }
+            if self.mode != LiveMode::Normal {
+                if self.mode_byte(b) {
+                    i += 1;
+                }
+                continue;
+            }
+            while i < chunk.len() && !STRUCTURAL[chunk[i] as usize] {
+                i += 1;
+            }
+            let Some(&b) = chunk.get(i) else { break };
+            i += 1;
+            match b {
+                b'"' => {
+                    self.in_str = true;
+                    self.esc = false;
+                    self.cap_len = 0;
+                    self.cap_over = false;
+                    self.capturing = (self.depth == 1 && !self.elems_seen) || (self.in_elems && self.depth == 3);
+                }
+                b'{' | b'[' => {
+                    self.depth += 1;
+                    if b == b'{' && self.in_elems && self.depth == 3 {
+                        self.elem_start = base + (i - 1) as u64;
+                        self.deleted = false;
+                    }
+                }
+                _ => {
+                    if self.depth == 0 {
+                        self.bad = true;
+                        break;
+                    }
+                    self.depth -= 1;
+                    if b == b'}' && self.in_elems && self.depth == 2 && self.deleted {
+                        self.dead += base + i as u64 - self.elem_start;
+                        self.deleted = false;
+                    } else if b == b']' && self.in_elems && self.depth == 1 {
+                        self.in_elems = false;
+                        self.elems_seen = true;
+                        self.done = true;
+                    }
+                }
+            }
+        }
+    }
+
+    /// `Some(total - dead)` once the `elements` array closed, or the whole object closed without
+    /// one; `None` for garbage and truncated text.
+    fn finish(&self, total: u64) -> Option<u64> {
+        if self.bad {
+            return None;
+        }
+        let complete = self.done || (self.started && self.depth == 0);
+        complete.then(|| total.saturating_sub(self.dead))
+    }
+}
+
+/// Live size of a drawing: the text length minus the raw bytes of elements whose `isDeleted` is
+/// `true` (tombstones). `None` if the text can't be scanned.
+pub fn live_size(text: &[u8]) -> Option<u64> {
+    let mut s = LiveScan::new();
+    s.feed(text, 0);
+    s.finish(text.len() as u64)
+}
+
+/// `live_size` over a reader in 256 KiB chunks with O(1) memory. Stops reading as soon as the
+/// top-level `elements` array has closed (app files write elements before files).
+pub fn live_size_from_reader(r: &mut dyn std::io::Read, total_len: u64) -> std::io::Result<Option<u64>> {
+    let mut s = LiveScan::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut base = 0u64;
+    while !s.stop() {
+        let n = match r.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        s.feed(&buf[..n], base);
+        base += n as u64;
+    }
+    Ok(s.finish(total_len))
+}

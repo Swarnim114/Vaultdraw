@@ -106,6 +106,26 @@ fn run(c: &Case, runs: usize) {
     report(&format!("write_auto.{}", c.name), auto);
     report(&format!("write_keyframe.{}", c.name), keyframe);
     report(&format!("read_version.{}", c.name), read);
+    // live size for the shrink rule: slice, and streamed from a reader (stops after `elements`)
+    if c.name == "5k" || c.name == "5kimg" {
+        let file = &c.files[0];
+        let mut live = vec![];
+        for _ in 0..runs.max(30) {
+            let (v, ms) = timed(|| {
+                live_size_from_reader(&mut std::io::Cursor::new(file.as_slice()), file.len() as u64).unwrap()
+            });
+            assert!(v.is_some());
+            live.push(ms);
+        }
+        report(&format!("liveSize.{}", c.name), live);
+        let mut live = vec![];
+        for _ in 0..runs.max(30) {
+            let (v, ms) = timed(|| live_size(file));
+            assert!(v.is_some());
+            live.push(ms);
+        }
+        report(&format!("liveSize.slice.{}", c.name), live);
+    }
     // cold first-time strip (hash + decode every image, memo empty, nothing on disk)
     if c.name.contains("img") {
         let mut cold = vec![];
