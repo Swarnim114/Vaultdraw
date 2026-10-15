@@ -19,7 +19,11 @@ mod bench;
 // Public API for other features (tags, quick switcher); unused until they land.
 #[allow(unused_imports)]
 pub(crate) use extract::{extract_items, ItemKind, TextItem};
-pub(crate) use index::Index;
+#[allow(unused_imports)]
+pub(crate) use extract::ElementLink;
+pub(crate) use index::{word_snippet, DocEntry, Index};
+pub(crate) use store::vault_id;
+pub(crate) use worker::{is_drawing_name, lower_priority};
 #[allow(unused_imports)]
 pub(crate) use normalize::{normalize, NORMALIZER_VERSION};
 #[allow(unused_imports)]
@@ -56,11 +60,35 @@ pub(crate) struct VaultIndex {
 }
 
 impl VaultIndex {
-    fn read(&self) -> RwLockReadGuard<'_, Index> {
+    pub(crate) fn read(&self) -> RwLockReadGuard<'_, Index> {
         self.index.read().unwrap_or_else(|p| p.into_inner())
     }
-    fn write(&self) -> RwLockWriteGuard<'_, Index> {
+    pub(crate) fn write(&self) -> RwLockWriteGuard<'_, Index> {
         self.index.write().unwrap_or_else(|p| p.into_inner())
+    }
+    pub(crate) fn is_ready(&self) -> bool {
+        *self.state.lock().unwrap_or_else(|p| p.into_inner()) == IndexState::Ready
+    }
+    /// Builds the link index on first call (under a read lock, so queries keep running and
+    /// only indexer writes wait), then it is maintained by `Index::upsert/remove`.
+    pub(crate) fn ensure_links(&self) {
+        loop {
+            if self.read().links().is_some() {
+                return;
+            }
+            let (built, generation) = {
+                let g = self.read();
+                (g.build_links(), g.generation())
+            };
+            let mut w = self.write();
+            if w.links().is_some() {
+                return;
+            }
+            if w.generation() == generation {
+                w.install_links(built);
+                return;
+            }
+        }
     }
     fn set_state(&self, state: IndexState) {
         *self.state.lock().unwrap_or_else(|p| p.into_inner()) = state;
@@ -91,7 +119,7 @@ pub(crate) fn tauri_emitter(app: &AppHandle) -> Emitter {
 }
 
 impl SearchService {
-    fn vault(&self, handle: &str) -> Result<Arc<VaultIndex>> {
+    pub(crate) fn vault(&self, handle: &str) -> Result<Arc<VaultIndex>> {
         self.vaults
             .lock()
             .map_err(|_| err("INTERNAL", "Search state unavailable"))?
@@ -135,6 +163,29 @@ impl SearchService {
         }
         if !paths.is_empty() {
             let _ = v.tx.send(Update::Paths(paths.to_vec()));
+        }
+    }
+
+    /// Parses `bytes` (just written to `path`) and puts the result in the live indexes.
+    pub(crate) fn upsert_bytes(&self, handle: &str, path: &str, stat: (u64, u64), bytes: &[u8]) {
+        if let Ok(v) = self.vault(handle) {
+            let entry = worker::entry_from_bytes(path, stat, bytes);
+            v.write().upsert(path.to_string(), entry);
+        }
+    }
+
+    /// Mirrors an in-app rename/move in the live indexes at once (the watcher confirms later).
+    pub(crate) fn apply_move(&self, handle: &str, from: &str, to: &str) {
+        if let Ok(v) = self.vault(handle) {
+            v.write().move_docs(from, to);
+        }
+    }
+
+    /// Test helper: lets a second service object see the same vault index.
+    #[cfg(test)]
+    pub(crate) fn adopt(&self, other: &SearchService, handle: &str) {
+        if let Ok(v) = other.vault(handle) {
+            self.vaults.lock().unwrap().insert(handle.to_string(), v);
         }
     }
 

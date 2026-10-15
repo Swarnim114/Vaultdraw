@@ -1,6 +1,7 @@
 //! In-memory vault index: normalised text per drawing + linear substring scan.
 
-use super::extract::TextItem;
+use super::extract::{ElementLink, TextItem};
+use crate::links::LinkIndex;
 use super::normalize::{fold_with_map, normalize, Folded};
 use super::tags::{doc_tags, key_under, split_tag_filters, DocTag};
 use super::types::{ElementMatch, Scope, SearchHit, TagCount, TagSummary};
@@ -40,6 +41,10 @@ pub(crate) struct DocEntry {
     /// False for name-only entries (content not read yet).
     pub parsed: bool,
     pub items: Vec<TextItem>,
+    /// `link` fields of live elements (any non-empty value).
+    pub elinks: Vec<ElementLink>,
+    /// First 8 bytes of the SHA-256 of the file bytes (all zero for name-only entries).
+    pub hash8: [u8; 8],
     /// Normalised items joined with `\n`.
     buf: String,
     // Derived, rebuilt on load.
@@ -57,7 +62,7 @@ pub(crate) struct DocEntry {
 impl DocEntry {
     /// Name-only entry: searchable by path immediately, content fills in later.
     pub(crate) fn name_only(path: &str) -> DocEntry {
-        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new(), tags: Vec::new() };
+        let mut d = DocEntry { stat: (0, 0), parsed: false, items: Vec::new(), elinks: Vec::new(), hash8: [0; 8], buf: String::new(), name_norm: String::new(), stem_off: 0, bounds: Vec::new(), tags: Vec::new() };
         d.derive_name(path);
         d
     }
@@ -81,9 +86,21 @@ impl DocEntry {
         }
         buf.shrink_to_fit();
         let tags = doc_tags(kept.iter().map(|i| &*i.text));
-        let mut d = DocEntry { stat, parsed: true, items: kept, buf, name_norm: String::new(), stem_off: 0, bounds, tags };
+        let mut d = DocEntry { stat, parsed: true, items: kept, elinks: Vec::new(), hash8: [0; 8], buf, name_norm: String::new(), stem_off: 0, bounds, tags };
         d.derive_name(path);
         d
+    }
+
+    /// Attaches the element links and content hash of the parsed file.
+    pub(crate) fn with_links(mut self, elinks: Vec<ElementLink>, hash8: [u8; 8]) -> DocEntry {
+        self.elinks = elinks;
+        self.hash8 = hash8;
+        self
+    }
+
+    /// Re-derives the path-based fields after the drawing moved.
+    pub(crate) fn set_path(&mut self, path: &str) {
+        self.derive_name(path);
     }
 
     fn derive_name(&mut self, path: &str) {
@@ -119,7 +136,8 @@ impl DocEntry {
             .iter()
             .map(|i| std::mem::size_of::<TextItem>() + i.element_id.len() + i.container_id.as_ref().map_or(0, |c| c.len()) + i.text.len())
             .sum();
-        items + self.buf.capacity() + self.name_norm.capacity() + self.bounds.capacity() * 4 + 48
+        let elinks: usize = self.elinks.iter().map(|l| std::mem::size_of::<ElementLink>() + l.element_id.len() + l.link.len()).sum();
+        items + elinks + self.buf.capacity() + self.name_norm.capacity() + self.bounds.capacity() * 4 + 48
     }
 }
 
@@ -220,6 +238,11 @@ fn build_snippet(text: &str, terms: &[Term]) -> Option<(String, Vec<[u32; 2]>)> 
     Some((snippet, to_utf16(&folded.chars, (start, end), base, ranges)))
 }
 
+/// One-line search-style snippet of `text` around the words of `needle` (UTF-16 highlights).
+pub(crate) fn word_snippet(text: &str, needle: &str) -> Option<(String, Vec<[u32; 2]>)> {
+    build_snippet(text, &parse_terms(needle))
+}
+
 /// UTF-16 `[start, end)` ranges of the matched terms in the stem of `name`, relative to the
 /// original (uncollapsed) file name: a run of whitespace in the name counts as it is written.
 fn name_highlights(name: &str, terms: &[Term]) -> Vec<[u32; 2]> {
@@ -295,11 +318,43 @@ struct Scored<'a> {
 #[derive(Default)]
 pub(crate) struct Index {
     docs: HashMap<String, DocEntry>,
+    /// Built lazily on first use, then kept current by every mutation below.
+    links: Option<Box<LinkIndex>>,
+    /// Bumped by every mutation (lets the lazy link build detect concurrent changes).
+    generation: u64,
 }
 
 impl Index {
     pub(crate) fn from_docs(mut docs: HashMap<String, DocEntry>) -> Option<Index> {
-        docs.iter_mut().all(|(p, d)| d.rebuild(p)).then_some(Index { docs })
+        docs.iter_mut().all(|(p, d)| d.rebuild(p)).then_some(Index { docs, links: None, generation: 0 })
+    }
+    pub(crate) fn links(&self) -> Option<&LinkIndex> {
+        self.links.as_deref()
+    }
+    pub(crate) fn links_mut(&mut self) -> Option<&mut LinkIndex> {
+        self.links.as_deref_mut()
+    }
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+    /// Builds a link index from the current docs (read-only; install it with `install_links`).
+    pub(crate) fn build_links(&self) -> LinkIndex {
+        LinkIndex::build(self.docs.iter())
+    }
+    pub(crate) fn install_links(&mut self, links: LinkIndex) {
+        self.links = Some(Box::new(links));
+    }
+    /// Both the link index and the docs, for queries that read text while resolving.
+    pub(crate) fn links_and_docs(&self) -> Option<(&LinkIndex, &HashMap<String, DocEntry>)> {
+        self.links.as_deref().map(|l| (l, &self.docs))
+    }
+    /// Mutable link index with read access to the docs (rename planning).
+    pub(crate) fn links_and_docs_mut(&mut self) -> Option<(&mut LinkIndex, &HashMap<String, DocEntry>)> {
+        let Index { docs, links, .. } = self;
+        links.as_deref_mut().map(|l| (l, &*docs))
+    }
+    pub(crate) fn links_heap_bytes(&self) -> usize {
+        self.links.as_ref().map_or(0, |l| l.approx_heap_bytes())
     }
     pub(crate) fn docs(&self) -> &HashMap<String, DocEntry> {
         &self.docs
@@ -311,26 +366,101 @@ impl Index {
         self.docs.contains_key(path)
     }
     pub(crate) fn upsert(&mut self, path: String, entry: DocEntry) {
+        self.generation += 1;
+        if let Some(l) = self.links.as_deref_mut() {
+            l.upsert(&path, &entry);
+        }
         self.docs.insert(path, entry);
     }
     pub(crate) fn remove(&mut self, path: &str) -> bool {
+        self.generation += 1;
+        if let Some(l) = self.links.as_deref_mut() {
+            l.remove(path);
+        }
         self.docs.remove(path).is_some()
     }
     /// Removes everything under `prefix` (pass a directory path ending in `/`).
     pub(crate) fn remove_prefix(&mut self, prefix: &str) -> usize {
-        let before = self.docs.len();
-        self.docs.retain(|p, _| !p.starts_with(prefix));
-        before - self.docs.len()
+        self.retain(|p| !p.starts_with(prefix))
     }
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) -> usize {
+        self.generation += 1;
         let before = self.docs.len();
-        self.docs.retain(|p, _| keep(p));
+        let links = &mut self.links;
+        self.docs.retain(|p, _| {
+            let k = keep(p);
+            if !k {
+                if let Some(l) = links.as_deref_mut() {
+                    l.remove(p);
+                }
+            }
+            k
+        });
         before - self.docs.len()
+    }
+    /// Moves a drawing (`from` is a drawing path) or every drawing under a folder to `to`,
+    /// keeping parsed content. Returns the `(old, new)` paths of the drawings that moved.
+    pub(crate) fn move_docs(&mut self, from: &str, to: &str) -> Vec<(String, String)> {
+        let prefix = format!("{from}/");
+        let olds: Vec<String> = self.docs.keys().filter(|p| *p == from || p.starts_with(&prefix)).cloned().collect();
+        let mut moved = Vec::with_capacity(olds.len());
+        for old in olds {
+            let new = if old == from { to.to_string() } else { format!("{to}/{}", &old[prefix.len()..]) };
+            moved.push((old, new));
+        }
+        let entries: Vec<_> = moved.iter().filter_map(|(old, new)| self.docs.get(old).map(|_| (old.clone(), new.clone()))).collect();
+        let mut taken = Vec::with_capacity(entries.len());
+        for (old, new) in &entries {
+            if let Some(d) = self.take(old) {
+                taken.push((new.clone(), d));
+            }
+        }
+        for (new, mut d) in taken {
+            if !super::worker::is_drawing_name(&new) {
+                continue;
+            }
+            d.set_path(&new);
+            self.upsert(new, d);
+        }
+        moved
+    }
+    fn take(&mut self, path: &str) -> Option<DocEntry> {
+        self.generation += 1;
+        if let Some(l) = self.links.as_deref_mut() {
+            l.remove(path);
+        }
+        self.docs.remove(path)
     }
     /// `(drawings with content indexed, drawings known)`.
     pub(crate) fn counts(&self) -> (usize, usize) {
         (self.docs.values().filter(|d| d.parsed).count(), self.docs.len())
     }
+    /// Calls `f(path, doc, item index)` for the first whole-word occurrence of the normalised
+    /// `needle` in each text item (frame names excluded), until `f` returns false.
+    pub(crate) fn for_each_word_match(&self, needle: &str, mut f: impl FnMut(&str, &DocEntry, usize) -> bool) {
+        if needle.is_empty() {
+            return;
+        }
+        let finder = Finder::new(needle);
+        for (path, d) in &self.docs {
+            let mut last = usize::MAX;
+            for m in finder.find_iter(d.buf.as_bytes()) {
+                let e = m + needle.len();
+                if !word_start(&d.buf, m) || !is_boundary(d.buf[e..].chars().next()) {
+                    continue;
+                }
+                let idx = d.bounds.partition_point(|&b| b as usize <= m).saturating_sub(1);
+                if idx == last || d.items.get(idx).map_or(true, |i| i.kind != super::extract::ItemKind::Text) {
+                    continue;
+                }
+                last = idx;
+                if !f(path, d, idx) {
+                    return;
+                }
+            }
+        }
+    }
+
     #[allow(dead_code)] // API for the tags feature
     /// Visits every text item of every drawing (for tag extraction without re-reading files).
     pub(crate) fn for_each_item(&self, mut f: impl FnMut(&str, &TextItem)) {

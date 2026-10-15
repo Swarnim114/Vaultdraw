@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 mod clipboard;
 mod config;
 mod drawing_copy;
+mod links;
 mod search;
 mod library;
 mod memory;
@@ -600,10 +601,11 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         .vaults
         .lock()
         .map_err(|_| err("INTERNAL", "Vault state unavailable"))?
-        .insert(handle.clone(), vault);
+        .insert(handle.clone(), vault.clone());
     if let Some(search) = app.try_state::<search::SearchService>() {
         search.start(&handle, root.clone(), search::tauri_emitter(app));
     }
+    links::on_vault_open(app, vault);
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -872,6 +874,28 @@ async fn move_entry(
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
     move_entry_paths(&v.root, &from, &to)
+}
+/// `move_entry` that also keeps links between drawings working (see `links::types`).
+#[tauri::command]
+async fn move_entry_with_links(
+    app: AppHandle,
+    handle: String,
+    from: String,
+    to: String,
+    open_path: Option<String>,
+    rewrite: bool,
+    state: State<'_, Service>,
+    search: State<'_, search::SearchService>,
+    links: State<'_, links::LinksState>,
+) -> Result<links::MoveResult> {
+    let v = vault_for(&state, &handle)?;
+    writable(&v)?;
+    if !rewrite {
+        let _mutation = mutation_guard(&v)?;
+        move_entry_paths(&v.root, &from, &to)?;
+        return Ok(links::MoveResult::default());
+    }
+    links::move_command(&app, &v, &from, &to, open_path.as_deref(), &search, &links)
 }
 #[tauri::command]
 async fn trash_entry(handle: String, path: String, state: State<'_, Service>) -> Result<()> {
@@ -1315,6 +1339,7 @@ pub fn run() {
         let builder = tauri::Builder::default()
             .manage(Service::default())
             .manage(search::SearchService::default())
+            .manage(links::LinksState::default())
             .setup(|app| {
                 startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
@@ -1368,12 +1393,13 @@ pub fn run() {
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
@@ -1385,12 +1411,13 @@ pub fn run() {
         } else {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir
@@ -1399,12 +1426,13 @@ pub fn run() {
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-            write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+            write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
             export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
             search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
             library::read_library, library::write_library, library::pick_library_file,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir

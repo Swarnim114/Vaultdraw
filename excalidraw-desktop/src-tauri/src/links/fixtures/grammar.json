@@ -1,21 +1,334 @@
 {
   "_doc": "Shared link grammar fixtures: Rust (links/grammar.rs tests) and TS (src/links/grammar.test.ts) both assert every case. Offsets are UTF-16 [start, end) of the whole [[...]] token. Owner: Rust links agent (extend freely; TS agent reads only).",
   "text": [
-    { "input": "See [[BFS and DFS]] now", "links": [{ "start": 4, "end": 19, "target": "BFS and DFS", "label": null }] },
-    { "input": "[[Graphs/Dijkstra|shortest paths]]", "links": [{ "start": 0, "end": 34, "target": "Graphs/Dijkstra", "label": "shortest paths" }] },
-    { "input": "two [[a]] and [[b|B]]", "links": [{ "start": 4, "end": 9, "target": "a", "label": null }, { "start": 14, "end": 21, "target": "b", "label": "B" }] },
-    { "input": "unclosed [[abc", "links": [] },
-    { "input": "empty [[]] and [[ ]]", "links": [] },
-    { "input": "Café [[Café]]", "links": [{ "start": 5, "end": 13, "target": "Café", "label": null }] },
-    { "input": "x.excalidraw [[Notes/x.excalidraw]]", "links": [{ "start": 13, "end": 35, "target": "Notes/x", "label": null }] },
-    { "input": "no newline [[a\nb]]", "links": [] }
+    {
+      "input": "See [[BFS and DFS]] now",
+      "links": [
+        {
+          "start": 4,
+          "end": 19,
+          "target": "BFS and DFS",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[Graphs/Dijkstra|shortest paths]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 34,
+          "target": "Graphs/Dijkstra",
+          "label": "shortest paths"
+        }
+      ]
+    },
+    {
+      "input": "two [[a]] and [[b|B]]",
+      "links": [
+        {
+          "start": 4,
+          "end": 9,
+          "target": "a",
+          "label": null
+        },
+        {
+          "start": 14,
+          "end": 21,
+          "target": "b",
+          "label": "B"
+        }
+      ]
+    },
+    {
+      "input": "unclosed [[abc",
+      "links": []
+    },
+    {
+      "input": "empty [[]] and [[ ]]",
+      "links": []
+    },
+    {
+      "input": "Café [[Café]]",
+      "links": [
+        {
+          "start": 5,
+          "end": 13,
+          "target": "Café",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "x.excalidraw [[Notes/x.excalidraw]]",
+      "links": [
+        {
+          "start": 13,
+          "end": 35,
+          "target": "Notes/x",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "no newline [[a\nb]]",
+      "links": []
+    },
+    {
+      "input": "😀 [[Café]] 😀 [[b|ß]]",
+      "links": [
+        {
+          "start": 3,
+          "end": 11,
+          "target": "Café",
+          "label": null
+        },
+        {
+          "start": 15,
+          "end": 22,
+          "target": "b",
+          "label": "ß"
+        }
+      ]
+    },
+    {
+      "input": "[[a [[b]]",
+      "links": [
+        {
+          "start": 4,
+          "end": 9,
+          "target": "b",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[[a]]]",
+      "links": [
+        {
+          "start": 1,
+          "end": 6,
+          "target": "a",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[a]b]]",
+      "links": []
+    },
+    {
+      "input": "[[a]]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 5,
+          "target": "a",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[ x ]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 7,
+          "target": "x",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[a|]] [[b| c ]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 6,
+          "target": "a",
+          "label": null
+        },
+        {
+          "start": 7,
+          "end": 16,
+          "target": "b",
+          "label": "c"
+        }
+      ]
+    },
+    {
+      "input": "[[a|b|c]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 9,
+          "target": "a",
+          "label": "b|c"
+        }
+      ]
+    },
+    {
+      "input": "[[x.EXCALIDRAW]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 16,
+          "target": "x",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[.excalidraw]] [[ .excalidraw ]]",
+      "links": []
+    },
+    {
+      "input": "line one\n[[a]] x\n[[b]]",
+      "links": [
+        {
+          "start": 9,
+          "end": 14,
+          "target": "a",
+          "label": null
+        },
+        {
+          "start": 17,
+          "end": 22,
+          "target": "b",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[a\rb]]",
+      "links": []
+    },
+    {
+      "input": "quote \" back \\ [[a\\b]]",
+      "links": [
+        {
+          "start": 15,
+          "end": 22,
+          "target": "a\\b",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 260,
+          "target": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]]",
+      "links": []
+    },
+    {
+      "input": "[[éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé]]",
+      "links": [
+        {
+          "start": 0,
+          "end": 260,
+          "target": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+          "label": null
+        }
+      ]
+    },
+    {
+      "input": "[[ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé]]",
+      "links": []
+    },
+    {
+      "input": "]] [[ ]] [[| x]] [[a",
+      "links": []
+    }
   ],
   "linkField": [
-    { "input": "[[BFS and DFS]]", "target": "BFS and DFS" },
-    { "input": "vaultdraw://open?file=Graphs/BFS%20and%20DFS", "target": "Graphs/BFS and DFS" },
-    { "input": "./x.excalidraw", "target": "./x", "relative": true },
-    { "input": "x.excalidraw", "target": "x", "relative": true },
-    { "input": "https://example.com", "target": null },
-    { "input": "/some/path", "target": null }
+    {
+      "input": "[[BFS and DFS]]",
+      "target": "BFS and DFS"
+    },
+    {
+      "input": "vaultdraw://open?file=Graphs/BFS%20and%20DFS",
+      "target": "Graphs/BFS and DFS"
+    },
+    {
+      "input": "./x.excalidraw",
+      "target": "./x",
+      "relative": true
+    },
+    {
+      "input": "x.excalidraw",
+      "target": "x",
+      "relative": true
+    },
+    {
+      "input": "https://example.com",
+      "target": null
+    },
+    {
+      "input": "/some/path",
+      "target": null
+    },
+    {
+      "input": "vaultdraw://open?file=a%20b&anchor=%5Ex",
+      "target": "a b"
+    },
+    {
+      "input": "vaultdraw://open?path=x.excalidraw",
+      "target": "x"
+    },
+    {
+      "input": "vaultdraw://open?file=",
+      "target": null
+    },
+    {
+      "input": "vaultdraw://open?anchor=x",
+      "target": null
+    },
+    {
+      "input": "[[a|b]]",
+      "target": "a"
+    },
+    {
+      "input": "[[ ]]",
+      "target": null
+    },
+    {
+      "input": "../x/y.excalidraw",
+      "target": "../x/y",
+      "relative": true
+    },
+    {
+      "input": "sub/x.excalidraw",
+      "target": "sub/x",
+      "relative": true
+    },
+    {
+      "input": "./x",
+      "target": null
+    },
+    {
+      "input": "mailto:a@b.c",
+      "target": null
+    },
+    {
+      "input": "https://x.com/a.excalidraw",
+      "target": null
+    },
+    {
+      "input": "",
+      "target": null
+    },
+    {
+      "input": "[[Café]]",
+      "target": "Café"
+    }
   ]
 }

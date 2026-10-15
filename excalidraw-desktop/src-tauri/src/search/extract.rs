@@ -4,6 +4,7 @@
 use super::normalize::normalize;
 use crate::{err, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +22,21 @@ pub(crate) struct TextItem {
     pub kind: ItemKind,
     /// Original (un-normalised) text.
     pub text: Box<str>,
+}
+
+/// The `link` field of a live element (any non-empty value, as written).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ElementLink {
+    pub element_id: Box<str>,
+    pub link: Box<str>,
+}
+
+/// Everything the indexes need from one drawing file.
+pub(crate) struct Extracted {
+    pub items: Vec<TextItem>,
+    pub elinks: Vec<ElementLink>,
+    /// First 8 bytes of the SHA-256 of the file bytes.
+    pub hash8: [u8; 8],
 }
 
 #[derive(Deserialize)]
@@ -46,6 +62,8 @@ struct El<'a> {
     name: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
     container_id: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    link: Option<Cow<'a, str>>,
     #[serde(default)]
     is_deleted: Option<bool>,
 }
@@ -57,14 +75,31 @@ fn non_empty<'a>(s: &'a Option<Cow<'a, str>>) -> Option<&'a str> {
 /// Extracts text elements (bound labels use `originalText`, which has no
 /// auto-wrap newlines) and frame names. Items that normalise to nothing are dropped.
 pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
+    Ok(parse_scene(json)?.0)
+}
+
+/// Items, element links and the content hash of one drawing file.
+pub(crate) fn extract_doc(json: &[u8]) -> Result<Extracted> {
+    let (items, elinks) = parse_scene(json)?;
+    let digest = Sha256::digest(json);
+    let mut hash8 = [0u8; 8];
+    hash8.copy_from_slice(&digest[..8]);
+    Ok(Extracted { items, elinks, hash8 })
+}
+
+fn parse_scene(json: &[u8]) -> Result<(Vec<TextItem>, Vec<ElementLink>)> {
     let scene: Scene = serde_json::from_slice(json).map_err(|e| err("INVALID_FILE", format!("Invalid JSON: {e}")))?;
     if scene.kind.as_deref() != Some("excalidraw") {
         return Err(err("INVALID_FILE", "Not an Excalidraw scene"));
     }
     let mut out = Vec::new();
+    let mut elinks = Vec::new();
     for el in &scene.elements {
         if el.is_deleted == Some(true) {
             continue;
+        }
+        if let (Some(link), Some(id)) = (non_empty(&el.link), el.id.as_deref().filter(|i| !i.is_empty())) {
+            elinks.push(ElementLink { element_id: id.into(), link: link.trim().into() });
         }
         let (kind, text) = match el.ty.as_deref() {
             Some("text") => (ItemKind::Text, non_empty(&el.original_text).or_else(|| non_empty(&el.text))),
@@ -82,7 +117,7 @@ pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
             text: text.into(),
         });
     }
-    Ok(out)
+    Ok((out, elinks))
 }
 
 #[cfg(test)]
@@ -131,6 +166,21 @@ mod unit_tests {
             "elements":[{"id":"t","type":"text","text":"ok","x":1.5,"points":[[0,0]]}]}"#,
         );
         assert_eq!(v.len(), 1);
+    }
+
+    #[test]
+    fn element_links_and_hash_are_extracted_for_live_elements_only() {
+        let json = br#"{"type":"excalidraw","elements":[
+            {"id":"a","type":"rectangle","link":"[[Plan]]"},
+            {"id":"b","type":"text","text":"x","link":"https://e.com"},
+            {"id":"c","type":"rectangle","link":"","isDeleted":false},
+            {"id":"d","type":"rectangle","link":"[[Gone]]","isDeleted":true},
+            {"id":"e","type":"rectangle","link":null}]}"#;
+        let x = extract_doc(json).unwrap();
+        let got: Vec<_> = x.elinks.iter().map(|l| (&*l.element_id, &*l.link)).collect();
+        assert_eq!(got, vec![("a", "[[Plan]]"), ("b", "https://e.com")]);
+        assert_eq!(x.items.len(), 1);
+        assert_eq!(&x.hash8[..], &Sha256::digest(json)[..8]);
     }
 
     #[test]
