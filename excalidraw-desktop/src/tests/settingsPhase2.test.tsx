@@ -214,7 +214,7 @@ describe("VaultNavigator sort and delete", () => {
     vault,
     activePath: null,
     collapsed: false,
-    onToggleCollapse: vi.fn(),
+    onCollapseAll: vi.fn(),
     onOpenDrawing: vi.fn(),
     onCreateDrawing: vi.fn(),
     onCreateFolder: vi.fn(),

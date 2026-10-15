@@ -40,6 +40,8 @@ export interface AppCommandActions {
   saveActiveAsTemplate(): void;
   searchTags(): void;
   newFolder(): void;
+  collapseAllFolders(): void;
+  refreshFiles(): void;
   renameActive(): void;
   moveActive(): void;
   trashActive(): void;
@@ -83,6 +85,8 @@ export function appCommandHandlers(
     "templates.saveDrawing": actions.saveActiveAsTemplate,
     "navigator.searchTags": actions.searchTags,
     "navigator.newFolder": actions.newFolder,
+    "navigator.collapseAll": actions.collapseAllFolders,
+    "navigator.refresh": actions.refreshFiles,
     "file.rename": actions.renameActive,
     "file.move": actions.moveActive,
     "file.trash": actions.trashActive,

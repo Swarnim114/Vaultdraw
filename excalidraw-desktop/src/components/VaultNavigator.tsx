@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useCommandShortcutLookup } from "../commands/useCommandShortcut";
 import { getPreferences, updatePreferences } from "../vault/preferences";
 import { SORT_LABELS, SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 import { checkTreeDrop, getParentPath } from "../vault/treeStore";
@@ -25,6 +26,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconChevronsUpDown,
+  IconCollapseAll,
   IconClose,
   IconCheck,
   IconCopy,
@@ -34,14 +36,13 @@ import {
   IconExportImage,
   IconExportVector,
   IconFolder,
+  IconFolderOpen,
   IconFolderPlus,
   IconGraph,
   IconMore,
   IconMove,
   IconNewDrawing,
-  IconPanelRightClose,
-  IconPlus,
-  IconRefresh,
+  IconPenLine,
   IconReveal,
   IconSaveCopy,
   IconSearch,
@@ -58,7 +59,7 @@ import { TagsPanel, type TagsPanelHandle } from "./tags/TagsPanel";
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
 import { RenameModal } from "./RenameModal";
-import { flattenTree } from "./tree/flattenTree";
+import { flattenTree, folderDrawingCounts } from "./tree/flattenTree";
 import { TREE_ROW_HEIGHT, useTreeWindow } from "./tree/useTreeWindow";
 import { ghostTransform, useTreeDrag } from "./tree/useTreeDrag";
 
@@ -129,7 +130,8 @@ interface VaultNavigatorProps {
   onExpandFolder: (folderPath: string) => void;
   allIndexedEntries: VaultEntry[];
   isIndexing?: boolean;
-  onRefresh?: () => void;
+  /** Collapse every expanded folder (header action). */
+  onCollapseAll: () => void;
   onOpenSettings?: () => void;
   sortOrder: SortOrder;
   onSortChange: (order: SortOrder) => void;
@@ -156,7 +158,6 @@ export const VaultNavigator = ({
   vault,
   activePath,
   collapsed,
-  onToggleCollapse,
   onOpenDrawing,
   search = null,
   onOpenSearchResult,
@@ -178,7 +179,7 @@ export const VaultNavigator = ({
   onExpandFolder,
   allIndexedEntries,
   isIndexing = false,
-  onRefresh,
+  onCollapseAll,
   onOpenSettings,
   sortOrder,
   onSortChange,
@@ -192,6 +193,13 @@ export const VaultNavigator = ({
   onOpenLocalGraph,
   ownerDocument,
 }: VaultNavigatorProps) => {
+  const shortcutFor = useCommandShortcutLookup(
+    ownerDocument?.defaultView ?? null,
+  );
+  const tip = (text: string, commandId: string) => {
+    const keys = shortcutFor(commandId);
+    return keys ? `${text} (${keys})` : text;
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
 
@@ -388,6 +396,11 @@ export const VaultNavigator = ({
     () => flattenTree(treeNodes, expandedFolders),
     [treeNodes, expandedFolders],
   );
+  // Drawings per folder: built once per index change, not per render or row.
+  const folderCounts = useMemo(
+    () => folderDrawingCounts(allIndexedEntries),
+    [allIndexedEntries],
+  );
   const getVisibleItems = (): VaultEntry[] => rows.map((r) => r.entry);
   const treeWindow = useTreeWindow(treeContainerRef, rows.length, !isSearching);
   const { scrollToRow } = treeWindow;
@@ -566,52 +579,42 @@ export const VaultNavigator = ({
         />
       )}
       <div className="vault-navigator__toolbar">
+        <span className="vault-navigator__title">Navigator</span>
         {!vault.readOnly && (
           <>
             <button
               type="button"
-              className="vault-btn vault-btn--ghost vault-btn--icon"
+              className="vault-ibtn"
               onClick={() => {
                 setCreateParent("");
                 setCreateKind("drawing");
                 setCreateName("");
                 setCreateError(null);
               }}
-              title="New drawing"
+              title={tip("New drawing", "vault.newDrawing")}
               aria-label="New Drawing"
             >
               <IconNewDrawing />
             </button>
             <button
               type="button"
-              className="vault-btn vault-btn--ghost vault-btn--icon"
+              className="vault-ibtn"
               onClick={() => {
                 setCreateParent("");
                 setCreateKind("folder");
                 setCreateName("");
                 setCreateError(null);
               }}
-              title="New folder"
+              title={tip("New folder", "navigator.newFolder")}
               aria-label="New Folder"
             >
               <IconFolderPlus />
             </button>
           </>
         )}
-        {onRefresh && (
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onRefresh}
-            title="Refresh files"
-            aria-label="Refresh files"
-          >
-            <IconRefresh />
-          </button>
-        )}
         <button
           type="button"
-          className="vault-btn vault-btn--ghost vault-btn--icon"
+          className="vault-ibtn"
           onClick={(e) => {
             const box = e.currentTarget.getBoundingClientRect();
             setSortMenu({ x: box.right, y: box.bottom + 4 });
@@ -632,14 +635,15 @@ export const VaultNavigator = ({
         <span className="vault-navigator__toolbar-spacer" />
         <button
           type="button"
-          className="vault-btn vault-btn--ghost vault-btn--icon"
-          onClick={onToggleCollapse}
-          title="Hide navigator"
-          aria-label="Collapse Navigator"
+          className="vault-ibtn"
+          onClick={onCollapseAll}
+          title={tip("Collapse all folders", "navigator.collapseAll")}
+          aria-label="Collapse all folders"
         >
-          <IconPanelRightClose />
+          <IconCollapseAll />
         </button>
       </div>
+      {/* Slot: a Files / Tags / Links tab strip goes here. */}
 
       {/* Search Input */}
       <div className="vault-search">
@@ -738,15 +742,14 @@ export const VaultNavigator = ({
                 end={treeWindow.end}
                 activePath={activePath}
                 focusedPath={focusedPath}
-                readOnly={vault.readOnly}
                 onSelect={onRowSelect}
                 onToggleFolder={onRowToggle}
-                onNewInside={onRowNewInside}
                 onOpenMenu={onRowMenu}
                 onRowPointerDown={onRowPointerDown}
                 dropTarget={drag?.allowed ? drag.targetFolder : null}
                 dragSourcePath={drag?.source.path ?? null}
                 tagsByPath={showTagChips ? tagsByPath : undefined}
+                folderCounts={folderCounts}
                 onFilterTag={filterByTag}
               />
             )}
@@ -777,7 +780,7 @@ export const VaultNavigator = ({
         {onOpenSettings && (
           <button
             type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
+            className="vault-ibtn"
             onClick={onOpenSettings}
             title="Settings"
             aria-label="Settings"
@@ -1011,10 +1014,8 @@ interface TreeRowsProps {
   end: number;
   activePath: string | null;
   focusedPath: string | null;
-  readOnly: boolean;
   onSelect: (path: string, kind: "folder" | "drawing") => void;
   onToggleFolder: (path: string) => void;
-  onNewInside: (folderPath: string, kind: "folder" | "drawing") => void;
   onOpenMenu: (entry: VaultEntry, x: number, y: number) => void;
   onRowPointerDown: (
     event: React.PointerEvent<HTMLElement>,
@@ -1025,6 +1026,8 @@ interface TreeRowsProps {
   dragSourcePath: string | null;
   /** Tags per drawing path; undefined hides the chips. */
   tagsByPath?: Record<string, string[]>;
+  /** Drawings inside each folder (recursive). */
+  folderCounts: ReadonlyMap<string, number>;
   onFilterTag: (key: string) => void;
 }
 
@@ -1037,6 +1040,7 @@ const TreeRows = ({
   dropTarget,
   dragSourcePath,
   tagsByPath,
+  folderCounts,
   ...handlers
 }: TreeRowsProps) => (
   <>
@@ -1060,6 +1064,7 @@ const TreeRows = ({
           dropTarget={isFolder && dropTarget === path}
           dragSource={dragSourcePath === path}
           tags={isFolder ? undefined : tagsByPath?.[path]}
+          count={isFolder ? folderCounts.get(path) : undefined}
           {...handlers}
         />
       );
@@ -1076,10 +1081,8 @@ const TreeRows = ({
 interface TreeRowProps
   extends Pick<
     TreeRowsProps,
-    | "readOnly"
     | "onSelect"
     | "onToggleFolder"
-    | "onNewInside"
     | "onOpenMenu"
     | "onRowPointerDown"
     | "onFilterTag"
@@ -1092,6 +1095,7 @@ interface TreeRowProps
   dropTarget: boolean;
   dragSource: boolean;
   tags?: string[];
+  count?: number;
 }
 
 const TreeRow = memo(
@@ -1104,10 +1108,9 @@ const TreeRow = memo(
     dropTarget: isDropTarget,
     dragSource: isDragSource,
     tags,
-    readOnly,
+    count,
     onSelect,
     onToggleFolder,
-    onNewInside,
     onOpenMenu,
     onRowPointerDown,
     onFilterTag,
@@ -1136,19 +1139,26 @@ const TreeRow = memo(
       >
         <div className="vault-tree-item__main">
           {isFolder ? (
-            <span
-              className="vault-tree-item__toggle"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFolder(entry.path);
-              }}
-              aria-label={isExpanded ? "Collapse" : "Expand"}
-            >
-              {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
-            </span>
+            <>
+              <span
+                className="vault-tree-item__toggle"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFolder(entry.path);
+                }}
+                aria-label={isExpanded ? "Collapse" : "Expand"}
+              >
+                {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
+              </span>
+              {isExpanded ? (
+                <IconFolderOpen className="vault-tree-item__icon" />
+              ) : (
+                <IconFolder className="vault-tree-item__icon" />
+              )}
+            </>
           ) : (
             <span className="vault-tree-item__icon">
-              <IconDrawing />
+              <IconPenLine />
             </span>
           )}
 
@@ -1158,21 +1168,12 @@ const TreeRow = memo(
           {tags && <TagChips tags={tags} onFilter={onFilterTag} />}
         </div>
 
+        {count ? <span className="vault-tree-item__count">{count}</span> : null}
+
         <div
           className="vault-tree-item__actions"
           onClick={(e) => e.stopPropagation()}
         >
-          {isFolder && !readOnly && (
-            <button
-              type="button"
-              className="vault-tree-action-btn"
-              title="New drawing in this folder"
-              onClick={() => onNewInside(entry.path, "drawing")}
-              aria-label="New drawing in folder"
-            >
-              <IconPlus />
-            </button>
-          )}
           <button
             type="button"
             className="vault-tree-action-btn"

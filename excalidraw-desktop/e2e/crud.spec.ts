@@ -28,13 +28,10 @@ const treeRow = (page: Page, name: string): Locator =>
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Row action buttons are display:none until the row is hovered. */
-/** Row actions live in the "More actions" menu; folders also keep a "+" button. */
+/** Row actions live in the "More actions" menu. */
 const rowAction = async (page: Page, name: string, label: string) => {
   const row = treeRow(page, name);
   await row.hover();
-  if (label === "New drawing in folder") {
-    return row.getByRole("button", { name: label, exact: true });
-  }
   await row.getByRole("button", { name: "More actions" }).click();
   return page.getByRole("menuitem", { name: label, exact: true });
 };
@@ -133,7 +130,7 @@ test("2. create a drawing inside a folder, draw, and save", async ({
     .click();
   await expect(treeRow(page, "Notes")).toBeVisible();
 
-  await (await rowAction(page, "Notes", "New drawing in folder")).click();
+  await (await rowAction(page, "Notes", "New drawing here")).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Name").fill("Sketch");

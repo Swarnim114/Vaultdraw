@@ -106,7 +106,10 @@ const seed = async (
     folders.forEach((f) => repo.seedFolder(f));
     drawings.forEach((d) => repo.seedDrawing(d, json));
   }, items);
-  await page.getByRole("button", { name: "Refresh files" }).click();
+  // Refresh lives in the command palette now (no header button).
+  await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+  await page.keyboard.type("navigator: refresh files");
+  await page.keyboard.press("Enter");
   for (const p of [...(items.folders ?? []), ...(items.drawings ?? [])]) {
     if (!p.includes("/")) {
       await expect(row(page, p)).toBeVisible();
