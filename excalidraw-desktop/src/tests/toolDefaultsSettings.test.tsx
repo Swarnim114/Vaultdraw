@@ -213,7 +213,8 @@ describe("toolDefaultsStore", () => {
 describe("settings schema", () => {
   it("has the Tool defaults page after Pens and a row per tool", () => {
     const ids = SETTINGS_PAGES.map((p) => p.id);
-    expect(ids.indexOf("tools")).toBe(ids.indexOf("pens") + 1);
+    expect(ids).toContain("tools");
+    expect(ids).not.toContain("pens");
     expect(searchSettings("arrowhead").map((s) => s.id)).toContain(
       "tool-arrow",
     );
@@ -225,7 +226,7 @@ describe("settings schema", () => {
   });
 });
 
-describe("Tool defaults page", () => {
+describe("Tools page: tool defaults", () => {
   const open = async () => {
     await attachVaultSettings(window, "v", { tauri: false });
     render(
@@ -238,14 +239,24 @@ describe("Tool defaults page", () => {
     );
   };
 
-  it("renders every tool with its controls", async () => {
+  const tab = (name: string) =>
+    fireEvent.click(screen.getByRole("tab", { name }));
+
+  it("shows one tool section at a time with its controls", async () => {
     await open();
     expect(screen.getByTestId("tool-defaults-page")).toBeTruthy();
+    // Rectangle is the default section; the others are not rendered.
+    expect(screen.getByTestId("tool-default-rectangle")).toBeTruthy();
+    expect(screen.queryByTestId("tool-default-arrow")).toBeNull();
     for (const tool of TOOL_DEFAULT_TOOLS) {
+      tab(tool[0].toUpperCase() + tool.slice(1));
       expect(screen.getByTestId(`tool-default-${tool}`)).toBeTruthy();
     }
+    tab("Arrow");
     expect(screen.getByTestId("tool-default-arrow-end_arrowhead")).toBeTruthy();
+    tab("Text");
     expect(screen.getByTestId("tool-default-text-font_family")).toBeTruthy();
+    tab("Rectangle");
     expect(
       screen.queryByTestId("tool-default-rectangle-arrow_type"),
     ).toBeNull();
@@ -253,6 +264,7 @@ describe("Tool defaults page", () => {
 
   it("edits a select, removes the key with Default, and resets", async () => {
     await open();
+    tab("Arrow");
     const style = screen.getByTestId("tool-default-arrow-stroke_style");
     fireEvent.change(style, { target: { value: "dotted" } });
     expect(getPreferences(window).toolArrow).toEqual({
@@ -283,6 +295,7 @@ describe("Tool defaults page", () => {
 
   it("clamps numbers and sets a colour", async () => {
     await open();
+    tab("Line");
     const width = screen.getByTestId("tool-default-line-stroke_width");
     fireEvent.change(width, { target: { value: "500" } });
     fireEvent.blur(width);
@@ -296,6 +309,7 @@ describe("Tool defaults page", () => {
   it("This vault copies the global style into the vault, then edits go there", async () => {
     updatePreferences({ [toolField("arrow")]: { stroke_width: 3 } });
     await open();
+    tab("Arrow");
     const row = screen.getByTestId("tool-default-arrow");
     const toggle = row.querySelector<HTMLInputElement>('input[role="switch"]')!;
     await act(async () => {
@@ -327,6 +341,7 @@ describe("Tool defaults page", () => {
 
   it("This vault on with an empty global style stores {} and edits go to the vault", async () => {
     await open();
+    tab("Line");
     const toggle = screen
       .getByTestId("tool-default-line")
       .querySelector<HTMLInputElement>('input[role="switch"]')!;

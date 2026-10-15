@@ -54,10 +54,18 @@ const drawAndRead = async (page: Page, type: string, fy: number, fx = 0.3) => {
   return (await live(page)).find(isNew);
 };
 
-const openToolDefaults = async (page: Page) => {
+/** Settings > Tools, on one tool's tab (one section is shown at a time). */
+const openToolDefaults = async (page: Page, tool = "Arrow") => {
   await page.keyboard.press("ControlOrMeta+Comma");
-  await page.getByRole("tab", { name: "Tool defaults" }).click();
+  await page.getByRole("tab", { name: "Tools", exact: true }).click();
   await expect(page.getByTestId("tool-defaults-page")).toBeVisible();
+  await page
+    .getByRole("tablist", { name: "Tools" })
+    .getByRole("tab", { name: tool })
+    .click();
+  await expect(
+    page.getByTestId(`tool-default-${tool.toLowerCase()}`),
+  ).toBeVisible();
 };
 const closeSettings = (page: Page) =>
   page.getByRole("button", { name: "Close Settings" }).click();

@@ -118,14 +118,14 @@ describe("settings search", () => {
   });
 });
 
-describe("Pens & laser page", () => {
+describe("Tools page: pens and laser", () => {
   const open = () => {
     render(
       <SettingsModal
         vault={vault}
         onClose={() => {}}
         ownerDocument={document}
-        initialPage="pens"
+        initialPage="tools:pen"
       />,
     );
   };
@@ -136,16 +136,21 @@ describe("Pens & laser page", () => {
     const start = count();
     fireEvent.click(screen.getByRole("button", { name: "Add pen" }));
     expect(count()).toBe(start + 1);
-    fireEvent.click(screen.getByRole("button", { name: "Remove pen 1" }));
+    // Adding selects the new pen, so its row is the one on screen.
+    fireEvent.click(
+      screen.getByRole("button", { name: `Remove pen ${start + 1}` }),
+    );
     expect(count()).toBe(start);
     fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
     expect(getPreferences(window).penPresets).toEqual(
       DEFAULT_PREFERENCES.penPresets,
     );
+    // Only the selected pen's Remove button is rendered.
+    const remove = () => screen.getByRole("button", { name: /^Remove pen \d/ });
     while (count() > 1) {
-      fireEvent.click(screen.getByRole("button", { name: "Remove pen 1" }));
+      fireEvent.click(remove());
     }
-    expect(screen.getByRole("button", { name: "Remove pen 1" })).toBeDisabled();
+    expect(remove()).toBeDisabled();
   });
 
   it("disables Add pen at the maximum", () => {
@@ -166,6 +171,7 @@ describe("Pens & laser page", () => {
     fireEvent.change(opacity, { target: { value: "abc" } });
     fireEvent.blur(opacity);
     expect(getPreferences(window).penPresets[0].opacity).toBe(100);
+    fireEvent.click(screen.getByRole("tab", { name: "Laser" }));
     const size = screen.getByLabelText("Laser size");
     fireEvent.change(size, { target: { value: "0" } });
     fireEvent.blur(size);
@@ -176,6 +182,7 @@ describe("Pens & laser page", () => {
     open();
     fireEvent.click(screen.getByLabelText("Pen 1 highlighter"));
     expect(getPreferences(window).penPresets[0].highlighter).toBe(true);
+    fireEvent.click(screen.getByRole("tab", { name: "Laser" }));
     const fade = screen.getByLabelText("Laser fade time");
     fireEvent.change(fade, { target: { value: "2000" } });
     fireEvent.blur(fade);

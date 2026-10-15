@@ -83,7 +83,7 @@ import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
 
 import "./components/VaultShell.css";
 
-import type { SettingsPageId } from "./components/settings/schema";
+import type { SettingsTarget } from "./components/settings/schema";
 import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
@@ -178,7 +178,7 @@ export const VaultApp = ({
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsPage, setSettingsPage] = useState<SettingsPageId | undefined>(
+  const [settingsPage, setSettingsPage] = useState<SettingsTarget | undefined>(
     undefined,
   );
   // The palette and the mode it opened in (Cmd+P files, Cmd+Shift+P
@@ -1240,7 +1240,7 @@ export const VaultApp = ({
     }
   };
 
-  const openSettings = useCallback((page?: SettingsPageId) => {
+  const openSettings = useCallback((page?: SettingsTarget) => {
     setSettingsPage(page);
     setShowSettingsModal(true);
   }, []);

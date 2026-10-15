@@ -1,0 +1,268 @@
+/* Settings > Tools: tool tabs, one section card, label-left rows. */
+
+.vault-settings-intro {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--vault-text-muted);
+}
+
+.vault-tools-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Tool tabs: the editor's toolbar, with labels */
+.vault-tools-tabs {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  background-color: var(--vault-surface);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+}
+
+.vault-tools-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 2px 5px;
+  border: none;
+  border-radius: var(--vault-radius-sm);
+  background: transparent;
+  color: var(--vault-text-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.vault-tools-tab:hover {
+  background-color: var(--vault-surface-hover);
+  color: var(--vault-text);
+}
+
+.vault-tools-tab:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: -2px;
+}
+
+.vault-tools-tab--active,
+.vault-tools-tab--active:hover {
+  background-color: var(--vault-primary-light);
+  color: var(--vault-primary);
+  font-weight: 600;
+}
+
+.vault-tools-tab__icon {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Customised: the tool's settings differ from the defaults */
+.vault-tools-tab__dot {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--vault-primary);
+  box-shadow: 0 0 0 2px var(--vault-surface);
+}
+
+.vault-tools-tab__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Section card */
+.vault-tools-panel {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--vault-surface);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+}
+
+.vault-tools-panel > .vault-config-status {
+  margin: 8px 14px 0;
+}
+
+.vault-tools-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--vault-border);
+}
+
+.vault-tools-header__icon {
+  display: inline-flex;
+  color: var(--vault-text-muted);
+}
+
+.vault-tools-header__title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--vault-text);
+}
+
+.vault-tools-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.vault-tools-reset svg {
+  flex-shrink: 0;
+}
+
+/* Live preview, drawn on a white canvas */
+.vault-tools-preview {
+  margin: 12px 14px 4px;
+  background-color: #ffffff;
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+  overflow: hidden;
+}
+
+.vault-tools-preview svg {
+  display: block;
+}
+
+/* Dark mode: the same filter Excalidraw puts on its canvas */
+:root.dark .vault-tools-preview {
+  filter: invert(93%) hue-rotate(180deg);
+  border-color: #d9d9d9;
+}
+
+/* Rows: label left, control right, equal height */
+.vault-tools-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 14px 6px;
+}
+
+.vault-tools-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 42px;
+}
+
+.vault-tools-row + .vault-tools-row {
+  border-top: 1px solid var(--vault-border);
+}
+
+.vault-tools-row__label {
+  flex: 0 0 auto;
+  font-size: 0.84rem;
+  color: var(--vault-text);
+}
+
+.vault-tools-row__hint {
+  margin-left: 6px;
+  font-size: 0.74rem;
+  color: var(--vault-text-faint);
+}
+
+.vault-tools-row__control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vault-tools-row .vault-input {
+  box-sizing: border-box;
+  height: 30px;
+  width: 150px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+}
+
+.vault-tools-row .vault-input--number {
+  width: 90px;
+}
+
+.vault-tools-row .vault-tools-text {
+  width: 180px;
+}
+
+/* Colour: Default chip, presets and custom on one line */
+.vault-tools-colour {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.vault-tools-danger {
+  border-color: var(--vault-border-strong);
+}
+
+.vault-tools-danger:hover:not(:disabled) {
+  border-color: var(--vault-danger-border);
+  color: var(--vault-danger);
+}
+
+/* Pen chips: which saved pen the rows edit */
+.vault-tools-pens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px 0;
+}
+
+.vault-tools-pen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 140px;
+  height: 26px;
+  padding: 0 10px 0 7px;
+  border: 1px solid var(--vault-border-strong);
+  border-radius: 999px;
+  background-color: var(--vault-bg);
+  color: var(--vault-text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.vault-tools-pen:hover {
+  color: var(--vault-text);
+}
+
+.vault-tools-pen--active,
+.vault-tools-pen--active:hover {
+  border-color: var(--vault-primary);
+  background-color: var(--vault-primary-light);
+  color: var(--vault-primary);
+  font-weight: 600;
+}
+
+.vault-tools-pen__dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.vault-tools-pen__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

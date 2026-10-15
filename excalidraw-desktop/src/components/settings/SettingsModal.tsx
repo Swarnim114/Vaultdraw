@@ -3,16 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import { IconClose } from "../Icons";
 
 import { SETTING_CONTROLS } from "./pages";
+import { ToolsPage } from "./pages/Tools";
 import {
   DEFAULT_SETTINGS_PAGE,
   getPage,
   groupByPage,
+  parseSettingsTarget,
   searchSettings,
   SETTINGS_PAGES,
   SETTINGS_SCHEMA,
   settingsForPage,
   type SettingSchema,
   type SettingsPageId,
+  type SettingsTarget,
+  type ToolsSection,
 } from "./schema";
 import { SettingsProvider, useSettingsController } from "./SettingsContext";
 import { SETTINGS_PANEL_ID, settingsTabId, Sidebar } from "./Sidebar";
@@ -30,8 +34,8 @@ export interface SettingsModalProps {
   themeRegistry?: ThemeRegistry;
   onRevealVault?: (path: string) => void;
   ownerDocument?: Document | null;
-  /** Page shown when Settings opens. */
-  initialPage?: SettingsPageId;
+  /** Page (or Tools section, "tools:pen") shown when Settings opens. */
+  initialPage?: SettingsTarget;
 }
 
 /** Text field or editor that owns the keyboard (e.g. Excalidraw's text editor). */
@@ -85,7 +89,11 @@ export const SettingsModal = ({
     onRevealVault,
   });
 
-  const [page, setPage] = useState<SettingsPageId>(initialPage);
+  const [initial] = useState(() => parseSettingsTarget(initialPage));
+  const [page, setPage] = useState<SettingsPageId>(initial.page);
+  const [toolsSection, setToolsSection] = useState<ToolsSection | undefined>(
+    initial.section,
+  );
   const [query, setQuery] = useState("");
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -105,9 +113,12 @@ export const SettingsModal = ({
     ? groupByPage(searchSettings(query, available))
     : [];
 
-  const openPage = (next: SettingsPageId) => {
+  const openPage = (next: SettingsPageId, section?: ToolsSection) => {
     setQuery("");
     setPage(next);
+    if (section) {
+      setToolsSection(section);
+    }
   };
 
   // Focus the search box, unless Settings opened over a text edit (e.g.
@@ -213,7 +224,9 @@ export const SettingsModal = ({
                         <button
                           type="button"
                           className="vault-settings-result-group__link"
-                          onClick={() => openPage(group.page.id)}
+                          onClick={() =>
+                            openPage(group.page.id, group.settings[0].section)
+                          }
                           title={`Open ${group.page.label}`}
                         >
                           {group.page.label}
@@ -238,9 +251,16 @@ export const SettingsModal = ({
                     {getPage(activePage).intro}
                   </p>
                 )}
-                <SettingList
-                  settings={settingsForPage(activePage, available)}
-                />
+                {activePage === "tools" ? (
+                  <ToolsPage
+                    section={toolsSection}
+                    onSectionChange={setToolsSection}
+                  />
+                ) : (
+                  <SettingList
+                    settings={settingsForPage(activePage, available)}
+                  />
+                )}
               </div>
             )}
           </SettingsProvider>

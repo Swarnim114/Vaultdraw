@@ -4,12 +4,16 @@
  */
 import {
   SETTINGS_PAGES,
-  type SettingsPageId,
+  type SettingsTarget,
 } from "../components/settings/schema";
 import { PEN_COMMAND_HANDLERS } from "../pens/penCommands";
 import { SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
-import { settingsPageCommandId, sortCommandId } from "./commands";
+import {
+  SETTINGS_PENS_COMMAND_ID,
+  settingsPageCommandId,
+  sortCommandId,
+} from "./commands";
 
 import type { PaletteMode } from "../palette/rank";
 import type { CommandHandlers } from "./types";
@@ -29,7 +33,7 @@ export interface AppCommandActions {
   toggleMode(): void;
   /** Open the palette in `mode`; the same mode again closes it. */
   togglePalette(mode: PaletteMode): void;
-  openSettingsPage(page: SettingsPageId): void;
+  openSettingsPage(page: SettingsTarget): void;
   setMode(mode: "light" | "dark" | "system"): void;
   setSyncCanvas(on: boolean): void;
   exportActive(format: "png" | "svg" | "copy"): void | Promise<void>;
@@ -90,6 +94,7 @@ export function appCommandHandlers(
         () => actions.openSettingsPage(page.id),
       ]),
     ),
+    [SETTINGS_PENS_COMMAND_ID]: () => actions.openSettingsPage("tools:pen"),
     ...Object.fromEntries(
       SORT_ORDERS.map((order) => [
         sortCommandId(order),

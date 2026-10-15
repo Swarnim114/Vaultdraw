@@ -123,17 +123,21 @@ test("highlighter lands beneath the ink and shapes drawn before it", async ({
   expect(errors).toEqual([]);
 });
 
-test("the pen bar's settings link opens the Pens & laser page", async ({
+test("the pen bar's settings link opens the Tools page on the Pen section", async ({
   page,
 }) => {
   const errors = trackErrors(page);
   await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
   await pensBar(page).getByRole("button", { name: "Pens settings" }).click();
-  await expect(page.locator("#settings-title")).toHaveText("Pens & laser");
+  await expect(page.locator("#settings-title")).toHaveText("Tools");
+  await expect(page.getByTestId("tools-pen")).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Pen", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Close Settings" }).click();
   // Opening Settings another way starts on the default page again.
   await page.keyboard.press("Meta+Comma");
-  await expect(page.locator("#settings-title")).not.toHaveText("Pens & laser");
+  await expect(page.locator("#settings-title")).not.toHaveText("Tools");
   expect(errors).toEqual([]);
 });
 

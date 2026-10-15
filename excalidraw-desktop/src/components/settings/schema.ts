@@ -8,8 +8,10 @@
  */
 
 import {
+  STYLE_KEY_LABELS,
   TOOL_DEFAULT_TOOLS,
   TOOL_LABELS,
+  TOOL_STYLE_KEYS,
   toolConfigKey,
 } from "../../toolDefaults/toolStyles";
 
@@ -18,7 +20,6 @@ export type SettingsPageId =
   | "appearance"
   | "interface"
   | "drawing"
-  | "pens"
   | "tools"
   | "files"
   | "hotkeys";
@@ -43,13 +44,12 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "appearance", label: "Appearance", group: "Options" },
   { id: "interface", label: "Interface", group: "Options" },
   { id: "drawing", label: "Drawing", group: "Options" },
-  { id: "pens", label: "Pens & laser", group: "Options" },
   {
     id: "tools",
-    label: "Tool defaults",
+    label: "Tools",
     group: "Options",
     intro:
-      "Each tool starts with its default style. Only the keys you set apply; the rest keep the editor's current style. Save the current canvas style from the command palette: Tool defaults: Save current style for \u2026",
+      "Default style of each tool, your pens and the laser. Unset keys keep the editor's current style.",
     testId: "tool-defaults-page",
   },
   { id: "files", label: "Files", group: "Options" },
@@ -57,6 +57,29 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
 ];
 
 export const DEFAULT_SETTINGS_PAGE: SettingsPageId = "appearance";
+
+/** Sections of the Tools page, in tab order: styled tools, then pen and laser. */
+export const TOOLS_SECTIONS = [...TOOL_DEFAULT_TOOLS, "pen", "laser"] as const;
+export type ToolsSection = typeof TOOLS_SECTIONS[number];
+
+export const TOOLS_SECTION_LABELS: Record<ToolsSection, string> = {
+  ...TOOL_LABELS,
+  pen: "Pen",
+  laser: "Laser",
+};
+
+/** Where Settings opens: a page, or one section of the Tools page. */
+export type SettingsTarget = SettingsPageId | `tools:${ToolsSection}`;
+
+export const parseSettingsTarget = (
+  target: SettingsTarget,
+): { page: SettingsPageId; section?: ToolsSection } => {
+  const [page, section] = target.split(":") as [
+    SettingsPageId,
+    ToolsSection | undefined,
+  ];
+  return section ? { page, section } : { page };
+};
 
 export interface SettingSchema {
   id: string;
@@ -70,6 +93,8 @@ export interface SettingSchema {
   configKey?: string;
   /** Can be overridden per vault (shows the "This vault" badge). */
   perVault?: boolean;
+  /** Tools page section this row belongs to (search opens it there). */
+  section?: ToolsSection;
 }
 
 export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
@@ -259,10 +284,11 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "editor.roughness",
   },
 
-  // ---- Pens & laser ----
+  // ---- Tools: pen and laser (page was "Pens & laser") ----
   {
     id: "pen-presets",
-    page: "pens",
+    page: "tools",
+    section: "pen",
     label: "Pen Presets",
     description:
       "Saved pens for freehand drawing. Select one from the pen bar or with Alt+1 to Alt+9 (change these keys on the Hotkeys page).",
@@ -277,20 +303,31 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
       "opacity",
       "freedraw",
       "Alt+1",
+      "tools",
     ],
     configKey: "pens.presets",
   },
   {
     id: "laser-color",
-    page: "pens",
+    page: "tools",
+    section: "laser",
     label: "Laser Colour",
     description: "Colour of the laser pointer trail.",
-    keywords: ["laser", "pointer", "trail", "presentation", "color", "colour"],
+    keywords: [
+      "laser",
+      "pointer",
+      "trail",
+      "presentation",
+      "color",
+      "colour",
+      "pens & laser",
+    ],
     configKey: "laser.color",
   },
   {
     id: "laser-size",
-    page: "pens",
+    page: "tools",
+    section: "laser",
     label: "Laser Size",
     description: "Thickness of the laser pointer trail in pixels.",
     keywords: ["laser", "pointer", "trail", "presentation", "thickness"],
@@ -298,7 +335,8 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   },
   {
     id: "laser-fade",
-    page: "pens",
+    page: "tools",
+    section: "laser",
     label: "Laser Fade Time",
     description: "How long the laser trail takes to fade out, in milliseconds.",
     keywords: ["laser", "pointer", "trail", "presentation", "decay", "ms"],
@@ -306,18 +344,20 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   },
   {
     id: "laser-length",
-    page: "pens",
+    page: "tools",
+    section: "laser",
     label: "Laser Tail Length",
     description: "Number of trail points over which the tail tapers off.",
     keywords: ["laser", "pointer", "trail", "presentation", "tail"],
     configKey: "laser.length",
   },
 
-  // ---- Tool defaults ----
+  // ---- Tools: default style per tool (page was "Tool defaults") ----
   ...TOOL_DEFAULT_TOOLS.map(
     (tool): SettingSchema => ({
       id: `tool-${tool}`,
       page: "tools",
+      section: tool,
       label: TOOL_LABELS[tool],
       description: `Default style for new ${TOOL_LABELS[
         tool
@@ -325,11 +365,18 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
       keywords: [
         tool,
         "tool",
+        "tools",
+        "tool defaults",
         "default style",
         "style",
         "stroke",
         "colour",
         "color",
+        // Every key's label and config name ("sloppiness", "stroke_width").
+        ...TOOL_STYLE_KEYS[tool].flatMap((key) => [
+          STYLE_KEY_LABELS[key].toLowerCase(),
+          key,
+        ]),
         ...(tool === "arrow" ? ["arrowhead", "arrow type", "elbow"] : []),
         ...(tool === "text" ? ["font", "font size", "align"] : []),
       ],

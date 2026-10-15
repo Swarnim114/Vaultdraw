@@ -75,9 +75,12 @@ describe("settings schema", () => {
 
   it("matches label, description, keywords and config key, all words", () => {
     const ids = (q: string) => searchSettings(q).map((s) => s.id);
-    expect(ids("stroke width")).toEqual(["stroke-width"]);
+    // Tool rows match their style keys too, so the Drawing row is one of many.
+    expect(ids("stroke width")).toContain("stroke-width");
+    expect(ids("stroke width")).toContain("tool-arrow");
     expect(ids("ATOMICALLY")).toEqual(["autosave"]); // description
-    expect(ids("sloppiness")).toEqual(["roughness"]); // keyword
+    expect(ids("sloppiness")).toContain("roughness"); // keyword
+    expect(ids("sloppiness")).toContain("tool-rectangle");
     expect(ids("saving.autosave_delay_ms")).toEqual(["autosave"]); // key
     expect(ids("ruled")).toEqual(["paper"]);
     expect(ids("dots")).toEqual(["paper"]);
@@ -88,7 +91,6 @@ describe("settings schema", () => {
     expect(groups.map((g) => g.page.id)).toEqual([
       "appearance",
       "drawing",
-      "pens",
       "tools",
     ]);
   });
@@ -121,12 +123,7 @@ describe("settings search", () => {
     const groups = within(results())
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label"));
-    expect(groups).toEqual([
-      "Appearance",
-      "Drawing",
-      "Pens & laser",
-      "Tool defaults",
-    ]);
+    expect(groups).toEqual(["Appearance", "Drawing", "Tools"]);
   });
 
   it("editing a control in the results persists like on its page", () => {

@@ -68,15 +68,28 @@ const TOOL_DEFAULT_COMMANDS: CommandDefinition[] = [
 /** "settings.page.appearance": open one settings page (Hotkeys has its own). */
 export const settingsPageCommandId = (page: string) => `settings.page.${page}`;
 
+/**
+ * "Pens & laser" became the Pen section of the Tools page; its command (and
+ * any [hotkeys] binding of it) stays and opens that section.
+ */
+export const SETTINGS_PENS_COMMAND_ID = settingsPageCommandId("pens");
+
 const SETTINGS_PAGE_COMMANDS: CommandDefinition[] = SETTINGS_PAGES.filter(
   (page) => page.id !== "hotkeys",
-).map((page) => ({
-  id: settingsPageCommandId(page.id),
-  title: `Settings: ${page.label}`,
-  category: "Settings",
-  keys: { default: [] },
-  when: ["vaultOpen", "!modalOpen"],
-}));
+)
+  .flatMap((page) => [
+    ...(page.id === "tools"
+      ? [{ id: SETTINGS_PENS_COMMAND_ID, label: "Pens & laser" }]
+      : []),
+    { id: settingsPageCommandId(page.id), label: page.label },
+  ])
+  .map(({ id, label }) => ({
+    id,
+    title: `Settings: ${label}`,
+    category: "Settings",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  }));
 
 /** "navigator.sort.name_asc": set the navigator sort order. */
 export const sortCommandId = (order: SortOrder) => `navigator.sort.${order}`;

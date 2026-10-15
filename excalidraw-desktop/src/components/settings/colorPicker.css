@@ -130,8 +130,3 @@
   border: none;
   border-radius: 50%;
 }
-
-/* In the two-column Tool defaults grid a colour field takes the full row. */
-.vault-tooldef-field:has(.vault-cp) {
-  grid-column: 1 / -1;
-}

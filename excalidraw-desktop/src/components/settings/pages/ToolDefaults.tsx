@@ -23,8 +23,14 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { BG_COLORS, FONT_OPTIONS, STROKE_COLORS } from "./Drawing";
 import { ColorSwatches } from "./controls";
-import { PerVaultRow } from "./perVault";
-import "./ToolDefaults.css";
+import { PerVaultErrors, PerVaultSwitch } from "./perVault";
+import { ToolStylePreview, type PreviewFallback } from "./ToolPreview";
+import {
+  ResetButton,
+  ToolsPanel,
+  ToolsPanelHeader,
+  ToolsRow,
+} from "./toolsLayout";
 
 const ROUGHNESS_LABELS = ["Architect", "Artist", "Cartoonist"];
 
@@ -61,6 +67,12 @@ const NUMBER_LIMITS: Partial<
   font_size: { ...FONT_SIZE_LIMITS, step: 1 },
 };
 
+const NUMBER_HINTS: Partial<Record<ToolStyleKey, string>> = {
+  stroke_width: "px",
+  opacity: "%",
+  font_size: "px",
+};
+
 const COLOR_PRESETS: Partial<Record<ToolStyleKey, readonly string[]>> = {
   stroke_color: STROKE_COLORS,
   background_color: BG_COLORS,
@@ -84,7 +96,7 @@ const ColorControl = ({
   value: string | undefined;
   onChange: (value: string | undefined) => void;
 }) => (
-  <div className="vault-tooldef-colour">
+  <div className="vault-tools-colour">
     <ColorSwatches
       colors={presets}
       value={value ?? ""}
@@ -245,65 +257,89 @@ const StyleField = ({
     );
   }
   return (
-    <div className="vault-tooldef-field">
-      <span className="vault-tooldef-field__label">{title}</span>
+    <ToolsRow label={title} hint={NUMBER_HINTS[styleKey]}>
       {control}
-    </div>
+    </ToolsRow>
   );
 };
 
-const ToolRow = ({ tool }: { tool: StyledTool }) => {
+/** Editor defaults ("Default" in every row) for the preview. */
+const usePreviewFallback = (): PreviewFallback => {
+  const { defaults } = useSettings();
+  return {
+    strokeColor: defaults.defaultStrokeColor,
+    backgroundColor: defaults.defaultBackgroundColor,
+    fillStyle: defaults.defaultFillStyle,
+    strokeWidth: defaults.defaultStrokeWidth,
+    roughness: defaults.defaultRoughness,
+    fontFamily: defaults.defaultFontFamily,
+    fontSize: defaults.defaultFontSize,
+  };
+};
+
+/** A styled tool's default style (empty = the tool has no default). */
+export const useToolStyle = (tool: StyledTool): ToolStyle => {
+  const { vaultSettings } = useSettings();
+  return vaultSettings.effective[toolField(tool)];
+};
+
+/**
+ * One tool's section: header (name, This vault, Reset), a live preview and
+ * a row per style key. Edits go to the vault when This vault is on.
+ */
+export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
   const { setPerVaultValue } = useSettings();
   const field = toolField(tool);
+  const style = useToolStyle(tool);
+  const fallback = usePreviewFallback();
+  const setKey: SetKey = (key, value) => {
+    const next: Record<string, unknown> = { ...style };
+    if (value === undefined) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    setPerVaultValue(field, next as ToolStyle);
+  };
   return (
-    <PerVaultRow
-      id={`tool-${tool}`}
-      field={field}
-      layout="block"
+    <ToolsPanel
+      section={tool}
+      settingId={`tool-${tool}`}
       testId={`tool-default-${tool}`}
     >
-      {(style, onChange) => {
-        const setKey: SetKey = (key, value) => {
-          const next: Record<string, unknown> = { ...style };
-          if (value === undefined) {
-            delete next[key];
-          } else {
-            next[key] = value;
-          }
-          onChange(next as ToolStyle);
-        };
-        return (
-          <div className="vault-tooldef">
-            <div className="vault-tooldef-grid">
-              {TOOL_STYLE_KEYS[tool].map((key) => (
-                <StyleField
-                  key={key}
-                  tool={tool}
-                  styleKey={key}
-                  style={style}
-                  setKey={setKey}
-                />
-              ))}
-            </div>
-            <button
-              type="button"
-              className="vault-btn vault-btn--ghost"
-              aria-label={`Reset ${TOOL_LABELS[tool]}`}
-              title="Remove this tool's default style"
-              onClick={() => setPerVaultValue(field, {})}
-            >
-              Reset
-            </button>
-          </div>
-        );
-      }}
-    </PerVaultRow>
+      <ToolsPanelHeader section={tool}>
+        <PerVaultSwitch
+          field={field}
+          label={`${TOOL_LABELS[tool]}: This vault`}
+        />
+        <ResetButton
+          label={`Reset ${TOOL_LABELS[tool]}`}
+          title="Remove this tool's default style"
+          disabled={Object.keys(style).length === 0}
+          onClick={() => setPerVaultValue(field, {})}
+        />
+      </ToolsPanelHeader>
+      <PerVaultErrors />
+      <ToolStylePreview tool={tool} style={style} fallback={fallback} />
+      <div className="vault-tools-rows">
+        {TOOL_STYLE_KEYS[tool].map((key) => (
+          <StyleField
+            key={key}
+            tool={tool}
+            styleKey={key}
+            style={style}
+            setKey={setKey}
+          />
+        ))}
+      </div>
+    </ToolsPanel>
   );
 };
 
+/** Search results show the whole tool section. */
 export const toolDefaultsControls: SettingControls = Object.fromEntries(
   TOOL_DEFAULT_TOOLS.map((tool) => [
     `tool-${tool}`,
-    { Component: () => <ToolRow tool={tool} /> },
+    { Component: () => <ToolStylePanel tool={tool} /> },
   ]),
 );

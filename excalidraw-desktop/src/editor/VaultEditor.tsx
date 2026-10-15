@@ -42,7 +42,7 @@ import { focusElement } from "./focusElement";
 import { renderImageExport } from "./imageExport";
 import { getSaveSignature } from "./saveSignature";
 
-import type { SettingsPageId } from "../components/settings/schema";
+import type { SettingsTarget } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
 import type { LibraryRepository } from "../library/types";
 
@@ -60,8 +60,8 @@ type Props = {
   disabled?: boolean;
   theme?: "light" | "dark";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
-  /** Opens Settings, on `page` when given (the pen bar opens "pens"). */
-  onOpenSettings?: (page?: SettingsPageId) => void;
+  /** Opens Settings, on `page` when given (the pen bar opens "tools:pen"). */
+  onOpenSettings?: (page?: SettingsTarget) => void;
   /** Select + scroll to an element once the scene is loaded (search results). */
   focusRequest?: {
     elementId: string;
@@ -523,7 +523,7 @@ const VaultEditorComponent = ({
           shortcuts={pens.shortcuts}
           active={pens.active}
           onSelect={pens.selectPen}
-          onOpenSettings={onOpenSettings && (() => onOpenSettings("pens"))}
+          onOpenSettings={onOpenSettings && (() => onOpenSettings("tools:pen"))}
         />
       )}
     </div>
