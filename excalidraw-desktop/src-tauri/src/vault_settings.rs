@@ -260,7 +260,7 @@ mod tests {
         update_vault_settings_at(&v, &[change("navigator.sort", Json::Null)]).unwrap();
         assert!(!t.path().join(META_DIR).exists());
         assert_eq!(update_vault_settings_at(&v, &[change("a b.c", Json::Null)]).unwrap_err().code, "INVALID_ARGUMENT");
-        assert_eq!(update_vault_settings_at(&v, &[change("x.y", json!({"o": 1}))]).unwrap_err().code, "INVALID_ARGUMENT");
+        assert_eq!(update_vault_settings_at(&v, &[change("x.y", json!({"o": {"p": 1}}))]).unwrap_err().code, "INVALID_ARGUMENT");
         assert!(!file(t.path()).exists());
     }
 

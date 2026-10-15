@@ -104,6 +104,15 @@ autosave_delay_ms = 500
 # size = 2          # trail thickness in pixels, 1 to 24
 # decay_ms = 1000   # time until the trail fades, 200 to 5000
 # length = 50       # tail length in points, 5 to 200
+
+[tools]
+# Default style per drawing tool (rectangle, diamond, ellipse, arrow, line, text).
+# Only the keys you set apply; the others keep the editor's current style.
+# A vault's .excalidraw-vault/settings.toml can override a whole tool table. Example:
+# [tools.arrow]
+# stroke_color = "#f08c00"
+# stroke_width = 3
+# stroke_style = "dotted"
 "##;
 
 /// Serializes every config/state write within the process.
@@ -401,8 +410,27 @@ fn json_to_toml(key: &str, v: &Json, nested: bool) -> Result<toml_edit::Value> {
             }
             table.into()
         }
-        Json::Null => return Err(bad("null inside an array")),
+        Json::Null => return Err(bad("null inside an array or object")),
     })
+}
+
+/// A flat JSON object of scalars as a `[table.key]` sub-table (tool defaults).
+fn json_to_table(key: &str, fields: &serde_json::Map<String, Json>) -> Result<toml_edit::Table> {
+    let mut table = toml_edit::Table::new();
+    for (k, field) in fields {
+        if matches!(field, Json::Array(_) | Json::Object(_)) {
+            return Err(err("INVALID_ARGUMENT", format!("Unsupported value for \"{key}\": nested arrays or objects inside an object")));
+        }
+        table.insert(k, toml_edit::Item::Value(json_to_toml(key, field, true)?));
+    }
+    Ok(table)
+}
+
+/// One validated change: remove the key, set a scalar/array, or set a sub-table.
+enum Planned {
+    Remove,
+    Value(toml_edit::Value),
+    Table(toml_edit::Table),
 }
 
 /// Applies `changes` to `config.toml` text, preserving comments, order and formatting.
@@ -443,10 +471,28 @@ fn edit_toml(
     let mut planned = Vec::with_capacity(changes.len());
     for change in changes {
         let (table, key) = split_key(&change.key)?;
-        let value = if change.value.is_null() { None } else { Some(json_to_toml(&change.key, &change.value, false)?) };
+        let value = match &change.value {
+            Json::Null => Planned::Remove,
+            Json::Object(fields) if table.is_some() => Planned::Table(json_to_table(&change.key, fields)?),
+            Json::Object(_) => return Err(err("INVALID_ARGUMENT", format!("Unsupported value for \"{}\": objects outside a table", change.key))),
+            v => Planned::Value(json_to_toml(&change.key, v, false)?),
+        };
         planned.push((table, key, value));
     }
     for (table, key, value) in planned {
+        let value = match (table, value) {
+            (Some(t), Planned::Table(new)) => {
+                set_table(&mut doc, t, key, new, name)?;
+                continue;
+            }
+            (Some(t), Planned::Remove) if is_plain_subtable(&doc, t, key) => {
+                remove_table(&mut doc, t, key, prune);
+                continue;
+            }
+            (_, Planned::Remove) => None,
+            (_, Planned::Value(v)) => Some(v),
+            (None, Planned::Table(_)) => continue, // rejected while planning
+        };
         let root = doc.as_table_mut();
         let target: &mut dyn toml_edit::TableLike = match table {
             None => root,
@@ -488,6 +534,82 @@ fn edit_toml(
         return Err(err("INVALID_FILE", format!("{name} would exceed {}", size_label(max))));
     }
     Ok(out)
+}
+
+/// True when `table.key` is a `[table.key]` section (not an inline or dotted table).
+fn is_plain_subtable(doc: &toml_edit::DocumentMut, table: &str, key: &str) -> bool {
+    doc.get(table)
+        .and_then(toml_edit::Item::as_table_like)
+        .and_then(|t| t.get(key))
+        .and_then(toml_edit::Item::as_table)
+        .is_some_and(|t| !t.is_dotted())
+}
+
+/// Writes `new` as `table.key`. An existing table keeps its form (`[table.key]`, inline or
+/// dotted) and decor, and only its keys are replaced. A new `[table.key]` is added under an
+/// implicit parent if the parent is missing, and, when the parent is a documented empty
+/// `[table]`, takes the comments that follow it so the documentation stays above it.
+fn set_table(doc: &mut toml_edit::DocumentMut, table: &str, key: &str, new: toml_edit::Table, name: &str) -> Result<()> {
+    let root = doc.as_table_mut();
+    if !root.contains_key(table) {
+        let mut parent = toml_edit::Table::new();
+        parent.set_implicit(true);
+        root.insert(table, toml_edit::Item::Table(parent));
+    }
+    let not_table = || err("INVALID_ARGUMENT", format!("\"{table}\" in {name} is not a table"));
+    let parent = root.get(table).and_then(toml_edit::Item::as_table_like).ok_or_else(not_table)?;
+    let fresh = parent.is_empty() && !parent.contains_key(key);
+    let gap = if fresh { gap_after(doc, Some(table)) } else { None };
+    let comments = gap.as_ref().and_then(|g| gap_text(doc, g)).unwrap_or_default();
+    let parent = doc.get_mut(table).and_then(toml_edit::Item::as_table_like_mut).ok_or_else(not_table)?;
+    match parent.get_mut(key) {
+        Some(existing) => {
+            if let Some(old) = existing.as_table_like_mut() {
+                old.clear();
+                for (k, v) in new.iter() {
+                    old.insert(k, v.clone());
+                }
+                if let Some(inline) = existing.as_inline_table_mut() {
+                    inline.fmt();
+                }
+            } else {
+                *existing = toml_edit::Item::Table(new);
+            }
+        }
+        None => {
+            parent.insert(key, toml_edit::Item::Table(new));
+            if let Some(gap) = gap.filter(|_| !comments.is_empty()) {
+                set_gap_text(doc, &gap, String::new());
+                let blank = if comments.ends_with("\n\n") { "" } else { "\n" };
+                if let Some(t) = doc.get_mut(table).and_then(|t| t.get_mut(key)).and_then(toml_edit::Item::as_table_mut) {
+                    t.decor_mut().set_prefix(format!("{comments}{blank}"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Removes the `[table.key]` section. Its comments move to the gap after the parent (undoing
+/// [`set_table`]), and a parent left empty is dropped when it is implicit or `prune` is set.
+fn remove_table(doc: &mut toml_edit::DocumentMut, table: &str, key: &str, prune: bool) {
+    let Some(parent) = doc.get_mut(table).and_then(toml_edit::Item::as_table_like_mut) else { return };
+    let Some(removed) = parent.remove(key) else { return };
+    let empty = parent.is_empty();
+    let prefix = removed.as_table().and_then(|t| t.decor().prefix()).and_then(|r| r.as_str()).unwrap_or("").to_owned();
+    let implicit = doc.get(table).and_then(toml_edit::Item::as_table).is_some_and(toml_edit::Table::is_implicit);
+    if empty && implicit {
+        doc.as_table_mut().remove(table);
+        return;
+    }
+    let comments = prefix.strip_suffix('\n').filter(|p| p.ends_with('\n')).unwrap_or(&prefix).to_owned();
+    let Some(gap) = gap_after(doc, Some(table)) else { return };
+    let Some(existing) = gap_text(doc, &gap) else { return };
+    let text = comments + &existing;
+    set_gap_text(doc, &gap, text.clone());
+    if empty && prune && !prefix.contains('#') {
+        prune_table(doc, table, &gap, &text);
+    }
 }
 fn change_key(table: Option<&str>, key: &str) -> String {
     table.map(|t| format!("{t}.{key}")).unwrap_or_else(|| key.to_string())
@@ -1011,8 +1133,10 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("width = 1.5 },\n]\n"), "{out}");
-        // Objects are only accepted as array items (a bare object stays invalid, as in vault settings).
-        assert_eq!(apply_changes(DEFAULT_CONFIG, &[change("pens.one", presets()[0].clone())]).unwrap_err().code, "INVALID_ARGUMENT");
+        // A bare flat object is not a pen: it becomes a sub-table, `[pens.one]`.
+        let out = apply_changes(DEFAULT_CONFIG, &[change("pens.one", presets()[0].clone())]).unwrap();
+        assert_eq!(parse_config(&out).unwrap()["pens"]["one"], presets()[0]);
+        assert!(out.contains("\n[pens.one]\n"), "{out}");
         // Arrays of scalars keep the single-line form.
         let out = apply_changes(DEFAULT_CONFIG, &[change("pens.tags", json!(["a", "b"]))]).unwrap();
         assert!(out.contains("tags = [\"a\", \"b\"]\n"), "{out}");
@@ -1042,6 +1166,88 @@ mod tests {
         let removed = apply_changes(&set, &[change("pens.presets", Json::Null)]).unwrap();
         assert!(parse_config(&removed).unwrap()["pens"].get("presets").is_none());
         assert_eq!(removed, DEFAULT_CONFIG);
+    }
+
+    fn arrow() -> Json {
+        json!({"stroke_color": "#f08c00", "stroke_width": 3, "stroke_style": "dotted"})
+    }
+
+    #[test]
+    fn tool_table_lands_after_the_documented_tools_block_and_removal_restores_it() {
+        let out = apply_changes(DEFAULT_CONFIG, &[change("tools.arrow", arrow())]).unwrap();
+        assert_eq!(parse_config(&out).unwrap()["tools"]["arrow"], arrow());
+        // (keys come out alphabetically: serde_json maps are sorted)
+        let tail = "# stroke_style = \"dotted\"\n\n[tools.arrow]\nstroke_color = \"#f08c00\"\nstroke_style = \"dotted\"\nstroke_width = 3\n";
+        assert!(out.ends_with(tail), "{out}");
+        assert!(out.contains("# Default style per drawing tool"), "{out}");
+        // Replacing swaps the keys and keeps the header's comments.
+        let src = "[tools]\n\n# my arrow\n[tools.arrow]\nstroke_width = 9\nfill_style = \"solid\"\n";
+        let out2 = apply_changes(src, &[change("tools.arrow", arrow())]).unwrap();
+        assert!(out2.contains("# my arrow\n[tools.arrow]\nstroke_color"), "{out2}");
+        assert_eq!(parse_config(&out2).unwrap()["tools"]["arrow"], arrow());
+        let out = apply_changes(&out, &[change("tools.arrow", json!({"stroke_width": 5}))]).unwrap();
+        assert_eq!(parse_config(&out).unwrap()["tools"]["arrow"], json!({"stroke_width": 5}));
+        let removed = apply_changes(&out, &[change("tools.arrow", Json::Null)]).unwrap();
+        assert_eq!(removed, DEFAULT_CONFIG);
+        assert_eq!(apply_changes(DEFAULT_CONFIG, &[change("tools.arrow", Json::Null)]).unwrap(), DEFAULT_CONFIG);
+    }
+
+    #[test]
+    fn tool_table_on_empty_text_has_no_empty_parent_header_and_removal_drops_it() {
+        let out = apply_changes("", &[change("tools.arrow", arrow())]).unwrap();
+        assert_eq!(out, "[tools.arrow]\nstroke_color = \"#f08c00\"\nstroke_style = \"dotted\"\nstroke_width = 3\n");
+        assert_eq!(apply_changes(&out, &[change("tools.arrow", Json::Null)]).unwrap(), "");
+        // Two tools at once; removing one keeps the other.
+        let two = apply_changes("", &[change("tools.arrow", arrow()), change("tools.line", json!({"stroke_width": 1}))]).unwrap();
+        assert_eq!(parse_config(&two).unwrap()["tools"], json!({"arrow": arrow(), "line": {"stroke_width": 1}}));
+        let one = apply_changes(&two, &[change("tools.arrow", Json::Null)]).unwrap();
+        assert_eq!(parse_config(&one).unwrap(), json!({"tools": {"line": {"stroke_width": 1}}}));
+    }
+
+    #[test]
+    fn tool_table_keeps_a_hand_written_inline_or_dotted_form() {
+        let inline = "[tools]\n# styles\narrow = { stroke_width = 1 } # mine\n";
+        let out = apply_changes(inline, &[change("tools.arrow", arrow())]).unwrap();
+        assert!(out.starts_with("[tools]\n# styles\narrow = { "), "{out}");
+        assert!(out.ends_with(" } # mine\n"), "{out}");
+        assert_eq!(parse_config(&out).unwrap()["tools"]["arrow"], arrow());
+        let removed = apply_changes(&out, &[change("tools.arrow", Json::Null)]).unwrap();
+        assert!(!removed.contains("arrow"), "{removed}");
+
+        let dotted = "[tools]\narrow.stroke_width = 1\n";
+        let out = apply_changes(dotted, &[change("tools.arrow", arrow())]).unwrap();
+        assert!(out.contains("arrow.stroke_color"), "{out}");
+        assert_eq!(parse_config(&out).unwrap()["tools"]["arrow"], arrow());
+    }
+
+    #[test]
+    fn vault_settings_prune_the_emptied_tools_table() {
+        let name = "settings.toml";
+        let set = apply_toml_changes("# vault\n", &[change("tools.arrow", arrow())], name, 1 << 20).unwrap();
+        assert!(!set.contains("[tools]"), "{set}");
+        assert_eq!(apply_toml_changes(&set, &[change("tools.arrow", Json::Null)], name, 1 << 20).unwrap(), "# vault\n");
+        // An explicit empty [tools] header is pruned too, and removing a missing table is a no-op.
+        let out = apply_toml_changes("[tools]\n[tools.arrow]\nstroke_width = 2\n", &[change("tools.arrow", Json::Null)], name, 1 << 20).unwrap();
+        assert_eq!(out, "");
+        assert_eq!(apply_toml_changes("a = 1\n", &[change("tools.arrow", Json::Null)], name, 1 << 20).unwrap(), "a = 1\n");
+    }
+
+    #[test]
+    fn tool_table_rejects_nested_null_and_root_objects() {
+        for v in [json!({"a": [1]}), json!({"a": {"b": 1}}), json!({"a": null})] {
+            let e = apply_changes(DEFAULT_CONFIG, &[change("tools.arrow", v.clone())]).unwrap_err();
+            assert!(e.message.contains("Unsupported value"), "{v}: {}", e.message);
+        }
+        assert_eq!(apply_changes("", &[change("tools", arrow())]).unwrap_err().code, "INVALID_ARGUMENT");
+    }
+
+    #[test]
+    fn load_settings_returns_tool_tables_as_objects() {
+        let t = tempdir().unwrap();
+        let d = dirs_in(t.path());
+        load_settings_in(&d).unwrap();
+        update_config_in(&d, &[change("tools.arrow", arrow())]).unwrap();
+        assert_eq!(load_settings_in(&d).unwrap().config.unwrap()["tools"]["arrow"], arrow());
     }
 
     #[test]
@@ -1146,7 +1352,8 @@ mod tests {
                 Some(rest) => (rest, true),
                 None => (line, false),
             };
-            if table.is_empty() || body.is_empty() {
+            // [tools] documents a sub-table example, not settings of its own.
+            if table.is_empty() || table == "tools" || body.is_empty() {
                 continue;
             }
             let Ok(Json::Object(kv)) = parse_config(body) else { continue };
