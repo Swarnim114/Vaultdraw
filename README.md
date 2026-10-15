@@ -72,6 +72,11 @@ sort = "name_asc"            # name_asc | name_desc | modified_desc | modified_a
 confirm_delete = true        # ask before moving to Trash
 new_drawing_folder = ""      # relative to the vault root; "" = next to the open drawing
 templates_folder = "Templates" # vault folder holding templates, relative to the vault root
+
+[tools.arrow]                # default style of one tool; see "Tool defaults"
+stroke_color = "#f08c00"     # set only the keys you want; others keep the current style
+stroke_width = 3
+stroke_style = "dotted"
 ```
 
 - **Settings and the file stay in sync.** Changing something in Settings updates `config.toml` and keeps your comments and layout. Editing the file updates the app.
@@ -93,7 +98,7 @@ Everything here can be changed in **Settings** (Cmd/Ctrl+,) or by editing `confi
 
 #### Per-vault settings
 
-Navigator sort order, the default folder for new drawings and the templates folder can differ per vault. Those rows have a **This vault** switch:
+Navigator sort order, the default folder for new drawings, the templates folder, the paper style and each tool's default style can differ per vault. Those rows have a **This vault** switch:
 
 - **On:** the value is saved in `<vault>/.excalidraw-vault/settings.toml`, starting from the value currently in effect. Edits go there.
 - **Off:** the key is removed from that file and the global value applies again.
@@ -271,6 +276,37 @@ A drawing can sit on paper: plain, grid, ruled lines (optionally with a margin l
 - **Per drawing.** Choose **Paper** in the canvas main menu to change the open drawing's style, or **Paper settings…** to tune it. **Use app default** returns the drawing to the app default. **Make app default** uses the drawing's pattern for new drawings. Changing the default does not change existing drawings.
 - **In the file.** The pattern is stored as `appState.viewBackgroundPattern`. Drawings without it, such as older files, open plain. excalidraw.com opens these files with a plain background, and saving there drops the pattern.
 - **Display and export.** On screen the pattern follows dark mode and **Sync canvas with theme**. Exports use Excalidraw's standard colours. The export dialog has a **Background pattern** switch, shown only for drawings with a pattern; it needs **Background** on.
+
+## Tool defaults
+
+Each drawing tool can start with its own style, so a dotted, orange, 3 px arrow is always one keypress away. Tools: rectangle, diamond, ellipse, arrow, line and text (the pen has its own presets under **Settings → Pens & laser**).
+
+- **Picking the tool applies its default.** Only the keys you set apply; everything else keeps the editor's current style. Changes you make while the tool is active last until you switch tools. Leaving the tool puts the shared style back, so an arrow's orange never leaks into the next rectangle.
+- **Settings → Tool defaults** edits every tool. Each value has a **Default** choice that unsets it, **Reset** clears the tool, and **This vault** stores the tool's style in the vault (the vault's table replaces the global one).
+- **From the canvas.** In the command palette (Cmd/Ctrl+Shift+P): `Tool defaults: Save current style for Arrow` takes the style of a selected arrow, or the current style when none is selected. `Tool defaults: Save current style for this tool` does the same for the active tool or the selected shape, and `Tool defaults: Reset Arrow` clears it. Saving goes to this vault when the tool has a vault style, otherwise to `config.toml`. Each command can get a key on the Hotkeys page.
+- **In the files.** One table per tool in `config.toml` or `<vault>/.excalidraw-vault/settings.toml`:
+
+  ```toml
+  [tools.arrow]
+  stroke_color = "#f08c00"
+  stroke_width = 3            # px, 0.5 to 40
+  stroke_style = "dotted"     # solid | dashed | dotted
+  end_arrowhead = "triangle"  # none | arrow | bar | circle | triangle | diamond | ... (and _outline variants)
+  ```
+
+  | Key | Tools | Values |
+  | --- | --- | --- |
+  | `stroke_color`, `background_color` | all (background: not arrow or text) | a colour like `"#f08c00"` or `"transparent"` |
+  | `fill_style` | rectangle, diamond, ellipse, line | `hachure`, `cross-hatch`, `solid`, `zigzag` |
+  | `stroke_width` | all but text | px, 0.5 to 40 |
+  | `stroke_style` | all but text | `solid`, `dashed`, `dotted` |
+  | `roughness` | all but text | 0 architect, 1 artist, 2 cartoonist |
+  | `roundness` | rectangle, diamond, line | `sharp`, `round` |
+  | `opacity` | all | 1 to 100 |
+  | `arrow_type`, `start_arrowhead`, `end_arrowhead` | arrow | `sharp`/`round`/`elbow`; an arrowhead name or `none` |
+  | `font_family`, `font_size`, `text_align` | text | a font id (as `[editor]`), 4 to 400, `left`/`center`/`right` |
+
+  An unknown key or bad value turns that tool's defaults off and shows a notice naming the key. Nothing is written into your drawings: new elements simply get the style.
 
 ## Search
 
