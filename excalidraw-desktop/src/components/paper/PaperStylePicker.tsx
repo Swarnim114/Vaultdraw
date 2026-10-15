@@ -15,7 +15,12 @@ type Props = {
   compact?: boolean;
   disabled?: boolean;
   label?: string;
+  /** Tooltip suffix per style id, e.g. the style's hotkey. */
+  shortcuts?: (styleId: string) => string;
 };
+
+const withShortcut = (text: string, key?: string) =>
+  key ? `${text} (${key})` : text;
 
 /** Radio group of the six paper styles, as icon buttons. */
 export const PaperStylePicker = ({
@@ -24,6 +29,7 @@ export const PaperStylePicker = ({
   compact = false,
   disabled = false,
   label = "Paper style",
+  shortcuts,
 }: Props) => {
   const name = useId();
   const current: PaperStyleId = value ?? "plain";
@@ -37,7 +43,7 @@ export const PaperStylePicker = ({
         <label
           key={style.id}
           className="paper-style"
-          title={style.label}
+          title={withShortcut(style.label, shortcuts?.(style.id))}
           data-checked={current === style.id}
         >
           <input

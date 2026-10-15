@@ -18,6 +18,7 @@ import type {
   ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
+import { CommandMenuItem } from "../commands/CommandMenuItem";
 import { IconLibrary } from "../components/Icons";
 import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
@@ -441,24 +442,26 @@ const VaultEditorComponent = ({
               instead of open/save-as (the vault file is always the source). */}
         <MainMenu>
           <MainMenu.DefaultItems.SaveAsImage />
-          <MainMenu.Item
+          <CommandMenuItem
+            commandId="file.saveCopy"
             icon={saveAs}
             onSelect={() => void saveCopy()}
             disabled={exporting || !canExport}
           >
             Save a copy…
-          </MainMenu.Item>
+          </CommandMenuItem>
           <MainMenu.DefaultItems.SearchMenu />
           <MainMenu.DefaultItems.Help />
           <MainMenu.DefaultItems.ClearCanvas />
           <MainMenu.Separator />
           {canOpenSettings && (
-            <MainMenu.Item
+            <CommandMenuItem
+              commandId="settings.open"
               icon={settingsIcon}
               onSelect={() => openSettingsRef.current?.()}
             >
               Vault settings
-            </MainMenu.Item>
+            </CommandMenuItem>
           )}
           <MainMenu.DefaultItems.ToggleTheme allowSystemTheme={false} />
           <MainMenu.DefaultItems.ChangeCanvasBackground />

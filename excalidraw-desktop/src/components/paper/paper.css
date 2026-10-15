@@ -154,3 +154,9 @@
 .paper-menu__settings:hover {
   background: var(--vault-surface-hover);
 }
+
+.paper-menu__key {
+  margin-left: 8px;
+  font: inherit;
+  opacity: 0.6;
+}
