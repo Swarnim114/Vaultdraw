@@ -76,7 +76,7 @@ fn run(c: &Case, runs: usize) {
             Some(d) => ("delta", d.as_slice()),
             None => ("keyframe", s.text.as_slice()),
         };
-        let h = header_for(&mut g, &s, file, kind, Some(&kh.id).filter(|_| delta.is_some()).map(|x| x.as_str()));
+        let h = header_for(&mut g, &s, file, kind, delta.is_some().then_some(kh.id.as_str()));
         let out = write_container(&h, body, ZSTD_LEVEL);
         auto.push(t.elapsed().as_secs_f64() * 1000.0);
         dsize = out.len();

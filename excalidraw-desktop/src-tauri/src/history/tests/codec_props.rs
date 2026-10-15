@@ -282,7 +282,7 @@ fn inline_rejects_bad_blobs_and_tokens() {
     let missing = |_: &str| Err(crate::err("VERSION_CORRUPT", "gone"));
     assert!(inline(&text(&format!("{sha}.png")), &missing).is_err());
     let never = |t: &str| -> crate::Result<Vec<u8>> { panic!("callback must not run for {t}") };
-    for bad in ["../..", "", &"a".repeat(63), &format!("{}.png", "A".repeat(64)), &format!("{sha}.PNG"), &format!("{sha}."), &format!("{sha}.toolongext1"), &format!("{sha}"), "..%2f"] {
+    for bad in ["../..", "", &"a".repeat(63), &format!("{}.png", "A".repeat(64)), &format!("{sha}.PNG"), &format!("{sha}."), &format!("{sha}.toolongext1"), &sha, "..%2f"] {
         assert!(inline(&text(bad), &never).is_err(), "{bad:?}");
     }
     // no tokens: unchanged
