@@ -89,14 +89,10 @@ describe("SettingsModal component and preference persistence", () => {
       name: "Search colour themes",
     });
     const all = themeCards().length;
-    const target = screen
-      .getAllByRole("radio")
-      [all - 1].getAttribute("aria-label")!;
+    const target = themeCards()[all - 1].getAttribute("aria-label")!;
     const query = target.toUpperCase();
     fireEvent.change(search, { target: { value: query } });
-    const matches = screen
-      .getAllByRole("radio")
-      .map((r) => r.getAttribute("aria-label")!);
+    const matches = themeCards().map((r) => r.getAttribute("aria-label")!);
     expect(matches).toContain(target);
     expect(matches.length).toBeLessThan(all);
     for (const name of matches) {
