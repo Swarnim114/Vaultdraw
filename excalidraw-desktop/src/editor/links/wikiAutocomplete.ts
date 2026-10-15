@@ -10,15 +10,14 @@
 import { MAX_LINK_CHARS } from "../../links/grammar";
 import { linkTargetFor, wikiLink } from "../../links/format";
 import { foldKey } from "../../links/resolve";
-import { prepareDrawings, prepareItems, rankRows } from "../../palette/rank";
 
-import type { DrawingIndex } from "../../palette/rank";
+import { SuggestRanker } from "./suggestRank";
+
 import type { LinkResolver } from "../../links/resolve";
 import type { LinksSettings } from "../../links/types";
 
 const MAX_SCAN = MAX_LINK_CHARS + 2;
 export const MAX_SUGGESTIONS = 8;
-const NO_ITEMS = prepareItems([]);
 
 export type OpenLink = {
   /** Index of the first `[` of the `[[`. */
@@ -174,8 +173,7 @@ export class WikiAutocomplete {
   private open: OpenLink | null = null;
   private current: SuggestState | null = null;
   private listeners = new Set<(s: SuggestState | null) => void>();
-  private index: DrawingIndex | null = null;
-  private indexNames: readonly string[] | null = null;
+  private ranker = new SuggestRanker();
   private inserting = false;
 
   constructor(private readonly deps: WikiAutocompleteDeps) {}
@@ -236,6 +234,7 @@ export class WikiAutocomplete {
       return;
     }
     this.detach();
+    this.ranker.reset();
     this.textarea = ta;
     ta.addEventListener("input", this.onInput);
     ta.addEventListener("blur", this.onBlur);
@@ -298,14 +297,8 @@ export class WikiAutocomplete {
 
   /** Ranked names (palette rank), with the text each would insert. */
   rank(query: string): SuggestRow[] {
-    const names = this.deps.getNames();
-    if (this.indexNames !== names) {
-      this.index = prepareDrawings(names, this.index);
-      this.indexNames = names;
-    }
-    const ranked = rankRows(
-      this.index!,
-      NO_ITEMS,
+    const ranked = this.ranker.rank(
+      this.deps.getNames(),
       query,
       this.deps.getRecent?.() ?? [],
       MAX_SUGGESTIONS,
