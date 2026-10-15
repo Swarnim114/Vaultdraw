@@ -120,10 +120,12 @@ pub fn clone_open(flags: &Flags, staged_dir: &Path, root: &Path, rel: &str, revi
         return None;
     }
     let rev = rev16(revision)?;
+    // Same symlink / escape checks as every other vault access (never clone through a link).
+    let src = crate::safe_path(root, rel, false).ok()?;
     let key = key_for(rel, flags.fold.load(Ordering::Relaxed));
     remove_open_clones(staged_dir, &key);
     let dst = staged_dir.join(open_clone_name(&key, rev));
-    match store::clone_file(&root.join(rel), &dst) {
+    match store::clone_file(&src, &dst) {
         Ok(()) => Some(dst),
         Err(e) => {
             if store::clone_unsupported(&e) {

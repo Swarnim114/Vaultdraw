@@ -97,6 +97,18 @@ impl Inbox {
     pub fn send_task(&self, t: Task) {
         let _ = self.tx.send(Item::Task(t));
     }
+    /// After a stop: paths of the commits still queued (their clones stay on disk for the next launch;
+    /// only the sidecar that names the drawing is missing). Cheap: no encoding, no versions.
+    pub fn queued_commit_paths(&self) -> Vec<String> {
+        let mut s = self.rx.lock().unwrap_or_else(|p| p.into_inner());
+        while let Ok(item) = s.rx.try_recv() {
+            s.file(item);
+        }
+        s.urgent.iter().filter_map(|m| match m {
+            Msg::Committed { path, staged: Some(_), .. } => Some(path.clone()),
+            _ => None,
+        }).collect()
+    }
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::SeqCst);
         let _ = self.tx.send(Item::Wake);
@@ -610,11 +622,33 @@ pub fn collect_survivors(staged_dir: &Path) -> Survivors {
     out
 }
 
-fn sweep_old_state(state_hist: &Path, keep: &str, now_ms: u64) {
+static LIVE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Marks a vault id as having a live worker in this process (state sweeps leave it alone).
+pub(crate) struct LiveGuard(String);
+impl LiveGuard {
+    pub(crate) fn new(id: &str) -> LiveGuard {
+        LIVE.lock().unwrap_or_else(|p| p.into_inner()).push(id.to_string());
+        LiveGuard(id.to_string())
+    }
+}
+impl Drop for LiveGuard {
+    fn drop(&mut self) {
+        let mut l = LIVE.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(i) = l.iter().position(|x| *x == self.0) {
+            l.swap_remove(i);
+        }
+    }
+}
+
+pub(crate) fn sweep_old_state(state_hist: &Path, keep: &str, now_ms: u64) {
     let Ok(rd) = std::fs::read_dir(state_hist) else { return };
     for e in rd.flatten() {
         let Ok(n) = e.file_name().into_string() else { continue };
         if n == keep || n.len() != 16 || !n.bytes().all(|b| b.is_ascii_hexdigit()) {
+            continue;
+        }
+        if LIVE.lock().unwrap_or_else(|p| p.into_inner()).contains(&n) {
             continue;
         }
         let touched = std::fs::metadata(e.path().join("last-opened")).or_else(|_| e.metadata()).ok().and_then(|m| m.modified().ok()).map_or(now_ms, crate::now_ms);
@@ -664,7 +698,7 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
     vh.ensure_loaded();
     let now = clock.now_ms();
     index::scan_all(&vh.store, &vh.index, now);
-    let _ = std::fs::write(vh.vault_state.join("last-opened"), b"");
+    let _ = std::fs::write(vh.vault_state.join("last-opened"), now.to_string());
     sweep_old_state(&vh.state_hist, &vh.vault_id, now);
     let _ = std::fs::create_dir_all(&vh.state_hist);
     let dev = match super::names::load_or_create_device(&vh.state_hist) {
@@ -701,8 +735,15 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
     let mut core = Core::new(backend, clock.clone());
     let mut survivors = Some(survivors.catch_up);
     let mut units: Vec<index::Unit> = Vec::new();
+    let mut touched = now;
     loop {
         core.tick();
+        // `last-opened` stays fresh while the vault is open (no timer: only when the worker runs anyway).
+        let t = clock.now_ms();
+        if t.saturating_sub(touched) >= 24 * 3600 * 1000 {
+            touched = t;
+            let _ = std::fs::write(vh.vault_state.join("last-opened"), t.to_string());
+        }
         flush_events(&vh, false);
         save_index_if_due(&vh, false);
         let now = clock.now_ms();
@@ -748,6 +789,11 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
                 }
             }
         }
+    }
+    // Stop wins over versioning work, but a commit queued before it must stay recoverable.
+    let fold = vh.flags.fold.load(Ordering::Relaxed);
+    for p in vh.inbox.queued_commit_paths() {
+        staging::write_sidecar(&vh.staged_dir, &staging::key_for(&p, fold), &p);
     }
     flush_events(&vh, true);
     save_index_if_due(&vh, true);

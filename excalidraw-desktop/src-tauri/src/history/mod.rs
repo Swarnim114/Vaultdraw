@@ -354,6 +354,10 @@ impl VaultHistory {
             }
         }
         if self.has_worker {
+            if let (Some(p), true) = (&path, self.flags.history_on()) {
+                // Names the drawing for a crash-survivor clone, even before any revision is known.
+                staging::write_sidecar(&self.staged_dir, &staging::key_for(p, self.flags.fold.load(Ordering::Relaxed)), p);
+            }
             // Cloned here (on the command thread), not on the worker: the state at open time must be
             // captured before any later save can replace the file.
             let clone = match (&path, &revision) {
@@ -686,7 +690,11 @@ impl HistoryService {
             let free_probe = lock(&self.free_probe).clone();
             let clock = self.clock.clone();
             let vh2 = vh.clone();
-            match std::thread::Builder::new().name("vaultdraw-history".into()).spawn(move || worker::run(vh2, survivors, clock, free_probe)) {
+            let live = worker::LiveGuard::new(&vault_id);
+            match std::thread::Builder::new().name("vaultdraw-history".into()).spawn(move || {
+                let _live = live;
+                worker::run(vh2, survivors, clock, free_probe)
+            }) {
                 Ok(j) => {
                     if let Some(slot) = lock(&self.slots).get_mut(&vault_id) {
                         slot.join = Some(j);

@@ -195,3 +195,85 @@ fn the_epoch_clock_is_not_reset_by_starting_the_app_without_writing() {
     let late = Epoch::load(Some(f.clone()), T0 + 12 * day).code;
     assert_ne!(late, e0, "more than 7 days after the last write: a new blob epoch");
 }
+
+// ---- round 2: stop vs queued commit, sweep, symlinked open ----
+
+#[test]
+fn a_commit_queued_just_before_stop_is_versioned_as_recovered_after_restart() {
+    use std::sync::{atomic::{AtomicBool, Ordering}, mpsc};
+    let fx = Fx::new();
+    let block = Arc::new(AtomicBool::new(false));
+    let (entered_tx, entered_rx) = mpsc::channel::<()>();
+    let (go_tx, go_rx) = mpsc::channel::<()>();
+    let go_rx = std::sync::Mutex::new(go_rx);
+    let (b2, entered_tx) = (block.clone(), std::sync::Mutex::new(entered_tx));
+    fx.svc.set_free_probe(Arc::new(move || {
+        if b2.load(Ordering::SeqCst) {
+            let _ = entered_tx.lock().unwrap().send(());
+            let _ = go_rx.lock().unwrap().recv();
+        }
+        true
+    }));
+    fx.start_configured(5);
+    fx.save("b.excalidraw", &scene(81, 20, 0, 0).json());
+    // keep the worker busy inside a checkpoint, never-opened drawing `a` is saved and queued behind it
+    block.store(true, Ordering::SeqCst);
+    let vh = fx.vh();
+    let t = std::thread::spawn(move || {
+        let _ = vh.checkpoint("b.excalidraw", "busy", "");
+    });
+    entered_rx.recv().unwrap();
+    let json = scene(82, 30, 0, 0).json();
+    fx.save(P, &json);
+    fx.svc.stop("h");
+    block.store(false, Ordering::SeqCst);
+    go_tx.send(()).unwrap();
+    t.join().unwrap();
+    // relaunch
+    fx.svc.start("h", fx.root.clone(), false, fx.emitter());
+    let vh = fx.vh();
+    vh.configure(settings(5));
+    wait_for("recovered version", || vh.list(P).map(|l| l.versions.iter().any(|v| v.reason == "recovered")).unwrap_or(false));
+    let v = vh.list(P).unwrap().versions.into_iter().find(|v| v.reason == "recovered").unwrap();
+    let raw = vh.read_version(&v.id).unwrap();
+    let nl = raw.iter().position(|b| *b == b'\n').unwrap();
+    let meta: serde_json::Value = serde_json::from_slice(&raw[..nl]).unwrap();
+    assert_eq!(meta["fileRevision"].as_str().unwrap(), crate::revision(json.as_bytes()));
+}
+
+#[test]
+fn opened_notes_the_sidecar_even_without_a_revision() {
+    let fx = Fx::new();
+    fx.start_configured(5);
+    fx.vh().opened(Some(P.into()), None).unwrap();
+    let key = crate::history::staging::key_for(P, fx.vh().flags.fold.load(std::sync::atomic::Ordering::Relaxed));
+    assert_eq!(crate::history::staging::read_sidecar(&fx.vh().staged_dir, &key).as_deref(), Some(P));
+}
+
+#[test]
+fn sweep_never_removes_the_state_of_a_vault_with_a_live_worker() {
+    use crate::history::worker::{sweep_old_state, LiveGuard};
+    let d = tempfile::tempdir().unwrap();
+    let (live, dead) = ("aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb");
+    for id in [live, dead] {
+        fs::create_dir_all(d.path().join(id)).unwrap();
+        fs::write(d.path().join(id).join("last-opened"), b"").unwrap();
+    }
+    let _g = LiveGuard::new(live);
+    let far = crate::now_ms(std::time::SystemTime::now()) + 200 * 24 * 3600 * 1000;
+    sweep_old_state(d.path(), "cccccccccccccccc", far);
+    assert!(d.path().join(live).exists(), "live worker's state survives");
+    assert!(!d.path().join(dead).exists(), "idle state older than 90 days is swept");
+}
+
+#[test]
+fn opening_through_a_symlinked_folder_clones_nothing() {
+    let fx = Fx::new();
+    fx.start_configured(5);
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("x.excalidraw"), scene(91, 10, 0, 0).json()).unwrap();
+    std::os::unix::fs::symlink(outside.path(), fx.root.join("link")).unwrap();
+    fx.vh().opened(Some("link/x.excalidraw".into()), Some("a".repeat(64))).unwrap();
+    fx.barrier();
+    assert!(fx.staged_files().is_empty(), "{:?}", fx.staged_files());
+}
