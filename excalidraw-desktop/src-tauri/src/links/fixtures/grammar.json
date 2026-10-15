@@ -1,0 +1,21 @@
+{
+  "_doc": "Shared link grammar fixtures: Rust (links/grammar.rs tests) and TS (src/links/grammar.test.ts) both assert every case. Offsets are UTF-16 [start, end) of the whole [[...]] token. Owner: Rust links agent (extend freely; TS agent reads only).",
+  "text": [
+    { "input": "See [[BFS and DFS]] now", "links": [{ "start": 4, "end": 19, "target": "BFS and DFS", "label": null }] },
+    { "input": "[[Graphs/Dijkstra|shortest paths]]", "links": [{ "start": 0, "end": 34, "target": "Graphs/Dijkstra", "label": "shortest paths" }] },
+    { "input": "two [[a]] and [[b|B]]", "links": [{ "start": 4, "end": 9, "target": "a", "label": null }, { "start": 14, "end": 21, "target": "b", "label": "B" }] },
+    { "input": "unclosed [[abc", "links": [] },
+    { "input": "empty [[]] and [[ ]]", "links": [] },
+    { "input": "Café [[Café]]", "links": [{ "start": 5, "end": 13, "target": "Café", "label": null }] },
+    { "input": "x.excalidraw [[Notes/x.excalidraw]]", "links": [{ "start": 13, "end": 35, "target": "Notes/x", "label": null }] },
+    { "input": "no newline [[a\nb]]", "links": [] }
+  ],
+  "linkField": [
+    { "input": "[[BFS and DFS]]", "target": "BFS and DFS" },
+    { "input": "vaultdraw://open?file=Graphs/BFS%20and%20DFS", "target": "Graphs/BFS and DFS" },
+    { "input": "./x.excalidraw", "target": "./x", "relative": true },
+    { "input": "x.excalidraw", "target": "x", "relative": true },
+    { "input": "https://example.com", "target": null },
+    { "input": "/some/path", "target": null }
+  ]
+}
