@@ -439,6 +439,20 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen", "writable", "!modalOpen"],
   },
   {
+    id: "navigator.collapseAll",
+    title: "Navigator: Collapse all folders",
+    category: "Navigator",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "navigator.refresh",
+    title: "Navigator: Refresh files",
+    category: "Navigator",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
     id: "file.rename",
     title: "Rename drawing",
     category: "File",

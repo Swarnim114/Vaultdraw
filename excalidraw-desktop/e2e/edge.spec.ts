@@ -30,13 +30,10 @@ const treeRow = (page: Page, name: string): Locator =>
     .first();
 
 /** Row action buttons are display:none until the row is hovered. */
-/** Row actions live in the "More actions" menu; folders also keep a "+" button. */
+/** Row actions live in the "More actions" menu. */
 const rowAction = async (page: Page, name: string, label: string) => {
   const row = treeRow(page, name);
   await row.hover();
-  if (label === "New drawing in folder") {
-    return row.getByRole("button", { name: label, exact: true });
-  }
   await row.getByRole("button", { name: "More actions" }).click();
   return page.getByRole("menuitem", { name: label, exact: true });
 };
@@ -341,9 +338,8 @@ test("8. keyboard shortcuts work immediately on a new drawing", async ({
   page,
 }, info) => {
   const errors = trackErrors(page);
-  await page
-    .locator(".vault-header button[title='New drawing in the current folder']")
-    .click();
+  // The header button is gone; the command (Mod+N) creates in the current folder.
+  await page.keyboard.press("ControlOrMeta+KeyN");
   await expect(page.locator(canvas)).toBeVisible();
   await page.waitForTimeout(500);
 

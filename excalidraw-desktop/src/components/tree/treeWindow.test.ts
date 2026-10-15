@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { flattenTree } from "./flattenTree";
+import { flattenTree, folderDrawingCounts } from "./flattenTree";
 import {
   TREE_ROW_HEIGHT,
   WINDOW_MIN_ROWS,
@@ -75,5 +75,24 @@ describe("computeWindow", () => {
     expect(computeWindow(500, 490, 600).end).toBe(500);
     const past = computeWindow(500, 900, 600);
     expect(past.start).toBeLessThanOrEqual(past.end);
+  });
+});
+
+describe("folderDrawingCounts", () => {
+  it("counts drawings recursively per ancestor folder", () => {
+    const counts = folderDrawingCounts([
+      entry("a", "folder"),
+      entry("a/b", "folder"),
+      entry("a/b/c.excalidraw", "drawing"),
+      entry("a/d.excalidraw", "drawing"),
+      entry("root.excalidraw", "drawing"),
+    ]);
+    expect(counts.get("a")).toBe(2);
+    expect(counts.get("a/b")).toBe(1);
+    expect(counts.has("")).toBe(false);
+  });
+
+  it("uses the 26 px row height of the design", () => {
+    expect(TREE_ROW_HEIGHT).toBe(26);
   });
 });

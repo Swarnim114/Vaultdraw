@@ -27,3 +27,25 @@ export function flattenTree(
   walk(nodes, 0);
   return rows;
 }
+
+/**
+ * Drawings inside each folder, recursively, keyed by folder path. Built from
+ * the full entry list (not just the loaded tree), once per index change.
+ */
+export function folderDrawingCounts(
+  entries: readonly VaultEntry[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.kind !== "drawing") {
+      continue;
+    }
+    let slash = entry.path.lastIndexOf("/");
+    while (slash > 0) {
+      const folder = entry.path.slice(0, slash);
+      counts.set(folder, (counts.get(folder) ?? 0) + 1);
+      slash = entry.path.lastIndexOf("/", slash - 1);
+    }
+  }
+  return counts;
+}

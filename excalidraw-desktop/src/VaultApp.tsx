@@ -112,6 +112,8 @@ import {
 } from "./components/Icons";
 
 import "./components/VaultShell.css";
+import "./components/shell.css";
+import "./components/navigator.css";
 
 import type { SettingsTarget } from "./components/settings/schema";
 import type { PaletteMode } from "./palette/rank";
@@ -947,6 +949,25 @@ export const VaultApp = ({
     });
   };
 
+  const handleCollapseAllFolders = () => {
+    if (!vault) {
+      return;
+    }
+    setExpandedFolders(new Set());
+    saveExpandedFolders(vault.path, [], win);
+  };
+
+  const refreshFiles = () => {
+    void loadDirectory("");
+    for (const f of expandedFolders) {
+      if (f) {
+        void loadDirectory(f);
+      }
+    }
+    startIndexing();
+    void refreshRecovery();
+  };
+
   const handleExpandFolder = (folderPath: string) => {
     if (!vault) {
       return;
@@ -1580,6 +1601,8 @@ export const VaultApp = ({
       requestNavigator({ kind: "search", query: tagQuery("") });
     },
     newFolder: () => requestNavigator({ kind: "newFolder" }),
+    collapseAllFolders: handleCollapseAllFolders,
+    refreshFiles,
     renameActive: () => {
       if (activeDoc) {
         requestNavigator({ kind: "rename", path: activeDoc.path });
@@ -1876,8 +1899,6 @@ export const VaultApp = ({
         recoveryCount={recoveryCount}
         navigatorCollapsed={navigatorCollapsed}
         onToggleNavigator={handleToggleNavigator}
-        onNewDrawing={() => void handleNewDrawing()}
-        onNewFromTemplate={() => void openTemplatePicker()}
         onOpenConflict={() => setShowConflictDialog(true)}
         onOpenRecovery={() => setShowRecoveryDialog(true)}
         onSave={handleExplicitSave}
@@ -2013,7 +2034,6 @@ export const VaultApp = ({
           vault={vault}
           activePath={activeDoc?.path ?? null}
           collapsed={navigatorCollapsed}
-          onToggleCollapse={handleToggleNavigator}
           onOpenSettings={() => openSettings()}
           onOpenGraph={openGraph}
           graphOpen={graphOpen}
@@ -2045,16 +2065,7 @@ export const VaultApp = ({
           onExpandFolder={handleExpandFolder}
           allIndexedEntries={allIndexedEntries}
           isIndexing={isIndexing}
-          onRefresh={() => {
-            void loadDirectory("");
-            for (const f of expandedFolders) {
-              if (f) {
-                void loadDirectory(f);
-              }
-            }
-            startIndexing();
-            void refreshRecovery();
-          }}
+          onCollapseAll={handleCollapseAllFolders}
           ownerDocument={doc}
           dockSlot={
             vaultLinks && appLinks.dockVisible ? (

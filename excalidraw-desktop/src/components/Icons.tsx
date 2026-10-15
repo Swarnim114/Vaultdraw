@@ -609,3 +609,20 @@ export const IconGraph = strokeIcon(
     <circle cx="12" cy="19.5" r="2.5" />
   </>,
 );
+
+/** A drawing in the tree: a pen nib over a line. */
+export const IconPenLine = strokeIcon(
+  15,
+  <path d="M12 20h9M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6l-4 1 1-4z" />,
+);
+
+export const IconFolderOpen = strokeIcon(
+  15,
+  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6a2 2 0 0 1-1.9 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2" />,
+);
+
+/** Collapse all folders (list with collapse chevrons). */
+export const IconCollapseAll = strokeIcon(
+  15,
+  <path d="m3 10 2.5-2.5L3 5M3 19l2.5-2.5L3 14M10 6h11M10 12h11M10 18h11" />,
+);

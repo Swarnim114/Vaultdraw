@@ -1,12 +1,6 @@
-import {
-  IconAlert,
-  IconCheck,
-  IconHistory,
-  IconLock,
-  IconNewDrawing,
-  IconSidebar,
-  IconTemplate,
-} from "./Icons";
+import { useCommandShortcut } from "../commands/useCommandShortcut";
+
+import { IconAlert, IconHistory, IconLock, IconSidebar } from "./Icons";
 
 import type { SaveStatus, VaultInfo } from "../vault/types";
 
@@ -18,8 +12,6 @@ interface VaultHeaderProps {
   recoveryCount?: number;
   navigatorCollapsed: boolean;
   onToggleNavigator: () => void;
-  onNewDrawing: () => void;
-  onNewFromTemplate?: () => void;
   onOpenConflict: () => void;
   onOpenRecovery: () => void;
   onSave?: () => void;
@@ -33,12 +25,11 @@ export const VaultHeader = ({
   recoveryCount = 0,
   navigatorCollapsed,
   onToggleNavigator,
-  onNewDrawing,
-  onNewFromTemplate,
   onOpenConflict,
   onOpenRecovery,
   onSave,
 }: VaultHeaderProps) => {
+  const toggleKeys = useCommandShortcut("view.toggleNavigator");
   if (!vault) {
     return null;
   }
@@ -132,7 +123,7 @@ export const VaultHeader = ({
                 title="All edits saved to disk"
                 role="status"
               >
-                <IconCheck />
+                <i className="vault-status__dot" />
                 <span>Saved</span>
               </span>
             )}
@@ -189,34 +180,13 @@ export const VaultHeader = ({
       </div>
 
       <div className="vault-header__right">
-        {!vault.readOnly && (
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onNewDrawing}
-            title="New drawing in the current folder"
-            aria-label="New Drawing"
-          >
-            <IconNewDrawing />
-          </button>
-        )}
-        {!vault.readOnly && onNewFromTemplate && (
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onNewFromTemplate}
-            title="New drawing from a template (Cmd+Option+N)"
-            aria-label="New from Template"
-          >
-            <IconTemplate />
-          </button>
-        )}
-
         <button
           type="button"
-          className="vault-btn vault-btn--ghost vault-btn--icon"
+          className="vault-ibtn"
           onClick={onToggleNavigator}
-          title={navigatorCollapsed ? "Show Navigator" : "Hide Navigator"}
+          title={`${navigatorCollapsed ? "Show Navigator" : "Hide Navigator"}${
+            toggleKeys ? ` (${toggleKeys})` : ""
+          }`}
           aria-label={navigatorCollapsed ? "Show Navigator" : "Hide Navigator"}
           aria-expanded={!navigatorCollapsed}
         >

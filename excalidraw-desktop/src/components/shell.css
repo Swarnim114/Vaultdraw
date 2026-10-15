@@ -1,0 +1,216 @@
+/* App shell: the 38 px bar (breadcrumbs, save status, navigator toggle). */
+
+.vault-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 10px 0 12px;
+  height: var(--vault-header-height);
+  min-height: var(--vault-header-height);
+  background-color: var(--vault-surface);
+  border-bottom: 1px solid var(--vault-border);
+  gap: 8px;
+  font-size: 12.5px;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 5;
+}
+
+/* The macOS overlay title bar puts the window buttons inside this bar. */
+html.vault-macos .vault-header {
+  padding-left: 86px;
+}
+
+.vault-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vault-header__center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.vault-header__right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 26 px icon button, shared by the bar, the navigator header and footer. */
+.vault-ibtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vd-radius-control, 6px);
+  background: transparent;
+  color: var(--vault-text-muted);
+  cursor: pointer;
+}
+
+.vault-ibtn:hover {
+  background: var(--vault-hover);
+  color: var(--vault-text);
+}
+
+.vault-ibtn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--vault-primary);
+}
+
+.vault-ibtn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Breadcrumbs */
+.vault-breadcrumbs {
+  display: flex;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--vault-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-breadcrumbs__item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-breadcrumbs__segment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.vault-breadcrumbs__item--active {
+  color: var(--vault-text);
+  font-weight: 500;
+}
+
+.vault-breadcrumbs__sep {
+  margin: 0 6px;
+  color: var(--vault-text-faint);
+}
+
+/* Quiet save status: a 6 px dot and 12 px muted text. */
+.vault-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--vd-radius-control, 6px);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--vault-text-muted);
+  white-space: nowrap;
+}
+
+button.vault-status {
+  cursor: pointer;
+}
+
+button.vault-status:hover:not(:disabled) {
+  background-color: var(--vault-hover);
+  color: var(--vault-text);
+}
+
+.vault-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--vault-warning);
+}
+
+.vault-status--saved .vault-status__dot {
+  background-color: var(--vault-success);
+}
+
+/* Badges: read-only, recovery, conflict, error. */
+.vault-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--vd-radius-chip, 4px);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.vault-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.vault-badge--conflict {
+  background-color: var(--vault-warning-bg);
+  color: var(--vault-warning);
+  border: 1px solid var(--vault-warning-border);
+  cursor: pointer;
+}
+
+.vault-badge--error {
+  background-color: var(--vault-danger-bg);
+  color: var(--vault-danger);
+  border: 1px solid var(--vault-danger-border);
+  cursor: pointer;
+}
+
+.vault-badge--readonly {
+  background-color: var(--vault-chip);
+  color: var(--vault-text-muted);
+  border: 1px solid var(--vault-border);
+}
+
+.vault-badge--recovery {
+  background-color: var(--vault-sel);
+  color: var(--vault-text);
+  border: 1px solid var(--vault-border);
+  cursor: pointer;
+}
+
+.vault-badge--recovery:hover,
+.vault-badge--conflict:hover,
+.vault-badge--error:hover {
+  background-color: var(--vault-hover);
+}
+
+/* Still used by the onboarding screen. */
+.vault-badge--saved {
+  background-color: var(--vault-success-bg);
+  color: var(--vault-success);
+  border: 1px solid var(--vault-success-border);
+}
+
+.vault-badge--dirty {
+  background-color: var(--vault-hover);
+  color: var(--vault-text-muted);
+  border: 1px solid var(--vault-border);
+}
+
+.vault-badge--saving {
+  background-color: var(--vault-primary-light);
+  color: var(--vault-primary);
+  border: 1px solid var(--vault-primary-border);
+}
