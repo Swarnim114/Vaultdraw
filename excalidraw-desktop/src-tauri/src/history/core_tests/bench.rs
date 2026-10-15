@@ -78,28 +78,32 @@ fn vault() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
 
 const P: &str = "a.excalidraw";
 const IMG_COUNT: usize = 6;
-const IMG_BYTES: usize = 300_000;
+/// 6 x 2.5 MB of image data (20 MB as base64) + 5k elements: a ~24 MB stress file.
+const IMG_BYTES: usize = 2_500_000;
 
 fn writer_for(root: &Path, state: &Path) -> crate::history::writer::Writer {
     mk_writer(root, state, Arc::new(crate::history::SystemClock), Box::new(|| true))
 }
 
 /// Auto-version latency of a scene: one keyframe, then `rounds` edits each versioned (deltas).
-fn auto_write(n: usize, images: usize, img: usize, rounds: usize) -> Vec<f64> {
+fn auto_write(n: usize, images: usize, img: usize, rounds: usize) -> (Vec<f64>, f64) {
     let (_d, root, state) = vault();
     let mut w = writer_for(&root, &state);
     let mut sc = scene(n as u64, n, images, img);
     version_of(&mut w, &root, P, &sc.json(), Reason::Auto).unwrap();
     let mut out = Vec::new();
+    let mut size = 0usize;
     for _ in 0..rounds {
         sc.edit();
-        std::fs::write(root.join(P), sc.json()).unwrap();
+        let json = sc.json();
+        size = json.len();
+        std::fs::write(root.join(P), json).unwrap();
         let t = Instant::now();
         let o = w.write_version(&crate::history::core_tests::support::live_request(P, Reason::Auto)).unwrap();
         out.push(t.elapsed().as_secs_f64() * 1e3);
         assert!(matches!(o, Outcome::Written(_)));
     }
-    out
+    (out, size as f64 / 1048576.0)
 }
 
 #[test]
@@ -129,10 +133,14 @@ fn bench_history_hooks() {
 #[test]
 #[ignore]
 fn bench_history_write() {
-    emit("write.auto.200", "ms", auto_write(200, 0, 0, 40), "");
-    emit("write.auto.2k", "ms", auto_write(2000, 0, 0, 40), "");
-    emit("write.auto.5k", "ms", auto_write(5000, 0, 0, 30), "");
-    emit("write.auto.5kimg", "ms", auto_write(5000, IMG_COUNT, IMG_BYTES, 30), "");
+    let (s, mb) = auto_write(200, 0, 0, 40);
+    emit("write.auto.200", "ms", s, &format!(",\"fileMB\":{mb:.2}"));
+    let (s, mb) = auto_write(2000, 0, 0, 40);
+    emit("write.auto.2k", "ms", s, &format!(",\"fileMB\":{mb:.2}"));
+    let (s, mb) = auto_write(5000, 0, 0, 30);
+    emit("write.auto.5k", "ms", s, &format!(",\"fileMB\":{mb:.2}"));
+    let (s, mb) = auto_write(5000, IMG_COUNT, IMG_BYTES, 12);
+    emit("write.auto.5kimg", "ms", s, &format!(",\"fileMB\":{mb:.2}"));
     // keyframes (new lineage each time, images already stored once)
     let (_d, root, state) = vault();
     let mut w = writer_for(&root, &state);
@@ -140,7 +148,8 @@ fn bench_history_write() {
     let json = sc.json();
     version_of(&mut w, &root, "warm.excalidraw", &json, Reason::Auto).unwrap();
     let mut s = Vec::new();
-    for i in 0..15 {
+    let mb = json.len() as f64 / 1048576.0;
+    for i in 0..8 {
         let p = format!("k{i}.excalidraw");
         std::fs::write(root.join(&p), &json).unwrap();
         let t = Instant::now();
@@ -148,7 +157,7 @@ fn bench_history_write() {
         s.push(t.elapsed().as_secs_f64() * 1e3);
         assert!(matches!(o, Outcome::Written(_)));
     }
-    emit("write.keyframe.5kimg", "ms", s, "");
+    emit("write.keyframe.5kimg", "ms", s, &format!(",\"fileMB\":{mb:.2}"));
     // peak memory above baseline during one auto write
     for (id, n, images, img) in [("write.peakMB.5kimg", 5000, IMG_COUNT, IMG_BYTES), ("write.peakMB.32mbNoImg", 72_000, 0, 0)] {
         let (_d, root, state) = vault();
@@ -307,7 +316,8 @@ fn bench_history_heavy_day() {
     let backend = RealBackend { writer: w, flags: flags.clone(), staged_dir: staged_dir.clone(), on_change: Box::new(|_, _| {}), on_error: Box::new(|_| {}), writing: Arc::default() };
     let mut core = Core::new(backend, clock.clone() as Arc<dyn Clock>);
     core.configure(settings(5));
-    let mut sc = scene(1, 5000, IMG_COUNT, IMG_BYTES);
+    // a lighter 5k + 1.8 MB images scene: the day has 1200 saves
+    let mut sc = scene(1, 5000, IMG_COUNT, 300_000);
     std::fs::write(root.join(P), sc.json()).unwrap();
     let rev0 = crate::current_revision(&root.join(P)).unwrap().unwrap();
     let c = staging::clone_open(&flags, &staged_dir, &root, P, &rev0);
