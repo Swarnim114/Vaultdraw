@@ -17,9 +17,11 @@ test("main menu shows Vaultdraw hotkeys and follows rebinding", async ({
   await openDrawing(page, "Graphs");
 
   await openMenu(page);
-  await expect(item(page, /Vault settings/)).toContainText(/(⌘,|Ctrl\+,)/);
+  await expect(item(page, /Vault settings/)).toContainText(/(Cmd\+,|Ctrl\+,)/);
   // No default key: nothing shown.
-  await expect(item(page, /Save a copy/)).not.toContainText(/⌘|Ctrl|Alt/);
+  await expect(item(page, /Save a copy/)).not.toContainText(
+    /Cmd|Ctrl|Alt|Option/,
+  );
   await page.screenshot({ path: SHOT });
   await page.keyboard.press("Escape");
 
@@ -45,6 +47,6 @@ test("main menu shows Vaultdraw hotkeys and follows rebinding", async ({
 
   await openMenu(page);
   await expect(item(page, /Vault settings/)).toContainText(
-    /(⌥⌘J|Ctrl\+Alt\+J)/,
+    /(Option\+Cmd\+J|Ctrl\+Alt\+J)/,
   );
 });

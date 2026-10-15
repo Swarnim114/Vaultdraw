@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   chordFromEvent,
   detectPlatform,
+  formatChordWords,
   formatChord,
   isModifierFree,
   normalizeChord,
@@ -238,5 +239,14 @@ describe("isModifierFree", () => {
     expect(isModifierFree("Alt+N")).toBe(false);
     expect(isModifierFree("Ctrl+N")).toBe(false);
     expect(isModifierFree("Meta+N")).toBe(false);
+  });
+});
+
+describe("formatChordWords", () => {
+  it("uses Excalidraw's word style per platform", () => {
+    expect(formatChordWords("Mod+Comma", "mac")).toBe("Cmd+,");
+    expect(formatChordWords("Mod+Alt+KeyJ", "mac")).toBe("Option+Cmd+J");
+    expect(formatChordWords("Mod+Shift+KeyE", "mac")).toBe("Shift+Cmd+E");
+    expect(formatChordWords("Mod+Alt+KeyJ", "win")).toBe("Ctrl+Alt+J");
   });
 });

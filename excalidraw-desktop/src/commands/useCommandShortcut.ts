@@ -3,17 +3,18 @@ import { useCallback, useMemo } from "react";
 
 import { commandShortcutLabel } from "../palette/shortcuts";
 
-import { detectPlatform } from "./keys";
+import { detectPlatform, formatChordWords } from "./keys";
 import { useHotkeyOverrides } from "./useCommands";
 
-/** `label(id)`: first effective chord ("" = unassigned); follows rebinds. */
+/** `label(id)`: first chord in Excalidraw's word style ("" = unassigned); follows rebinds. */
 export function useCommandShortcutLookup(
   win: Window | null = null,
 ): (id: string) => string {
   const overrides = useHotkeyOverrides(win);
   const platform = useMemo(() => detectPlatform(win), [win]);
   return useCallback(
-    (id: string) => commandShortcutLabel(id, overrides, platform),
+    (id: string) =>
+      commandShortcutLabel(id, overrides, platform, formatChordWords),
     [overrides, platform],
   );
 }

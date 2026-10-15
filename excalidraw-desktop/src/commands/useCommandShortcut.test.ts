@@ -9,13 +9,13 @@ afterEach(() => window.localStorage.clear());
 describe("useCommandShortcut", () => {
   it("shows the default binding with the platform's label", () => {
     const { result } = renderHook(() => useCommandShortcut("settings.open"));
-    expect(result.current).toMatch(/^(⌘,|Ctrl\+,)$/);
+    expect(result.current).toMatch(/^(Cmd\+,|Ctrl\+,)$/);
   });
 
   it("follows a custom binding live and an explicit unassign", () => {
     const { result } = renderHook(() => useCommandShortcut("settings.open"));
     act(() => setHotkeyOverride("settings.open", ["Mod+Alt+P"], window));
-    expect(result.current).toMatch(/^(⌥⌘P|Ctrl\+Alt\+P)$/);
+    expect(result.current).toMatch(/^(Option\+Cmd\+P|Ctrl\+Alt\+P)$/);
     act(() => setHotkeyOverride("settings.open", [], window));
     expect(result.current).toBe("");
   });

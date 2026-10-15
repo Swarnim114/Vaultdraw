@@ -10,10 +10,11 @@ export function commandShortcutLabel(
   id: string,
   overrides: HotkeyOverrides,
   platform: Platform,
+  format: (chord: string, platform: Platform) => string = formatChord,
 ): string {
   const command = getCommand(id);
   const first = command && effectiveKeys(command, overrides, platform)[0];
-  return first ? formatChord(first, platform) : "";
+  return first ? format(first, platform) : "";
 }
 
 /** Excalidraw prints "Option"/"Opt" for Alt on macOS; parseChord wants Alt. */

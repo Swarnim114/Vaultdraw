@@ -359,6 +359,33 @@ export function formatChord(chord: Chord, platform: Platform): string {
   return [...names, label].join("+");
 }
 
+/**
+ * Words like Excalidraw's own menu labels: mac "Option+Cmd+J" (Ctrl stays
+ * Ctrl), others "Ctrl+Alt+Shift+J". The palette keeps formatChord's symbols.
+ */
+export function formatChordWords(chord: Chord, platform: Platform): string {
+  const parts = parseParts(chord);
+  if (!parts) {
+    return chord;
+  }
+  const { mods } = parts;
+  const mac = platform === "mac";
+  const names = mac
+    ? [
+        mods.has("Ctrl") && "Ctrl",
+        mods.has("Alt") && "Option",
+        mods.has("Shift") && "Shift",
+        (mods.has("Mod") || mods.has("Meta")) && "Cmd",
+      ]
+    : [
+        (mods.has("Mod") || mods.has("Ctrl")) && "Ctrl",
+        mods.has("Alt") && "Alt",
+        mods.has("Shift") && "Shift",
+        mods.has("Meta") && "Meta",
+      ];
+  return [...names.filter(Boolean), keyLabel(parts.key, false)].join("+");
+}
+
 /** True when no Mod/Ctrl/Alt/Meta is held (Shift alone counts as free). */
 export function isModifierFree(chord: Chord): boolean {
   const parts = parseParts(chord);
