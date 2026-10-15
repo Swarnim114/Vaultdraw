@@ -63,3 +63,18 @@ test("vault home lists recent drawings and opens them", async ({ page }) => {
   await expect(page.getByLabel("Breadcrumb")).toContainText("Graphs");
   expect(errors).toEqual([]);
 });
+
+test("vault home actions show live shortcuts and run their commands", async ({
+  page,
+}) => {
+  await openVault(page);
+  const home = page.locator(".vault-home");
+  await expect(home.locator(".vault-home__action")).toHaveCount(4);
+  await expect(home.getByRole("button", { name: /New drawing/ })).toContainText(
+    /N$/,
+  );
+  await home.getByRole("button", { name: /Show all commands/ }).focus();
+  await page.keyboard.press("Enter");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(palette.getByRole("combobox")).toHaveValue(">");
+});

@@ -58,7 +58,9 @@ export type RankedRow =
       drawing: RankDrawing;
       positions: number[];
     }
-  | { kind: "item"; key: string; entry: RankItem; positions: number[] };
+  | { kind: "item"; key: string; entry: RankItem; positions: number[] }
+  /** "Create <name>" (files mode, added by group.ts; never ranked). */
+  | { kind: "create"; key: string; name: string; positions: number[] };
 
 class LazyDrawing implements RankDrawing {
   private cached: Prepared | null = null;
@@ -221,7 +223,11 @@ export function rankRows(
   )) {
     const { norm } = hit.item.title;
     const tier =
-      norm === needle ? EXACT_TIER : norm.startsWith(needle) ? PREFIX_TIER : 0;
+      norm === needle || hit.item.item.family
+        ? EXACT_TIER
+        : norm.startsWith(needle)
+        ? PREFIX_TIER
+        : 0;
     const key = hit.item.item.key;
     matched.add(key);
     scored.push({

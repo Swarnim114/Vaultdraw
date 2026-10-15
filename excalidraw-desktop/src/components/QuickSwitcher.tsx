@@ -9,6 +9,7 @@
  * prepared once and ranked synchronously per keystroke (see palette/rank.ts).
  */
 import {
+  Fragment,
   memo,
   startTransition,
   useCallback,
@@ -36,12 +37,14 @@ import {
   rankRows,
   warmDrawings,
 } from "../palette/rank";
+import { rowHeadings, withCreateRow } from "../palette/group";
 import { namesCache } from "../palette/namesCache";
 import { getRecent, recordRecent } from "../palette/recent";
 import { errorMessage } from "../vault/types";
 
-import { IconDrawing } from "./Icons";
+import { IconDrawing, IconPlus } from "./Icons";
 
+import "./home.css";
 import "./QuickSwitcher.css";
 
 import type { Names } from "../palette/namesCache";
@@ -56,15 +59,17 @@ const MODE_COMMANDS: Record<PaletteMode, string> = {
 };
 const MODE_TEXT: Record<
   PaletteMode,
-  { label: string; placeholder: string; hint: string }
+  { label: string; chip: string; placeholder: string; hint: string }
 > = {
   files: {
     label: "Go to drawing",
+    chip: "Drawings",
     placeholder: "Search drawings by name  (> for commands)",
     hint: "",
   },
   commands: {
     label: "Run a command",
+    chip: "Commands",
     placeholder: "",
     hint: " Search commands  (delete > for drawings)",
   },
@@ -87,6 +92,8 @@ export interface QuickSwitcherProps {
   collectItems(): readonly PaletteItem[];
   platform: Platform;
   onOpenDrawing(path: string): void;
+  /** Creates an empty drawing with this name (the "Create" row); omitted = no Create row. */
+  onCreateDrawing?(name: string): void;
   /** Pick mode: a drawing row calls `onOpenDrawing` as usual, but commands are not offered; the label replaces the placeholder. */
   pickLabel?: string;
   /** Enter: the shell closes the palette, then runs it. Mod+Enter (keepOpen): the shell runs it in place. */
@@ -153,6 +160,15 @@ const RowView = memo(
           )}
         </>
       );
+    } else if (row.kind === "create") {
+      body = (
+        <>
+          <span className="vault-quick__icon">
+            <IconPlus />
+          </span>
+          <span className="vault-quick__name">Create “{row.name}”</span>
+        </>
+      );
     } else {
       const { item } = row.entry;
       body = (
@@ -162,6 +178,11 @@ const RowView = memo(
             {highlight(item.title, 0, item.title.length, positions)}
           </span>
           <span className="vault-quick__muted">{item.group}</span>
+          {item.family && (
+            <span className="vault-quick__tab">
+              <kbd className="vault-kbd">Tab</kbd> browse
+            </span>
+          )}
           {item.checked && (
             <span
               className="vault-quick__check"
@@ -172,7 +193,7 @@ const RowView = memo(
             </span>
           )}
           {item.shortcut && (
-            <kbd className="vault-quick__keys">{item.shortcut}</kbd>
+            <kbd className="vault-kbd vault-quick__keys">{item.shortcut}</kbd>
           )}
         </>
       );
@@ -295,6 +316,7 @@ export const QuickSwitcher = ({
   platform,
   onOpenDrawing,
   pickLabel,
+  onCreateDrawing,
   onRunItem,
   onClose,
   ownerDocument,
@@ -334,9 +356,20 @@ export const QuickSwitcher = ({
   }, [names.paths]);
   useEffect(() => warmDrawings(drawings), [drawings]);
   const prepared = useMemo(() => prepareItems(items ?? NO_ITEMS), [items]);
+  const canCreate = !!onCreateDrawing && !pickLabel;
   const rows = useMemo(
-    () => rankRows(drawings, prepared, query, recent),
-    [drawings, prepared, query, recent],
+    () =>
+      withCreateRow(
+        rankRows(drawings, prepared, query, recent),
+        query,
+        mode,
+        canCreate,
+      ),
+    [drawings, prepared, query, recent, mode, canCreate],
+  );
+  const headings = useMemo(
+    () => rowHeadings(rows, mode, query.trim() !== ""),
+    [rows, mode, query],
   );
   const selected = Math.min(active, Math.max(0, rows.length - 1));
   // First paint shows FIRST_ROWS rows; the rest follows in a transition.
@@ -403,7 +436,15 @@ export const QuickSwitcher = ({
       onOpenDrawing(row.drawing.path);
       return;
     }
+    if (row.kind === "create") {
+      onCreateDrawing?.(row.name);
+      return;
+    }
     const { item } = row.entry;
+    if (item.family) {
+      drill();
+      return;
+    }
     recordRecent(row.key, win);
     onRunItem(item, keepOpen);
     if (keepOpen) {
@@ -529,29 +570,36 @@ export const QuickSwitcher = ({
         aria-modal="true"
         aria-label="Command palette"
       >
-        {query === COMMANDS_PREFIX && (
-          <span className="vault-quick__hint" aria-hidden="true">
-            <span className="vault-quick__hint-prefix">{COMMANDS_PREFIX}</span>
-            {MODE_TEXT.commands.hint}
+        <div className="vault-quick__bar">
+          {query === COMMANDS_PREFIX && (
+            <span className="vault-quick__hint" aria-hidden="true">
+              <span className="vault-quick__hint-prefix">
+                {COMMANDS_PREFIX}
+              </span>
+              {MODE_TEXT.commands.hint}
+            </span>
+          )}
+          <input
+            ref={inputRef}
+            className="vault-quick__input"
+            type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listId}
+            aria-activedescendant={rows.length ? optionId(selected) : undefined}
+            aria-label={pickLabel ?? MODE_TEXT[mode].label}
+            placeholder={pickLabel ?? MODE_TEXT[mode].placeholder}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            value={query}
+            onChange={(e) => changeQuery(e.target.value)}
+          />
+          <span className="vault-quick__mode">
+            {pickLabel ? "Pick" : MODE_TEXT[mode].chip}
           </span>
-        )}
-        <input
-          ref={inputRef}
-          className="vault-quick__input"
-          type="text"
-          role="combobox"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-activedescendant={rows.length ? optionId(selected) : undefined}
-          aria-label={pickLabel ?? MODE_TEXT[mode].label}
-          placeholder={pickLabel ?? MODE_TEXT[mode].placeholder}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
-          spellCheck={false}
-          autoComplete="off"
-          value={query}
-          onChange={(e) => changeQuery(e.target.value)}
-        />
+        </div>
         <div
           id={listId}
           ref={listRef}
@@ -560,15 +608,21 @@ export const QuickSwitcher = ({
           aria-label="Results"
         >
           {rows.slice(0, rendered).map((row, i) => (
-            <RowView
-              key={row.key}
-              id={optionId(i)}
-              row={row}
-              index={i}
-              active={i === selected}
-              onHover={setActive}
-              onPick={onPick}
-            />
+            <Fragment key={row.key}>
+              {headings[i] && (
+                <div className="vault-quick__group" role="presentation">
+                  {headings[i]}
+                </div>
+              )}
+              <RowView
+                id={optionId(i)}
+                row={row}
+                index={i}
+                active={i === selected}
+                onHover={setActive}
+                onPick={onPick}
+              />
+            </Fragment>
           ))}
         </div>
         {rows.length === 0 && (
@@ -584,6 +638,23 @@ export const QuickSwitcher = ({
             {indexing}
           </div>
         )}
+        <div className="vault-quick__footer" aria-hidden="true">
+          <span>
+            <kbd className="vault-kbd">↑↓</kbd> navigate
+          </span>
+          <span>
+            <kbd className="vault-kbd">↵</kbd>{" "}
+            {mode === "commands" ? "run" : "open"}
+          </span>
+          {mode === "commands" && (
+            <span>
+              <kbd className="vault-kbd">Tab</kbd> browse
+            </span>
+          )}
+          <span>
+            <kbd className="vault-kbd">esc</kbd> close
+          </span>
+        </div>
       </div>
     </div>
   );

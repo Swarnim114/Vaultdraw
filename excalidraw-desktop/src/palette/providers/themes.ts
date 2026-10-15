@@ -20,14 +20,29 @@ export function createThemesProvider({
     id: "themes",
     items(): PaletteItem[] {
       const current = currentKey();
-      return listThemeSummaries(registry()).map(({ key, name }) => ({
-        key: `theme:${name}`,
-        title: `Theme: ${name}`,
-        group: "Appearance",
-        keywords: ["colour", "color", "theme"],
-        checked: key === current,
-        run: () => select(key),
-      }));
+      const themes = listThemeSummaries(registry()).map(
+        ({ key, name }): PaletteItem => ({
+          key: `theme:${name}`,
+          title: `Theme: ${name}`,
+          group: "Appearance",
+          keywords: ["colour", "color", "theme"],
+          checked: key === current,
+          run: () => select(key),
+        }),
+      );
+      // Tab / Enter browse the family; "Theme: Dracula" still matches from the top.
+      return [
+        {
+          key: "family:theme",
+          title: "Family: Theme",
+          group: "Appearance",
+          keywords: ["colour", "color", "theme", "browse"],
+          drill: "Theme: ",
+          family: true,
+          run: () => {},
+        },
+        ...themes,
+      ];
     },
   };
 }

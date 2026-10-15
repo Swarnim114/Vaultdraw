@@ -8,6 +8,8 @@ import {
   IconPlus,
 } from "./Icons";
 
+import "./home.css";
+
 interface OnboardingProps {
   recentVaults: string[];
   lastVaultPath?: string | null;
@@ -43,18 +45,18 @@ export const Onboarding = ({
         </div>
         <h1 className="vault-onboarding__title">Vaultdraw</h1>
         <p className="vault-onboarding__desc">
-          Your offline, local canvas notebook. All drawings are standard files
-          stored inside normal folders directly on your filesystem.
+          A vault is just a folder: your drawings are plain files on your disk,
+          readable without Vaultdraw.
         </p>
 
         {!tauriActive && (
-          <div className="vault-banner vault-banner--warning">
-            <span style={{ flexShrink: 0, marginTop: "2px" }}>
+          <div className="vault-banner vault-banner--warning vault-onboarding__alert">
+            <span className="vault-onboarding__alert-icon">
               <IconAlert />
             </span>
             <div>
               <strong>Web Browser Preview Notice</strong>
-              <div style={{ marginTop: "4px" }}>
+              <div className="vault-onboarding__alert-note">
                 Tauri desktop backend is not active in this browser tab. Native
                 filesystem folders, atomic saving, and background watching
                 require running inside the Vaultdraw desktop application.
@@ -64,14 +66,7 @@ export const Onboarding = ({
         )}
 
         {error && (
-          <div
-            className="vault-banner vault-banner--warning"
-            style={{
-              backgroundColor: "var(--vault-danger-bg)",
-              color: "var(--vault-danger)",
-              borderColor: "var(--vault-danger-border)",
-            }}
-          >
+          <div className="vault-banner vault-banner--warning vault-onboarding__alert vault-onboarding__alert--error">
             {error}
           </div>
         )}
@@ -79,21 +74,41 @@ export const Onboarding = ({
         <div className="vault-onboarding__actions">
           <button
             type="button"
-            className="vault-btn vault-btn--primary"
-            onClick={() => void onOpenVault()}
-            disabled={loading}
-          >
-            <IconFolder />
-            <span>Open Vault Folder</span>
-          </button>
-          <button
-            type="button"
-            className="vault-btn"
+            className="vault-onboarding__option"
+            aria-label="Create New Vault"
+            aria-describedby="vault-onboarding-create"
             onClick={() => void onCreateVault()}
             disabled={loading}
           >
-            <IconPlus />
-            <span>Create New Vault</span>
+            <IconPlus width={18} height={18} />
+            <span className="vault-onboarding__option-title">
+              Create New Vault
+            </span>
+            <span
+              id="vault-onboarding-create"
+              className="vault-onboarding__option-desc"
+            >
+              Start with a new, empty folder.
+            </span>
+          </button>
+          <button
+            type="button"
+            className="vault-onboarding__option"
+            aria-label="Open Vault Folder"
+            aria-describedby="vault-onboarding-open"
+            onClick={() => void onOpenVault()}
+            disabled={loading}
+          >
+            <IconFolder width={18} height={18} />
+            <span className="vault-onboarding__option-title">
+              Open Vault Folder
+            </span>
+            <span
+              id="vault-onboarding-open"
+              className="vault-onboarding__option-desc"
+            >
+              Use a folder of drawings you already have.
+            </span>
           </button>
         </div>
 
@@ -114,23 +129,13 @@ export const Onboarding = ({
                     }
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      minWidth: 0,
-                    }}
-                  >
+                  <div className="vault-onboarding__recent-main">
                     <IconFolder />
                     <span className="vault-onboarding__recent-path">
                       {vaultPath}
                     </span>
                     {vaultPath === lastVaultPath && (
-                      <span
-                        className="vault-badge vault-badge--saved"
-                        style={{ fontSize: "0.65rem", padding: "1px 6px" }}
-                      >
+                      <span className="vault-onboarding__last">
                         Last opened
                       </span>
                     )}

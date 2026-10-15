@@ -1,0 +1,131 @@
+/**
+ * Vault home: the empty state while no drawing is open. Four primary actions
+ * (each runs a registry command and shows its live shortcut) and the recent
+ * drawings. Plain buttons, so Tab / Enter reach everything.
+ */
+import { PALETTE_COMMANDS_ID, PALETTE_FILES_ID } from "../commands/commands";
+import { formatChord } from "../commands/keys";
+import { useCommandShortcutLookup } from "../commands/useCommandShortcut";
+
+import {
+  IconCommand,
+  IconDrawing,
+  IconPlus,
+  IconSearch,
+  IconTemplate,
+} from "./Icons";
+
+import "./home.css";
+
+export interface HomeAction {
+  /** Command registry id: the shortcut shown is this command's live binding. */
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  /** Needs a writable vault. */
+  writes: boolean;
+  primary?: boolean;
+}
+
+export const HOME_ACTIONS: readonly HomeAction[] = [
+  {
+    id: "vault.newDrawing",
+    label: "New drawing",
+    icon: <IconPlus />,
+    writes: true,
+    primary: true,
+  },
+  {
+    id: "vault.newFromTemplate",
+    label: "New from template…",
+    icon: <IconTemplate />,
+    writes: true,
+  },
+  {
+    id: PALETTE_FILES_ID,
+    label: "Go to drawing",
+    icon: <IconSearch />,
+    writes: false,
+  },
+  {
+    id: PALETTE_COMMANDS_ID,
+    label: "Show all commands",
+    icon: <IconCommand />,
+    writes: false,
+  },
+];
+
+export interface HomeRecent {
+  path: string;
+  name: string;
+  folder: string;
+}
+
+interface VaultHomeProps {
+  readOnly: boolean;
+  recent: readonly HomeRecent[];
+  onRun(id: string): void;
+  onOpenDrawing(path: string): void;
+  ownerWindow?: Window | null;
+  /** True while a full-pane view (the graph) covers the home. */
+  inert?: boolean;
+}
+
+export const VaultHome = ({
+  readOnly,
+  recent,
+  onRun,
+  onOpenDrawing,
+  ownerWindow,
+  inert,
+}: VaultHomeProps) => {
+  const shortcut = useCommandShortcutLookup(ownerWindow ?? null, formatChord);
+  return (
+    <div className="vault-empty-state vault-home" inert={inert}>
+      <div className="vault-empty-state__icon">
+        <IconDrawing width="40" height="40" />
+      </div>
+      <h2 className="vault-empty-state__title">No Drawing Open</h2>
+      <p className="vault-empty-state__desc">
+        Pick a drawing from the navigator or start something new.
+      </p>
+      <div className="vault-home__actions">
+        {HOME_ACTIONS.filter((a) => !(a.writes && readOnly)).map((action) => {
+          const keys = shortcut(action.id);
+          return (
+            <button
+              key={action.id}
+              type="button"
+              className={`vault-home__action${
+                action.primary ? " vault-home__action--primary" : ""
+              }`}
+              onClick={() => onRun(action.id)}
+            >
+              {action.icon}
+              <span className="vault-home__label">{action.label}</span>
+              {keys && <kbd className="vault-kbd">{keys}</kbd>}
+            </button>
+          );
+        })}
+      </div>
+      {recent.length > 0 && (
+        <section className="vault-recent" aria-label="Recent drawings">
+          <h3 className="vault-recent__title">Recent</h3>
+          {recent.map((entry) => (
+            <button
+              key={entry.path}
+              type="button"
+              className="vault-recent__item"
+              onClick={() => onOpenDrawing(entry.path)}
+              title={entry.path}
+            >
+              <IconDrawing />
+              <span className="vault-recent__name">{entry.name}</span>
+              <span className="vault-recent__folder">{entry.folder}</span>
+            </button>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+};

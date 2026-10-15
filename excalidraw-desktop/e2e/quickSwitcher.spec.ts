@@ -147,6 +147,26 @@ test.describe("commands and keyboard", () => {
     await expect(page.locator(".vault-settings-modal")).toBeVisible();
   });
 
+  test("Family: Theme row browses on Tab; Create row makes a drawing", async ({
+    page,
+  }) => {
+    await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+    await page.keyboard.type("family theme");
+    await expect(options(page).first()).toContainText("Tab browse");
+    await page.keyboard.press("Tab");
+    await expect(input(page)).toHaveValue(/^>Theme: /);
+    await expect(options(page).first()).toContainText("Theme: ");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ControlOrMeta+KeyP");
+    await page.keyboard.type("Fresh Idea");
+    await expect(switcher(page).locator(".vault-quick__group")).toHaveText([
+      "Create",
+    ]);
+    await page.keyboard.press("Enter");
+    await expect(switcher(page)).toHaveCount(0);
+    await expect(page.getByLabel("Breadcrumb")).toContainText("Fresh Idea");
+  });
+
   test("arrow keys wrap around the list", async ({ page }) => {
     await page.keyboard.press("ControlOrMeta+KeyP");
     await page.keyboard.type(">");

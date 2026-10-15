@@ -30,6 +30,11 @@ export interface PaletteItem {
    * Default: the title's prefix up to and including ": ", if any.
    */
   drill?: string;
+  /**
+   * A "Family: X" row: Enter and Tab both browse `drill` instead of running.
+   * The row shows a "Tab browse" hint.
+   */
+  family?: boolean;
   /** Runs the entry. Called after the palette closed, or in place (Mod+Enter). */
   run(): void | Promise<void>;
 }

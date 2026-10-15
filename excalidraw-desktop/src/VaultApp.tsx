@@ -104,12 +104,8 @@ import { RecoveryDialog } from "./components/RecoveryDialog";
 
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { ConfirmModal } from "./components/ConfirmModal";
-import {
-  IconClose,
-  IconDrawing,
-  IconPlus,
-  IconTemplate,
-} from "./components/Icons";
+import { IconClose } from "./components/Icons";
+import { VaultHome } from "./components/VaultHome";
 
 import "./components/VaultShell.css";
 import "./components/shell.css";
@@ -1949,58 +1945,18 @@ export const VaultApp = ({
               />
             </div>
           ) : (
-            <div className="vault-empty-state" inert={graphOpen}>
-              <div className="vault-empty-state__icon">
-                <IconDrawing width="48" height="48" />
-              </div>
-              <h2 className="vault-empty-state__title">No Drawing Open</h2>
-              <p className="vault-empty-state__desc">
-                Select a drawing from the navigator on the right, or create a
-                new one to start sketching.
-              </p>
-              {!vault.readOnly && (
-                <button
-                  type="button"
-                  className="vault-btn vault-btn--primary"
-                  onClick={() => void handleNewDrawing()}
-                >
-                  <IconPlus />
-                  <span>Create Drawing</span>
-                </button>
-              )}
-              {!vault.readOnly && (
-                <button
-                  type="button"
-                  className="vault-btn"
-                  onClick={() => void openTemplatePicker()}
-                >
-                  <IconTemplate />
-                  <span>New from template…</span>
-                </button>
-              )}
-              {recentDrawings.length > 0 && (
-                <section className="vault-recent" aria-label="Recent drawings">
-                  <h3 className="vault-recent__title">Recent</h3>
-                  {recentDrawings.map((entry) => (
-                    <button
-                      key={entry.path}
-                      type="button"
-                      className="vault-recent__item"
-                      onClick={() => void handleOpenDrawing(entry.path)}
-                      title={entry.path}
-                    >
-                      <IconDrawing />
-                      <span className="vault-recent__name">
-                        {getBaseName(entry.path).replace(/\.excalidraw$/i, "")}
-                      </span>
-                      <span className="vault-recent__folder">
-                        {getParentPath(entry.path) || vault.name}
-                      </span>
-                    </button>
-                  ))}
-                </section>
-              )}
-            </div>
+            <VaultHome
+              readOnly={vault.readOnly}
+              recent={recentDrawings.map((entry) => ({
+                path: entry.path,
+                name: getBaseName(entry.path).replace(/\.excalidraw$/i, ""),
+                folder: getParentPath(entry.path) || vault.name,
+              }))}
+              onRun={(id) => commandRunner.run(id)}
+              onOpenDrawing={(path) => void handleOpenDrawing(path)}
+              ownerWindow={win}
+              inert={graphOpen}
+            />
           )}
           <GraphHost
             handle={vault.handle}
@@ -2150,6 +2106,19 @@ export const VaultApp = ({
             setSwitcher(null);
             void handleOpenDrawing(path);
           }}
+          onCreateDrawing={
+            vault.readOnly
+              ? undefined
+              : (name) => {
+                  setSwitcher(null);
+                  void (async () => {
+                    const parent = await prepareNewDrawingParent();
+                    if (parent !== null) {
+                      await handleCreateDrawing(parent, `${name}.excalidraw`);
+                    }
+                  })();
+                }
+          }
           onRunItem={runPaletteItem}
           onClose={() => {
             if (palettePick.pick) {

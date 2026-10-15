@@ -145,3 +145,21 @@ describe("drawing index reuse", () => {
     cancel();
   });
 });
+
+describe("family rows", () => {
+  it("rank above the family's own items when matched", () => {
+    const mk = (key: string, title: string, family = false) => ({
+      key,
+      title,
+      group: "g",
+      family,
+      run: () => {},
+    });
+    const items = prepareItems([
+      mk("theme:A", "Theme: A"),
+      mk("family:theme", "Family: Theme", true),
+    ]);
+    const rows = rankRows(prepareDrawings([]), items, ">theme", []);
+    expect(rows[0].key).toBe("family:theme");
+  });
+});

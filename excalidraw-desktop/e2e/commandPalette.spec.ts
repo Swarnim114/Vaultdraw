@@ -241,7 +241,8 @@ test.describe("opening, shortcuts and focus", () => {
     await openVault(page);
     await page.keyboard.press("ControlOrMeta+Shift+KeyP");
     await page.keyboard.type("theme");
-    await expect(options(page).first()).toContainText("Theme: ");
+    // The "Family: Theme" row leads; Tab browses it (so does a Theme: row).
+    await expect(options(page).first()).toContainText("Family: Theme");
     await page.keyboard.press("Tab");
     await expect(input(page)).toHaveValue(">Theme: ");
     await expect(input(page)).toBeFocused();

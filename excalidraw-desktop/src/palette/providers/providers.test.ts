@@ -70,11 +70,18 @@ describe("themes provider", () => {
     const registry = builtinRegistry();
     const summaries = listThemeSummaries(registry);
     const select = vi.fn();
-    const items = createThemesProvider({
+    const all = createThemesProvider({
       registry: () => registry,
       currentKey: () => summaries[0].key,
       select,
     }).items();
+    expect(all[0]).toMatchObject({
+      key: "family:theme",
+      title: "Family: Theme",
+      drill: "Theme: ",
+      family: true,
+    });
+    const items = all.slice(1);
     expect(items).toHaveLength(summaries.length);
     expect(items[0]).toMatchObject({
       key: `theme:${summaries[0].name}`,

@@ -279,7 +279,7 @@ describe("QuickSwitcher", () => {
 
   it("Mod+Enter on a drawing opens it like Enter", async () => {
     const h = await setup();
-    type("roadmap");
+    type("roadm");
     key("Enter", { metaKey: true });
     expect(h.onOpenDrawing).toHaveBeenCalledWith("Projects/roadmap.excalidraw");
     expect(h.onRunItem).not.toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe("QuickSwitcher", () => {
     await setup();
     type(">new");
     key("Enter");
-    type("roadmap");
+    type("roadm");
     key("Enter");
     cleanup();
     await setup({ initialMode: "commands" });
@@ -434,5 +434,80 @@ describe("QuickSwitcher keystroke latency (5,000 drawings, jsdom)", () => {
       )}ms`,
     );
     expect(p95).toBeLessThan(50);
+  });
+
+  it("shows the mode chip and one key legend", async () => {
+    await setup();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector(".vault-quick__mode")).toHaveTextContent(
+      "Drawings",
+    );
+    expect(dialog.querySelectorAll(".vault-quick__footer")).toHaveLength(1);
+    type(">");
+    expect(dialog.querySelector(".vault-quick__mode")).toHaveTextContent(
+      "Commands",
+    );
+    expect(dialog.querySelector(".vault-quick__footer")).toHaveTextContent(
+      "browse",
+    );
+  });
+
+  it("groups drawing results and offers a Create row", async () => {
+    const h = await setup({ onCreateDrawing: vi.fn() });
+    type("roadm");
+    const heads = Array.from(
+      document.querySelectorAll(".vault-quick__group"),
+    ).map((e) => e.textContent);
+    expect(heads).toEqual(["Best match", "Create"]);
+    expect(options()).toHaveLength(2);
+    expect(options()[1]).toHaveTextContent("Create “roadm”");
+    key("ArrowDown");
+    key("Enter");
+    expect(h.onOpenDrawing).not.toHaveBeenCalled();
+  });
+
+  it("Create row calls onCreateDrawing with the typed name", async () => {
+    const onCreateDrawing = vi.fn();
+    await setup({ onCreateDrawing });
+    type("fresh idea");
+    key("Enter");
+    expect(onCreateDrawing).toHaveBeenCalledWith("fresh idea");
+  });
+
+  it("has no Create row without a handler, in pick mode or for an exact name", async () => {
+    await setup();
+    type("zzz");
+    expect(screen.queryByText(/Create/)).toBeNull();
+    cleanup();
+    await setup({ onCreateDrawing: vi.fn(), pickLabel: "Pick" });
+    type("zzz");
+    expect(screen.queryByText(/Create “/)).toBeNull();
+    cleanup();
+    await setup({ onCreateDrawing: vi.fn() });
+    type("sketch");
+    expect(screen.queryByText(/Create “/)).toBeNull();
+  });
+
+  it("Family rows browse on Tab and Enter instead of running", async () => {
+    const run = vi.fn();
+    const family = mkItem("family:theme", "Family: Theme", {
+      drill: "Theme: ",
+      family: true,
+      run,
+    });
+    await setup({ collectItems: () => [family, ...makeItems()] });
+    type(">family");
+    expect(options()[0]).toHaveTextContent("Tab browse");
+    key("Tab");
+    expect(input()).toHaveValue(">Theme: ");
+    expect(
+      options()
+        .map((o) => o.textContent)
+        .join(),
+    ).toContain("Dracula");
+    type(">family");
+    key("Enter");
+    expect(input()).toHaveValue(">Theme: ");
+    expect(run).not.toHaveBeenCalled();
   });
 });

@@ -122,6 +122,16 @@ for (const theme of THEMES) {
       await page.waitForTimeout(250);
     });
 
+    await surface("14", "palette-family", async () => {
+      await page.keyboard.press("ControlOrMeta+Shift+KeyP");
+      await expect(palette).toBeVisible();
+      await palette.getByRole("combobox").fill(">theme");
+      await page.waitForTimeout(150);
+      await page.keyboard.press("Tab");
+      await expect(palette.getByRole("combobox")).toHaveValue(/^>Theme: /);
+      await page.waitForTimeout(250);
+    });
+
     // 07-14 settings pages (15 = hotkeys recording).
     await openSettings(page);
     const settings = page.getByRole("dialog");
@@ -137,7 +147,6 @@ for (const theme of THEMES) {
         await openSettings(page);
       }
     }
-    // Note: slot 14 is intentionally unused; Hotkeys is 13, recording is 15.
     await openSettings(page);
     await surface("15", "hotkeys-recording", async () => {
       await settings.getByRole("tab", { name: "Hotkeys" }).click();

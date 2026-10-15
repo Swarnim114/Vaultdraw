@@ -626,3 +626,8 @@ export const IconCollapseAll = strokeIcon(
   15,
   <path d="m3 10 2.5-2.5L3 5M3 19l2.5-2.5L3 14M10 6h11M10 12h11M10 18h11" />,
 );
+
+export const IconCommand = strokeIcon(
+  14,
+  <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />,
+);
