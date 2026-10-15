@@ -45,6 +45,7 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
   --typical              (or PERF_TYPICAL=1) typical-vault mode, packaged app only (implies --app): 50 drawings in a few
                          folders + one 300-element drawing with 2 images; cold start, open, save, pan, idle footprint per
                          process (memory.typical.*) for comparison with other note apps. Replaces the stress scenarios.
+  --foreground           (or PERF_FOREGROUND=1) launch the perf app as a normal foreground app (no accessory/hidden-rendering hardening); default unchanged
   --quick                1 run, no warmup, no extra noise runs (harness smoke test)
 
 Recommended merge gate: node excalidraw-desktop/perf/ab.mjs --base <ref> (interleaved base/head A/B in one session; bisect only after a
@@ -59,7 +60,7 @@ const { values: o } = parseArgs({
     "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
     out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
     "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
-    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, leak: { type: "boolean" }, "leak-only": { type: "boolean" }, typical: { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, leak: { type: "boolean" }, "leak-only": { type: "boolean" }, typical: { type: "boolean" }, foreground: { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help) { console.log(HELP); process.exit(0); }
@@ -68,6 +69,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const wtRoot = process.env.PERF_WT_ROOT ? path.resolve(process.env.PERF_WT_ROOT) : path.resolve(here, "..", "..");
 const cacheDir = perfCacheDir(wtRoot);
 const fixturesDir = process.env.PERF_FIXTURES_DIR ? path.resolve(process.env.PERF_FIXTURES_DIR) : path.join(cacheDir, "fixtures");
+if (o.foreground || process.env.PERF_FOREGROUND === "1") process.env.VAULTDRAW_PERF_FOREGROUND = "1";
 const mode = o["low-end"] ? "low-end" : "normal";
 const leakOnly = !!(o["leak-only"] || process.env.PERF_LEAK_ONLY === "1");
 const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || process.env.PERF_TYPICAL === "1") };

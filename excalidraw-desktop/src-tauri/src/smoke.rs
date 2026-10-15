@@ -193,7 +193,14 @@ pub fn test_run() -> bool {
 /// managers that keep a never-activated window off the visible workspace (the WebView then
 /// reports hidden and the smoke refuses to start).
 pub fn foreground_test() -> bool {
-    env::var("VAULTDRAW_SMOKE_FOREGROUND").ok().as_deref() == Some("1")
+    env::var("VAULTDRAW_SMOKE_FOREGROUND").ok().as_deref() == Some("1") || perf_foreground()
+}
+
+/// `VAULTDRAW_PERF_FOREGROUND=1` (perf `--foreground`): a normal foreground app WITHOUT the
+/// hidden-rendering hardening, to measure what a user's app holds (rendering while hidden
+/// inflates the idle footprint). Opt-in; default unchanged.
+pub fn perf_foreground() -> bool {
+    env::var("VAULTDRAW_PERF_FOREGROUND").ok().as_deref() == Some("1")
 }
 
 /// A test run that stays in the background (the default for smoke and perf runs).
@@ -216,7 +223,7 @@ pub fn background_test_app(app: &mut tauri::App) {
 /// occluded, screen locked), and keep the process out of App Nap. Never takes focus.
 /// Every private selector is guarded.
 pub fn harden_test_webview(window: &tauri::WebviewWindow) {
-    if !test_run() {
+    if !test_run() || perf_foreground() {
         return;
     }
     #[cfg(target_os = "macos")]
