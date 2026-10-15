@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 mod clipboard;
 mod config;
 mod drawing_copy;
+mod links;
 mod search;
 mod library;
 mod memory;
@@ -600,10 +601,11 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         .vaults
         .lock()
         .map_err(|_| err("INTERNAL", "Vault state unavailable"))?
-        .insert(handle.clone(), vault);
+        .insert(handle.clone(), vault.clone());
     if let Some(search) = app.try_state::<search::SearchService>() {
         search.start(&handle, root.clone(), search::tauri_emitter(app));
     }
+    links::on_vault_open(app, vault);
     let name = root
         .file_name()
         .and_then(|s| s.to_str())
@@ -811,6 +813,33 @@ where F: FnOnce(&Path, &[u8], bool) -> Result<()> {
     remove_recovery(&snapshot);
     Ok(serde_json::json!({"revision": rev}))
 }
+/// Write for the link rewriter (closed drawings only). Same path, size and JSON validation and the
+/// same revision check (before the write and again right before the rename) as
+/// `write_drawing_file`, but no recovery copy: the original stays intact until the atomic rename
+/// and the rewrite journal makes the job re-runnable. One fsync of the temp file; the parent
+/// directory is NOT synced here, the caller syncs each distinct parent once per batch
+/// (`sync_dirs`). The caller holds the vault mutation guard. Returns the parent directory.
+fn write_drawing_file_rewrite(v: &Vault, path: &str, json: &str, expected_revision: &str) -> Result<PathBuf> {
+    ensure_json(json)?;
+    if path.is_empty() || !path.to_ascii_lowercase().ends_with(".excalidraw") { return Err(err("INVALID_PATH", "Drawing filenames must end in .excalidraw")); }
+    let p = safe_path(&v.root, path, false)?;
+    if current_revision(&p)?.as_deref() != Some(expected_revision) { return Err(err("CONFLICT", "Drawing changed on disk; rewrite was not applied")); }
+    let parent = p.parent().ok_or_else(|| err("INVALID_PATH", "File has no parent"))?.to_path_buf();
+    let temp = parent.join(format!(".excalidraw-tmp-{}-{}", std::process::id(), random_id()));
+    let result = (|| -> Result<()> {
+        let mut f = OpenOptions::new().write(true).create_new(true).open(&temp).map_err(ioerr)?;
+        f.write_all(json.as_bytes()).map_err(ioerr)?;
+        f.sync_all().map_err(ioerr)?;
+        if current_revision(&p)?.as_deref() != Some(expected_revision) { return Err(err("CONFLICT", "Drawing changed immediately before commit; rewrite was not applied")); }
+        fs::rename(&temp, &p).map_err(ioerr)
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temp); }
+    result.map(|_| parent)
+}
+/// fsyncs directories (best effort), making renames into them durable.
+fn sync_dirs<'a>(dirs: impl IntoIterator<Item = &'a PathBuf>) {
+    for d in dirs { if let Ok(f) = File::open(d) { let _ = f.sync_all(); } }
+}
 /// Arguments carried in the headers of the raw `write_drawing` request (percent-encoded).
 #[derive(Debug)]
 struct WriteHeaders { handle: String, path: String, expected_revision: Option<String>, operation_id: String }
@@ -872,6 +901,29 @@ async fn move_entry(
     writable(&v)?;
     let _mutation = mutation_guard(&v)?;
     move_entry_paths(&v.root, &from, &to)
+}
+/// `move_entry` that also keeps links between drawings working (see `links::types`).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn move_entry_with_links(
+    app: AppHandle,
+    handle: String,
+    from: String,
+    to: String,
+    open_path: Option<String>,
+    rewrite: bool,
+    state: State<'_, Service>,
+    search: State<'_, search::SearchService>,
+    links: State<'_, links::LinksState>,
+) -> Result<links::MoveResult> {
+    let v = vault_for(&state, &handle)?;
+    writable(&v)?;
+    if !rewrite {
+        let _mutation = mutation_guard(&v)?;
+        move_entry_paths(&v.root, &from, &to)?;
+        return Ok(links::MoveResult::default());
+    }
+    links::move_command(&app, &v, &from, &to, open_path.as_deref(), &search, &links)
 }
 #[tauri::command]
 async fn trash_entry(handle: String, path: String, state: State<'_, Service>) -> Result<()> {
@@ -1315,6 +1367,7 @@ pub fn run() {
         let builder = tauri::Builder::default()
             .manage(Service::default())
             .manage(search::SearchService::default())
+            .manage(links::LinksState::default())
             .setup(|app| {
                 startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
@@ -1368,12 +1421,13 @@ pub fn run() {
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
@@ -1385,12 +1439,13 @@ pub fn run() {
         } else {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
                 vault_settings::load_vault_settings, vault_settings::update_vault_settings,
                 search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
                 library::read_library, library::write_library, library::pick_library_file,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir
@@ -1399,12 +1454,13 @@ pub fn run() {
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-            write_drawing, create_folder, move_entry, trash_entry, reveal_entry,
+            write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
             export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,
             vault_settings::load_vault_settings, vault_settings::update_vault_settings,
             search::search_vault, search::search_index_status, search::vault_tags, search::search_list_names,
+                links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done,
             library::read_library, library::write_library, library::pick_library_file,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir

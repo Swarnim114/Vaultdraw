@@ -2,7 +2,7 @@
 //! walks the vault, parses new/changed drawings in small batches, then applies
 //! watcher updates and persists the snapshot (debounced).
 
-use super::extract::extract_items;
+use super::extract::extract_doc;
 use super::index::DocEntry;
 use super::types::IndexState;
 use super::{store, Emitter, Update, VaultIndex};
@@ -34,7 +34,7 @@ impl Found {
     }
 }
 
-fn is_drawing_name(name: &str) -> bool {
+pub(crate) fn is_drawing_name(name: &str) -> bool {
     name.len() > 11 && name.get(name.len() - 11..).is_some_and(|e| e.eq_ignore_ascii_case(".excalidraw"))
 }
 
@@ -66,14 +66,22 @@ pub(super) fn walk(root: &Path, rel: &str) -> Vec<Found> {
     out
 }
 
+/// Parsed entry for one drawing file's bytes (unparseable files stay findable by name).
+pub(super) fn entry_from_bytes(path: &str, stat: (u64, u64), bytes: &[u8]) -> DocEntry {
+    match extract_doc(bytes) {
+        Ok(x) => DocEntry::new(path, stat, x.items).with_links(x.elinks, x.hash8),
+        Err(_) => DocEntry::new(path, stat, Vec::new()),
+    }
+}
+
 fn parse(root: &Path, f: &Found) -> Option<(String, DocEntry)> {
-    let items = match read_bounded(&root.join(&f.path), MAX_DRAWING_BYTES) {
-        Ok(bytes) => extract_items(&bytes).unwrap_or_default(),
+    let entry = match read_bounded(&root.join(&f.path), MAX_DRAWING_BYTES) {
+        Ok(bytes) => entry_from_bytes(&f.path, f.stat(), &bytes),
         Err(e) if e.code == "NOT_FOUND" => return None,
         // Unreadable or oversize: still findable by name.
-        Err(_) => Vec::new(),
+        Err(_) => DocEntry::new(&f.path, f.stat(), Vec::new()),
     };
-    Some((f.path.clone(), DocEntry::new(&f.path, f.stat(), items)))
+    Some((f.path.clone(), entry))
 }
 
 fn needs_parse(existing: Option<&DocEntry>, f: &Found, racy_before: u64) -> bool {
@@ -84,7 +92,7 @@ fn needs_parse(existing: Option<&DocEntry>, f: &Found, racy_before: u64) -> bool
 }
 
 #[cfg(target_os = "macos")]
-fn lower_priority() {
+pub(crate) fn lower_priority() {
     extern "C" {
         fn pthread_set_qos_class_self_np(qos_class: u32, relative_priority: i32) -> i32;
     }
@@ -95,7 +103,7 @@ fn lower_priority() {
     }
 }
 #[cfg(not(target_os = "macos"))]
-fn lower_priority() {}
+pub(crate) fn lower_priority() {}
 
 pub(super) struct Worker {
     pub handle: String,

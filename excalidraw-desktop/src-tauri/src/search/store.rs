@@ -11,14 +11,18 @@ use sha2::{Digest, Sha256};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 const MAGIC: &[u8; 4] = b"VDSI";
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 const HEADER_LEN: usize = 16;
 const MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
 
-/// `<state_dir>/index/<first 16 hex of sha256(root)>/index.bin`.
+/// First 16 hex chars of sha256(root): the per-vault folder name under the state dir.
+pub(crate) fn vault_id(root: &Path) -> String {
+    hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()))[..16].to_string()
+}
+
+/// `<state_dir>/index/<vault-id>/index.bin`.
 pub(super) fn snapshot_path(state_dir: &Path, root: &Path) -> PathBuf {
-    let id = hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()));
-    state_dir.join("index").join(&id[..16]).join("index.bin")
+    state_dir.join("index").join(vault_id(root)).join("index.bin")
 }
 
 pub(super) fn save(path: &Path, saved_at_ms: u64, index: &Index) -> Result<()> {
@@ -76,6 +80,25 @@ mod unit_tests {
         assert_eq!(idx.get("x/a.excalidraw").unwrap().stat, (10, 20));
         let (hits, _) = idx.query("cafe", crate::search::types::Scope::All, 5);
         assert_eq!(hits[0].matches[0].container_id.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn element_links_and_hash_survive_the_snapshot_and_old_formats_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("index.bin");
+        let mut idx = Index::default();
+        let d = DocEntry::new("a.excalidraw", (1, 2), vec![]).with_links(vec![crate::search::ElementLink { element_id: "e".into(), link: "[[B]]".into() }], [9; 8]);
+        idx.upsert("a.excalidraw".into(), d);
+        save(&file, 1, &idx).unwrap();
+        let (_, back) = load(&file).unwrap();
+        let d = back.get("a.excalidraw").unwrap();
+        assert_eq!((&*d.elinks[0].link, d.hash8), ("[[B]]", [9; 8]));
+        // a snapshot written by format 1 (no element links) is ignored, so every vault rebuilds once
+        let mut old = fs::read(&file).unwrap();
+        old[4..8].copy_from_slice(&1u32.to_le_bytes());
+        fs::write(&file, old).unwrap();
+        assert!(load(&file).is_none());
+        assert_eq!(FORMAT_VERSION, 2);
     }
 
     #[test]

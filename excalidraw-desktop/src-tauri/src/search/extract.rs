@@ -4,6 +4,7 @@
 use super::normalize::normalize;
 use crate::{err, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +22,21 @@ pub(crate) struct TextItem {
     pub kind: ItemKind,
     /// Original (un-normalised) text.
     pub text: Box<str>,
+}
+
+/// The `link` field of a live element (any non-empty value, as written).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ElementLink {
+    pub element_id: Box<str>,
+    pub link: Box<str>,
+}
+
+/// Everything the indexes need from one drawing file.
+pub(crate) struct Extracted {
+    pub items: Vec<TextItem>,
+    pub elinks: Vec<ElementLink>,
+    /// Content fingerprint, see [`fingerprint8`].
+    pub hash8: [u8; 8],
 }
 
 #[derive(Deserialize)]
@@ -46,6 +62,8 @@ struct El<'a> {
     name: Option<Cow<'a, str>>,
     #[serde(default, borrow)]
     container_id: Option<Cow<'a, str>>,
+    #[serde(default, borrow)]
+    link: Option<Cow<'a, str>>,
     #[serde(default)]
     is_deleted: Option<bool>,
 }
@@ -57,14 +75,47 @@ fn non_empty<'a>(s: &'a Option<Cow<'a, str>>) -> Option<&'a str> {
 /// Extracts text elements (bound labels use `originalText`, which has no
 /// auto-wrap newlines) and frame names. Items that normalise to nothing are dropped.
 pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
+    Ok(parse_scene(json)?.0)
+}
+
+/// Bytes hashed from each end of a file by [`fingerprint8`].
+const FINGERPRINT_EDGE: usize = 4096;
+
+/// First 8 bytes of SHA-256 over the file length and its first and last 4 KiB.
+///
+/// A full-file SHA-256 would cost +200% on the cold index build of a vault with image blobs
+/// (measured: 262 ms vs 123 ms of parsing for 5000 files / 822 MB; far worse on Macs without
+/// SHA hardware), against +3% for this. It identifies a file that moved unchanged (equal
+/// length, head and tail); it is not a revision and never compared with one.
+pub(crate) fn fingerprint8(bytes: &[u8]) -> [u8; 8] {
+    let mut h = Sha256::new();
+    h.update((bytes.len() as u64).to_le_bytes());
+    h.update(&bytes[..bytes.len().min(FINGERPRINT_EDGE)]);
+    h.update(&bytes[bytes.len().saturating_sub(FINGERPRINT_EDGE)..]);
+    let mut out = [0u8; 8];
+    out.copy_from_slice(&h.finalize()[..8]);
+    out
+}
+
+/// Items, element links and the content fingerprint of one drawing file.
+pub(crate) fn extract_doc(json: &[u8]) -> Result<Extracted> {
+    let (items, elinks) = parse_scene(json)?;
+    Ok(Extracted { items, elinks, hash8: fingerprint8(json) })
+}
+
+fn parse_scene(json: &[u8]) -> Result<(Vec<TextItem>, Vec<ElementLink>)> {
     let scene: Scene = serde_json::from_slice(json).map_err(|e| err("INVALID_FILE", format!("Invalid JSON: {e}")))?;
     if scene.kind.as_deref() != Some("excalidraw") {
         return Err(err("INVALID_FILE", "Not an Excalidraw scene"));
     }
     let mut out = Vec::new();
+    let mut elinks = Vec::new();
     for el in &scene.elements {
         if el.is_deleted == Some(true) {
             continue;
+        }
+        if let (Some(link), Some(id)) = (non_empty(&el.link), el.id.as_deref().filter(|i| !i.is_empty())) {
+            elinks.push(ElementLink { element_id: id.into(), link: link.trim().into() });
         }
         let (kind, text) = match el.ty.as_deref() {
             Some("text") => (ItemKind::Text, non_empty(&el.original_text).or_else(|| non_empty(&el.text))),
@@ -82,7 +133,7 @@ pub(crate) fn extract_items(json: &[u8]) -> Result<Vec<TextItem>> {
             text: text.into(),
         });
     }
-    Ok(out)
+    Ok((out, elinks))
 }
 
 #[cfg(test)]
@@ -131,6 +182,36 @@ mod unit_tests {
             "elements":[{"id":"t","type":"text","text":"ok","x":1.5,"points":[[0,0]]}]}"#,
         );
         assert_eq!(v.len(), 1);
+    }
+
+    #[test]
+    fn element_links_and_hash_are_extracted_for_live_elements_only() {
+        let json = br#"{"type":"excalidraw","elements":[
+            {"id":"a","type":"rectangle","link":"[[Plan]]"},
+            {"id":"b","type":"text","text":"x","link":"https://e.com"},
+            {"id":"c","type":"rectangle","link":"","isDeleted":false},
+            {"id":"d","type":"rectangle","link":"[[Gone]]","isDeleted":true},
+            {"id":"e","type":"rectangle","link":null}]}"#;
+        let x = extract_doc(json).unwrap();
+        let got: Vec<_> = x.elinks.iter().map(|l| (&*l.element_id, &*l.link)).collect();
+        assert_eq!(got, vec![("a", "[[Plan]]"), ("b", "https://e.com")]);
+        assert_eq!(x.items.len(), 1);
+        assert_eq!(x.hash8, fingerprint8(json));
+        assert_ne!(x.hash8, [0; 8]);
+    }
+
+    #[test]
+    fn fingerprint_depends_on_length_head_and_tail_only() {
+        let mut a = vec![b'a'; 100_000];
+        let b = a.clone();
+        assert_eq!(fingerprint8(&a), fingerprint8(&b));
+        a[50_000] = b'z';
+        assert_eq!(fingerprint8(&a), fingerprint8(&b), "the middle is not sampled");
+        a[10] = b'z';
+        assert_ne!(fingerprint8(&a), fingerprint8(&b));
+        assert_ne!(fingerprint8(&b), fingerprint8(&b[..99_999]));
+        assert_ne!(fingerprint8(b""), fingerprint8(b"x"));
+        assert_eq!(fingerprint8(b"short"), fingerprint8(b"short"));
     }
 
     #[test]
