@@ -52,12 +52,17 @@ describe("bundled theme sources", () => {
       files.filter((f) => f.origin === "vaultdraw").map((f) => f.id),
     ).toEqual(["default"]);
     expect(files[0].id).toBe("default");
+    // Cendre (MIT, its three depths) is the one non-Noctalia palette here.
+    const community = files.filter((f) => f.origin === "community");
     expect(
-      files
-        .filter((f) => f.origin === "community")
+      community
+        .filter((f) => !f.id.startsWith("cendre"))
         .every((f) => f.author === "Noctalia community palettes"),
     ).toBe(true);
-    expect(files.length).toBe(120);
+    expect(
+      community.filter((f) => f.id.startsWith("cendre")).map((f) => f.name),
+    ).toEqual(["Cendre", "Cendre Medium", "Cendre Soft"]);
+    expect(files.length).toBe(123);
   });
 
   it("records which bundled palettes carry (harmless) warnings", () => {

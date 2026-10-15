@@ -22,3 +22,35 @@ The source repository has **no licence file** (checked at the commit above).
 The palettes are the work of their community contributors; see the
 repository's commit history for individual authorship. They are attributed
 here as "Noctalia community palettes".
+
+## Cendre (cendre.json, cendre-medium.json, cendre-soft.json)
+
+Not from Noctalia. Mapped by hand from the Ghostty files in
+https://github.com/Aejkatappaja/cendre (`extras/ghostty/`, commit
+`5c9d924a4c75c130a1c812ee3e240d78a92d2c3a`), one file per depth (hard, medium,
+soft): background → mSurface, foreground → mOnSurface, cursor (ember) →
+mPrimary, palette 0 → mSurfaceVariant, 7 → mOnSurfaceVariant, 8 → mOutline,
+3 → mSecondary, 2 → mTertiary, 1 → mError, the 16 ANSI colours → terminal.
+Cendre is dark only; Vaultdraw generates the light variant. Licence:
+
+> MIT License
+>
+> Copyright (c) 2026 aejkatappaja
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
