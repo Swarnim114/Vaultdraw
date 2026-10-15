@@ -1,0 +1,88 @@
+/* Link UI drawn over the editor: suggestions, hover underline, hint badges. */
+.vault-suggest {
+  position: fixed;
+  z-index: 60;
+  box-sizing: border-box;
+  width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--vault-border);
+  border-radius: 6px;
+  background: var(--vault-bg);
+  color: var(--vault-text);
+  box-shadow: var(--vault-shadow-md);
+  font-size: 0.85rem;
+  user-select: none;
+}
+
+.vault-suggest__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.vault-suggest__row--active {
+  background-color: var(--vault-surface-active);
+}
+
+.vault-suggest__row--create {
+  color: var(--vault-primary);
+}
+
+.vault-suggest__name {
+  flex: none;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-suggest__folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--vault-text-faint);
+}
+
+.vault-suggest mark {
+  background: transparent;
+  color: var(--vault-primary);
+  font-weight: 600;
+}
+
+.vault-link-underline {
+  position: fixed;
+  z-index: 55;
+  height: 0;
+  border-bottom: 2px solid var(--vault-primary);
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.vault-link-hint {
+  position: fixed;
+  z-index: 70;
+  padding: 0 4px;
+  border: 1px solid var(--vault-border);
+  border-radius: 3px;
+  background: var(--vault-primary-light);
+  color: var(--vault-primary);
+  box-shadow: var(--vault-shadow-sm);
+  font: 600 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.vault-link-hint__typed {
+  opacity: 0.45;
+}
+
+.vault-link-pointer canvas {
+  cursor: pointer !important;
+}
