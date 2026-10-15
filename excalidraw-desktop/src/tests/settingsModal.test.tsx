@@ -23,6 +23,10 @@ const mockVault: VaultInfo = {
   readOnly: false,
 };
 
+/** Theme cards only (colour swatches are radios too). */
+const themeCards = () =>
+  screen.getAllByRole("radio").filter((r) => !r.closest(".vault-cp"));
+
 describe("SettingsModal component and preference persistence", () => {
   it("renders the sidebar pages (with search) and opens on Appearance", () => {
     const onClose = vi.fn();
@@ -84,7 +88,7 @@ describe("SettingsModal component and preference persistence", () => {
     const search = screen.getByRole("searchbox", {
       name: "Search colour themes",
     });
-    const all = screen.getAllByRole("radio").length;
+    const all = themeCards().length;
     const target = screen
       .getAllByRole("radio")
       [all - 1].getAttribute("aria-label")!;
@@ -102,7 +106,7 @@ describe("SettingsModal component and preference persistence", () => {
     fireEvent.keyDown(search, { key: "Escape" });
     expect(search).toHaveValue("");
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("radio")).toHaveLength(all);
+    expect(themeCards()).toHaveLength(all);
 
     fireEvent.keyDown(search, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);

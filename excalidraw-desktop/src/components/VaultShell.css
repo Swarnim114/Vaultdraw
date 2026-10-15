@@ -1697,74 +1697,6 @@ html.vault-macos .vault-global-alert {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* Color Swatches */
-.vault-color-options {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.vault-color-swatch {
-  background-color: var(--vault-swatch, transparent);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--vault-border);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: transform 0.1s ease;
-}
-
-.vault-color-swatch:hover {
-  transform: scale(1.15);
-}
-
-.vault-color-swatch--active {
-  border-color: var(--vault-primary);
-  box-shadow: 0 0 0 2px var(--vault-primary);
-  transform: scale(1.1);
-}
-
-.vault-color-swatch--transparent {
-  background: linear-gradient(45deg, #eee 25%, transparent 25%),
-    linear-gradient(-45deg, #eee 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eee 75%),
-    linear-gradient(-45deg, transparent 75%, #eee 75%);
-  background-color: #ffffff;
-  background-size: 8px 8px;
-  background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
-}
-
-.vault-color-swatch__none {
-  font-size: 10px;
-  color: #888888;
-}
-
-.vault-color-input {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--vault-border);
-  border-radius: 50%;
-  cursor: pointer;
-  background: transparent;
-  outline: none;
-  -webkit-appearance: none;
-}
-
-.vault-color-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.vault-color-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 50%;
-}
-
 /* Recent drawings on the vault home (empty editor) */
 .vault-recent {
   width: min(420px, 90%);
@@ -2177,12 +2109,6 @@ html.vault-macos .vault-global-alert {
 
 .vault-setting-row--disabled .vault-fieldset {
   opacity: 0.45;
-}
-
-.vault-fieldset:disabled .vault-color-swatch,
-.vault-fieldset:disabled .vault-color-input {
-  cursor: not-allowed;
-  transform: none;
 }
 
 .vault-menu__check {

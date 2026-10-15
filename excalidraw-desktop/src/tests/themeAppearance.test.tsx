@@ -84,6 +84,10 @@ afterEach(() => {
 
 const root = () => document.documentElement;
 
+/** Theme cards only (colour swatches are radios too). */
+const themeCards = () =>
+  screen.getAllByRole("radio").filter((r) => !r.closest(".vault-cp"));
+
 describe("computeAppearance + applyAppearance", () => {
   it("resolves system mode and the selected theme", () => {
     mockSystemDark(true);
@@ -285,7 +289,7 @@ describe("Settings → Appearance", () => {
         ownerDocument={document}
       />,
     );
-    const cards = screen.getAllByRole("radio");
+    const cards = themeCards();
     expect(cards.length).toBe(builtinRegistry().themes.length);
     expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute(
       "aria-checked",

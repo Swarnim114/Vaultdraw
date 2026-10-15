@@ -85,20 +85,11 @@ const ColorControl = ({
   onChange: (value: string | undefined) => void;
 }) => (
   <div className="vault-tooldef-colour">
-    <button
-      type="button"
-      className={`vault-segmented-btn ${
-        value === undefined ? "vault-segmented-btn--active" : ""
-      }`}
-      aria-label={`${label} default`}
-      onClick={() => onChange(undefined)}
-    >
-      Default
-    </button>
     <ColorSwatches
       colors={presets}
       value={value ?? ""}
       onChange={onChange}
+      onClear={() => onChange(undefined)}
       swatchLabel={(c) => `${label} ${c}`}
       customValue={hexOr(
         value,

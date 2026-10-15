@@ -112,6 +112,7 @@ const StrokeColorSetting = () => {
         swatchLabel={(color) => `Stroke color ${color}`}
         customValue={value.startsWith("#") ? value : "#1e1e1e"}
         customTitle="Custom stroke color"
+        showHex
       />
     </SettingRow>
   );
@@ -132,6 +133,7 @@ const BackgroundFillSetting = () => {
         }
         customValue={value.startsWith("#") ? value : "#ffffff"}
         customTitle="Custom background fill color"
+        showHex
       />
     </SettingRow>
   );

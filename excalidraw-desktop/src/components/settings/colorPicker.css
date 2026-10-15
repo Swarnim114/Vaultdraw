@@ -1,0 +1,137 @@
+/* Colour field: [Default] [presets...] [custom +] [hex]. One row. */
+.vault-cp {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 9px;
+  padding: 4px;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vault-cp__swatch {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--vault-swatch, transparent);
+  /* Subtle inset outline keeps dark-on-dark and white-on-white visible. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-text) 28%, transparent);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease;
+}
+
+.vault-cp__swatch--dark {
+  color: #1e1e1e;
+}
+
+.vault-cp__swatch:hover {
+  transform: scale(1.12);
+}
+
+.vault-cp__swatch:focus-visible,
+.vault-cp__custom:focus-within {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 3px;
+}
+
+.vault-cp__swatch--selected {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-text) 28%, transparent),
+    0 0 0 2px var(--vault-bg), 0 0 0 4px var(--vault-primary);
+}
+
+.vault-cp__check {
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.vault-cp__swatch--transparent {
+  background: conic-gradient(#d0d0d0 25%, #fff 0 50%, #d0d0d0 0 75%, #fff 0) 0 0 / 8px 8px;
+}
+
+/* "Default" chip: empty circle with a slash (no override). */
+.vault-cp__swatch--default {
+  background: linear-gradient(
+    135deg,
+    transparent calc(50% - 1px),
+    color-mix(in srgb, var(--vault-text) 55%, transparent) calc(50% - 1px) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  color: var(--vault-text);
+}
+
+/* Selected default shows only the check. */
+.vault-cp__swatch--default.vault-cp__swatch--selected {
+  background: none;
+}
+
+/* Custom: rainbow "+" swatch; the native input covers it invisibly. */
+.vault-cp__custom {
+  background: conic-gradient(#f03e3e, #f59f00, #82c91e, #15aabf, #4263eb, #be4bdb, #f03e3e);
+  font: 600 14px/1 sans-serif;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+.vault-cp__custom.vault-cp__swatch--selected {
+  background: var(--vault-swatch);
+  text-shadow: none;
+}
+
+.vault-cp__native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.vault-cp .vault-cp__hex {
+  flex: none;
+  width: 84px;
+  font-family: var(--vault-font-mono, monospace);
+}
+
+.vault-cp:disabled .vault-cp__swatch {
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Bare native colour input (accent field on the Appearance page). */
+.vault-color-input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--vault-border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: transparent;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.vault-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.vault-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+/* In the two-column Tool defaults grid a colour field takes the full row. */
+.vault-tooldef-field:has(.vault-cp) {
+  grid-column: 1 / -1;
+}
