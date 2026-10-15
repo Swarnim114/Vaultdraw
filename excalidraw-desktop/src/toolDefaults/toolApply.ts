@@ -104,12 +104,6 @@ const MAPPING: Record<ToolStyleKey, KeyMapping> = {
   text_align: direct("currentItemTextAlign", "textAlign"),
 };
 
-/** The AppState field each of the tool's keys drives. */
-const fieldsOf = (style: ToolStyle, tool: StyledTool): Field[] =>
-  TOOL_STYLE_KEYS[tool]
-    .filter((key) => style[key] !== undefined)
-    .map((key) => MAPPING[key].field);
-
 /** AppState patch for the keys the style sets (and the tool understands). */
 export function styleToAppState(
   tool: StyledTool,
@@ -164,11 +158,11 @@ export const styleFromElement = (
  * the switch (the hook keeps it current; read lazily, never copied).
  */
 export interface ToolSession {
-  /** The configured tool whose style is applied, else null. */
+  /** The styled tool being used, else null. */
   tool: StyledTool | null;
   /** Values we set, by AppState field. */
   applied: Loose;
-  /** The values those fields had before we applied. */
+  /** The values all of the tool's fields had before it was entered. */
   base: Loose;
   /** Stroke width in px of the applied style (null when it sets none). */
   strokeWidthPx: number | null;
@@ -183,46 +177,81 @@ export const newToolSession = (): ToolSession => ({
   lastSeen: null,
 });
 
+/** Every AppState field a tool's style keys drive. */
+const allFieldsOf = (tool: StyledTool): Field[] =>
+  TOOL_STYLE_KEYS[tool].map((key) => MAPPING[key].field);
+
+/**
+ * The style the tool was last used with: its keys read from the editor state
+ * seen while it was active. Stroke width keeps the applied px while the width
+ * key is untouched, so a 3 px style round-trips.
+ */
+export function captureToolStyle(
+  session: ToolSession,
+  leaving: string | null,
+  seen: Partial<AppState> | null,
+): ToolStyle | null {
+  if (!isStyledTool(leaving) || !seen) {
+    return null;
+  }
+  const keepPx =
+    session.tool === leaving &&
+    session.strokeWidthPx !== null &&
+    seen.currentItemStrokeWidthKey ===
+      session.applied.currentItemStrokeWidthKey;
+  return styleFromAppState(
+    leaving,
+    seen,
+    keepPx ? session.strokeWidthPx : null,
+  );
+}
+
 /**
  * Leave the session's tool, enter `nextTool`. Returns the AppState patch to
- * apply and the new session. Leaving restores each applied field whose value
- * is unchanged since `lastSeen` (a value set in the same transition, e.g. a
- * pen preset, wins). Entering a configured tool takes its base from the
- * restored values, so A -> B composes into one patch. Calling it with the
- * active tool again re-applies the (changed) defaults.
+ * apply (only fields that change) and the new session. `styles` is what each
+ * tool starts with (remembered style, else saved default). Leaving restores
+ * every field the tool owns whose value is unchanged since `lastSeen` (a
+ * value set in the same transition, e.g. a pen preset, wins), so one tool's
+ * style never leaks into another. Entering a styled tool takes its base from
+ * the restored values, so A -> B composes into one patch. Calling it with the
+ * active tool again re-applies the (changed) styles.
  */
 export function switchTool(
   session: ToolSession,
   nextTool: string | null,
   appState: Partial<AppState>,
-  defaults: ToolDefaults,
+  styles: ToolDefaults,
 ): { patch: Partial<AppState>; session: ToolSession } {
   const patch: Loose = {};
   const current = appState as Loose;
   const seen = (session.lastSeen ?? appState) as Loose;
-  for (const field of Object.keys(session.applied)) {
+  for (const field of Object.keys(session.base)) {
     if (current[field] === seen[field]) {
       patch[field] = session.base[field];
     }
   }
-  const style = isStyledTool(nextTool) ? defaults[nextTool] : undefined;
-  if (!isStyledTool(nextTool) || !style || isEmptyStyle(style)) {
-    return { patch: patch as Partial<AppState>, session: newToolSession() };
-  }
-  const base: Loose = {};
-  for (const field of fieldsOf(style, nextTool)) {
-    base[field] = field in patch ? patch[field] : current[field];
-  }
-  const applied = styleToAppState(nextTool, style) as Loose;
-  Object.assign(patch, applied);
-  return {
-    patch: patch as Partial<AppState>,
-    session: {
+  let next = newToolSession();
+  if (isStyledTool(nextTool)) {
+    const style = styles[nextTool];
+    const base: Loose = {};
+    for (const field of allFieldsOf(nextTool)) {
+      base[field] = field in patch ? patch[field] : current[field];
+    }
+    const hasStyle = !!style && !isEmptyStyle(style);
+    const applied = hasStyle ? (styleToAppState(nextTool, style) as Loose) : {};
+    Object.assign(patch, applied);
+    next = {
       tool: nextTool,
       applied,
       base,
-      strokeWidthPx: style.stroke_width ?? null,
+      strokeWidthPx: hasStyle ? style.stroke_width ?? null : null,
       lastSeen: session.lastSeen,
-    },
-  };
+    };
+  }
+  for (const field of Object.keys(patch)) {
+    if (patch[field] === current[field]) {
+      delete patch[field];
+    }
+  }
+  return { patch: patch as Partial<AppState>, session: next };
 }

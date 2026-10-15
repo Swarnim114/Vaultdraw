@@ -16,7 +16,8 @@ import {
 } from "../vault/toolDefaultsStore";
 
 import { createToolDefaultHandlers } from "./toolDefaultCommands";
-import { newToolSession, switchTool } from "./toolApply";
+import { captureToolStyle, newToolSession, switchTool } from "./toolApply";
+import { getToolMemory, rememberToolStyle } from "./toolMemory";
 import { isStyledTool, type StyledTool } from "./toolStyles";
 
 import type { RefObject } from "react";
@@ -41,9 +42,14 @@ export function useToolDefaults(
   const enter = useCallback(
     (type: string | null, appState: AppState) => {
       const defaults = getEffectiveToolDefaults();
-      const style = isStyledTool(type) ? defaults[type] : undefined;
-      styleKey.current = JSON.stringify(style ?? null);
-      const out = switchTool(session.current, type, appState, defaults);
+      const saved = isStyledTool(type) ? defaults[type] : undefined;
+      styleKey.current = JSON.stringify(saved ?? null);
+      // what the tool was last used with wins over its saved default
+      const remembered = isStyledTool(type) ? getToolMemory(type) : undefined;
+      const styles = remembered
+        ? { ...defaults, [type as string]: remembered }
+        : defaults;
+      const out = switchTool(session.current, type, appState, styles);
       session.current = out.session;
       // the editor reports the patched state on its next change; until then
       // that is what was last seen
@@ -59,12 +65,28 @@ export function useToolDefaults(
     [apiRef],
   );
 
+  /** Remember the style `leaving` was last used with (the state seen while it was active). */
+  const remember = useCallback((leaving: string | null) => {
+    const style = captureToolStyle(
+      session.current,
+      leaving,
+      session.current.lastSeen,
+    );
+    if (style && isStyledTool(leaving)) {
+      rememberToolStyle(leaving, style);
+    }
+  }, []);
+
+  // The editor going away (drawing switch) leaves the active tool too.
+  useEffect(() => () => remember(tool.current), [remember]);
+
   /** Called with every editor change. */
   const onAppState = useCallback(
     (appState: AppState) => {
       const type = appState.activeTool.type;
       state.current = appState;
       if (type !== tool.current) {
+        remember(tool.current);
         tool.current = type;
         // session.lastSeen is still the state before this change; enter()
         // leaves it at the patched state
@@ -73,7 +95,7 @@ export function useToolDefaults(
         session.current.lastSeen = appState;
       }
     },
-    [enter],
+    [enter, remember],
   );
 
   // Defaults edited (settings, live reload, vault switch) for the active tool.

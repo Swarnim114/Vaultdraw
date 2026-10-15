@@ -17,6 +17,7 @@ import {
   toolDefaultResetId,
   toolDefaultSaveId,
 } from "./toolDefaultIds";
+import { clearToolMemory } from "./toolMemory";
 import { styleFromAppState, styleFromElement } from "./toolApply";
 import {
   TOOL_DEFAULT_TOOLS,
@@ -87,6 +88,8 @@ export function createToolDefaultHandlers(
     const style = element
       ? styleFromElement(tool, element)
       : styleFromAppState(tool, api.getAppState(), deps.strokePx(tool));
+    // before the write, so the editor's re-apply sees the new default
+    clearToolMemory(tool);
     const layer = await saveToolDefault(tool, style);
     toast(
       `Saved ${TOOL_LABELS[tool]} style as the default (${
@@ -96,6 +99,7 @@ export function createToolDefaultHandlers(
   };
 
   const reset = async (tool: StyledTool) => {
+    clearToolMemory(tool);
     const layer = await resetToolDefault(tool);
     toast(
       `Reset ${TOOL_LABELS[tool]} default (${

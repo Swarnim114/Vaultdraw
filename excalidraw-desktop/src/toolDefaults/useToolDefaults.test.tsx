@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getCommand } from "../commands/commands";
 import { getRegisteredHandler } from "../commands/handlerRegistry";
 
+import { clearAllToolMemory, getToolMemory } from "./toolMemory";
 import { TOOL_DEFAULT_TOOLS } from "./toolStyles";
 import { useToolDefaults } from "./useToolDefaults";
 
@@ -78,6 +79,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  clearAllToolMemory();
   store.defaults = {
     arrow: {
       stroke_color: "#f08c00",
@@ -276,5 +278,116 @@ describe("tool default commands", () => {
     expect(t.setToast.mock.calls[0][0].message).toBe(
       "Reset Line default (this vault)",
     );
+  });
+});
+
+describe("tool memory (last style per tool, until quit)", () => {
+  const RED = "#e03131";
+
+  it("remembers a mid-session style across switches, per tool", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.set({ currentItemStrokeColor: RED, currentItemStrokeStyle: "dashed" });
+    t.switchTo("rectangle");
+    expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
+    expect(t.state.currentItemStrokeStyle).toBe("solid");
+    t.switchTo("arrow");
+    expect(t.state).toMatchObject({
+      currentItemStrokeColor: RED,
+      currentItemStrokeStyle: "dashed",
+    });
+    t.switchTo("selection");
+    expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
+  });
+
+  it("remembers for tools with no saved default", () => {
+    const t = setup();
+    t.switchTo("ellipse");
+    t.set({ currentItemStrokeColor: RED });
+    t.switchTo("rectangle");
+    expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
+    t.switchTo("ellipse");
+    expect(t.state.currentItemStrokeColor).toBe(RED);
+  });
+
+  it("falls back to the saved default when nothing is remembered", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    expect(t.state.currentItemStrokeColor).toBe("#f08c00");
+    expect(getToolMemory("arrow")).toBeUndefined();
+  });
+
+  it("keeps the saved px when the width key is untouched, loses it when changed by hand", () => {
+    const t = setup();
+    const width = () => t.hook.result.current.currentItemStrokeWidth;
+    t.switchTo("arrow");
+    t.set({ currentItemStrokeColor: RED });
+    t.switchTo("selection");
+    expect(getToolMemory("arrow")?.stroke_width).toBe(3);
+    t.switchTo("arrow");
+    expect(width()("arrow")).toBe(3);
+    t.set({ currentItemStrokeWidthKey: "bold" });
+    t.switchTo("selection");
+    expect(getToolMemory("arrow")?.stroke_width).toBe(4);
+    t.switchTo("arrow");
+    expect(width()("arrow")).toBe(4); // the hand-picked key wins over the 3 px
+  });
+
+  it("survives the editor remounting (drawing switch)", () => {
+    const first = setup();
+    first.switchTo("arrow");
+    first.set({ currentItemStrokeColor: RED });
+    first.hook.unmount(); // leaves the active tool
+    const second = setup();
+    second.switchTo("arrow");
+    expect(second.state.currentItemStrokeColor).toBe(RED);
+  });
+
+  it("ignores style edits made with the selection tool", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.switchTo("selection");
+    t.set({ currentItemStrokeColor: RED }); // restyling a selected element
+    t.switchTo("rectangle");
+    t.switchTo("selection");
+    expect(getToolMemory("rectangle")?.stroke_color).toBe(RED); // shared baseline, not arrow's
+    expect(getToolMemory("arrow")?.stroke_color).toBe("#f08c00");
+  });
+
+  it("is cleared by save and reset, so the default wins", async () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.set({ currentItemStrokeColor: RED });
+    t.switchTo("selection");
+    expect(getToolMemory("arrow")).toBeDefined();
+    await act(async () => {
+      await getRegisteredHandler("toolDefaults.save.arrow")?.();
+    });
+    expect(getToolMemory("arrow")).toBeUndefined();
+    t.switchTo("arrow");
+    t.set({ currentItemStrokeColor: RED });
+    t.switchTo("selection");
+    await act(async () => {
+      await getRegisteredHandler("toolDefaults.reset.arrow")?.();
+    });
+    expect(getToolMemory("arrow")).toBeUndefined();
+  });
+
+  it("does not touch pens: a preset set on the switch wins and is not remembered", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.switchTo("freedraw", { currentItemStrokeColor: "#ff0000" });
+    expect(t.state.currentItemStrokeColor).toBe("#ff0000");
+    expect(getToolMemory("freedraw" as never)).toBeUndefined();
+    t.switchTo("selection");
+    expect(t.state.currentItemStrokeColor).toBe("#ff0000");
+  });
+
+  it("makes no update for a switch that changes nothing", () => {
+    const t = setup();
+    t.switchTo("rectangle");
+    t.switchTo("ellipse");
+    t.switchTo("rectangle");
+    expect(t.updateScene).not.toHaveBeenCalled();
   });
 });

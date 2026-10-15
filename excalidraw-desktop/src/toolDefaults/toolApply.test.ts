@@ -255,12 +255,13 @@ describe("switchTool", () => {
   it("applies a configured tool on entry and restores on leave", () => {
     const r = runner();
     const entry = r.go("arrow");
+    // only fields that change are patched (the start arrowhead stays null)
     expect(entry).toMatchObject({
       currentItemStrokeColor: "#f08c00",
       currentItemStrokeStyle: "dotted",
-      currentItemStartArrowhead: null,
       currentItemEndArrowhead: "triangle",
     });
+    expect(r.state.currentItemStartArrowhead).toBeNull();
     expect(r.session.tool).toBe("arrow");
     expect(r.session.strokeWidthPx).toBe(3);
     r.go("selection");
@@ -355,6 +356,6 @@ describe("switchTool", () => {
     r.go("arrow");
     r.go("arrow", {});
     expect(r.state).toMatchObject(base as object);
-    expect(r.session.tool).toBeNull();
+    expect(r.session.applied).toEqual({});
   });
 });

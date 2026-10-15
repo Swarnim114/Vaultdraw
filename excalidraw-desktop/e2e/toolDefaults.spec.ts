@@ -12,6 +12,7 @@ import {
 const DRAWING = "DSA/Graphs.excalidraw";
 const SHOTS = "test-results/tool-defaults";
 const ORANGE = "#f08c00";
+const RED_HEX = "#e03131";
 
 const live = async (page: Page) =>
   (await readScene(page, DRAWING)).elements.filter((el: any) => !el.isDeleted);
@@ -147,16 +148,24 @@ test("arrow defaults apply, do not leak, restore on re-pick, reset", async ({
   expect(rect.strokeWidth).toBe(2);
   expect(rect.strokeColor.toLowerCase()).not.toBe(ORANGE);
 
-  // c. a manual change while arrow is active is dropped on re-pick
+  // c. a manual change while arrow is active is remembered until quit
   await page.keyboard.press("Escape");
   await page.keyboard.press("a");
-  await pickStrokeStyle(page, "Solid");
-  await page.keyboard.press("r");
+  await pickStrokeStyle(page, "Dashed");
+  await pickStrokeColor(page, "red");
+  await toolButton(page, "rectangle").click();
+  await expectTool(page, "rectangle");
+  await focusCanvas(page);
+  const rect2 = await drawAndRead(page, "rectangle", 0.62, 0.55);
+  expect(rect2.strokeStyle).toBe("solid");
+  expect(rect2.strokeColor.toLowerCase()).not.toBe(RED_HEX);
+  await page.keyboard.press("Escape");
   await page.keyboard.press("a");
   await expectTool(page, "arrow");
   const again = await drawAndRead(page, "arrow", 0.7);
-  expect(again.strokeStyle).toBe("dotted");
-  expect(again.strokeColor.toLowerCase()).toBe(ORANGE);
+  expect(again.strokeStyle).toBe("dashed");
+  expect(again.strokeColor.toLowerCase()).toBe(RED_HEX);
+  expect(again.strokeWidth).toBe(3);
 
   // e. reset
   await page.keyboard.press("Escape");
@@ -169,6 +178,7 @@ test("arrow defaults apply, do not leak, restore on re-pick, reset", async ({
   await page.keyboard.press("r");
   await page.keyboard.press("a");
   await expectTool(page, "arrow");
+  // Reset clears the memory: the saved default is back
   const plain = await drawAndRead(page, "arrow", 0.85, 0.6);
   expect(plain.strokeStyle).toBe("solid");
   expect(plain.strokeWidth).toBe(2);
