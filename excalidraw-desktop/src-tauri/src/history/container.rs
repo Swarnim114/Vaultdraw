@@ -12,6 +12,9 @@ pub const MAGIC: &[u8; 3] = b"VDH";
 pub const MAJOR: u8 = 1;
 pub const PREFIX_LEN: usize = 8;
 pub const MAX_HEADER_BYTES: usize = 64 * 1024;
+/// Cap on the decoded header JSON. The 64 KiB bound applies to the compressed frame (one short
+/// read); incompressible `blobs` lists of image-heavy drawings exceed 64 KiB of JSON.
+pub const MAX_HEADER_JSON_BYTES: usize = 1024 * 1024;
 pub const MAX_NAME_CHARS: usize = 120;
 pub const MAX_NOTE_CHARS: usize = 2000;
 pub const ZSTD_LEVEL: i32 = 3;
@@ -202,7 +205,7 @@ pub fn read_header(prefix: &[u8]) -> Result<Header> {
     let frame = prefix
         .get(PREFIX_LEN..PREFIX_LEN + len)
         .ok_or_else(|| err("VERSION_CORRUPT", "header prefix too short"))?;
-    let json = decode_frame(frame, MAX_HEADER_BYTES)?;
+    let json = decode_frame(frame, MAX_HEADER_JSON_BYTES)?;
     let header: Header = serde_json::from_slice(&json).map_err(|_| bad("not valid JSON"))?;
     header.validate()?;
     Ok(header)

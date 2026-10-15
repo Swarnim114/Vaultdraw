@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use super::names::{is_device, is_epoch, is_sha_ext};
 use crate::{err, Result};
 
+const SHA_HEX_LEN: usize = 64;
 pub const BLOB_TOKEN_PREFIX: &str = "@vdblob:";
 
 pub struct BlobOut {
@@ -338,7 +339,14 @@ impl StripCtx<'_> {
         let (sha_ext, decoded) = match memoized {
             Some(t) if (self.own_copy_exists)(&t) => (t, None),
             Some(t) => match b64_decode(payload) {
-                Some(bytes) => (t, Some(bytes)),
+                // A stale or colliding memo entry must never store bytes under a foreign sha.
+                Some(bytes) if hex::encode(Sha256::digest(&bytes)) == t[..SHA_HEX_LEN] => (t, Some(bytes)),
+                Some(bytes) => {
+                    let sha_ext = format!("{}.{}", hex::encode(Sha256::digest(&bytes)), ext);
+                    self.memo.remember(file_id, payload.len(), crc, &sha_ext);
+                    let decoded = (!(self.own_copy_exists)(&sha_ext)).then_some(bytes);
+                    (sha_ext, decoded)
+                }
                 None => return,
             },
             None => {
@@ -419,19 +427,32 @@ pub fn strip(
         }
         ok
     });
+    // A literal "@vdblob:" in the user's own content gets one extra '@' after the colon, so that
+    // `inline` can tell it from a real token (real tokens continue with a hex digit). This holds
+    // on every path, including the unstripped fallbacks.
+    let escapes: Vec<usize> = memmem::find_iter(file, BLOB_TOKEN_PREFIX.as_bytes()).collect();
+    let escaped_only = |count| {
+        let mut text = Vec::with_capacity(file.len() + escapes.len());
+        let mut at = 0usize;
+        for &p in &escapes {
+            let cut = p + BLOB_TOKEN_PREFIX.len();
+            text.extend_from_slice(&file[at..cut]);
+            text.push(b'@');
+            at = cut;
+        }
+        text.extend_from_slice(&file[at..]);
+        Stripped { text, blobs: Vec::new(), new_blobs: Vec::new(), element_count: count }
+    };
     let unchanged = |count| Stripped { text: file.to_vec(), blobs: Vec::new(), new_blobs: Vec::new(), element_count: count };
     if scanned.is_none() || !ok {
-        return Ok(unchanged(0));
+        return Ok(escaped_only(0));
     }
     let element_count = elements.unwrap_or(0);
-    // A literal "@vdblob:" in the user's own content gets one extra '@' after the colon, so that
-    // `inline` can tell it from a real token (real tokens continue with a hex digit).
-    let escapes: Vec<usize> = memmem::find_iter(file, BLOB_TOKEN_PREFIX.as_bytes()).collect();
     if ctx.edits.is_empty() && escapes.is_empty() {
         return Ok(unchanged(element_count));
     }
     let mut edits = std::mem::take(&mut ctx.edits);
-    edits.extend(escapes.into_iter().map(|p| {
+    edits.extend(escapes.iter().map(|&p| {
         let at = p + BLOB_TOKEN_PREFIX.len();
         Edit { start: at, end: at, with: b"@".to_vec() }
     }));
@@ -441,7 +462,7 @@ pub fn strip(
     for e in &edits {
         if e.start < at {
             // Overlap cannot happen (payloads hold no '@'); fall back to the safe, unstripped copy.
-            return Ok(unchanged(element_count));
+            return Ok(escaped_only(element_count));
         }
         text.extend_from_slice(&file[at..e.start]);
         text.extend_from_slice(&e.with);
