@@ -426,6 +426,17 @@ export default function LibraryMenuItems({
     });
   }, []);
 
+  // An empty sectioned library has no search box: the menu joins the first
+  // section's heading instead of sitting alone in a row of its own.
+  const menuInFirstSection = IS_LIBRARY_EMPTY && !!sectionedItems;
+  const dropdownMenu = (
+    <LibraryDropdownMenu
+      selectedItems={selectedItems}
+      onSelectItems={onSelectItems}
+      className="library-menu-dropdown-container--in-heading"
+    />
+  );
+
   const JSX_whenSectioned = !IS_SEARCHING && sectionedItems && (
     <>
       {sectionedItems.map(({ section, items }, index) => (
@@ -436,10 +447,11 @@ export default function LibraryMenuItems({
             data-testid={`library-section-${section.id}`}
           >
             {section.label}
+            {index === 0 && menuInFirstSection && dropdownMenu}
           </div>
           {!items.length &&
           !(pendingElements.length > 0 && section.canAdd !== false) ? (
-            <div className="library-menu-items__no-items">
+            <div className="library-menu-items__no-items library-menu-items__no-items--section">
               <div className="library-menu-items__no-items__hint">
                 {section.emptyHint ?? t("library.emptySection")}
               </div>
@@ -606,34 +618,32 @@ export default function LibraryMenuItems({
           : { borderBottom: 0 }
       }
     >
-      <div className="library-menu-items-header">
-        {!IS_LIBRARY_EMPTY && (
-          <TextField
-            ref={searchInputRef}
-            type="search"
-            className={clsx("library-menu-items-container__search", {
-              hideCancelButton: editorInterface.formFactor !== "phone",
-            })}
-            placeholder={t("library.search.inputPlaceholder")}
-            value={searchInputValue}
-            onChange={(value) => setSearchInputValue(value)}
-            onKeyDown={(event) => {
-              // clear the search ourselves and stop the event, or the
-              // sidebar's Escape listener closes an undocked sidebar
-              if (event.key === KEYS.ESCAPE && searchInputValue) {
-                event.preventDefault();
-                event.stopPropagation();
-                setSearchInputValue("");
-              }
-            }}
-          />
-        )}
-        <LibraryDropdownMenu
-          selectedItems={selectedItems}
-          onSelectItems={onSelectItems}
-          className="library-menu-dropdown-container--in-heading"
-        />
-      </div>
+      {!menuInFirstSection && (
+        <div className="library-menu-items-header">
+          {!IS_LIBRARY_EMPTY && (
+            <TextField
+              ref={searchInputRef}
+              type="search"
+              className={clsx("library-menu-items-container__search", {
+                hideCancelButton: editorInterface.formFactor !== "phone",
+              })}
+              placeholder={t("library.search.inputPlaceholder")}
+              value={searchInputValue}
+              onChange={(value) => setSearchInputValue(value)}
+              onKeyDown={(event) => {
+                // clear the search ourselves and stop the event, or the
+                // sidebar's Escape listener closes an undocked sidebar
+                if (event.key === KEYS.ESCAPE && searchInputValue) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSearchInputValue("");
+                }
+              }}
+            />
+          )}
+          {dropdownMenu}
+        </div>
+      )}
       <Stack.Col
         className="library-menu-items-container__items"
         align="start"

@@ -35,7 +35,7 @@ const ConfirmDialog = (props: Props) => {
   return (
     <Dialog
       onCloseRequest={onCancel}
-      size="small"
+      size={420}
       {...rest}
       className={`confirm-dialog ${className}`}
     >

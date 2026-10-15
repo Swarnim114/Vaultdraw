@@ -82,7 +82,9 @@ export const LibraryDropdownMenuButton: React.FC<{
 
   const renderRemoveLibAlert = () => {
     const content = selectedItems.length
-      ? t("alerts.removeItemsFromsLibrary", { count: selectedItems.length })
+      ? selectedItems.length === 1
+        ? t("alerts.removeItemFromLibrary")
+        : t("alerts.removeItemsFromsLibrary", { count: selectedItems.length })
       : t("alerts.resetLibrary");
     const title = selectedItems.length
       ? t("confirmDialog.removeItemsFromLib")
@@ -101,6 +103,9 @@ export const LibraryDropdownMenuButton: React.FC<{
           setShowRemoveLibAlert(false);
         }}
         title={title}
+        confirmText={
+          selectedItems.length ? t("buttons.remove") : t("buttons.confirm")
+        }
       >
         <p>{content}</p>
       </ConfirmDialog>

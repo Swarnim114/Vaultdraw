@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { canvasBox, openDrawing, openVault, trackErrors } from "./helpers";
+import {
+  canvasBox,
+  openDrawing,
+  openVault,
+  SHOTS,
+  trackErrors,
+} from "./helpers";
 
 const GRAPHS = "Graphs";
 const INTRO = "01 Introduction";
@@ -267,6 +273,57 @@ test.describe("persisted library", () => {
     );
     expect(log.every((r: any) => r.unchanged)).toBe(true);
     expect(await writesLength(page)).toBe(writesBefore);
+    expect(errors).toEqual([]);
+  });
+
+  test("empty sections line up and the menu sits in the first heading", async ({
+    page,
+  }) => {
+    const errors = await setup(page);
+    await openLibrary(page);
+    const hint = page.getByText("Items you add here are available");
+    const left = async (l: ReturnType<Page["locator"]>) =>
+      (await l.boundingBox())!.x;
+    expect(
+      Math.abs((await left(hint)) - (await left(header(page, "personal")))),
+    ).toBeLessThan(2);
+    await expect(
+      header(page, "personal").getByTestId("dropdown-menu-button"),
+    ).toBeVisible();
+    await expect(page.locator(".library-menu-items-header")).toHaveCount(0);
+    await page
+      .locator(".default-sidebar")
+      .screenshot({ path: `${SHOTS}/library-empty.png` });
+    expect(errors).toEqual([]);
+  });
+
+  test("removing one item asks in a compact dialog", async ({ page }) => {
+    const errors = await setup(page);
+    await drawRectangle(page);
+    await openLibrary(page);
+    await addTo(page, "personal");
+    await expect(itemsIn(page, "personal")).toHaveCount(1);
+    await itemsIn(page, "personal")
+      .first()
+      .click({ modifiers: ["Shift"] });
+    await page
+      .locator(
+        ".library-menu-dropdown-container [data-testid='dropdown-menu-button']",
+      )
+      .first()
+      .click();
+    await page
+      .locator(".library-menu .dropdown-menu-item")
+      .filter({ hasText: /^Remove/ })
+      .click();
+    const dialog = page.locator(".confirm-dialog .Island");
+    await expect(dialog).toContainText(
+      "Remove this item from the library? This can't be undone.",
+    );
+    expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(440);
+    await dialog.screenshot({ path: `${SHOTS}/library-remove-dialog.png` });
+    await page.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect.poll(() => countIn(page, "personal")).toBe(0);
     expect(errors).toEqual([]);
   });
 

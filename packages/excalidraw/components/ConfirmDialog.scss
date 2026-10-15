@@ -1,6 +1,42 @@
 @use "../css/variables.module" as *;
 
 .excalidraw {
+  // A yes/no question: compact, sized to its text.
+  .Modal.confirm-dialog {
+    .Island {
+      padding: 1.25rem 1.5rem 1.25rem;
+    }
+
+    .Dialog__title {
+      font-size: 1.05rem;
+      padding: 0;
+      margin-bottom: 0.75rem;
+      border-bottom: 0;
+    }
+
+    .Dialog__close {
+      top: 1rem;
+      right: 1rem;
+
+      svg {
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+    }
+
+    .Dialog__content p {
+      margin: 0 0 1.25rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .Dialog__action-button {
+      height: 2.25rem;
+      padding: 0 1rem;
+      border-radius: var(--border-radius-md);
+    }
+  }
+
   .confirm-dialog {
     &-buttons {
       display: flex;

@@ -37,6 +37,17 @@
     padding: 0.75rem 1rem;
   }
 
+  // Inside a named section: a plain line under the heading, aligned with it.
+  .library-menu-items__no-items--section {
+    align-items: flex-start;
+    text-align: left;
+    min-height: 0;
+
+    .library-menu-items__no-items__hint {
+      padding: 0;
+    }
+  }
+
   &.theme--dark {
     .library-menu-items__no-items {
       color: var(--color-gray-40);
