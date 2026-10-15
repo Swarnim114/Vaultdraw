@@ -292,3 +292,11 @@ pub fn tmp_files(root: &Path) -> Vec<PathBuf> {
     walk(&root.join(".excalidraw-vault/history"), &mut v);
     v
 }
+
+pub struct NoMemoLocal;
+impl crate::history::codec::BlobMemo for NoMemoLocal {
+    fn lookup(&self, _: &str, _: usize, _: u32) -> Option<String> {
+        None
+    }
+    fn remember(&mut self, _: &str, _: usize, _: u32, _: &str) {}
+}

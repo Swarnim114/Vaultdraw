@@ -24,6 +24,7 @@ pub(crate) use extract::ElementLink;
 pub(crate) use index::{word_snippet, DocEntry, Index};
 // Shared with file history (one vault-id derivation, one walker, one QoS helper).
 pub(crate) use store::vault_id;
+#[allow(unused_imports)] // `walk` is used by file-history relink (H3)
 pub(crate) use worker::{is_drawing_name, lower_priority, walk};
 #[allow(unused_imports)]
 pub(crate) use normalize::{normalize, NORMALIZER_VERSION};

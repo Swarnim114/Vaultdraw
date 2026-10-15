@@ -3,5 +3,6 @@ mod support;
 mod worker_rules;
 mod service_tests;
 mod fault_tests;
+mod store_tests;
 mod sync_tests;
 mod bench;
