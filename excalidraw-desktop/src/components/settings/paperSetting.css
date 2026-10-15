@@ -84,3 +84,23 @@
     letter-spacing: -0.01em;
   }
 }
+
+/* A row whose control is too wide beside its text at narrow widths. */
+@media (max-width: 760px) {
+  .vault-setting-row.vault-setting-row--stack-narrow {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .vault-setting-row--stack-narrow .vault-setting-control {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.paper-row .vault-cp {
+  padding: 0;
+  gap: 7px;
+}

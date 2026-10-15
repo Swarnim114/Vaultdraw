@@ -103,8 +103,8 @@ describe("PaperControls", () => {
     expect(onChange.mock.calls[1][0].opacity).toBe(
       BACKGROUND_PATTERN_LIMITS.opacity.min,
     );
-    fireEvent.click(screen.getByLabelText("Auto"));
-    expect(onChange.mock.calls[2][0].color).toMatch(/^#[0-9a-f]{6}$/);
+    fireEvent.click(screen.getByLabelText("Pattern colour #868e96"));
+    expect(onChange.mock.calls[2][0].color).toBe("#868e96");
   });
 
   it("does not clamp per keystroke; commits on blur and reverts on Escape", () => {
@@ -158,5 +158,19 @@ describe("PaperPreview", () => {
       "aria-label",
       "Paper preview: lines",
     );
+  });
+
+  it("colour: Default chip means automatic (null) and is selected when auto", () => {
+    const onChange = vi.fn();
+    render(
+      <PaperControls
+        value={createBackgroundPattern("grid", { color: "#868e96" })}
+        onChange={onChange}
+      />,
+    );
+    const auto = screen.getByLabelText("Default (theme / app default)");
+    expect(auto).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(auto);
+    expect(onChange.mock.calls[0][0].color).toBeNull();
   });
 });

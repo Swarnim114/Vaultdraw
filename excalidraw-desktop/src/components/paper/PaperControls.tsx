@@ -8,10 +8,21 @@ import {
 
 import type { BackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 
+import { ColorSwatches } from "../settings/pages/ColorSwatches";
+
 import { PaperStylePicker } from "./PaperStylePicker";
 import { selectPaperStyle } from "./selectPaperStyle";
 
 import "./paper.css";
+
+// A few quiet line colours; "Default" follows the theme.
+const PATTERN_COLORS = [
+  "#adb5bd",
+  "#868e96",
+  "#74c0fc",
+  "#8ce99a",
+  "#ffa8a8",
+] as const;
 
 type Props = {
   value: BackgroundPattern | null;
@@ -112,7 +123,6 @@ export const PaperControls = ({
   onChange,
   hideStyle = false,
 }: Props) => {
-  const colorId = useId();
   const emit = (patch: Partial<BackgroundPattern>) => {
     if (value) {
       onChange(normalizeBackgroundPattern({ ...value, ...patch }));
@@ -139,30 +149,15 @@ export const PaperControls = ({
             onChange={(spacing) => emit({ spacing })}
           />
           <div className="paper-row">
-            <label className="paper-row__label" htmlFor={colorId}>
-              Colour
-            </label>
-            <label className="paper-row__check">
-              <input
-                type="checkbox"
-                checked={value.color === null}
-                onChange={(event) =>
-                  emit({
-                    color: event.target.checked
-                      ? null
-                      : getPatternColors(value).minor,
-                  })
-                }
-              />
-              Auto
-            </label>
-            <input
-              id={colorId}
-              type="color"
-              className="paper-row__color"
-              disabled={value.color === null}
-              value={value.color ?? getPatternColors(value).minor}
-              onChange={(event) => emit({ color: event.target.value })}
+            <span className="paper-row__label">Colour</span>
+            <ColorSwatches
+              colors={PATTERN_COLORS}
+              value={value.color ?? ""}
+              onChange={(color) => emit({ color })}
+              onClear={() => emit({ color: null })}
+              swatchLabel={(color) => `Pattern colour ${color}`}
+              customValue={value.color ?? getPatternColors(value).minor}
+              customTitle="Custom pattern colour"
             />
           </div>
           <NumberRange
