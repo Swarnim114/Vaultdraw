@@ -98,9 +98,7 @@ test("the autocomplete Create row creates the drawing in the new-drawing folder"
   await expectOpen(page, "Brand New");
   // The link text must survive in the source drawing after the switch.
   await expect
-    .poll(async () =>
-      sceneTexts(await readScene(page, "Hub.excalidraw")),
-    )
+    .poll(async () => sceneTexts(await readScene(page, "Hub.excalidraw")))
     .toContain("[[Brand New]]");
   expect(errors).toEqual([]);
 });
