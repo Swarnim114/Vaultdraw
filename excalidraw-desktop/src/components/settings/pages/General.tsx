@@ -5,7 +5,7 @@ import {
   openConfigDir,
   reloadSettings,
 } from "../../../vault/settingsSync";
-import { IconDrawing, IconFolder } from "../../Icons";
+import { IconDrawing, IconFolder, IconRefresh } from "../../Icons";
 import { getSettingSchema } from "../schema";
 import { useSettings, type SettingControls } from "../SettingsContext";
 import { SettingRow } from "../SettingRow";
@@ -91,6 +91,7 @@ const ConfigFileSetting = () => {
           className="vault-btn vault-btn--sm"
           onClick={() => void handleReload()}
         >
+          <IconRefresh />
           <span>Reload</span>
         </button>
       </div>

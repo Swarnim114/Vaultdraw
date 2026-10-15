@@ -1,4 +1,36 @@
-import type { SVGProps } from "react";
+/**
+ * App icons: inline SVGs in one style (24x24 viewBox, 2px stroke, round caps
+ * and joins), so they work offline and inherit `currentColor`.
+ *
+ * Many paths come from Lucide (https://lucide.dev), ISC licence:
+ * Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as
+ * part of Feather (MIT). All other copyright (c) for Lucide are held by
+ * Lucide Contributors 2022. Permission to use, copy, modify, and/or
+ * distribute this software for any purpose with or without fee is hereby
+ * granted, provided that the above copyright notice and this permission
+ * notice appear in all copies.
+ */
+import type { ReactNode, SVGProps } from "react";
+
+/** A stroked icon in the app style; `size` is the default width/height. */
+const strokeIcon = (size: number, children: ReactNode) => {
+  const Icon = (props: SVGProps<SVGSVGElement>) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+  return Icon;
+};
 
 export const IconFolder = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -412,4 +444,98 @@ export const IconLibrary = (props: SVGProps<SVGSVGElement>) => (
     <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0" />
     <path d="M3 6v13M12 6v13M21 6v13" />
   </svg>
+);
+
+/** Appearance: a painter's palette (Lucide "palette"). */
+export const IconPalette = strokeIcon(
+  15,
+  <>
+    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+  </>,
+);
+
+/** Interface: a window split into panels (Lucide "panels-top-left"). */
+export const IconLayout = strokeIcon(
+  15,
+  <>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M9 21V9" />
+  </>,
+);
+
+/** Drawing defaults: a vector pen nib (Lucide "pen-tool"). */
+export const IconPenTool = strokeIcon(
+  15,
+  <>
+    <path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z" />
+    <path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18" />
+    <path d="m2.3 2.3 7.286 7.286" />
+    <circle cx="11" cy="11" r="2" />
+  </>,
+);
+
+/** Tools: pencil and ruler (Lucide "pencil-ruler"). */
+export const IconTools = strokeIcon(
+  15,
+  <>
+    <path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13" />
+    <path d="m8 6 2-2" />
+    <path d="m18 16 2-2" />
+    <path d="m17 11 4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17" />
+    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+    <path d="m15 5 4 4" />
+  </>,
+);
+
+/** Hotkeys: a keyboard (Lucide "keyboard"). */
+export const IconKeyboard = strokeIcon(
+  15,
+  <>
+    <rect width="20" height="16" x="2" y="4" rx="2" />
+    <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10" />
+  </>,
+);
+
+/** Templates (Lucide "layout-template"). */
+export const IconTemplate = strokeIcon(
+  14,
+  <>
+    <rect width="18" height="7" x="3" y="3" rx="1" />
+    <rect width="9" height="7" x="3" y="14" rx="1" />
+    <rect width="5" height="7" x="16" y="14" rx="1" />
+  </>,
+);
+
+/** Hide the navigator, which sits on the right (Lucide "panel-right-close"). */
+export const IconPanelRightClose = strokeIcon(
+  15,
+  <>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M15 3v18" />
+    <path d="m8 9 3 3-3 3" />
+  </>,
+);
+
+/** Recovery snapshots (Lucide "history"). */
+export const IconHistory = strokeIcon(
+  13,
+  <>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l4 2" />
+  </>,
+);
+
+/** Read-only vault (Lucide "lock"). */
+export const IconLock = strokeIcon(
+  13,
+  <>
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </>,
 );

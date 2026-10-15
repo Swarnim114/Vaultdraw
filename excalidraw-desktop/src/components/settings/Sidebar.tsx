@@ -1,37 +1,30 @@
 import {
   IconClose,
-  IconDrawing,
   IconFolder,
+  IconKeyboard,
+  IconLayout,
+  IconPalette,
+  IconPenTool,
   IconSearch,
   IconSettings,
+  IconTools,
 } from "../Icons";
 
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 
 import type { SettingsPage, SettingsPageId } from "./schema";
 
-const IconAppearance = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-  </svg>
-);
+const NAV_ICON = { width: 14, height: 14, "aria-hidden": true } as const;
 
-const PAGE_ICONS: Partial<Record<SettingsPageId, ReactNode>> = {
-  general: <IconSettings width="14" height="14" aria-hidden="true" />,
-  appearance: <IconAppearance />,
-  drawing: <IconDrawing width="14" height="14" aria-hidden="true" />,
-  files: <IconFolder width="14" height="14" aria-hidden="true" />,
+/** One icon per page, same size and stroke, so every label lines up. */
+export const PAGE_ICONS: Record<SettingsPageId, ReactNode> = {
+  general: <IconSettings {...NAV_ICON} />,
+  appearance: <IconPalette {...NAV_ICON} />,
+  interface: <IconLayout {...NAV_ICON} />,
+  drawing: <IconPenTool {...NAV_ICON} />,
+  tools: <IconTools {...NAV_ICON} />,
+  files: <IconFolder {...NAV_ICON} />,
+  hotkeys: <IconKeyboard {...NAV_ICON} />,
 };
 
 export const settingsTabId = (page: SettingsPageId) =>

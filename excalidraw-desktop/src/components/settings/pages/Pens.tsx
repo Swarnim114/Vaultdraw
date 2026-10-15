@@ -15,7 +15,7 @@ import {
   updatePreferences,
   type VaultPreferences,
 } from "../../../vault/preferences";
-import { IconPlus } from "../../Icons";
+import { IconPlus, IconTrash } from "../../Icons";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
@@ -224,6 +224,7 @@ const PenRows = ({
           aria-label={`Remove pen ${n}`}
           onClick={onRemove}
         >
+          <IconTrash width="12" height="12" aria-hidden="true" />
           Remove pen
         </button>
       </ToolsRow>

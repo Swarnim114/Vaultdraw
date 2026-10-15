@@ -32,12 +32,14 @@ import {
   IconMore,
   IconMove,
   IconNewDrawing,
+  IconPanelRightClose,
   IconPlus,
   IconRefresh,
   IconReveal,
   IconSearch,
   IconSettings,
   IconSort,
+  IconTemplate,
   IconTrash,
 } from "./Icons";
 import { SearchResults } from "./search/SearchResults";
@@ -566,7 +568,7 @@ export const VaultNavigator = ({
           title="Hide navigator"
           aria-label="Collapse Navigator"
         >
-          <IconClose />
+          <IconPanelRightClose />
         </button>
       </div>
 
@@ -1303,7 +1305,9 @@ const RowMenu = ({
         item("Duplicate", <IconCopy />, () => onDuplicate(entry))}
       {!isFolder &&
         onSaveAsTemplate &&
-        item("Save as template…", <IconCopy />, () => onSaveAsTemplate(entry))}
+        item("Save as template…", <IconTemplate />, () =>
+          onSaveAsTemplate(entry),
+        )}
       {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
       {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
       {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}

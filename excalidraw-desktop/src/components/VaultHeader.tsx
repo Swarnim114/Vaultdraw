@@ -1,4 +1,12 @@
-import { IconAlert, IconCheck, IconCopy, IconPlus, IconSidebar } from "./Icons";
+import {
+  IconAlert,
+  IconCheck,
+  IconHistory,
+  IconLock,
+  IconNewDrawing,
+  IconSidebar,
+  IconTemplate,
+} from "./Icons";
 
 import type { SaveStatus, VaultInfo } from "../vault/types";
 
@@ -97,7 +105,8 @@ export const VaultHeader = ({
             className="vault-badge vault-badge--readonly"
             title="This vault is open read-only because it is not writable or another app instance owns its lock"
           >
-            Read-Only
+            <IconLock />
+            <span>Read-Only</span>
           </span>
         )}
 
@@ -108,7 +117,10 @@ export const VaultHeader = ({
             onClick={onOpenRecovery}
             title={`${recoveryCount} recoverable snapshot(s) found. Click to review.`}
           >
-            {recoveryCount} Recovery Snapshot{recoveryCount > 1 ? "s" : ""}
+            <IconHistory />
+            <span>
+              {recoveryCount} Recovery Snapshot{recoveryCount > 1 ? "s" : ""}
+            </span>
           </button>
         )}
 
@@ -185,7 +197,7 @@ export const VaultHeader = ({
             title="New drawing in the current folder"
             aria-label="New Drawing"
           >
-            <IconPlus />
+            <IconNewDrawing />
           </button>
         )}
         {!vault.readOnly && onNewFromTemplate && (
@@ -196,7 +208,7 @@ export const VaultHeader = ({
             title="New drawing from a template (Cmd+Option+N)"
             aria-label="New from Template"
           >
-            <IconCopy />
+            <IconTemplate />
           </button>
         )}
 

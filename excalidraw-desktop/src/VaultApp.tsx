@@ -79,7 +79,12 @@ import { SettingsModal } from "./components/settings/SettingsModal";
 
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { ConfirmModal } from "./components/ConfirmModal";
-import { IconClose, IconDrawing, IconPlus } from "./components/Icons";
+import {
+  IconClose,
+  IconDrawing,
+  IconPlus,
+  IconTemplate,
+} from "./components/Icons";
 
 import "./components/VaultShell.css";
 
@@ -1686,6 +1691,7 @@ export const VaultApp = ({
                   className="vault-btn"
                   onClick={() => void openTemplatePicker()}
                 >
+                  <IconTemplate />
                   <span>New from template…</span>
                 </button>
               )}
