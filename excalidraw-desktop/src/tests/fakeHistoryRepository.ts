@@ -46,6 +46,30 @@ const fnv = (text: string): string => {
   return h.toString(16).padStart(8, "0").repeat(8);
 };
 
+/**
+ * Size of the live content. A cleared canvas keeps its elements as `isDeleted`
+ * tombstones in the saved file, so the raw file barely shrinks; the shrink rule
+ * must compare live content (the Rust worker has to do the same).
+ */
+const liveSize = (json: string): number => {
+  try {
+    const parsed = JSON.parse(json) as {
+      elements?: Array<{ isDeleted?: boolean }>;
+    };
+    if (!Array.isArray(parsed.elements)) {
+      return json.length;
+    }
+    const live = parsed.elements.filter((e) => !e.isDeleted);
+    return (
+      json.length -
+      JSON.stringify(parsed.elements).length +
+      JSON.stringify(live).length
+    );
+  } catch {
+    return json.length;
+  }
+};
+
 const countElements = (json: string): number | null => {
   try {
     const parsed = JSON.parse(json) as { elements?: unknown[] };
@@ -89,8 +113,8 @@ export class FakeHistoryRepository implements HistoryRepository {
     const previous = this.committed.get(path);
     if (
       previous !== undefined &&
-      previous.length >= SHRINK_MIN_BYTES &&
-      json.length <= previous.length / 2
+      liveSize(previous) >= SHRINK_MIN_BYTES &&
+      liveSize(json) <= liveSize(previous) / 2
     ) {
       this.store(path, previous, "before-clear");
     }

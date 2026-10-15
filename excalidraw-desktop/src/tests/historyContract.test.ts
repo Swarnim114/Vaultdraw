@@ -201,6 +201,22 @@ describe.each([
     expect(read.json).toBe(BIG);
   });
 
+  it("measures live content: tombstones of a cleared canvas still count as a clear", async () => {
+    const elements = Array.from({ length: 60 }, (_, i) => ({
+      id: `e${i}`,
+      isDeleted: false,
+      pad: "x".repeat(100),
+    }));
+    const full = JSON.stringify({ elements });
+    const cleared = JSON.stringify({
+      elements: elements.map((e) => ({ ...e, isDeleted: true })),
+    });
+    rig.fake.noteCommitted(H, P, full);
+    rig.fake.noteCommitted(H, P, cleared);
+    const { versions } = await rig.repo.list(H, P);
+    expect(versions.map((v) => v.reason)).toEqual(["before-clear"]);
+  });
+
   it("does not apply the shrink rule to small drawings or small drops", async () => {
     rig.fake.noteCommitted(H, P, scene(5));
     rig.fake.noteCommitted(H, P, scene(0));
