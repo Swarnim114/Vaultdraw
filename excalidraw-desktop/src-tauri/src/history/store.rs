@@ -389,6 +389,27 @@ impl Store {
     }
 }
 
+/// Removes this device's stale `.tmp` files (older than `older_than`) from every lineage folder and
+/// blob shard. Returns how many were removed.
+pub fn cleanup_own_tmp(store: &Store, dev: &str, older_than: Duration) -> usize {
+    let mut n = 0;
+    let Ok(rd) = fs::read_dir(&store.hist) else { return 0 };
+    for e in rd.flatten() {
+        let Ok(name) = e.file_name().into_string() else { continue };
+        if super::names::is_ulid(&name) && e.file_type().is_ok_and(|t| t.is_dir()) {
+            n += Store::clean_own_tmp(&e.path(), dev, older_than);
+        }
+    }
+    if let Ok(rd) = fs::read_dir(store.hist.join(BLOBS_DIR)) {
+        for e in rd.flatten() {
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                n += Store::clean_own_tmp(&e.path(), dev, older_than);
+            }
+        }
+    }
+    n
+}
+
 fn create_dir_ok(p: &Path) -> Result<()> {
     match fs::create_dir(p) {
         Ok(()) => Ok(()),

@@ -267,8 +267,8 @@ impl Index {
 pub fn load_head(store: &Store, lineage: &str, name: &VersionName) -> Result<Head> {
     let prefix = store.read_prefix(lineage, name).map_err(ioerr)?;
     let h = container::read_header(&prefix)?;
-    if h.id != name.id || h.lineage != lineage {
-        return Err(err("VERSION_CORRUPT", "Header does not match its file name"));
+    if h.id != name.id || h.lineage != lineage || h.device != name.dev {
+        return Err(err("VERSION_CORRUPT", "Header does not match its file name or folder"));
     }
     Ok(Head { path: h.path, name: h.name, note: h.note, rev: h.file_revision, element_count: h.element_count, blobs: h.blobs })
 }

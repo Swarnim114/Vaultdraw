@@ -296,13 +296,18 @@ impl VaultHistory {
             "read-only"
         } else if !self.flags.configured.load(Ordering::Relaxed) || !self.flags.enabled.load(Ordering::Relaxed) {
             "off"
-        } else if lock(&self.last_error).is_some() {
+        } else if self.last_error_view().is_some() {
             "error"
         } else if self.writing.load(Ordering::Relaxed) {
             "writing"
         } else {
             "idle"
         }
+    }
+
+    /// The stored error, or `HISTORY_DISK_LOW` while the save path is skipping clones.
+    fn last_error_view(&self) -> Option<LastError> {
+        lock(&self.last_error).clone().or_else(|| self.flags.disk_low.load(Ordering::Relaxed).then(|| LastError { code: "HISTORY_DISK_LOW".into(), message: "Free disk space is low; history is paused".into() }))
     }
 
     pub fn status(&self) -> HistoryStatus {
@@ -323,7 +328,7 @@ impl VaultHistory {
             gc_blocked: false,
             format_newer: self.format_newer.load(Ordering::Relaxed),
             git_repo: self.root.join(".git").exists(),
-            last_error: lock(&self.last_error).clone(),
+            last_error: self.last_error_view(),
         }
     }
 

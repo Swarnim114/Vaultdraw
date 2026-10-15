@@ -53,6 +53,7 @@ impl Backend for Fake {
     fn disk_low(&mut self, _keep: &HashSet<PathBuf>) {
         self.disk_low_calls += 1;
     }
+    fn note_path(&mut self, _: &str) {}
     fn disk_ok(&mut self) {}
     fn error(&mut self, _: &str, _: &str) {}
     fn changed(&mut self, _: &str, _: &str) {}

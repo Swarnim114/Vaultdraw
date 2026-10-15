@@ -93,6 +93,8 @@ pub trait Backend {
     /// Clones the drawing's current live state as its open-time state.
     fn clone_open(&mut self, path: &str, revision: &str) -> Option<PathBuf>;
     fn remove_clone(&mut self, file: &Path);
+    /// Records which drawing a staged key stands for (so a crash-survivor clone can be attributed).
+    fn note_path(&mut self, path: &str);
     /// Free space fell below the floor: raise the flag, drop clones that are not `keep`.
     fn disk_low(&mut self, keep: &HashSet<PathBuf>);
     /// Free space recovered.
@@ -325,7 +327,7 @@ impl Writer {
         };
         header.file_size = req.size.unwrap_or(0);
         let mut kind = NameKind::Keyframe(req.reason);
-        let mut container_bytes: Option<Vec<u8>> = None;
+        let mut container_bytes: Option<(Vec<u8>, Vec<u8>)> = None;
         if existing.is_some() {
             if let Some((kname, ksize)) = self.pick_keyframe(&lineage, now) {
                 if let Some(ktext) = self.keyframe_text(&lineage, &kname) {
@@ -338,13 +340,22 @@ impl Writer {
                         if !codec::delta_too_big(c.len(), ksize as usize) {
                             header = dh;
                             kind = NameKind::Delta(req.reason, kname.id);
-                            container_bytes = Some(c);
+                            container_bytes = Some((c, delta));
                         }
                     }
                 }
             }
         }
-        let container_bytes = container_bytes.unwrap_or_else(|| container::write_container(&header, &stripped.text, container::ZSTD_LEVEL));
+        let (container_bytes, delta_body) = match container_bytes {
+            Some((c, d)) => (c, Some(d)),
+            None => (container::write_container(&header, &stripped.text, container::ZSTD_LEVEL), None),
+        };
+        let body: &[u8] = delta_body.as_deref().unwrap_or(&stripped.text);
+        // write_container can't fail by signature (an allocation failure yields an empty frame):
+        // prove the bytes decode to what we meant to store before they become visible.
+        if container::read_header(&container_bytes).map(|h| h.id != id).unwrap_or(true) || container::read_body(&container_bytes, codec::MAX_TEXT_BYTES).map_or(true, |b| b != body) {
+            return Err(err("INTERNAL", "History encoder produced an unreadable version"));
+        }
         let vname = VersionName { id: id.clone(), dev: self.dev.clone(), kind };
         if !(self.is_current)() {
             return Ok(Outcome::Skipped("stopped"));
@@ -401,6 +412,10 @@ impl Backend for RealBackend {
     }
     fn remove_clone(&mut self, file: &Path) {
         staging::remove_clone(file);
+    }
+    fn note_path(&mut self, path: &str) {
+        let key = staging::key_for(path, self.flags.fold.load(std::sync::atomic::Ordering::Relaxed));
+        staging::write_sidecar(&self.staged_dir, &key, path);
     }
     fn disk_low(&mut self, keep: &HashSet<PathBuf>) {
         self.flags.disk_low.store(true, std::sync::atomic::Ordering::Relaxed);

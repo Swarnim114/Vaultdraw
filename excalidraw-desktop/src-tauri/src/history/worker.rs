@@ -147,6 +147,7 @@ struct Track {
     last_commit_ms: u64,
     retry_at: Option<u64>,
     first_done: bool,
+    noted: bool,
 }
 
 pub struct Core<B: Backend> {
@@ -330,6 +331,8 @@ impl<B: Backend> Core<B> {
             self.b.remove_clone(&old.file);
         }
         self.tracks.entry(path.clone()).or_default().first_done = false;
+        self.b.note_path(&path);
+        self.tracks.entry(path.clone()).or_default().noted = true;
         if let Some(file) = self.b.clone_open(&path, &revision) {
             let size = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
             if let Some(t) = self.tracks.get_mut(&path) {
@@ -359,6 +362,10 @@ impl<B: Backend> Core<B> {
             return;
         }
         let now = self.clock.now_ms();
+        if staged.is_some() && !self.tracks.get(&path).is_some_and(|t| t.noted) {
+            self.b.note_path(&path);
+            self.tracks.entry(path.clone()).or_default().noted = true;
+        }
         let no_lineage = self.b.latest(&path).is_none();
         let (prev_pending, open) = {
             let t = self.tracks.entry(path.clone()).or_default();
@@ -630,6 +637,7 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
             return;
         }
     };
+    store::cleanup_own_tmp(&vh.store, &dev, store::TMP_MAX_AGE);
     let ulid = super::names::UlidGen::load(Some(&vh.state_hist));
     let epoch = writer::Epoch::load(Some(vh.vault_state.join("writer")), now);
     let root = vh.store.root.clone();

@@ -208,3 +208,87 @@ pub fn count_files(dir: &Path) -> usize {
     let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
     rd.flatten().map(|e| if e.path().is_dir() { count_files(&e.path()) } else { 1 }).sum()
 }
+
+use crate::history::{
+    index::{self, Index},
+    names,
+    store::Store,
+    writer::{Epoch, Outcome, Source, VersionRequest, Writer},
+};
+use std::sync::RwLock;
+
+/// A `Writer` driven directly on the calling thread (fault injection is thread-local).
+pub fn mk_writer(root: &Path, state: &Path, clock: Arc<dyn Clock>, free_ok: Box<dyn Fn() -> bool + Send>) -> Writer {
+    let store = Store::new(root);
+    let idx = Arc::new(RwLock::new(Index::new(false)));
+    index::scan_all(&store, &idx, clock.now_ms());
+    let hist = state.join("history");
+    std::fs::create_dir_all(&hist).unwrap();
+    let dev = names::load_or_create_device(&hist).unwrap();
+    let ulid = names::UlidGen::load(Some(&hist));
+    let epoch = Epoch::load(Some(state.join("writer")), clock.now_ms());
+    Writer::new(store, idx, dev, ulid, epoch, clock, free_ok, Box::new(|| true))
+}
+
+pub fn live_request(path: &str, reason: names::Reason) -> VersionRequest {
+    VersionRequest { path: path.into(), reason, name: None, note: None, source: Source::Live, revision: None, size: None, verify: false, allow_unchanged: false, rev_prefix: None }
+}
+
+/// Writes `json` as the live file and versions it; returns the outcome.
+pub fn version_of(w: &mut Writer, root: &Path, path: &str, json: &str, reason: names::Reason) -> crate::Result<Outcome> {
+    std::fs::write(root.join(path), json).unwrap();
+    w.write_version(&live_request(path, reason))
+}
+
+/// Decodes every visible version file under `<root>/.excalidraw-vault/history` and checks that the
+/// inlined bytes hash to the header's `fileRevision`. Returns how many versions were checked.
+pub fn verify_all_versions(root: &Path) -> usize {
+    use crate::history::{codec, container};
+    let store = Store::new(root);
+    let hist = &store.hist;
+    let mut checked = 0;
+    let Ok(rd) = std::fs::read_dir(hist) else { return 0 };
+    for lin in rd.flatten() {
+        let ln = lin.file_name().to_string_lossy().into_owned();
+        if !names::is_ulid(&ln) {
+            continue;
+        }
+        for f in std::fs::read_dir(lin.path()).unwrap().flatten() {
+            let fname = f.file_name().to_string_lossy().into_owned();
+            let Some(name) = names::VersionName::parse(&fname) else { continue };
+            let bytes = std::fs::read(f.path()).unwrap();
+            let header = container::read_header(&bytes).unwrap_or_else(|e| panic!("{fname}: header {}", e.message));
+            let body = container::read_body(&bytes, 64 << 20).unwrap_or_else(|e| panic!("{fname}: body {}", e.message));
+            let text = if header.kind == "delta" {
+                let kid = header.keyframe.clone().unwrap();
+                let kf = std::fs::read_dir(lin.path()).unwrap().flatten().find(|e| e.file_name().to_string_lossy().starts_with(&kid)).unwrap_or_else(|| panic!("{fname}: keyframe {kid} missing"));
+                assert!(kf.file_name().to_string_lossy().contains(&format!("-{}.k", name.dev)), "delta's keyframe is same-device");
+                let kb = std::fs::read(kf.path()).unwrap();
+                codec::reconstruct(&container::read_body(&kb, 64 << 20).unwrap(), Some(&body)).unwrap()
+            } else {
+                body
+            };
+            let file = codec::inline(&text, &|t| store.read_blob_any(t)).unwrap_or_else(|e| panic!("{fname}: inline {}", e.message));
+            assert_eq!(crate::revision(&file), header.file_revision, "{fname} is not byte-exact");
+            checked += 1;
+        }
+    }
+    checked
+}
+
+pub fn tmp_files(root: &Path) -> Vec<PathBuf> {
+    fn walk(d: &Path, out: &mut Vec<PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(d) {
+            for e in rd.flatten() {
+                if e.path().is_dir() {
+                    walk(&e.path(), out);
+                } else if e.file_name().to_string_lossy().ends_with(".tmp") {
+                    out.push(e.path());
+                }
+            }
+        }
+    }
+    let mut v = Vec::new();
+    walk(&root.join(".excalidraw-vault/history"), &mut v);
+    v
+}
