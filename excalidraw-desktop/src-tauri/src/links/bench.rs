@@ -477,3 +477,93 @@ fn bench_links_p1() {
     assert!(w50 <= 1.0, "rewrite 2MB: {w50}");
     assert!(rows.iter().all(|r| r.b_per_doc <= 1024.0), "memory per drawing");
 }
+
+// ---- tag rename (F6 P2) ----
+// `cargo test --release --lib links::bench::bench_tag_rename -- --ignored --nocapture --test-threads=1`
+// Budgets: plan <= 50 ms (aim < 5), job over 100 x 35 KB <= 500 ms incl. fsync, rewrite of a 2 MB file <= 1 ms.
+
+fn tag_drawing(elements: usize, image_bytes: usize) -> String {
+    let mut els = Vec::new();
+    for i in 0..elements {
+        let t = format!("item {i} #dsa/graphs and #dsa2 about the thing, see #dsa. Some filler text to look real");
+        els.push(format!(r#"{{"id":"el{i:04}","type":"text","x":{}.5,"y":20.25,"width":100,"height":25,"text":"{t}","originalText":"{t}","version":3,"versionNonce":{i},"updated":1700000000000,"isDeleted":false}}"#, i * 10));
+    }
+    let blob = "iVBORw0KGgo".repeat(image_bytes / 11 + 1);
+    format!(r##"{{"type":"excalidraw","version":2,"elements":[{}],"appState":{{"viewBackgroundColor":"#ffffff"}},"files":{{"f":{{"mimeType":"image/png","id":"f","dataURL":"data:image/png;base64,{blob}"}}}}}}"##, els.join(","))
+}
+
+fn tag_rule(from: &str, to: &str) -> super::rewrite::TagRule {
+    super::rewrite::TagRule { from_key: from.into(), to: to.into(), skip_under: None }
+}
+
+#[test]
+#[ignore]
+fn bench_tag_rename() {
+    println!("load: {}", std::process::Command::new("uptime").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default());
+    // plan on the in-memory index: 3 items per drawing, a pool of 300 tags, ~5% carry #dsa (or a child)
+    for n in [5_000usize, 50_000] {
+        let mut r = Rng(0xFEED ^ n as u64);
+        let mut ix = Index::default();
+        for i in 0..n {
+            let path = format!("folder {}/drawing {i}.excalidraw", i % 50);
+            let mut texts = vec![format!("{} #tag{} and #tag{}/sub notes", W[r.below(W.len())], r.below(300), r.below(300)), "plain text without tags".to_string(), format!("{} #wip", FILL[r.below(FILL.len())])];
+            if r.chance(0.05) {
+                texts.push(["#dsa and more", "#DSA/graphs item", "see #dsa/trees/avl"][r.below(3)].to_string());
+            }
+            let items: Vec<TextItem> = texts.iter().enumerate().map(|(k, t)| TextItem { element_id: format!("t{k}").into(), container_id: None, kind: ItemKind::Text, text: t.as_str().into() }).collect();
+            ix.upsert(path.clone(), DocEntry::new(&path, (1, 1), items));
+        }
+        let mut times = Vec::new();
+        let mut last = None;
+        for _ in 0..200 {
+            let t = Instant::now();
+            let p = super::tag_rename::plan(&ix, "dsa", "Algorithms").unwrap();
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+            last = Some(p.response);
+        }
+        let p = last.unwrap();
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("plan @ {n} docs: min {:.3} ms  p50 {:.3} ms  p95 {:.3} ms  ({} files, {} tokens, {} keys, merges {})", times[0], times[100], times[190], p.files, p.occurrences, p.keys.len(), p.merges);
+    }
+    // rewriter CPU on a 2 MB drawing (200 elements, every one has 3 tokens, one changes spelling each)
+    let src = tag_drawing(200, 2_000_000);
+    let none = BTreeMap::new();
+    let rl = tag_rule("dsa", "Algorithms");
+    let rules = FileRules { old_dir: "", new_dir: "", elements: &none, tag: Some(&rl), now_ms: 1_700_000_000_000 };
+    let (w50, w95) = timed(200, |_| {
+        std::hint::black_box(rewrite(src.as_bytes(), &rules).unwrap().unwrap());
+    });
+    let mut one = Vec::new();
+    for _ in 0..200 {
+        let t = Instant::now();
+        std::hint::black_box(rewrite(src.as_bytes(), &rules).unwrap().unwrap());
+        one.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    one.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("tag rewrite of a {:.1} MB drawing (200 elements, 400 tokens): min {:.3} ms  p50 {w50:.3} ms  p95 {w95:.3} ms", src.len() as f64 / 1e6, one[0]);
+    // end-to-end job: 100 x ~35 KB (two passes alternate dsa -> Algo -> dsa so every run rewrites)
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("vault");
+    fs::create_dir_all(root.join("tags")).unwrap();
+    let body = tag_drawing(100, 0);
+    let plans: Vec<FilePlan> = (0..100)
+        .map(|i| {
+            let rel = format!("tags/f{i}.excalidraw");
+            fs::write(root.join(&rel), &body).unwrap();
+            FilePlan { from_path: rel.clone(), to_path: rel, elements: BTreeMap::new() }
+        })
+        .collect();
+    let v = Arc::new(Vault { root: root.canonicalize().unwrap(), handle: "b".into(), read_only: false, _lock: None, _watcher: None, mutation: Mutex::new(()) });
+    let state = LinksState::default();
+    let mut runs = Vec::new();
+    for k in 0..7 {
+        let rl = if k % 2 == 0 { tag_rule("dsa", "Algo") } else { tag_rule("algo", "dsa") };
+        let t = Instant::now();
+        let done = run_job(&v, &plans, Some(&rl), k + 1, &noop_hooks(), &state);
+        runs.push(t.elapsed().as_secs_f64() * 1e3);
+        assert_eq!((done.rewritten, done.failed.len()), (100, 0), "{:?}", done.failed.first());
+    }
+    runs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("tag job over 100 x {:.0} KB files incl. fsync: min {:.0} ms  p50 {:.0} ms  max {:.0} ms ({:.2} ms/file)", body.len() as f64 / 1e3, runs[0], runs[3], runs[6], runs[3] / 100.0);
+    println!("budgets: plan <= 50 ms; job <= 500 ms; 2 MB rewrite <= 1 ms [min {:.3}, p50 {w50:.3}]", one[0]);
+}
