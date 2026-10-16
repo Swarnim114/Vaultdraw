@@ -156,6 +156,8 @@ interface VaultNavigatorProps {
   ownerDocument?: Document | null;
 }
 
+const NO_COUNTS: ReadonlyMap<string, number> = new Map();
+
 export const VaultNavigator = ({
   vault,
   activePath,
@@ -409,10 +411,13 @@ export const VaultNavigator = ({
     () => flattenTree(treeNodes, expandedFolders),
     [treeNodes, expandedFolders],
   );
-  // Drawings per folder: built once per index change, not per render or row.
+  // Drawings per folder: built once when the crawl finishes. The crawl emits a
+  // new entry list on every progress tick, so counting then would rescan the
+  // whole list per tick on the vault-open critical path (and a partial count
+  // is misleading anyway).
   const folderCounts = useMemo(
-    () => folderDrawingCounts(allIndexedEntries),
-    [allIndexedEntries],
+    () => (isIndexing ? NO_COUNTS : folderDrawingCounts(allIndexedEntries)),
+    [allIndexedEntries, isIndexing],
   );
   const getVisibleItems = (): VaultEntry[] => rows.map((r) => r.entry);
   const treeWindow = useTreeWindow(treeContainerRef, rows.length, !isSearching);
