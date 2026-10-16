@@ -257,3 +257,16 @@
 .vault-history-preview--fullscreen .vault-history-timeline {
   padding: 12px 32px 10px;
 }
+
+/*
+ * The preview editor portals its modals (image export) to <body>, into an
+ * `.excalidraw-modal-container` that is `position: absolute` with no offsets,
+ * so it lands at the end of the document flow instead of over the app. While a
+ * preview is open, pin that container to the whole window: the dialog is then
+ * centred and its backdrop covers the panel and navigator.
+ */
+body:has(.vault-history-preview) > .excalidraw-modal-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
