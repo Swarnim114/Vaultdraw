@@ -55,11 +55,18 @@ fn top_folder(path: &str) -> &str {
 
 /// Builds the graph from the link index and the doc entries it was built from.
 pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
-    let mut live: Vec<(u32, &str)> = li.live_docs().collect();
-    live.sort_unstable_by(|a, b| a.1.cmp(b.1));
+    // Walk the doc map once (contiguous) and sort it; link-index ids come from an Fx map.
+    let mut entries: Vec<(&str, &DocEntry)> = docs.iter().map(|(p, d)| (p.as_str(), d)).collect();
+    entries.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    let mut id_of: FxMap<&str, u32> = FxMap::default();
+    id_of.reserve(entries.len());
+    for (id, p) in li.live_docs() {
+        id_of.insert(p, id);
+    }
+    let live: Vec<(u32, &str, Option<&DocEntry>)> = entries.iter().filter_map(|&(p, d)| id_of.get(p).map(|&id| (id, p, Some(d)))).collect();
     let n_docs = live.len();
     let mut node_of_doc = vec![NONE; live.iter().map(|d| d.0 as usize + 1).max().unwrap_or(0)];
-    for (node, (id, _)) in live.iter().enumerate() {
+    for (node, (id, _, _)) in live.iter().enumerate() {
         node_of_doc[*id as usize] = node as u32;
     }
 
@@ -68,7 +75,7 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
     g.labels.reserve(n_docs);
     g.folder.reserve(n_docs);
     let mut cur_folder = "";
-    for (_, path) in &live {
+    for (_, path, _) in &live {
         let top = top_folder(path);
         if !top.is_empty() && top != cur_folder {
             // Paths are sorted, so a top-level folder is one contiguous run.
@@ -86,9 +93,9 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
     let mut tag_labels: Vec<String> = Vec::new();
     let mut edges: Vec<u32> = Vec::with_capacity(n_docs * 6);
     let mut real_edges = vec![false; n_docs];
-    for (src, (id, path)) in live.iter().enumerate() {
-        let start = edges.len();
-        let mut linked = false;
+    let mut scratch: Vec<u32> = Vec::new();
+    for (src, (id, _, entry)) in live.iter().enumerate() {
+        scratch.clear();
         for &(key, _) in li.out_links(*id) {
             let t = li.key_target(key);
             let dst = if t != NONE {
@@ -100,23 +107,20 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
                 })
             };
             if dst != src as u32 {
-                edges.extend([src as u32, dst]);
-                linked = true;
+                scratch.push(dst);
             }
         }
-        real_edges[src] = linked;
-        let seg_start = start;
-        sort_dedup_pairs(&mut edges, seg_start);
-        if let Some(d) = docs.get(*path) {
-            let t0 = edges.len();
+        real_edges[src] = !scratch.is_empty();
+        push_sorted(&mut edges, src as u32, &mut scratch);
+        if let Some(d) = entry {
             for (key, display) in d.tag_pairs() {
                 let tid = *tag_of_key.entry(key).or_insert_with(|| {
                     tag_labels.push(format!("#{display}"));
                     (tag_labels.len() - 1) as u32
                 });
-                edges.extend([src as u32, TAG_BIT | tid]);
+                scratch.push(TAG_BIT | tid);
             }
-            sort_dedup_pairs(&mut edges, t0);
+            push_sorted(&mut edges, src as u32, &mut scratch);
         }
     }
     let n = n_docs + ghost_labels.len() + tag_labels.len();
@@ -159,20 +163,14 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
     g
 }
 
-/// Sorts and deduplicates the `(src, dst)` pairs in `edges[from..]` (all share one src).
-fn sort_dedup_pairs(edges: &mut Vec<u32>, from: usize) {
-    let seg = &mut edges[from..];
-    if seg.len() <= 2 {
-        return;
-    }
-    let mut dsts: Vec<u32> = seg.chunks_exact(2).map(|p| p[1]).collect();
+/// Appends `(src, dst)` for each distinct dst in `dsts` (sorted), then empties `dsts`.
+fn push_sorted(edges: &mut Vec<u32>, src: u32, dsts: &mut Vec<u32>) {
     dsts.sort_unstable();
     dsts.dedup();
-    let src = seg[0];
-    edges.truncate(from);
-    for d in dsts {
+    for &d in dsts.iter() {
         edges.extend([src, d]);
     }
+    dsts.clear();
 }
 
 fn push_u32s(out: &mut Vec<u8>, xs: &[u32]) {
