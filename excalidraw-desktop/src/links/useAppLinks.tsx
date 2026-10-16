@@ -65,21 +65,37 @@ export type AppLinksDeps = {
 
 type PendingConfirm = ConfirmRequest & { resolve(ok: boolean): void };
 
-/** Drawing paths as a list whose identity changes only with its content. */
-export function useStableNames(entries: readonly VaultEntry[]) {
-  const last = useRef<readonly string[]>([]);
+const NO_NAMES: readonly string[] = [];
+
+/** Sorted drawing paths of the vault entries. */
+export const drawingNames = (entries: readonly VaultEntry[]): string[] =>
+  entries
+    .filter((e) => e.kind === "drawing")
+    .map((e) => e.path)
+    .sort();
+
+/**
+ * Drawing paths as a list whose identity changes only with its content.
+ * Skipped (constant empty list) while `enabled` is false, so a vault without
+ * a link index pays no filter+sort for every crawl batch.
+ */
+export function useStableNames(
+  entries: readonly VaultEntry[],
+  enabled: boolean,
+) {
+  const last = useRef<readonly string[]>(NO_NAMES);
   return useMemo(() => {
-    const next = entries
-      .filter((e) => e.kind === "drawing")
-      .map((e) => e.path)
-      .sort();
+    if (!enabled) {
+      return NO_NAMES;
+    }
+    const next = drawingNames(entries);
     const prev = last.current;
     if (prev.length === next.length && prev.every((p, i) => p === next[i])) {
       return prev;
     }
     last.current = next;
     return next;
-  }, [entries]);
+  }, [entries, enabled]);
 }
 
 export function useAppLinks(deps: AppLinksDeps) {
@@ -87,7 +103,7 @@ export function useAppLinks(deps: AppLinksDeps) {
   live.current = deps;
   const { links, vault, win } = deps;
   const handle = vault?.handle ?? null;
-  const names = useStableNames(deps.entries);
+  const names = useStableNames(deps.entries, links !== null);
   const history = useMemo(() => new NavHistory(), []);
   const bridge = useRef<EditorLinksBridge | null>(null);
   const dockRef = useRef<LinksDockHandle | null>(null);
@@ -408,7 +424,7 @@ export function useAppLinks(deps: AppLinksDeps) {
       const target = linkTargetFor(
         d.activePath,
         null,
-        createResolver(namesRef.current),
+        createResolver(drawingNames(d.entries)),
         d.settings.newLinkFormat,
       );
       try {
@@ -440,8 +456,6 @@ export function useAppLinks(deps: AppLinksDeps) {
       stopPrefix();
     };
   }, [go, openLink]);
-  const namesRef = useRef(names);
-  namesRef.current = names;
   const toggleRef = useRef(toggleDock);
   toggleRef.current = toggleDock;
 

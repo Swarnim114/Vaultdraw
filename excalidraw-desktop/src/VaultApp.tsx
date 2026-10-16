@@ -244,7 +244,9 @@ export const VaultApp = ({
   const vaultSettings = useVaultSettings(win, vault);
   const { navigatorSort, newDrawingFolder, templatesFolder } =
     vaultSettings.effective;
-  const { confirmDelete, showTagChips } = getPreferences(win);
+  // One preferences read per render (localStorage parse + normalise).
+  const prefsNow = getPreferences(win);
+  const { confirmDelete, showTagChips } = prefsNow;
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
@@ -347,7 +349,7 @@ export const VaultApp = ({
 
   // Editor document hook
   const docHook = useVaultDocument(repository, vault, {
-    autosaveDelayMs: getPreferences(win).autosaveDelayMs,
+    autosaveDelayMs: prefsNow.autosaveDelayMs,
     history,
   });
   const {
@@ -1053,7 +1055,6 @@ export const VaultApp = ({
   const { openPicker: openTemplatePicker } = templates;
 
   // Links: history, dock, create, links-aware rename/move, commands.
-  const prefsNow = getPreferences(win);
   const linksSettings = useMemo(
     () => getLinksSettings(prefsNow),
     // eslint-disable-next-line react-hooks/exhaustive-deps
