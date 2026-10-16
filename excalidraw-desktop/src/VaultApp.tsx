@@ -130,9 +130,17 @@ const LinksDock = lazy(() =>
 
 // Settings (every page, the Links and Hotkeys editors) stay out of the
 // startup chunk; prefetchSettings loads them once the vault is idle, so the
-// first Cmd+, still opens in the same frame.
-const loadSettingsModal = () => import("./components/settings/SettingsModal");
-const SettingsModal = lazy(() =>
+// first Cmd+, still opens in the same frame. A prefetched module renders
+// directly: lazy() always suspends once, and React holds a shown fallback
+// for 300 ms.
+type SettingsModalModule = typeof import("./components/settings/SettingsModal");
+let settingsModule: SettingsModalModule | null = null;
+const loadSettingsModal = () =>
+  import("./components/settings/SettingsModal").then((m) => {
+    settingsModule = m;
+    return m;
+  });
+const LazySettingsModal = lazy(() =>
   loadSettingsModal().then((m) => ({ default: m.SettingsModal })),
 );
 const prefetchSettings = () => {
@@ -241,6 +249,12 @@ export const VaultApp = ({
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  // Picked when the modal opens, so an open modal never remounts.
+  const SettingsModal = useMemo(
+    () =>
+      (showSettingsModal && settingsModule?.SettingsModal) || LazySettingsModal,
+    [showSettingsModal],
+  );
   const [settingsPage, setSettingsPage] = useState<SettingsTarget | undefined>(
     undefined,
   );
