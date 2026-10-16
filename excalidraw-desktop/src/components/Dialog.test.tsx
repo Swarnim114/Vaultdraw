@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -66,6 +68,78 @@ describe("Dialog", () => {
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("dialog"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Dialog focus restore", () => {
+  const Host = ({ open }: { open: boolean }) => (
+    <>
+      <button type="button" data-testid="row">
+        row
+      </button>
+      {open && (
+        <Dialog title="T" titleId="t" onClose={() => {}}>
+          <input aria-label="inside" autoFocus />
+        </Dialog>
+      )}
+    </>
+  );
+
+  it("returns focus to the element that had it when the dialog opened", () => {
+    const { rerender } = render(<Host open={false} />);
+    screen.getByTestId("row").focus();
+    rerender(<Host open />);
+    expect(screen.getByLabelText("inside")).toHaveFocus();
+    rerender(<Host open={false} />);
+    expect(screen.getByTestId("row")).toHaveFocus();
+  });
+
+  it("restores focus after Escape closes the dialog", () => {
+    const Stateful = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" data-testid="row" onClick={() => setOpen(true)}>
+            row
+          </button>
+          {open && (
+            <Dialog title="T" titleId="t" onClose={() => setOpen(false)}>
+              <input aria-label="inside" autoFocus />
+            </Dialog>
+          )}
+        </>
+      );
+    };
+    render(<Stateful />);
+    const row = screen.getByTestId("row");
+    row.focus();
+    fireEvent.click(row);
+    expect(screen.getByLabelText("inside")).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(row).toHaveFocus();
+  });
+
+  it("leaves focus alone when nothing was focused (body) or the opener is gone", () => {
+    const { rerender } = render(<Host open={false} />);
+    rerender(<Host open />);
+    rerender(<Host open={false} />);
+    expect(document.body).toHaveFocus();
+
+    const gone = render(
+      <>
+        <button type="button">temp</button>
+      </>,
+    );
+    gone.container.querySelector("button")!.focus();
+    const dlg = render(
+      <Dialog title="T" titleId="t2" onClose={() => {}}>
+        x
+      </Dialog>,
+    );
+    gone.unmount();
+    dlg.unmount();
+    expect(document.body).toHaveFocus();
   });
 });
 
@@ -149,8 +223,11 @@ describe("MoveModal keyboard", () => {
       "A",
       "Inner",
     ]);
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "ArrowDown" });
+    // The selection already sits on the match, not its ancestor.
+    expect(screen.getByRole("treeitem", { name: "Inner" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onMove).toHaveBeenCalledWith("A/Inner");
   });

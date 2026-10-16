@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { IconClose } from "./Icons";
 
@@ -51,6 +51,8 @@ export const Dialog = ({
   testId,
 }: DialogProps) => {
   const backdropRef = useRef<HTMLDivElement>(null);
+  // Read during the first render, before the dialog's own autofocus runs.
+  const [opener] = useState(() => globalThis.document?.activeElement ?? null);
   const live = useRef({ onClose, busy });
   live.current = { onClose, busy };
 
@@ -70,8 +72,18 @@ export const Dialog = ({
       }
     };
     doc.addEventListener("keydown", onKeyDown, true);
-    return () => doc.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+    return () => {
+      doc.removeEventListener("keydown", onKeyDown, true);
+      // Hand focus back (never body; skipped if that element is gone).
+      if (
+        opener instanceof HTMLElement &&
+        opener !== doc.body &&
+        opener.isConnected
+      ) {
+        opener.focus();
+      }
+    };
+  }, [opener]);
 
   const trapTab = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") {

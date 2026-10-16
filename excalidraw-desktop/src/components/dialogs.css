@@ -313,3 +313,8 @@
   background-color: var(--vault-danger-bg);
   border-color: var(--vault-danger-border);
 }
+
+/* Ancestors shown only to give a type-ahead match its place. */
+.vd-move__row--context {
+  color: var(--vault-text-faint);
+}

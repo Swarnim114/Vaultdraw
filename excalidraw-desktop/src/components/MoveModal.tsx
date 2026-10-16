@@ -194,8 +194,16 @@ export const MoveModal = ({
           aria-activedescendant={`${baseId}-${activeIndex}`}
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setError(null);
+            // Land on the first folder that itself matches, not its ancestor.
+            const first = moveRows(folders, expanded, next).find(
+              (r) => r.matches,
+            );
+            if (next.trim() !== "" && first) {
+              setActive(first.entry.path);
+            }
           }}
         />
         <div
@@ -220,7 +228,9 @@ export const MoveModal = ({
                 aria-expanded={row.hasChildren ? row.expanded : undefined}
                 aria-selected={i === activeIndex}
                 aria-disabled={!allowed}
-                className="vd-move__row"
+                className={`vd-move__row${
+                  row.matches ? "" : " vd-move__row--context"
+                }`}
                 style={{ paddingLeft: 4 + row.depth * 14 }}
                 onClick={() => select(path)}
                 onDoubleClick={() => void confirm(path)}

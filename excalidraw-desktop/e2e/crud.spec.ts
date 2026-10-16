@@ -302,8 +302,7 @@ test("5. move a drawing into another folder", async ({ page }, info) => {
   // Type-ahead filter, then pick with the keyboard.
   await page.keyboard.type("dynamic");
   await expect(dialog.getByRole("treeitem")).toHaveCount(3);
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("ArrowDown");
+  // The selection lands on the match itself, ancestors stay as context.
   await expect(
     dialog.getByRole("treeitem", {
       name: "Dynamic Programming",

@@ -59,7 +59,7 @@ export function matchingFolderPaths(
     return keep;
   }
   for (const folder of folders) {
-    if (folder !== "" && getBaseName(folder).toLowerCase().includes(needle)) {
+    if (nameMatches(folder, needle)) {
       let path = folder;
       while (path !== "") {
         keep.add(path);
@@ -71,7 +71,12 @@ export function matchingFolderPaths(
   return keep;
 }
 
-export type MoveRow = TreeRow & { hasChildren: boolean };
+/** `matches`: the folder itself fits the type-ahead (false for ancestors kept only for context; always true without a filter). */
+export type MoveRow = TreeRow & { hasChildren: boolean; matches: boolean };
+
+const nameMatches = (path: string, query: string): boolean =>
+  path !== "" &&
+  getBaseName(path).toLowerCase().includes(query.trim().toLowerCase());
 
 /**
  * Rows the Move dialog shows: the whole tree with `expanded` folders open, or,
@@ -101,5 +106,6 @@ export function moveRows(
   return flattenTree(nodes, open).map((row) => ({
     ...row,
     hasChildren: hasKids.get(row.entry.path) ?? false,
+    matches: !filtering || nameMatches(row.entry.path, query),
   }));
 }

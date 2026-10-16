@@ -78,6 +78,26 @@ describe("moveRows", () => {
   });
 });
 
+describe("moveRows matches", () => {
+  it("flags only the folders that match, not the ancestors kept for context", () => {
+    const rows = moveRows(FOLDERS, new Set([""]), "dyn");
+    expect(rows.map((r) => [r.entry.path, r.matches])).toEqual([
+      ["", false],
+      ["DSA", false],
+      ["DSA/Dynamic Programming", true],
+    ]);
+    expect(rows.find((r) => r.matches)?.entry.path).toBe(
+      "DSA/Dynamic Programming",
+    );
+  });
+
+  it("marks every row as a match without a filter", () => {
+    expect(moveRows(FOLDERS, new Set([""]), "").every((r) => r.matches)).toBe(
+      true,
+    );
+  });
+});
+
 describe("matchingFolderPaths", () => {
   it("is just the root for an empty query", () => {
     expect([...matchingFolderPaths(FOLDERS, "  ")]).toEqual([""]);
