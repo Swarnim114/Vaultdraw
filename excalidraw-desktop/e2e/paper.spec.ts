@@ -514,7 +514,10 @@ test("canvas menu: each style renders in dark mode with light-on-dark ink", asyn
 }) => {
   const errors = trackErrors(page);
   const settings = await openSettings(page);
-  await settings.getByRole("button", { name: "Dark", exact: true }).click();
+  await settings
+    .getByRole("group", { name: "Mode" })
+    .getByRole("button", { name: "Dark", exact: true })
+    .click();
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
   await openBlank(page);

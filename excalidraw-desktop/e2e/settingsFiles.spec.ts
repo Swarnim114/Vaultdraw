@@ -20,15 +20,19 @@ test.describe("Settings > Files", () => {
     const stepper = page.getByRole("spinbutton", { name: "Autosave delay" });
     await expect(stepper).toBeVisible();
     await expect(page.locator(".vault-range")).toHaveCount(0);
-    const before = Number(await stepper.getAttribute("aria-valuenow"));
     await stepper.focus();
+    await page.keyboard.press("Home");
+    await expect(stepper).toHaveAttribute("aria-valuenow", "200");
     await page.keyboard.press("ArrowUp");
-    await expect(stepper).toHaveAttribute("aria-valuenow", String(before + 50));
+    await page.keyboard.press("ArrowUp");
+    await expect(stepper).toHaveAttribute("aria-valuenow", "300");
     await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("ArrowDown");
-    await expect(stepper).toHaveAttribute("aria-valuenow", String(before - 50));
-    await page.getByRole("button", { name: "Increase Autosave delay" }).click();
-    await expect(stepper).toHaveAttribute("aria-valuenow", String(before));
+    await expect(stepper).toHaveAttribute("aria-valuenow", "250");
+    await page.getByRole("button", { name: "Decrease Autosave delay" }).click();
+    await expect(stepper).toHaveAttribute("aria-valuenow", "200");
+    await expect(
+      page.getByRole("button", { name: "Decrease Autosave delay" }),
+    ).toBeDisabled();
     expect(errors).toEqual([]);
   });
 

@@ -513,7 +513,10 @@ test("10. dark theme via settings applies to app and canvas", async ({
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Dark", exact: true }).click();
+  await dialog
+    .getByRole("group", { name: "Mode" })
+    .getByRole("button", { name: "Dark", exact: true })
+    .click();
 
   await expect
     .poll(() =>

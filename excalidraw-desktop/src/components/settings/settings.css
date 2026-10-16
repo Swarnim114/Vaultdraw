@@ -655,6 +655,7 @@
 
 /* Path text beside a Reveal button (Files). */
 .vault-files-path {
+  font-family: inherit;
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -399,7 +399,10 @@ test("paper themes in Dracula (dark): Match = theme surface, surround dark, gap 
   await seedAndOpen(page, "Dark.excalidraw", { pageSetup: s });
   const dialog = await openSettings(page);
   await dialog.getByRole("radio", { name: "Dracula" }).click();
-  await dialog.getByRole("button", { name: "Dark", exact: true }).click();
+  await dialog
+    .getByRole("group", { name: "Mode" })
+    .getByRole("button", { name: "Dark", exact: true })
+    .click();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await page.waitForTimeout(500);
@@ -657,7 +660,10 @@ test.describe("screenshots", () => {
     });
     const dialog = await openSettings(page);
     await dialog.getByRole("radio", { name: "Dracula" }).click();
-    await dialog.getByRole("button", { name: "Dark", exact: true }).click();
+    await dialog
+      .getByRole("group", { name: "Mode" })
+      .getByRole("button", { name: "Dark", exact: true })
+      .click();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await page.waitForTimeout(400);
