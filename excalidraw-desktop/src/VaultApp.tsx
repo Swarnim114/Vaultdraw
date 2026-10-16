@@ -93,7 +93,6 @@ import { useExplorerExport } from "./export/useExplorerExport";
 import { Onboarding } from "./components/Onboarding";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { RecoveryDialog } from "./components/RecoveryDialog";
-import { SettingsModal } from "./components/settings/SettingsModal";
 
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { ConfirmModal } from "./components/ConfirmModal";
@@ -126,6 +125,13 @@ import type {
 const LinksDock = lazy(() =>
   import("./components/links/LinksDock").then((m) => ({
     default: m.LinksDock,
+  })),
+);
+
+// Settings (every page, the Links and Hotkeys editors) load on first open.
+const SettingsModal = lazy(() =>
+  import("./components/settings/SettingsModal").then((m) => ({
+    default: m.SettingsModal,
   })),
 );
 
@@ -1944,18 +1950,22 @@ export const VaultApp = ({
       )}
 
       {showSettingsModal && (
-        <SettingsModal
-          vault={vault}
-          initialPage={settingsPage}
-          onClose={() => setShowSettingsModal(false)}
-          onAppearanceChanged={refreshAppearance}
-          pickDrawing={vaultLinks ? () => palettePick.pickDrawing() : undefined}
-          themeRegistry={appearance.registry}
-          onRevealVault={(path) => {
-            void handleRevealEntry(path);
-          }}
-          ownerDocument={doc}
-        />
+        <Suspense fallback={null}>
+          <SettingsModal
+            vault={vault}
+            initialPage={settingsPage}
+            onClose={() => setShowSettingsModal(false)}
+            onAppearanceChanged={refreshAppearance}
+            pickDrawing={
+              vaultLinks ? () => palettePick.pickDrawing() : undefined
+            }
+            themeRegistry={appearance.registry}
+            onRevealVault={(path) => {
+              void handleRevealEntry(path);
+            }}
+            ownerDocument={doc}
+          />
+        </Suspense>
       )}
 
       {(switcher || palettePick.pick) && (
