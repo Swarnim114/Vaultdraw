@@ -56,7 +56,11 @@ describe("Graph commands", () => {
     const keymap = buildKeymap(COMMANDS, overrides, "mac");
     expect(keymap).toBeTruthy();
     const provider = createCommandsProvider({
-      runner: { run: vi.fn(() => true), isAvailable: () => true, platform: "mac" },
+      runner: {
+        run: vi.fn(() => true),
+        isAvailable: () => true,
+        platform: "mac",
+      },
       overrides: () => overrides,
     });
     const titles = provider.items().map((i) => i.title);

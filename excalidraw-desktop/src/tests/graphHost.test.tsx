@@ -20,7 +20,8 @@ vi.mock("../graph/GraphView", () => {
   };
 });
 
-const run = (id: string) => act(async () => void (await getRegisteredHandler(id)?.()));
+const run = (id: string) =>
+  act(async () => void (await getRegisteredHandler(id)?.()));
 
 const makeInvoke = (graph: Record<string, unknown> = {}) => {
   const writes: unknown[] = [];

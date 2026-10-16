@@ -165,7 +165,11 @@ export function GraphHost({
     return null;
   }
   return (
-    <Suspense fallback={<div className="vd-graph" style={LOADING_STYLE} aria-busy="true" />}>
+    <Suspense
+      fallback={
+        <div className="vd-graph" style={LOADING_STYLE} aria-busy="true" />
+      }
+    >
       <GraphView
         handle={handle}
         currentPath={currentPath}

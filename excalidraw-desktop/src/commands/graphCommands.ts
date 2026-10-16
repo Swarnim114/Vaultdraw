@@ -33,10 +33,12 @@ const I = GRAPH_COMMAND_IDS;
 
 export const GRAPH_COMMANDS: CommandDefinition[] = [
   command(I.open, "Open graph view", ["Mod+Alt+G"], [...VAULT]),
-  command(I.openLocal, "Open local graph", ["Mod+Alt+L"], [
-    "drawingOpen",
-    "!modalOpen",
-  ]),
+  command(
+    I.openLocal,
+    "Open local graph",
+    ["Mod+Alt+L"],
+    ["drawingOpen", "!modalOpen"],
+  ),
   command(I.toggleOrphans, "Toggle orphans", [], [...VAULT]),
   command(I.toggleTags, "Toggle tags", [], [...VAULT]),
   command(I.toggleUnresolved, "Toggle unresolved links", [], [...VAULT]),
