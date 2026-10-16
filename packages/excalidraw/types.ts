@@ -802,6 +802,17 @@ export type InteractionConfig = {
      */
     navigation?: boolean;
     /**
+     * Read-only selection — clicking, shift-clicking & box-selecting
+     * elements, Mod+A, Escape to clear, and Mod+C to copy (the normal
+     * clipboard payload). Elements can't be moved, resized, edited, deleted,
+     * cut, pasted or duplicated, and the primary pointer selects instead of
+     * panning (wheel, space and secondary-button drags still navigate when
+     * `navigation` is enabled).
+     *
+     * @default false
+     */
+    select?: boolean;
+    /**
      * Whether the browser's own zoom remains available over the editor —
      * ctrl/cmd + wheel, pinch, and (while the editor has focus)
      * ctrl/cmd +/-/0 shortcuts. Prevented by default, mirroring the

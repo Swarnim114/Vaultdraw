@@ -94,7 +94,9 @@ export class AppClipboard {
   });
 
   public onCopy = withBatchedUpdates((event: ClipboardEvent) => {
-    if (!this.app.isInteractionEnabled()) {
+    const interactive = this.app.isInteractionEnabled();
+    // copy is the one clipboard operation select-only mode keeps
+    if (!interactive && !this.app.isSelectionEnabled()) {
       return;
     }
     const isExcalidrawActive = this.dependencies
@@ -103,7 +105,12 @@ export class AppClipboard {
     if (!isExcalidrawActive || isWritableElement(event.target)) {
       return;
     }
-    this.app.actionManager.executeAction(actionCopy, "keyboard", event);
+    // "api": user-sourced actions are refused while non-interactive
+    this.app.actionManager.executeAction(
+      actionCopy,
+      interactive ? "keyboard" : "api",
+      event,
+    );
     event.preventDefault();
     event.stopPropagation();
   });

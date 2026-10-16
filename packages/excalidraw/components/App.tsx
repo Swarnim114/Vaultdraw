@@ -420,6 +420,7 @@ import { AppDuplicate } from "./App.duplicate";
 import { AppFlowchart } from "./App.flowchart";
 import { AppModifiers } from "./App.modifiers";
 import { AppPan } from "./App.pan";
+import { AppSelectOnly } from "./App.selectOnly";
 import { AppViewport, RIGHT_SIDEBAR_WIDTH } from "./App.viewport";
 import { AppWheel } from "./App.wheel";
 import { AppSelectionTool } from "./App.selectionTool";
@@ -695,6 +696,8 @@ class App extends React.Component<AppProps, AppState> {
   public flowchart: AppFlowchart = new AppFlowchart(this);
   public cursor: AppCursor = new AppCursor(this);
   public arrowText: AppArrowText = new AppArrowText(this);
+  public selectOnly = new AppSelectOnly(this);
+
   public pan: AppPan = new AppPan(this, {
     getPointerCount: () => gesture.pointers.size,
     isDraggingScrollBar: () => isDraggingScrollBar,
@@ -1012,6 +1015,21 @@ class App extends React.Component<AppProps, AppState> {
   ): boolean {
     if (typeof props.interaction === "object" && props.interaction !== null) {
       return props.interaction.enabled?.navigation === true;
+    }
+    return props.interaction !== false;
+  }
+
+  /**
+   * Whether elements can be selected (click, shift-click, marquee, Mod+A,
+   * Escape) and copied while the editor is otherwise non-interactive. True
+   * when fully interactive, or when `interaction: { enabled: { select: true } }`.
+   * Selection never mutates elements (see `AppSelectOnly`).
+   */
+  public isSelectionEnabled(
+    props: Pick<AppProps, "interaction"> = this.props,
+  ): boolean {
+    if (typeof props.interaction === "object" && props.interaction !== null) {
+      return props.interaction.enabled?.select === true;
     }
     return props.interaction !== false;
   }
@@ -4161,6 +4179,27 @@ class App extends React.Component<AppProps, AppState> {
             this.onGestureEnd as any,
             false,
           ),
+        );
+      }
+      if (this.isSelectionEnabled()) {
+        // select-only keyboard (Mod+A, Escape) & copy; everything else on the
+        // keyboard stays disabled
+        this.onRemoveEventListenersEmitter.once(
+          addEventListener(
+            this.props.handleKeyboardGlobally
+              ? this.ownerDocument
+              : this.excalidrawContainerRef.current,
+            EVENT.KEYDOWN,
+            this.selectOnly.onKeyDown as EventListener,
+            false,
+          ),
+          addEventListener(
+            this.ownerDocument,
+            EVENT.COPY,
+            this.clipboard.onCopy,
+            { passive: false },
+          ),
+          this.selectOnly.end,
         );
       }
       if (!this.isBrowserZoomEnabled()) {
@@ -7662,6 +7701,12 @@ class App extends React.Component<AppProps, AppState> {
       }
       if (this.isNavigationEnabled()) {
         this.updateGestureOnPointerDown(event);
+      }
+      // select-only: the primary pointer selects instead of panning
+      if (this.isSelectionEnabled() && this.selectOnly.onPointerDown(event)) {
+        return;
+      }
+      if (this.isNavigationEnabled()) {
         if (!this.pan.isActive()) {
           // pans on drag same as view mode (the pan session manages its own
           // window listeners & teardown)
