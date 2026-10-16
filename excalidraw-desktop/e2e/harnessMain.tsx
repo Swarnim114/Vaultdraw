@@ -7,6 +7,7 @@ import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgro
 
 import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
+import { toastStore } from "../src/toasts/toastStore";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import {
   FakeVaultGraph,
@@ -488,6 +489,7 @@ repository.writeDrawing = async (input) => {
 (ownerWindow as any).__historyRepo = historyRepository;
 
 (ownerWindow as any).__vaultRepo = repository;
+(ownerWindow as any).__vaultToasts = toastStore;
 (ownerWindow as any).__updatePreferences = updatePreferences;
 // Paper perf spec: the canvas renderer, for a micro-benchmark.
 (ownerWindow as any).__paperRenderer = {

@@ -489,7 +489,6 @@ test.describe("navigator collapsed", () => {
     await collapse(page);
     for (const [query, label, title] of [
       ["new folder", "New folder", "New Folder"],
-      ["new drawing", "New drawing", "New Drawing"],
       ["rename drawing", "Rename drawing", "Rename Drawing"],
     ] as const) {
       await runCommand(page, query, label);

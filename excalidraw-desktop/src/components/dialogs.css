@@ -62,6 +62,9 @@
 }
 
 .vd-dialog .vd-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vd-space-3);
   padding: 0;
   font-size: var(--vd-fs-body);
   color: var(--vault-text);
@@ -110,32 +113,36 @@
   border-color: var(--vault-border);
 }
 
-.vd-dialog .vault-btn--ghost:not(.vault-btn--icon) {
+.vd-dialog .vault-btn.vault-btn--ghost:not(.vault-btn--icon) {
   border-color: transparent;
   color: var(--vault-text-muted);
 }
 
-.vd-dialog .vault-btn--primary,
-.vd-dialog .vault-btn--primary:hover:not(:disabled) {
+.vd-dialog .vault-btn.vault-btn--primary:not(.vault-btn--icon),
+.vd-dialog
+  .vault-btn.vault-btn--primary:not(.vault-btn--icon):hover:not(:disabled) {
   background-color: var(--vault-primary);
   border-color: transparent;
   color: var(--vault-on-primary);
   font-weight: 500;
 }
 
-.vd-dialog .vault-btn--primary:hover:not(:disabled) {
+.vd-dialog
+  .vault-btn.vault-btn--primary:not(.vault-btn--icon):hover:not(:disabled) {
   background-color: var(--vault-primary-hover);
 }
 
-.vd-dialog .vault-btn--danger,
-.vd-dialog .vault-btn--danger:hover:not(:disabled) {
+.vd-dialog .vault-btn.vault-btn--danger:not(.vault-btn--icon),
+.vd-dialog
+  .vault-btn.vault-btn--danger:not(.vault-btn--icon):hover:not(:disabled) {
   background-color: var(--vault-danger);
   border-color: transparent;
   color: var(--vault-on-danger);
   font-weight: 500;
 }
 
-.vd-dialog .vault-btn--danger:hover:not(:disabled) {
+.vd-dialog
+  .vault-btn.vault-btn--danger:not(.vault-btn--icon):hover:not(:disabled) {
   background-color: var(--vault-danger-hover);
 }
 
@@ -295,13 +302,14 @@
 }
 
 /* Non-confirming destructive action: error text on the error tint, unfilled. */
-.vd-dialog .vault-btn--danger-soft:not(.vault-btn--icon) {
+.vd-dialog .vault-btn.vault-btn--danger-soft:not(.vault-btn--icon) {
   background-color: var(--vault-danger-bg);
   border-color: transparent;
   color: var(--vault-danger);
 }
 
-.vd-dialog .vault-btn--danger-soft:not(.vault-btn--icon):hover:not(:disabled) {
+.vd-dialog
+  .vault-btn.vault-btn--danger-soft:not(.vault-btn--icon):hover:not(:disabled) {
   background-color: var(--vault-danger-bg);
   border-color: var(--vault-danger-border);
 }

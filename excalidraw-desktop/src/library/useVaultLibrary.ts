@@ -20,6 +20,8 @@ import type {
 
 import { toastStore } from "../toasts/toastStore";
 
+import "./library.css";
+
 import { LibraryStore } from "./libraryStore";
 
 import type { LibraryRepository } from "./types";

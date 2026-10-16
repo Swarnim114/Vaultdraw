@@ -46,7 +46,7 @@ for (const theme of THEMES) {
   test(`redesign gallery ${theme.slug}`, async ({ page, browserName }) => {
     test.skip(!OUT, "set REDESIGN_SHOTS to an output directory");
     test.skip(browserName !== "webkit", "webkit only");
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
 
     const skipped: string[] = [];
     const shot = (n: string, surface: string) =>
@@ -172,6 +172,13 @@ for (const theme of THEMES) {
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForTimeout(250);
     });
+    await surface("17b", "move-typeahead", async () => {
+      await openMenuFor("Graphs", "Move to…");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.type("dyn");
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(250);
+    });
     await surface("18", "rename-dialog", async () => {
       await openMenuFor("Graphs", "Rename");
       await expect(page.getByRole("dialog")).toBeVisible();
@@ -196,6 +203,84 @@ for (const theme of THEMES) {
       await page.waitForTimeout(300);
     });
 
+    await surface("22", "create-dialog", async () => {
+      await page.getByRole("button", { name: "New Drawing" }).first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.type("Sketch");
+      await page.waitForTimeout(250);
+    });
+    await surface("23", "toast-undo", async () => {
+      await page.evaluate(() => {
+        (window as any).__vaultToasts.push({
+          message: "Moved Graphs to Dynamic Programming",
+          action: { label: "Undo", run() {} },
+        });
+        (window as any).__vaultToasts.push({
+          message: "Updated 2 links in 1 drawing",
+        });
+      });
+      await expect(page.locator(".vd-toast")).toHaveCount(2);
+      await page.waitForTimeout(250);
+    });
+    await page.evaluate(() => (window as any).__vaultToasts.clear());
+    await surface("24", "banner", async () => {
+      await page.evaluate(() => {
+        (window as any).__vaultRepo.trash = async () => {
+          throw new Error("disk is full");
+        };
+      });
+      await openMenuFor("Graphs", "Move to Trash");
+      await page.getByRole("button", { name: "Move to Trash" }).click();
+      await expect(page.locator(".vault-global-alert")).toBeVisible();
+      await page.waitForTimeout(250);
+    });
+
+    // Conflict + recovery: edit, then change the file on disk underneath.
+    await surface("25", "conflict-dialog", async () => {
+      await openDrawing(page, "Graphs");
+      const box = await page
+        .locator(".vault-editor canvas.interactive")
+        .boundingBox();
+      await page
+        .locator(".vault-editor [data-testid='toolbar-rectangle']")
+        .click();
+      const x0 = box!.x + box!.width * 0.25;
+      const y0 = box!.y + box!.height * 0.3;
+      await page.mouse.move(x0, y0);
+      await page.mouse.down();
+      await page.mouse.move(x0 + 140, y0 + 90, { steps: 8 });
+      await page.mouse.up();
+      await page.evaluate(async () => {
+        const repo = (window as any).__vaultRepo;
+        const p = "DSA/Graphs.excalidraw";
+        const disk = await repo.readDrawing(repo.handle, p);
+        const scene = JSON.parse(disk.json);
+        scene.elements.push({
+          ...scene.elements[0],
+          id: "ext",
+          x: 900,
+          y: 500,
+        });
+        repo.externalWrite(p, JSON.stringify(scene));
+      });
+      await page.locator(".vault-badge--conflict").click({ timeout: 8000 });
+      await expect(
+        page.getByRole("dialog", { name: /Conflict/i }),
+      ).toBeVisible();
+      await page.waitForTimeout(250);
+    });
+    await surface("26", "recovery-dialog", async () => {
+      await page.evaluate(() => {
+        const repo = (window as any).__vaultRepo;
+        repo.seedRecovery("DSA/Graphs.excalidraw", "{}");
+        repo.seedRecovery("Untitled.excalidraw", "{}");
+        repo.emit({ handle: repo.handle, paths: [], rescan: true });
+      });
+      await page.locator(".vault-badge--recovery").click({ timeout: 8000 });
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+    });
+
     // 21 onboarding: no vault (a fresh harness page starts at onboarding).
     await surface("21", "onboarding", async () => {
       // Patch the harness repo as soon as it is assigned, so no vault reopens.
@@ -217,7 +302,7 @@ for (const theme of THEMES) {
       await page.waitForTimeout(300);
     });
 
-    skipped.push("22-toast: no cheap trigger, skipped");
+    skipped.push("");
     // eslint-disable-next-line no-console
     console.log(skipped.join("\n"));
   });

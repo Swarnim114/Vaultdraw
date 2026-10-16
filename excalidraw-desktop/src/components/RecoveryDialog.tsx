@@ -79,7 +79,7 @@ export const RecoveryDialog = ({
         </button>
       }
     >
-      <p className="vd-dialog__lede" style={{ marginBottom: 12 }}>
+      <p className="vd-dialog__lede">
         These snapshots were saved locally before a crash or external conflict.
         Open one as a new copy (your current files are not touched) or discard
         it for good.

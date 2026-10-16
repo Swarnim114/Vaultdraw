@@ -1,0 +1,23 @@
+/* Library sidebar: Excalidraw's own markup, restyled with vault tokens only.
+ * Section titles become small caption labels (the design's section style)
+ * instead of large accent headings; tile names stay readable in both themes. */
+
+.excalidraw .library-menu-items-container__header {
+  color: var(--vault-text-muted);
+  font-size: var(--vd-fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: var(--vd-space-2);
+}
+
+.excalidraw .library-menu-items__no-items--section,
+.excalidraw .library-menu-items__no-items__hint {
+  color: var(--vault-text-faint);
+  font-size: var(--vd-fs-small);
+}
+
+.excalidraw .library-unit__name {
+  color: var(--vault-text);
+  font-size: var(--vd-fs-small);
+}

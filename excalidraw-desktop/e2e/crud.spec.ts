@@ -208,10 +208,11 @@ test("2d. Escape closes every dialog, however it was opened", async ({
   await expect(dialog).toHaveCount(0);
 
   // Same dialog from the palette command, focus anywhere.
+  await treeRow(page, "DSA").click();
   await page.keyboard.press("ControlOrMeta+Shift+KeyP");
-  await page.keyboard.type("new drawing");
+  await page.keyboard.type("new drawing in selected");
   await page.keyboard.press("Enter");
-  await expect(dialog).toContainText("New Drawing");
+  await expect(dialog).toContainText("New Drawing in /DSA");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 
