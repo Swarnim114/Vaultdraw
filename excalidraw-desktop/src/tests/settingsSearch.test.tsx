@@ -339,7 +339,8 @@ describe("Cmd+, opens Settings", () => {
       code: "Comma",
       metaKey: true,
     });
-    expect(dialog()).not.toBeNull();
+    // The modal is a lazy chunk: it mounts after its import resolves.
+    await screen.findByRole("dialog");
     expect(
       screen.getByRole("searchbox", { name: "Search settings" }),
     ).toHaveFocus();
@@ -356,7 +357,7 @@ describe("Cmd+, opens Settings", () => {
       code: "Comma",
       ctrlKey: true,
     });
-    expect(dialog()).not.toBeNull();
+    await screen.findByRole("dialog");
   });
 
   it("ignores plain , and Cmd+Shift+, (Excalidraw's font size)", async () => {
