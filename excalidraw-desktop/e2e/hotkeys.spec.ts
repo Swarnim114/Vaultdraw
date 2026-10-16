@@ -413,7 +413,7 @@ test.describe("Hotkeys settings page", () => {
     const errors = trackErrors(page);
     await expect(chips(page, "vault.newDrawing")).toHaveCount(1);
     await add(page, "New drawing").click();
-    await expect(page.getByText("Press a key…")).toBeVisible();
+    await expect(page.getByText("Press keys…")).toBeVisible();
     await page.keyboard.press("ControlOrMeta+Alt+KeyJ");
     await expect(chips(page, "vault.newDrawing")).toHaveCount(2);
     expect((await prefs(page)).hotkeys["vault.newDrawing"]).toEqual([
@@ -505,17 +505,17 @@ test.describe("Hotkeys settings page", () => {
       page.getByRole("button", { name: /^Conflicts/ }),
     ).toContainText("4");
     await expect(
-      settingsModal(page).locator(".vault-hotkeys__notice"),
-    ).toContainText("4 conflicts");
+      settingsModal(page).locator(".vault-hotkeys__row--conflict"),
+    ).toHaveCount(3);
   });
 
   test("Escape cancels recording without closing Settings", async ({
     page,
   }) => {
     await add(page, "New drawing").click();
-    await expect(page.getByText("Press a key…")).toBeVisible();
+    await expect(page.getByText("Press keys…")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByText("Press a key…")).toHaveCount(0);
+    await expect(page.getByText("Press keys…")).toHaveCount(0);
     await expect(settingsModal(page)).toBeVisible();
     expect((await prefs(page)).hotkeys?.["vault.newDrawing"]).toBeUndefined();
     // A second Escape (not recording) closes Settings as usual.
@@ -546,6 +546,57 @@ test.describe("Hotkeys settings page", () => {
       await expect(page.getByRole("alert")).toHaveCount(0);
     });
   }
+
+  test("inline recording, the conflict sentence naming the winner, and Reset all", async ({
+    page,
+  }) => {
+    // Unassigned rows offer a visible "Add shortcut"; assigned rows only an icon.
+    const unassigned = page.locator(".vault-hotkeys__add--text").first();
+    await expect(unassigned).toHaveText("Add shortcut");
+    await expect(
+      row(page, "vault.newDrawing").locator(".vault-hotkeys__add--text"),
+    ).toHaveCount(0);
+
+    await add(page, "New drawing").click();
+    const pending = row(page, "vault.newDrawing").getByRole("button", {
+      name: "Cancel recording",
+    });
+    await expect(pending).toContainText("Press keys…");
+    await expect(pending).toContainText("Esc");
+    await expect(pending).toContainText("cancels");
+    await page.keyboard.press("ControlOrMeta+Comma");
+
+    const conflicted = row(page, "vault.newDrawing");
+    await expect(conflicted).toHaveClass(/vault-hotkeys__row--conflict/);
+    await expect(conflicted.getByTestId("conflict-sentence")).toContainText(
+      /Also bound to Open settings\..* wins \(first match\)\./,
+    );
+    await expect(row(page, "settings.open")).toHaveClass(
+      /vault-hotkeys__row--conflict/,
+    );
+
+    // Filter chips carry counts; Customised lists the edited command.
+    await expect(
+      page.getByRole("button", { name: /^Customised/ }),
+    ).toContainText("1");
+    await page.getByRole("button", { name: /^Customised/ }).click();
+    await expect(page.locator(".vault-hotkeys__row")).toHaveCount(1);
+    await page.getByRole("button", { name: /^All/ }).click();
+
+    // Reset all asks for a second click, then restores every default.
+    const resetAll = page.getByRole("button", { name: /^Reset all/ });
+    await resetAll.click();
+    await expect(
+      page.getByRole("button", { name: /^Reset 1\? Click again/ }),
+    ).toBeVisible();
+    expect((await prefs(page)).hotkeys["vault.newDrawing"]).toBeDefined();
+    await page.getByRole("button", { name: /^Reset 1\?/ }).click();
+    await expect(chips(page, "vault.newDrawing")).toHaveCount(1);
+    expect((await prefs(page)).hotkeys?.["vault.newDrawing"]).toBeUndefined();
+    await expect(page.getByRole("button", { name: /^Conflicts/ })).toHaveCount(
+      0,
+    );
+  });
 
   test("binding Cmd/Ctrl+, to New drawing shows the conflicts badge and filter", async ({
     page,

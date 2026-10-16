@@ -331,32 +331,35 @@ const keyLabel = (key: string, mac: boolean) => {
   return /^Numpad\d$/.test(key) ? `Num ${key.slice(6)}` : key;
 };
 
-/** Display text: mac "⌘⇧=", others "Ctrl+Shift+=". */
-export function formatChord(chord: Chord, platform: Platform): string {
+/** The keys of a chord one by one, for key caps: ["⇧", "⌘", "L"] or ["Ctrl", "L"]. */
+export function formatChordParts(chord: Chord, platform: Platform): string[] {
   const parts = parseParts(chord);
   if (!parts) {
-    return chord;
+    return [chord];
   }
   const mac = platform === "mac";
   const label = keyLabel(parts.key, mac);
   const { mods } = parts;
-  if (mac) {
-    // Mod and Meta are both Cmd here; Ctrl stays Control.
-    const symbols = [
-      mods.has("Ctrl") && "⌃",
-      mods.has("Alt") && "⌥",
-      mods.has("Shift") && "⇧",
-      (mods.has("Mod") || mods.has("Meta")) && "⌘",
-    ].filter(Boolean);
-    return `${symbols.join("")}${label}`;
-  }
-  const names = [
-    (mods.has("Mod") || mods.has("Ctrl")) && "Ctrl",
-    mods.has("Alt") && "Alt",
-    mods.has("Shift") && "Shift",
-    mods.has("Meta") && "Meta",
-  ].filter(Boolean);
-  return [...names, label].join("+");
+  const names = mac
+    ? [
+        mods.has("Ctrl") && "⌃",
+        mods.has("Alt") && "⌥",
+        mods.has("Shift") && "⇧",
+        // Mod and Meta are both Cmd here; Ctrl stays Control.
+        (mods.has("Mod") || mods.has("Meta")) && "⌘",
+      ]
+    : [
+        (mods.has("Mod") || mods.has("Ctrl")) && "Ctrl",
+        mods.has("Alt") && "Alt",
+        mods.has("Shift") && "Shift",
+        mods.has("Meta") && "Meta",
+      ];
+  return [...names.filter((n): n is string => !!n), label];
+}
+
+/** Display text: mac "⌘⇧=", others "Ctrl+Shift+=". */
+export function formatChord(chord: Chord, platform: Platform): string {
+  return formatChordParts(chord, platform).join(platform === "mac" ? "" : "+");
 }
 
 /**

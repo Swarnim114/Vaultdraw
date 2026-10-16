@@ -164,3 +164,17 @@ export function useCommandDispatcher(
 
   return { run, isAvailable, platform };
 }
+
+/**
+ * Drops every hotkey override except the ids `keep` accepts (Reset all keeps
+ * the drawing shortcuts, which are not defaults of any command).
+ */
+export function resetHotkeyOverrides(
+  keep: (id: string) => boolean,
+  win?: Window | null,
+): void {
+  const next = Object.fromEntries(
+    Object.entries(getPreferences(win).hotkeys).filter(([id]) => keep(id)),
+  );
+  updatePreferences({ hotkeys: next }, win);
+}

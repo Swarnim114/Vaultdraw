@@ -75,7 +75,7 @@ describe("Hotkeys page: Drawing shortcuts", () => {
       );
     });
     expect(getPreferences(window).hotkeys[ID]).toEqual([]);
-    expect(within(section).getByText("Press a key…")).toBeInTheDocument();
+    expect(within(section).getByText("Press keys…")).toBeInTheDocument();
     fireEvent.keyDown(window, {
       code: "Digit1",
       key: "1",

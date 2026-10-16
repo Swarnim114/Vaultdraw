@@ -100,10 +100,10 @@ describe("Hotkeys settings page", () => {
   it("records a new binding and removing/resetting restores the defaults", () => {
     openPage();
     start("New drawing");
-    expect(screen.getByText("Press a key…")).toBeInTheDocument();
+    expect(screen.getByText("Press keys…")).toBeInTheDocument();
     press({ code: "KeyJ", key: "j", ...MOD });
     expect(hotkeys()["vault.newDrawing"]).toEqual(["Mod+N", "Mod+J"]);
-    expect(screen.queryByText("Press a key…")).toBeNull();
+    expect(screen.queryByText("Press keys…")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -181,7 +181,7 @@ describe("Hotkeys settings page", () => {
     start("New drawing");
     expect(isDispatcherPaused()).toBe(true);
     press({ code: "Escape", key: "Escape" });
-    expect(screen.queryByText("Press a key…")).toBeNull();
+    expect(screen.queryByText("Press keys…")).toBeNull();
     expect(isDispatcherPaused()).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
     expect(hotkeys()["vault.newDrawing"]).toBeUndefined();
@@ -191,7 +191,7 @@ describe("Hotkeys settings page", () => {
     openPage();
     start("New drawing");
     press({ code: "ShiftLeft", key: "Shift", shiftKey: true });
-    expect(screen.getByText("Press a key…")).toBeInTheDocument();
+    expect(screen.getByText("Press keys…")).toBeInTheDocument();
     cleanup();
     expect(isDispatcherPaused()).toBe(false);
   });
@@ -205,24 +205,31 @@ describe("Hotkeys settings page", () => {
     press(quit);
     expect(screen.getByRole("alert").textContent).toMatch(/^Can't use .+: .+/);
     expect(hotkeys()["vault.newDrawing"]).toBeUndefined();
-    expect(screen.getByText("Press a key…")).toBeInTheDocument();
+    expect(screen.getByText("Press keys…")).toBeInTheDocument();
   });
 
-  it("flags conflicts: count chip, notice and a red chip with a tooltip", () => {
+  it("flags conflicts: count chip, red keys and a sentence saying which wins", () => {
     openPage();
     expect(screen.queryByRole("button", { name: /^Conflicts/ })).toBeNull();
     start("New drawing");
     press({ code: "Comma", key: ",", ...MOD });
     expect(hotkeys()["vault.newDrawing"]).toEqual(["Mod+N", "Mod+Comma"]);
-    expect(screen.getByRole("status").textContent).toBe("2 conflicts");
     const chip = screen.getByRole("button", { name: /^Conflicts/ });
     expect(chip.textContent).toContain("2");
-    const red = document.querySelectorAll('[data-conflict="true"]');
-    expect(red).toHaveLength(2);
-    const titles = [...red].map((el) => el.getAttribute("title"));
+    expect(document.querySelectorAll('[data-conflict="true"]')).toHaveLength(2);
+    const sentences = [
+      ...document.querySelectorAll('[data-testid="conflict-sentence"]'),
+    ].map((el) => el.textContent);
+    expect(sentences).toHaveLength(2);
     expect(
-      titles.some((t) => t?.includes("Also bound to: Open settings")),
+      sentences.some((t) => t?.includes("Also bound to Open settings.")),
     ).toBe(true);
+    expect(sentences.every((t) => /wins \(first match\)/.test(t ?? ""))).toBe(
+      true,
+    );
+    expect(
+      document.querySelectorAll(".vault-hotkeys__row--conflict"),
+    ).toHaveLength(2);
     fireEvent.click(chip);
     expect(screen.getByText("Open settings")).toBeInTheDocument();
     expect(screen.queryByText("Save drawing")).toBeNull();

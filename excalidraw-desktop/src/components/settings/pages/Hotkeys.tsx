@@ -6,15 +6,12 @@ import {
   parseDrawingOpenCommandId,
 } from "../../../commands/drawingCommands";
 import { pauseDispatcher } from "../../../commands/dispatcher";
-import {
-  conflictCount,
-  findConflicts,
-  type Conflict,
-} from "../../../commands/conflicts";
+import { conflictCount, findConflicts } from "../../../commands/conflicts";
 import {
   chordFromEvent,
   detectPlatform,
   formatChord,
+  formatChordParts,
 } from "../../../commands/keys";
 import {
   effectiveKeys,
@@ -23,18 +20,28 @@ import {
 } from "../../../commands/keymap";
 import { reservedReason } from "../../../commands/reserved";
 import {
+  resetHotkeyOverrides,
   setHotkeyOverride,
   useHotkeyOverrides,
 } from "../../../commands/useCommands";
 import { openConfigDir } from "../../../vault/settingsSync";
+import { IconAlert, IconKeyboard, IconPlus, IconRefresh } from "../../Icons";
 import { getSettingSchema } from "../schema";
 import { useSettings, type SettingControls } from "../SettingsContext";
+
+import {
+  conflictSentence,
+  FILTERS,
+  filterCounts,
+  filterInfos,
+  groupByCategory,
+  type FilterId,
+  type HotkeyInfo,
+} from "./hotkeysView";
 
 import "./Hotkeys.css";
 
 import type { Chord, CommandDefinition } from "../../../commands/types";
-
-type FilterId = "all" | "assigned" | "customised" | "unassigned" | "conflicts";
 
 /** What the next key press is captured for: a command row, or the filter box. */
 type Recording = { kind: "command"; id: string } | { kind: "filter" } | null;
@@ -43,17 +50,6 @@ const SORTED: readonly CommandDefinition[] = [...COMMANDS].sort(
   (a, b) =>
     a.category.localeCompare(b.category) || a.title.localeCompare(b.title),
 );
-
-const describeConflict = (c: Conflict): string => {
-  switch (c.kind) {
-    case "command":
-      return `Also bound to: ${c.title}`;
-    case "excalidraw":
-      return `Excalidraw: ${c.label}`;
-    default:
-      return c.reason.charAt(0).toUpperCase() + c.reason.slice(1);
-  }
-};
 
 const errorText = (err: unknown) =>
   err instanceof Error ? err.message : String(err);
@@ -145,42 +141,42 @@ const HotkeysPage = () => {
     setRecording(next);
   };
 
-  const rows = useMemo(() => {
-    const needle = text.trim().toLocaleLowerCase();
+  // Per-command facts, computed once per overrides change (not per keystroke).
+  const infos = useMemo<HotkeyInfo[]>(() => {
     const drawings = commands
       .filter((c) => parseDrawingOpenCommandId(c.id) !== null)
       .sort((a, b) => a.title.localeCompare(b.title));
-    return [...SORTED, ...drawings].filter((command) => {
-      const keys = effectiveKeys(command, overrides, platform);
-      if (chordFilter && !keys.includes(chordFilter)) {
-        return false;
-      }
-      if (
-        needle &&
-        !`${command.title}\n${command.id}\n${command.category}`
-          .toLocaleLowerCase()
-          .includes(needle)
-      ) {
-        return false;
-      }
-      switch (chip) {
-        case "assigned":
-          return keys.length > 0;
-        case "unassigned":
-          return keys.length === 0;
-        case "customised":
-          return isCustomised(command, overrides, platform);
-        case "conflicts":
-          return conflicts.has(command.id);
-        default:
-          return true;
-      }
-    });
-  }, [text, chordFilter, chip, commands, overrides, platform, conflicts]);
+    return [...SORTED, ...drawings].map((command) => ({
+      command,
+      keys: effectiveKeys(command, overrides, platform),
+      customised: isCustomised(command, overrides, platform),
+      conflicted: conflicts.has(command.id),
+    }));
+  }, [commands, overrides, platform, conflicts]);
+  // The Conflicts chip counts conflicting (command, chord) pairs, as before.
+  const counts = useMemo(
+    () => ({ ...filterCounts(infos), conflicts: conflictTotal }),
+    [infos, conflictTotal],
+  );
+  const rank = useMemo(
+    () => new Map(commands.map((c, i) => [c.id, i] as const)),
+    [commands],
+  );
+
   const isDrawing = (c: CommandDefinition) =>
     parseDrawingOpenCommandId(c.id) !== null;
-  const commandRows = rows.filter((c) => !isDrawing(c));
-  const drawingRows = rows.filter(isDrawing);
+  const { groups, drawingRows } = useMemo(() => {
+    const shown = filterInfos(infos, {
+      text,
+      chord: chordFilter,
+      filter: chip,
+    });
+    return {
+      groups: groupByCategory(shown.filter((i) => !isDrawing(i.command))),
+      drawingRows: shown.filter((i) => isDrawing(i.command)),
+    };
+  }, [infos, text, chordFilter, chip]);
+  const commandRowCount = groups.reduce((n, g) => n + g.infos.length, 0);
 
   const addDrawingShortcut = async () => {
     if (!pickDrawing) {
@@ -197,30 +193,54 @@ const HotkeysPage = () => {
     startRecording({ kind: "command", id });
   };
 
-  const chips: { id: FilterId; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "assigned", label: "Assigned" },
-    { id: "customised", label: "Customised" },
-    { id: "unassigned", label: "Unassigned" },
-  ];
-  if (conflictTotal > 0 || chip === "conflicts") {
-    chips.push({ id: "conflicts", label: "Conflicts" });
-  }
+  const [confirmReset, setConfirmReset] = useState(false);
+  const resetAll = () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
+    }
+    resetHotkeyOverrides((id) => parseDrawingOpenCommandId(id) !== null, win);
+    setConfirmReset(false);
+  };
 
-  const renderRow = (command: CommandDefinition) => {
-    const keys = effectiveKeys(command, overrides, platform);
+  const pending = (
+    <button
+      type="button"
+      className="vault-hotkeys__pending"
+      aria-label="Cancel recording"
+      onClick={() => setRecording(null)}
+    >
+      <IconKeyboard width="13" height="13" aria-hidden="true" />
+      <span>Press keys…</span>
+      <kbd>Esc</kbd>
+      <span>cancels</span>
+    </button>
+  );
+
+  const renderRow = ({ command, keys, customised }: HotkeyInfo) => {
     const perChord = conflicts.get(command.id);
+    const sentence = conflictSentence(command, perChord, rank, platform);
     const recordingHere =
       recording?.kind === "command" && recording.id === command.id;
+    const addLabel = `Add hotkey for ${command.title}`;
     return (
       <li
         key={command.id}
-        className="vault-hotkeys__row"
+        className={`vault-hotkeys__row${
+          sentence ? " vault-hotkeys__row--conflict" : ""
+        }`}
         data-command-id={command.id}
       >
         <div className="vault-hotkeys__name">
           <span className="vault-hotkeys__title">{command.title}</span>
-          <span className="vault-hotkeys__category">{command.category}</span>
+          {customised && !isDrawing(command) && (
+            <span
+              className="vault-hotkeys__dot"
+              title="Customised"
+              role="img"
+              aria-label="Customised"
+            />
+          )}
         </div>
         <div className="vault-hotkeys__keys">
           {keys.map((chord) => {
@@ -229,16 +249,16 @@ const HotkeysPage = () => {
             return (
               <span
                 key={chord}
-                className={`vault-hotkeys__chip-key ${
-                  found ? "vault-hotkeys__chip-key--conflict" : ""
-                }`}
-                title={found?.map(describeConflict).join("\n")}
+                className="vault-hotkeys__chip-key"
                 data-conflict={found ? "true" : undefined}
+                title={label}
               >
-                <kbd>{label}</kbd>
+                {formatChordParts(chord, platform).map((part, i) => (
+                  <kbd key={i}>{part}</kbd>
+                ))}
                 <button
                   type="button"
-                  className="vault-hotkeys__icon-btn"
+                  className="vault-hotkeys__remove"
                   aria-label={`Remove ${label} from ${command.title}`}
                   onClick={() =>
                     setHotkeyOverride(
@@ -257,17 +277,8 @@ const HotkeysPage = () => {
               </span>
             );
           })}
-          {recordingHere && (
-            <button
-              type="button"
-              className="vault-hotkeys__pending"
-              aria-label="Cancel recording"
-              onClick={() => setRecording(null)}
-            >
-              Press a key…
-            </button>
-          )}
-          {isDrawing(command) ? (
+          {recordingHere && pending}
+          {!recordingHere && isDrawing(command) && (
             <button
               type="button"
               className="vault-hotkeys__icon-btn"
@@ -277,37 +288,60 @@ const HotkeysPage = () => {
             >
               ⌫
             </button>
-          ) : (
-            isCustomised(command, overrides, platform) && (
+          )}
+          {!recordingHere && customised && !isDrawing(command) && (
+            <button
+              type="button"
+              className="vault-hotkeys__icon-btn vault-hotkeys__reveal"
+              aria-label={`Reset ${command.title} to default`}
+              title="Reset to default"
+              onClick={() => setHotkeyOverride(command.id, null, win)}
+            >
+              <IconRefresh width="13" height="13" aria-hidden="true" />
+            </button>
+          )}
+          {!recordingHere &&
+            (keys.length === 0 ? (
               <button
                 type="button"
-                className="vault-hotkeys__icon-btn"
-                aria-label={`Reset ${command.title} to default`}
-                title="Reset to default"
-                onClick={() => setHotkeyOverride(command.id, null, win)}
+                className="vault-hotkeys__add vault-hotkeys__add--text"
+                aria-label={addLabel}
+                onClick={() =>
+                  startRecording({ kind: "command", id: command.id })
+                }
               >
-                ↺
+                <IconPlus width="12" height="12" aria-hidden="true" />
+                <span>Add shortcut</span>
               </button>
-            )
-          )}
-          <button
-            type="button"
-            className="vault-hotkeys__icon-btn vault-hotkeys__add"
-            aria-label={`Add hotkey for ${command.title}`}
-            title="Add hotkey"
-            onClick={() =>
-              recordingHere
-                ? setRecording(null)
-                : startRecording({ kind: "command", id: command.id })
-            }
-          >
-            +
-          </button>
+            ) : (
+              <button
+                type="button"
+                className="vault-hotkeys__icon-btn vault-hotkeys__reveal"
+                aria-label={addLabel}
+                title="Add shortcut"
+                onClick={() =>
+                  startRecording({ kind: "command", id: command.id })
+                }
+              >
+                <IconPlus width="12" height="12" aria-hidden="true" />
+              </button>
+            ))}
         </div>
-        {recordingHere && refusal && (
-          <div className="vault-hotkeys__refusal" role="alert">
+        {recordingHere && refusal ? (
+          <div className="vault-hotkeys__warn" role="alert">
+            <IconAlert width="12" height="12" aria-hidden="true" />
             {refusal}
           </div>
+        ) : (
+          sentence && (
+            <div
+              className="vault-hotkeys__warn"
+              data-testid="conflict-sentence"
+            >
+              <IconAlert width="12" height="12" aria-hidden="true" />
+              {sentence}
+            </div>
+          )
         )}
       </li>
     );
@@ -326,20 +360,16 @@ const HotkeysPage = () => {
 
   return (
     <div className="vault-hotkeys" data-setting-id="hotkeys-list">
-      {conflictTotal > 0 && (
-        <div className="vault-hotkeys__notice" role="status">
-          {conflictTotal} {conflictTotal === 1 ? "conflict" : "conflicts"}
-        </div>
-      )}
-
       <div className="vault-hotkeys__toolbar">
         <div className="vault-hotkeys__filter">
           {chordFilter ? (
             <span className="vault-hotkeys__chip-key">
-              <kbd>{formatChord(chordFilter, platform)}</kbd>
+              {formatChordParts(chordFilter, platform).map((part, i) => (
+                <kbd key={i}>{part}</kbd>
+              ))}
               <button
                 type="button"
-                className="vault-hotkeys__icon-btn"
+                className="vault-hotkeys__remove"
                 aria-label="Clear key filter"
                 onClick={() => setChordFilter(null)}
               >
@@ -347,12 +377,12 @@ const HotkeysPage = () => {
               </button>
             </span>
           ) : capturing ? (
-            <span className="vault-hotkeys__pending">Press a key…</span>
+            pending
           ) : (
             <input
               type="search"
               className="vault-hotkeys__input"
-              placeholder="Filter commands"
+              placeholder="Filter commands or press a shortcut"
               aria-label="Filter hotkeys"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -360,49 +390,72 @@ const HotkeysPage = () => {
               autoComplete="off"
             />
           )}
+          <button
+            type="button"
+            className={`vault-hotkeys__record ${
+              capturing ? "vault-hotkeys__record--on" : ""
+            }`}
+            aria-pressed={capturing}
+            aria-label="Record keys"
+            title="Record keys: show every command bound to the next key you press"
+            onClick={() =>
+              capturing
+                ? setRecording(null)
+                : startRecording({ kind: "filter" })
+            }
+          >
+            <IconKeyboard width="14" height="14" aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          className={`vault-btn vault-btn--sm vault-hotkeys__record ${
-            capturing ? "vault-hotkeys__record--on" : ""
-          }`}
-          aria-pressed={capturing}
-          aria-label="Record keys"
-          title="Record keys: show every command bound to the next key you press"
-          onClick={() =>
-            capturing ? setRecording(null) : startRecording({ kind: "filter" })
-          }
-        >
-          ⌨
-        </button>
       </div>
 
       <div className="vault-hotkeys__chips" role="group" aria-label="Show">
-        {chips.map(({ id, label }) => (
+        {FILTERS.filter(
+          (f) => f.id !== "conflicts" || counts.conflicts > 0 || chip === f.id,
+        ).map(({ id, label }) => (
           <button
             key={id}
             type="button"
             className={`vault-hotkeys__filter-chip ${
               chip === id ? "vault-hotkeys__filter-chip--active" : ""
-            }`}
+            } ${id === "conflicts" ? "vault-hotkeys__filter-chip--bad" : ""}`}
             aria-pressed={chip === id}
             onClick={() => setChip(id)}
           >
             {label}
-            {id === "conflicts" && (
-              <span className="vault-hotkeys__badge">{conflictTotal}</span>
-            )}
+            <span className="vault-hotkeys__badge">{counts[id]}</span>
           </button>
         ))}
+        <button
+          type="button"
+          className="vault-hotkeys__reset-all"
+          disabled={counts.customised === 0 && !confirmReset}
+          onClick={resetAll}
+          onBlur={() => setConfirmReset(false)}
+        >
+          <IconRefresh width="13" height="13" aria-hidden="true" />
+          {confirmReset
+            ? `Reset ${counts.customised}? Click again`
+            : "Reset all"}
+        </button>
       </div>
 
       <ul className="vault-hotkeys__list" aria-label="Hotkeys">
-        {commandRows.length === 0 && drawingRows.length === 0 && (
+        {commandRowCount === 0 && drawingRows.length === 0 && (
           <li className="vault-settings-empty" role="status">
             No commands match.
           </li>
         )}
-        {commandRows.map(renderRow)}
+        {groups.map((group) => [
+          <li
+            key={`group:${group.category}`}
+            className="vault-hotkeys__group"
+            role="presentation"
+          >
+            {group.category}
+          </li>,
+          ...group.infos.map(renderRow),
+        ])}
       </ul>
 
       {(pickDrawing || drawingRows.length > 0) && (
