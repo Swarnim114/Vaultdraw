@@ -1,5 +1,11 @@
 /** Report-only: Tags pane render and sort toggle with 2,000 tags. */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { describe, it } from "vitest";
 
 import { TagsPanel } from "../components/tags/TagsPanel";
@@ -35,8 +41,11 @@ describe("tags pane bench (report only)", () => {
       cleanup();
     }
     const med = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
+    // eslint-disable-next-line no-console
     console.log(
-      `tags pane 2000 tags: mount p50 ${med(mount).toFixed(1)} ms, sort toggle p50 ${med(sort).toFixed(1)} ms`,
+      `tags pane 2000 tags: mount p50 ${med(mount).toFixed(
+        1,
+      )} ms, sort toggle p50 ${med(sort).toFixed(1)} ms`,
     );
   });
 });

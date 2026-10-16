@@ -22,7 +22,12 @@ import {
   type TagCount,
   type TagSort,
 } from "../../tags/types";
-import { IconChevronDown, IconChevronRight, IconMore, IconSort } from "../Icons";
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconMore,
+  IconSort,
+} from "../Icons";
 
 import "./TagsPanel.css";
 
@@ -88,9 +93,7 @@ export const TagsPanel = ({
 }: TagsPanelProps) => {
   const [saved] = useState(() => (vaultKey ? loadPaneState(vaultKey) : {}));
   const [open, setOpen] = useState(saved.open ?? true);
-  const [sortChoice, setSortChoice] = useState<TagSort | undefined>(
-    saved.sort,
-  );
+  const [sortChoice, setSortChoice] = useState<TagSort | undefined>(saved.sort);
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(saved.collapsed),
   );
@@ -98,7 +101,9 @@ export const TagsPanel = ({
   const [scrollTop, setScrollTop] = useState(0);
   const [focusNonce, setFocusNonce] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const listId = useRef(`tags-${Math.random().toString(36).slice(2, 8)}`).current;
+  const listId = useRef(
+    `tags-${Math.random().toString(36).slice(2, 8)}`,
+  ).current;
 
   const sort = sortChoice ?? defaultSort;
   const tree = useMemo(() => buildTagTree(tags, sort), [tags, sort]);

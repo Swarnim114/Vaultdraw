@@ -131,7 +131,8 @@ describe("virtualisation", () => {
 });
 
 describe("keyboard", () => {
-  const key = (k: string) => fireEvent.keyDown(screen.getByRole("tree"), { key: k });
+  const key = (k: string) =>
+    fireEvent.keyDown(screen.getByRole("tree"), { key: k });
   const cursor = () =>
     screen
       .getAllByRole("treeitem")
@@ -241,7 +242,9 @@ describe("dock chips", () => {
     tagStore.set(TAGS, { "Notes.excalidraw": ["DSA/Graphs", "misc"] });
     render(<DrawingTags path="Notes.excalidraw" />);
     const box = within(screen.getByLabelText("Drawing tags"));
-    fireEvent.click(box.getByRole("button", { name: "Filter by tag DSA/Graphs" }));
+    fireEvent.click(
+      box.getByRole("button", { name: "Filter by tag DSA/Graphs" }),
+    );
     expect(filter).toHaveBeenCalledWith("dsa/graphs");
     off();
     expect(() => applyTagFilter("x")).not.toThrow();

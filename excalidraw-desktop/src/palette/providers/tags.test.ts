@@ -23,8 +23,8 @@ describe("tags provider", () => {
   });
 
   it("is empty without tags", () => {
-    expect(createTagsProvider({ tags: () => [], apply: vi.fn() }).items()).toEqual(
-      [],
-    );
+    expect(
+      createTagsProvider({ tags: () => [], apply: vi.fn() }).items(),
+    ).toEqual([]);
   });
 });
