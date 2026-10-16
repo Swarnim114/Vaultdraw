@@ -66,6 +66,23 @@ const addMissingFiles = (
   }
 };
 
+const toInitialData = (
+  version: LoadedVersion,
+  initialViewport: VersionPreviewProps["initialViewport"],
+) => ({
+  elements: version.elements,
+  files: version.files,
+  appState: {
+    ...version.appState,
+    ...(initialViewport && {
+      scrollX: initialViewport.scrollX,
+      scrollY: initialViewport.scrollY,
+      zoom: { value: initialViewport.zoom as NormalizedZoomValue },
+    }),
+  },
+  scrollToContent: !initialViewport,
+});
+
 const VersionPreview = ({
   version,
   initialViewport,
@@ -82,24 +99,13 @@ const VersionPreview = ({
   const callbacks = useRef({ onApi, onSelectionChange, onSaveFile });
   callbacks.current = { onApi, onSelectionChange, onSaveFile };
 
-  // The first version goes in as initialData: one pass, no empty flash.
-  const [initialData] = useState(() =>
-    version
-      ? {
-          elements: version.elements,
-          files: version.files,
-          appState: {
-            ...version.appState,
-            ...(initialViewport && {
-              scrollX: initialViewport.scrollX,
-              scrollY: initialViewport.scrollY,
-              zoom: { value: initialViewport.zoom as NormalizedZoomValue },
-            }),
-          },
-          scrollToContent: !initialViewport,
-        }
-      : null,
-  );
+  // The first non-null version goes in as initialData: one pass, no empty
+  // flash. Taken lazily, so a mount before the version has loaded still works.
+  const initialRef = useRef<ReturnType<typeof toInitialData> | null>(null);
+  if (!initialRef.current && version) {
+    initialRef.current = toInitialData(version, initialViewport);
+  }
+  const initialData = initialRef.current;
   if (version && appliedId.current === null && initialData) {
     appliedId.current = version.id;
   }

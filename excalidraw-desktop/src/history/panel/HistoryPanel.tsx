@@ -255,11 +255,17 @@ const HistoryPanel = ({
   );
 
   // Leaving the preview also leaves time travel, or it would reselect at once.
-  const backToCurrent = useCallback(() => {
-    select(null);
-    setMode("side");
-    listRef.current?.focus({ preventScroll: true });
-  }, [select, setMode]);
+  // The timeline keeps its own focus (End/Home to "Current" then more keys).
+  const backToCurrent = useCallback(
+    (focusList = true) => {
+      select(null);
+      setMode("side");
+      if (focusList) {
+        listRef.current?.focus({ preventScroll: true });
+      }
+    },
+    [select, setMode],
+  );
 
   const step = useCallback(
     (delta: 1 | -1) => {
@@ -413,7 +419,7 @@ const HistoryPanel = ({
       selectedId={selectedId}
       thumbs={thumbs}
       onScrub={onScrub}
-      onSettle={(id) => (id ? select(id) : backToCurrent())}
+      onSettle={(id) => (id ? select(id) : backToCurrent(false))}
     />
   );
   const target =
@@ -494,7 +500,7 @@ const HistoryPanel = ({
           onSelectionChange={setSelectionCount}
           onRestore={openDialog}
           onCopy={copySelection}
-          onBack={backToCurrent}
+          onBack={() => backToCurrent()}
           timeline={timeline}
         />
       )}
