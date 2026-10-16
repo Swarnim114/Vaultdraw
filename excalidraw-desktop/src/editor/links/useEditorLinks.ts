@@ -22,6 +22,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { linkTargetFor, shapeLinkValue } from "../../links/format";
 import { createResolver } from "../../links/resolve";
+import { DEFAULT_TAGS_SETTINGS } from "../../tags/types";
 
 import { applyEdits as applyEditsTo, setElementLinks } from "./applyEdits";
 import { CmdHoverOverlay } from "./CmdHoverOverlay";
@@ -40,6 +41,7 @@ import type {
   Resolution,
   VaultLinks,
 } from "../../links/types";
+import type { TagsSettings } from "../../tags/types";
 import type { LinkOpenCallbacks } from "./onLinkOpen";
 import type { WikiAutocomplete } from "./wikiAutocomplete";
 import type { TextLike } from "./textLinkHitTest";
@@ -63,6 +65,8 @@ export type UseEditorLinksOptions = {
   handle?: string | null;
   /** Palette recents (`drawing:<path>` keys) to rank autocomplete rows. */
   getRecent?: () => readonly string[];
+  /** `tags.autocomplete`: the `#` popup (default: on). */
+  tagsSettings?: TagsSettings;
 };
 
 const LinkSuggest = lazy(() =>
@@ -135,6 +139,8 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
             getSettings: () => latest.current.settings,
             getCurrentPath: () => latest.current.currentPath,
             getRecent: () => latest.current.getRecent?.() ?? [],
+            getTagsSettings: () =>
+              latest.current.tagsSettings ?? DEFAULT_TAGS_SETTINGS,
             onCreate: (t) => latest.current.callbacks.onCreate(t),
           }),
         );
@@ -144,7 +150,9 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
       cancelled = true;
     };
   }, [containerEl]);
-  const autocompleteOn = opts.settings.autocomplete;
+  const autocompleteOn =
+    opts.settings.autocomplete ||
+    (opts.tagsSettings ?? DEFAULT_TAGS_SETTINGS).autocomplete;
   useEffect(() => {
     if (!autocomplete || !autocompleteOn) {
       return undefined;

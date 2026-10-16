@@ -35,7 +35,26 @@ export function highlightRange(
   return out;
 }
 
+function TagRow({ row }: { row: SuggestRow }) {
+  return (
+    <>
+      <span className="vault-suggest__name vault-suggest__name--tag">
+        {highlightRange(
+          row.target,
+          0,
+          row.target.length,
+          new Set(row.positions),
+        )}
+      </span>
+      <span className="vault-suggest__count">{row.count}</span>
+    </>
+  );
+}
+
 function Row({ row }: { row: SuggestRow }) {
+  if (row.count !== undefined) {
+    return <TagRow row={row} />;
+  }
   const path = row.path;
   const end = EXT.test(path) ? path.length - ".excalidraw".length : path.length;
   const slash = path.lastIndexOf("/") + 1;
@@ -54,7 +73,7 @@ function Row({ row }: { row: SuggestRow }) {
   );
 }
 
-/** The `[[` popup. Never takes focus: items act on mousedown. */
+/** The `[[` and `#` popup. Never takes focus: items act on mousedown. */
 export function LinkSuggest({ controller }: { controller: WikiAutocomplete }) {
   const state = useSyncExternalStore(
     (cb) => controller.subscribe(() => cb()),
@@ -76,7 +95,7 @@ export function LinkSuggest({ controller }: { controller: WikiAutocomplete }) {
     <div
       className="vault-suggest"
       role="listbox"
-      aria-label="Link suggestions"
+      aria-label="Suggestions"
       tabIndex={-1}
       aria-activedescendant={`vault-suggest-${state.selected}`}
       style={style}

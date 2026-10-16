@@ -50,6 +50,17 @@
   color: var(--vault-text-faint);
 }
 
+.vault-suggest__name--tag {
+  max-width: none;
+  min-width: 0;
+}
+
+.vault-suggest__count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--vault-text-faint);
+}
+
 .vault-suggest mark {
   background: transparent;
   color: var(--vault-primary);

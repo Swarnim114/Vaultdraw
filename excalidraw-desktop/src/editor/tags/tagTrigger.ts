@@ -3,7 +3,7 @@
  * before the caret (same boundary rules as src/tags/grammar.ts), ranks the
  * vault's tags, and inserts `#Display`.
  */
-import { MAX_TAG_CHARS } from "../../tags/grammar";
+import { MAX_TAG_CHARS, OPENERS } from "../../tags/grammar";
 import { tagStore } from "../../tags/tagStore";
 import { DEFAULT_TAGS_SETTINGS } from "../../tags/types";
 
@@ -22,8 +22,6 @@ export type OpenTag = {
 };
 
 const MAX_ROWS = 8;
-// Same set as the grammar's OPENERS (not exported there).
-const OPENERS = new Set(["(", "[", "{", '"', "'", "<", ",", ";", ":"]);
 const BODY_CHAR = /[\p{Alphabetic}\p{N}_\-/̀-ͯ]/u;
 const START_CHAR = /^[\p{Alphabetic}\p{N}_]/u;
 

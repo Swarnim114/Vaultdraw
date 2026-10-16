@@ -11,12 +11,14 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { registerCommandHandlers } from "../../commands/handlerRegistry";
 import { wikiLink } from "../../links/format";
 import { DEFAULT_LINKS_SETTINGS } from "../../links/types";
+import { DEFAULT_TAGS_SETTINGS } from "../../tags/types";
 
 import { captureCaret, insertLinkText } from "./insertLink";
 import { useEditorLinks } from "./useEditorLinks";
 
 import type { MutableRefObject } from "react";
 
+import type { TagsSettings } from "../../tags/types";
 import type { ElementEdit, LinksSettings, VaultLinks } from "../../links/types";
 import type { EditorLinksCallbacks } from "./useEditorLinks";
 
@@ -39,10 +41,16 @@ export type EditorLinksWiring = {
   remeasureIds?: readonly string[] | null;
   onRemeasured?(): void;
   getRecent?: () => readonly string[];
+  /** `tags.autocomplete`. Omitted: default (on). Wire the real settings here. */
+  tagsSettings?: TagsSettings;
 };
 
 const NO_NAMES: readonly string[] = [];
 const OFF: LinksSettings = { ...DEFAULT_LINKS_SETTINGS, autocomplete: false };
+const TAGS_OFF: TagsSettings = {
+  ...DEFAULT_TAGS_SETTINGS,
+  autocomplete: false,
+};
 const NOOP = () => {};
 const NO_CALLBACKS: EditorLinksCallbacks = {
   openDrawing: NOOP,
@@ -65,6 +73,7 @@ export function useVaultEditorLinks(
     links: wiring?.links,
     handle: wiring?.handle,
     getRecent: wiring?.getRecent,
+    tagsSettings: wiring ? wiring.tagsSettings : TAGS_OFF,
   });
   const live = useRef({ controller, wiring, api, containerEl });
   live.current = { controller, wiring, api, containerEl };

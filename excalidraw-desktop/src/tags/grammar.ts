@@ -12,7 +12,7 @@ export type TagMatch = {
   display: string;
 };
 
-const OPENERS = new Set(["(", "[", "{", '"', "'", "<", ",", ";", ":"]);
+export const OPENERS = new Set(["(", "[", "{", '"', "'", "<", ",", ";", ":"]);
 const BODY_RUN = /[\p{Alphabetic}\p{N}_\-/̀-ͯ]*/uy;
 const COMBINING_MARKS = /\p{M}/gu;
 

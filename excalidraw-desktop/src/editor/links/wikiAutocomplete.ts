@@ -1,5 +1,6 @@
 /**
- * `[[` autocomplete while editing text. Cost model (the hard budget):
+ * `[[` and `#` autocomplete while editing text: one engine, one `input`
+ * listener, a small list of triggers. Cost model (the hard budget):
  * - idle: one childList MutationObserver on the editor container;
  * - while a text element is edited: one `input` listener on its textarea,
  *   which scans back from the caret on the current line (O(line), at most
@@ -11,10 +12,13 @@ import { MAX_LINK_CHARS } from "../../links/grammar";
 import { linkTargetFor, wikiLink } from "../../links/format";
 import { foldKey } from "../../links/resolve";
 
+import { createTagTrigger } from "../tags/tagTrigger";
+
 import { SuggestRanker } from "./suggestRank";
 
 import type { LinkResolver } from "../../links/resolve";
 import type { LinksSettings } from "../../links/types";
+import type { TagCount, TagsSettings } from "../../tags/types";
 
 const MAX_SCAN = MAX_LINK_CHARS + 2;
 export const MAX_SUGGESTIONS = 8;
@@ -56,9 +60,25 @@ export type SuggestRow = {
   path: string;
   /** Matched character indexes into `path`. */
   positions: number[];
-  /** What gets inserted between the brackets. */
+  /** What gets inserted (between the brackets, or `#Display`). */
   target: string;
+  /** Tag rows only: drawings carrying the tag. */
+  count?: number;
 };
+
+/** What a trigger needs: a token before the caret, rows for it, the edit. */
+export interface SuggestTrigger {
+  enabled(): boolean;
+  /** The open token ending at the caret (bounded backwards scan), or null. */
+  find(value: string, caret: number): { start: number; query: string } | null;
+  suggest(open: never): { rows: SuggestRow[]; create: string | null };
+  insert(
+    value: string,
+    caret: number,
+    open: never,
+    target: string,
+  ): InsertResult;
+}
 
 export type SuggestState = {
   rows: SuggestRow[];
@@ -163,6 +183,10 @@ export interface WikiAutocompleteDeps {
   getRecent?(): readonly string[];
   /** "Create 'x'": the app creates the drawing. */
   onCreate(target: string): void;
+  /** `tags.autocomplete` (default when omitted: DEFAULT_TAGS_SETTINGS). */
+  getTagsSettings?(): TagsSettings;
+  /** The vault's tags (default: the tag store). */
+  getTags?(): readonly TagCount[];
 }
 
 const SELECTOR = "textarea.excalidraw-wysiwyg";
@@ -170,14 +194,37 @@ const SELECTOR = "textarea.excalidraw-wysiwyg";
 export class WikiAutocomplete {
   private observer: MutationObserver | null = null;
   private textarea: HTMLTextAreaElement | null = null;
-  private open: OpenLink | null = null;
+  private open: { trigger: SuggestTrigger; found: unknown } | null = null;
   private current: SuggestState | null = null;
   private listeners = new Set<(s: SuggestState | null) => void>();
   private ranker = new SuggestRanker();
   private inserting = false;
   private cancelWarm: (() => void) | null = null;
 
-  constructor(private readonly deps: WikiAutocompleteDeps) {}
+  private readonly triggers: SuggestTrigger[];
+
+  constructor(private readonly deps: WikiAutocompleteDeps) {
+    const links: SuggestTrigger = {
+      enabled: () => deps.getSettings().autocomplete,
+      find: findOpenLink,
+      suggest: (open: OpenLink) => {
+        if (open.inLabel) {
+          return { rows: [], create: null };
+        }
+        const rows = this.rank(open.query);
+        return { rows, create: this.createName(open.query, rows) };
+      },
+      insert: (value, caret, open: OpenLink, target) =>
+        insertLink(value, caret, open, target),
+    };
+    this.triggers = [
+      links,
+      createTagTrigger({
+        getSettings: deps.getTagsSettings,
+        getTags: deps.getTags,
+      }),
+    ];
+  }
 
   get state() {
     return this.current;
@@ -266,27 +313,35 @@ export class WikiAutocomplete {
 
   private refresh() {
     const ta = this.textarea;
-    if (!ta || !this.deps.getSettings().autocomplete) {
+    if (!ta) {
       this.close();
       return;
     }
     const caret = ta.selectionStart;
-    const found =
-      caret === ta.selectionEnd ? findOpenLink(ta.value, caret) : null;
-    if (!found || found.inLabel) {
+    let trigger: SuggestTrigger | null = null;
+    let found: { start: number; query: string } | null = null;
+    if (caret === ta.selectionEnd) {
+      for (const t of this.triggers) {
+        if (t.enabled() && (found = t.find(ta.value, caret))) {
+          trigger = t;
+          break;
+        }
+      }
+    }
+    if (!trigger || !found) {
       this.close();
       return;
     }
-    this.open = found;
     const previous = this.current;
-    const rows = this.rank(found.query);
-    const create = this.createName(found.query, rows);
+    const sameTrigger = this.open?.trigger === trigger;
+    this.open = { trigger, found };
+    const { rows, create } = trigger.suggest(found as never);
     const at = caretViewportPoint(ta, caret);
     this.current = {
       rows,
       create,
       selected:
-        previous && previous.query === found.query
+        previous && sameTrigger && previous.query === found.query
           ? Math.min(previous.selected, rows.length + (create ? 1 : 0) - 1)
           : 0,
       x: at.x,
@@ -414,7 +469,12 @@ export class WikiAutocomplete {
     } else {
       return;
     }
-    const next = insertLink(ta.value, ta.selectionStart, open, target);
+    const next = open.trigger.insert(
+      ta.value,
+      ta.selectionStart,
+      open.found as never,
+      target,
+    );
     this.close();
     this.inserting = true;
     try {
