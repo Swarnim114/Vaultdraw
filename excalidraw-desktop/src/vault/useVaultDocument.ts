@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { serializeAsJSON } from "@excalidraw/excalidraw";
 
 import { flushEditorSerialization } from "../editor/editorFlush";
+import { createOutsideFallback } from "../history/outsideFallback";
 
 import {
   errorMessage,
@@ -11,6 +12,8 @@ import {
   type VaultRepository,
 } from "./types";
 import { SaveCoordinator } from "./saveCoordinator";
+
+import type { HistoryRepository } from "../history/types";
 
 export type VaultDocument = {
   id: string;
@@ -59,7 +62,7 @@ const isNotFound = (error: unknown) =>
 export const useVaultDocument = (
   repository: VaultRepository,
   vault: VaultInfo | null,
-  options?: { autosaveDelayMs?: number },
+  options?: { autosaveDelayMs?: number; history?: HistoryRepository },
 ): UseVaultDocumentResult => {
   const [document, setDocument] = useState<VaultDocument | null>(null);
   const [status, setStatus] = useState<SaveStatus>("saved");
@@ -75,6 +78,11 @@ export const useVaultDocument = (
   const repositoryRef = useRef(repository);
   const autosaveDelayMsRef = useRef(options?.autosaveDelayMs);
   autosaveDelayMsRef.current = options?.autosaveDelayMs;
+  const historyRef = useRef(options?.history);
+  historyRef.current = options?.history;
+  const [fallback] = useState(() =>
+    createOutsideFallback(() => historyRef.current),
+  );
   const setCurrentStatus = useCallback(
     (next: SaveStatus, message?: string | null) => {
       statusRef.current = next;
@@ -389,6 +397,13 @@ export const useVaultDocument = (
     ) {
       return;
     }
+    if (current.currentJson !== current.savedJson) {
+      await fallback.beforeDiscard(
+        current.handle,
+        current.path,
+        current.currentJson,
+      );
+    }
     await activate({
       ...current,
       id: `${current.handle}:${mine}:${current.path}`,
@@ -398,7 +413,7 @@ export const useVaultDocument = (
       revision: loaded.revision,
       deleted: false,
     });
-  }, [activate, setCurrentStatus]);
+  }, [activate, fallback, setCurrentStatus]);
 
   const saveCopy = useCallback(
     async (path: string) => {
@@ -625,6 +640,12 @@ export const useVaultDocument = (
             setCurrentStatus("saved", null);
             return;
           }
+          fallback.beforeOutsideChange(
+            current.handle,
+            current.path,
+            current.revision,
+            current.savedJson,
+          );
           if (current.currentJson !== current.savedJson) {
             setCurrentStatus(
               "conflict",
@@ -686,7 +707,7 @@ export const useVaultDocument = (
     };
     // `vault` is only null-checked; resubscribe on handle change, not on every new VaultInfo object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activate, repository, vault?.handle, setCurrentStatus]);
+  }, [activate, fallback, repository, vault?.handle, setCurrentStatus]);
 
   useEffect(() => {
     const previous = observedVaultHandle.current;
