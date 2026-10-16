@@ -865,13 +865,13 @@ pub(crate) async fn history_snapshot_bytes(request: tauri::ipc::Request<'_>, sta
 #[tauri::command]
 pub(crate) async fn history_restore_copy(handle: String, id: String, state: State<'_, HistoryService>) -> Result<export::RestoredCopy> {
     let vh = state.vault(&handle)?;
-    export::restore_copy(&vh, &id)
+    blocking(move || export::restore_copy(&vh, &id)).await
 }
 
 #[tauri::command]
 pub(crate) async fn history_export_file(handle: String, id: String, state: State<'_, HistoryService>) -> Result<bool> {
     let vh = state.vault(&handle)?;
-    export::export_file(&vh, &id)
+    blocking(move || export::export_file(&vh, &id)).await
 }
 
 #[tauri::command]

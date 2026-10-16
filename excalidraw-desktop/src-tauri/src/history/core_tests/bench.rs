@@ -24,12 +24,12 @@ fn profile() -> String {
     std::env::var("HISTORY_PERF_PROFILE").unwrap_or_else(|_| "normal".into())
 }
 
-fn pct(v: &mut [f64], p: f64) -> f64 {
+pub(crate) fn pct(v: &mut [f64], p: f64) -> f64 {
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     v[((v.len() as f64 - 1.0) * p).round() as usize]
 }
 
-fn emit(metric: &str, unit: &str, mut s: Vec<f64>, extra: &str) {
+pub(crate) fn emit(metric: &str, unit: &str, mut s: Vec<f64>, extra: &str) {
     let (p50, p95, max, n) = (pct(&mut s, 0.5), pct(&mut s, 0.95), pct(&mut s, 1.0), s.len());
     println!("HISTORY_PERF {{\"metric\":\"history.{metric}\",\"unit\":\"{unit}\",\"p50\":{p50:.3},\"p95\":{p95:.3},\"max\":{max:.3},\"n\":{n},\"profile\":\"{}\"{extra}}}", profile());
 }
@@ -44,9 +44,9 @@ fn vault() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
 }
 
 const P: &str = "a.excalidraw";
-const IMG_COUNT: usize = 6;
+pub(crate) const IMG_COUNT: usize = 6;
 /// 6 x 2.5 MB of image data (20 MB as base64) + 5k elements: a ~24 MB stress file.
-const IMG_BYTES: usize = 2_500_000;
+pub(crate) const IMG_BYTES: usize = 2_500_000;
 
 fn writer_for(root: &Path, state: &Path) -> crate::history::writer::Writer {
     mk_writer(root, state, Arc::new(crate::history::SystemClock), Box::new(|| true))
