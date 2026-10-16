@@ -494,11 +494,8 @@ test("Settings > Page defaults give a NEW drawing that setup; Normal default giv
         (e: any) => e.path,
       );
     });
-    await page
-      .locator(
-        ".vault-header button[title='New drawing in the current folder']",
-      )
-      .click();
+    // The header button is gone; the command (Mod+N) creates in the current folder.
+    await page.keyboard.press("ControlOrMeta+KeyN");
     await expect(
       page.locator(".vault-editor canvas.interactive"),
     ).toBeVisible();
