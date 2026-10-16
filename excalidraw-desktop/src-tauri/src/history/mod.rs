@@ -17,6 +17,7 @@ pub(crate) mod names;
 
 mod export;
 mod gc;
+mod git;
 mod index;
 mod lineage;
 mod outside;
@@ -110,6 +111,8 @@ pub struct HistoryStatus {
     pub gc_blocked: bool,
     pub format_newer: bool,
     pub git_repo: bool,
+    /// The vault's `.gitignore` already excludes the history folder (N2; the notice hides).
+    pub git_excluded: bool,
     pub last_error: Option<LastError>,
 }
 
@@ -260,6 +263,10 @@ pub struct VaultHistory {
     /// Generation token of this vault id (a newer `start` bumps it).
     pub(crate) gen: Arc<AtomicU64>,
     pub(crate) my_gen: u64,
+    /// Trash marks and orphan times (H3, `lineage.rs`).
+    pub(crate) lineage: Mutex<lineage::State>,
+    /// Result of the last GC sweep (H3, `gc.rs`).
+    pub(crate) gc: Mutex<gc::Report>,
 }
 
 impl VaultHistory {
@@ -318,17 +325,22 @@ impl VaultHistory {
             (g.total_bytes(), g.checkpoint_bytes())
         };
         let cap = u64::from(lock(&self.settings).size_cap_mb) * 1024 * 1024;
+        let (over_cap, gc_blocked) = {
+            let r = lock(&self.gc);
+            (r.over_cap, r.gc_blocked)
+        };
         HistoryStatus {
             handle: self.handle.clone(),
             state: self.effective_state(),
             total_bytes: total,
             cap_bytes: cap,
             checkpoint_bytes: checkpoints,
-            over_cap: "none",
+            over_cap,
             staging: self.flags.staging_supported(),
-            gc_blocked: false,
+            gc_blocked,
             format_newer: self.format_newer.load(Ordering::Relaxed),
-            git_repo: self.root.join(".git").exists(),
+            git_repo: git::is_git_repo(&self.root),
+            git_excluded: git::is_excluded(&self.root),
             last_error: self.last_error_view(),
         }
     }
@@ -502,6 +514,28 @@ impl VaultHistory {
 
     pub fn read_blob(&self, blob: &str) -> Result<Vec<u8>> {
         self.store.read_blob_any(blob)
+    }
+
+    /// Explicit deletes run on the worker (urgent channel), never beside a write.
+    fn delete(&self, make: impl FnOnce(mpsc::Sender<Result<()>>) -> worker::Msg) -> Result<()> {
+        if self.read_only() || !self.has_worker {
+            return Err(err("HISTORY_READ_ONLY", "History is read-only in this window"));
+        }
+        let (tx, rx) = mpsc::channel();
+        self.inbox.send(make(tx));
+        rx.recv_timeout(SNAPSHOT_WAIT).map_err(|_| err("IO_ERROR", "History did not answer in time"))?
+    }
+
+    pub fn delete_checkpoint(&self, id: &str) -> Result<()> {
+        if !names::is_ulid(id) {
+            return Err(err("INVALID_ARGUMENT", "Invalid version id"));
+        }
+        self.delete(|ack| worker::Msg::DeleteCheckpoint { id: id.to_string(), ack })
+    }
+
+    pub fn delete_all(&self, path: &str) -> Result<()> {
+        validate_relative(path)?;
+        self.delete(|ack| worker::Msg::DeleteAll { path: path.to_string(), ack })
     }
 
     pub(crate) fn stop(&self) {
@@ -682,6 +716,8 @@ impl HistoryService {
             has_worker: !read_only,
             gen,
             my_gen,
+            lineage: Mutex::new(lineage::State::default()),
+            gc: Mutex::new(gc::Report::default()),
         });
         if !read_only {
             // Clones left by a crash or quit are collected before any new clone can exist
@@ -736,6 +772,13 @@ impl HistoryService {
     pub(crate) fn trashed(&self, handle: &str, path: &str) {
         if let Some(vh) = self.get(handle) {
             lineage::trashed(&vh, path);
+        }
+    }
+
+    /// Links are about to rewrite `path` (D-R2): keep its pre-rewrite state.
+    pub(crate) fn before_link_rewrite(&self, handle: &str, path: &str) {
+        if let Some(vh) = self.get(handle) {
+            outside::before_rewrite(&vh, path);
         }
     }
 
@@ -815,6 +858,7 @@ pub(crate) async fn history_snapshot_bytes(request: tauri::ipc::Request<'_>, sta
     let vh = state.vault(&handle)?;
     let (path, reason, revision) = (get("x-path")?, get("x-reason")?, get("x-revision")?);
     let body = clipboard::raw_body(&request)?;
+    validate_relative(&path)?;
     outside::snapshot_bytes(&vh, &path, &reason, &revision, body)
 }
 
@@ -833,17 +877,17 @@ pub(crate) async fn history_export_file(handle: String, id: String, state: State
 #[tauri::command]
 pub(crate) async fn history_delete_checkpoint(handle: String, id: String, state: State<'_, HistoryService>) -> Result<()> {
     let vh = state.vault(&handle)?;
-    gc::delete_checkpoint(&vh, &id)
+    blocking(move || vh.delete_checkpoint(&id)).await
 }
 
 #[tauri::command]
 pub(crate) async fn history_delete_all(handle: String, path: String, state: State<'_, HistoryService>) -> Result<()> {
     let vh = state.vault(&handle)?;
-    gc::delete_all(&vh, &path)
+    blocking(move || vh.delete_all(&path)).await
 }
 
 #[tauri::command]
 pub(crate) async fn history_exclude_from_git(handle: String, state: State<'_, HistoryService>) -> Result<()> {
     let vh = state.vault(&handle)?;
-    export::exclude_from_git(&vh)
+    blocking(move || git::exclude_from_git(&vh)).await
 }

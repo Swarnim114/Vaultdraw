@@ -348,6 +348,7 @@ export const VaultApp = ({
   // Editor document hook
   const docHook = useVaultDocument(repository, vault, {
     autosaveDelayMs: getPreferences(win).autosaveDelayMs,
+    history,
   });
   const {
     document: activeDoc,

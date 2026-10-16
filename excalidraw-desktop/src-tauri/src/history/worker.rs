@@ -33,6 +33,9 @@ pub enum Msg {
     Committed { path: String, revision: String, size: u64, staged: Option<PathBuf> },
     Snapshot { path: String, reason: Reason, ack: Option<Sender<Result<SnapshotOutcome>>> },
     Checkpoint { path: String, name: String, note: String, ack: Sender<Result<Written>> },
+    /// Explicit deletes (H3, `gc.rs`); handled by the thread loop, which owns the vault context.
+    DeleteCheckpoint { id: String, ack: Sender<Result<()>> },
+    DeleteAll { path: String, ack: Sender<Result<()>> },
     Stop,
 }
 
@@ -206,6 +209,9 @@ impl<B: Backend> Core<B> {
     pub fn is_configured(&self) -> bool {
         self.settings.is_some()
     }
+    pub fn settings(&self) -> Option<&HistorySettings> {
+        self.settings.as_ref()
+    }
     fn interval_ms(&self) -> u64 {
         self.settings.as_ref().map_or(0, |s| u64::from(s.interval_minutes) * 60_000)
     }
@@ -284,6 +290,10 @@ impl<B: Backend> Core<B> {
             }
             Msg::Checkpoint { path, name, note, ack } => {
                 let _ = ack.send(self.checkpoint(&path, &name, &note));
+            }
+            Msg::DeleteCheckpoint { ack, .. } | Msg::DeleteAll { ack, .. } => {
+                // Only the thread loop (which has the vault) can run deletes.
+                let _ = ack.send(Err(err("INTERNAL", "Delete reached the trigger core")));
             }
             Msg::Stop => {}
         }
@@ -689,6 +699,15 @@ fn save_index_if_due(vh: &VaultHistory, force: bool) {
     }
 }
 
+/// Runs `f` with a GC context (refused while history is unconfigured or off).
+fn with_gc<T>(vh: &VaultHistory, core: &Core<writer::RealBackend>, clock: &Arc<dyn Clock>, f: impl FnOnce(&super::gc::Ctx) -> Result<T>) -> Result<T> {
+    let Some(settings) = core.settings().filter(|s| s.enabled) else {
+        return Err(err("HISTORY_OFF", "File history is turned off"));
+    };
+    let ctx = super::gc::Ctx { vh, dev: &core.b.writer.dev, now_ms: clock.now_ms(), settings };
+    f(&ctx)
+}
+
 /// The worker thread of one writable vault.
 pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Clock>, free_probe: Option<Arc<dyn Fn() -> bool + Send + Sync>>) {
     crate::search::lower_priority();
@@ -755,6 +774,12 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
         match vh.inbox.pop(wait, !units.is_empty()) {
             Popped::Stop => break,
             Popped::Msg(Msg::Stop) => break,
+            Popped::Msg(Msg::DeleteCheckpoint { id, ack }) => {
+                let _ = ack.send(with_gc(&vh, &core, &clock, |ctx| super::gc::delete_checkpoint(ctx, &id)));
+            }
+            Popped::Msg(Msg::DeleteAll { path, ack }) => {
+                let _ = ack.send(with_gc(&vh, &core, &clock, |ctx| super::gc::delete_all(ctx, &path).map(|_| ())));
+            }
             Popped::Msg(m) => {
                 let configure = matches!(m, Msg::Configure(_));
                 core.dispatch(m);

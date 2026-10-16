@@ -77,7 +77,7 @@ fn links_dir_for(v: &Vault) -> Option<PathBuf> {
 
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) fn tauri_hooks(app: &AppHandle, v: &Vault) -> Hooks {
-    let (a1, a2, h1) = (app.clone(), app.clone(), v.handle.clone());
+    let (a1, a2, a3, h1, h3) = (app.clone(), app.clone(), app.clone(), v.handle.clone(), v.handle.clone());
     Hooks {
         indexed: Box::new(move |path, stat, bytes| {
             if let Some(s) = a1.try_state::<SearchService>() {
@@ -87,7 +87,12 @@ pub(crate) fn tauri_hooks(app: &AppHandle, v: &Vault) -> Hooks {
         done: Box::new(move |d| {
             let _ = a2.emit("links-rewrite-done", d);
         }),
-        before_write: Box::new(|_| {}),
+        // File history keeps the pre-rewrite state (D-R2): one clone + one queue push.
+        before_write: Box::new(move |path| {
+            if let Some(h) = a3.try_state::<crate::history::HistoryService>() {
+                h.before_link_rewrite(&h3, path);
+            }
+        }),
         dir: links_dir_for(v),
     }
 }

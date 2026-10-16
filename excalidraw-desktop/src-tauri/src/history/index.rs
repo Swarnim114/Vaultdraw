@@ -15,7 +15,8 @@ use std::{
 };
 
 const MAGIC: &[u8; 4] = b"VDHI";
-const FORMAT_VERSION: u32 = 1;
+/// 2: `devices` holds the LAST local observation of a new file per device (M8), was the first.
+const FORMAT_VERSION: u32 = 2;
 const HEADER_LEN: usize = 12;
 const MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -74,11 +75,14 @@ pub struct Index {
     by_path: HashMap<String, BTreeSet<String>>,
     id_lineage: HashMap<String, String>,
     by_rev: HashMap<String, BTreeSet<String>>,
-    /// device → local time (ms) this Mac first observed a file from it.
+    /// device → local time (ms) this Mac last observed a NEW file from it (liveness, M8).
     pub devices: HashMap<String, u64>,
     /// `<sha>.<ext>` → every device's copy.
     pub blobs: BTreeMap<String, Vec<BlobCopy>>,
     pub fold: bool,
+    /// Lineages hidden from path lookups (trashed in-app, N1). Owned by `lineage.rs`, which
+    /// persists it; path queries skip these, direct `lineages` / `entry` access does not.
+    pub hidden: HashSet<String>,
 }
 
 impl Index {
@@ -110,7 +114,8 @@ impl Index {
         if self.id_lineage.contains_key(&id) {
             return;
         }
-        self.devices.entry(entry.name.dev.clone()).or_insert(now_ms);
+        let seen = self.devices.entry(entry.name.dev.clone()).or_insert(now_ms);
+        *seen = (*seen).max(now_ms);
         self.id_lineage.insert(id.clone(), lineage.to_string());
         let head = entry.head.clone();
         self.lineages.entry(lineage.to_string()).or_default().versions.insert(id.clone(), entry);
@@ -200,12 +205,26 @@ impl Index {
         }
     }
 
+    /// Visible lineages of `path` (hidden ones, see `hidden`, are skipped).
     pub fn lineages_for(&self, path: &str) -> Vec<&str> {
+        self.by_path.get(&self.key(path)).map(|s| s.iter().map(String::as_str).filter(|l| !self.hidden.contains(*l)).collect()).unwrap_or_default()
+    }
+
+    /// Every lineage of `path`, hidden ones included (trash re-attach, delete-all).
+    pub fn all_lineages_for(&self, path: &str) -> Vec<&str> {
         self.by_path.get(&self.key(path)).map(|s| s.iter().map(String::as_str).collect()).unwrap_or_default()
     }
 
     pub fn has_lineage(&self, path: &str) -> bool {
-        self.by_path.contains_key(&self.key(path))
+        !self.lineages_for(path).is_empty()
+    }
+
+    pub fn set_hidden(&mut self, lineage: &str, hidden: bool) {
+        if hidden {
+            self.hidden.insert(lineage.to_string());
+        } else {
+            self.hidden.remove(lineage);
+        }
     }
 
     pub fn lineages_for_revision(&self, rev: &str) -> Vec<&str> {
