@@ -7,7 +7,11 @@ import { STROKE_WIDTH, STROKE_WIDTH_KEYS } from "@excalidraw/common";
 import { isArrowElement } from "@excalidraw/element";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { AppState, NewTextStyle } from "@excalidraw/excalidraw/types";
+import type {
+  AppState,
+  NewContainerStyle,
+  NewTextStyle,
+} from "@excalidraw/excalidraw/types";
 
 import {
   STYLE_KEY_RULES,
@@ -274,4 +278,27 @@ export function newTextStyleOf(style: ToolStyle): NewTextStyle {
     }
   }
   return out as NewTextStyle;
+}
+
+/**
+ * A rectangle style as the fields of a wrapping container (what the editor's
+ * `newContainerStyle` hook returns). Unset keys are left out.
+ */
+export function newContainerStyleOf(style: ToolStyle): NewContainerStyle {
+  const out: Loose = {
+    strokeColor: style.stroke_color,
+    backgroundColor: style.background_color,
+    fillStyle: style.fill_style,
+    strokeWidth: style.stroke_width,
+    strokeStyle: style.stroke_style,
+    roughness: style.roughness,
+    opacity: style.opacity,
+    roundness: style.roundness,
+  };
+  for (const key of Object.keys(out)) {
+    if (out[key] === undefined) {
+      delete out[key];
+    }
+  }
+  return out as NewContainerStyle;
 }

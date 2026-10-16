@@ -425,3 +425,31 @@ describe("newTextStyle (text created without the Text tool)", () => {
     expect(textStyle(t)).toMatchObject({ strokeColor: "#1971c2" });
   });
 });
+
+describe("newContainerStyle (wrap selection in container)", () => {
+  const containerStyle = (t: ReturnType<typeof setup>) =>
+    t.hook.result.current.newContainerStyle();
+
+  it("is null when the Rectangle tool has no default", () => {
+    const t = setup();
+    t.emit();
+    expect(containerStyle(t)).toBeNull();
+  });
+
+  it("gives the Rectangle default, whichever tool is active", () => {
+    store.defaults = {
+      rectangle: { background_color: "#ffec99", stroke_width: 4 },
+    };
+    const t = setup();
+    t.emit();
+    expect(containerStyle(t)).toEqual({
+      backgroundColor: "#ffec99",
+      strokeWidth: 4,
+    });
+    t.switchTo("text");
+    expect(containerStyle(t)).toEqual({
+      backgroundColor: "#ffec99",
+      strokeWidth: 4,
+    });
+  });
+});

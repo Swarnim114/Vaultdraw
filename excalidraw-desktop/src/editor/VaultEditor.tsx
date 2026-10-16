@@ -561,6 +561,7 @@ const VaultEditorComponent = ({
         freedrawPen={pens.freedrawPen}
         currentItemStrokeWidth={toolDefaults.currentItemStrokeWidth}
         newTextStyle={toolDefaults.newTextStyle}
+        newContainerStyle={toolDefaults.newContainerStyle}
         laserPointerOptions={pens.laserPointerOptions}
         libraryUIOptions={libraryUIOptions}
         UIOptions={{

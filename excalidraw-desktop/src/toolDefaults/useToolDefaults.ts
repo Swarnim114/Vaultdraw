@@ -18,6 +18,7 @@ import {
 import { createToolDefaultHandlers } from "./toolDefaultCommands";
 import {
   captureToolStyle,
+  newContainerStyleOf,
   newTextStyleOf,
   newToolSession,
   switchTool,
@@ -162,6 +163,18 @@ export function useToolDefaults(
     return newTextStyleOf(getToolMemory("text") ?? saved!);
   }, []);
 
+  /** The Rectangle tool's style for "Wrap selection in container". */
+  const newContainerStyle = useCallback(() => {
+    if (!enabledRef.current) {
+      return null;
+    }
+    const saved = getEffectiveToolDefaults().rectangle;
+    if (isEmptyStyle(saved)) {
+      return null;
+    }
+    return newContainerStyleOf(getToolMemory("rectangle") ?? saved!);
+  }, []);
+
   useEffect(
     () =>
       registerCommandHandlers(
@@ -173,5 +186,10 @@ export function useToolDefaults(
     [apiRef, currentItemStrokeWidth],
   );
 
-  return { onAppState, currentItemStrokeWidth, newTextStyle };
+  return {
+    onAppState,
+    currentItemStrokeWidth,
+    newTextStyle,
+    newContainerStyle,
+  };
 }

@@ -273,31 +273,35 @@ export const actionWrapTextInContainer = register({
 
     for (const textElement of selectedElements) {
       if (isTextElement(textElement) && !isBoundToContainer(textElement)) {
+        const host = app.props.newContainerStyle?.() ?? {};
         const container = newElement({
           type: "rectangle",
-          backgroundColor: appState.currentItemBackgroundColor,
+          backgroundColor:
+            host.backgroundColor ?? appState.currentItemBackgroundColor,
           boundElements: [
             ...(textElement.boundElements || []),
             { id: textElement.id, type: "text" },
           ],
           angle: textElement.angle,
-          fillStyle: appState.currentItemFillStyle,
-          strokeColor: appState.currentItemStrokeColor,
-          roughness: appState.currentItemRoughness,
-          strokeWidth: getStrokeWidthByKey(
-            "rectangle",
-            appState.currentItemStrokeWidthKey,
-          ),
-          strokeStyle: appState.currentItemStrokeStyle,
+          fillStyle: host.fillStyle ?? appState.currentItemFillStyle,
+          strokeColor: host.strokeColor ?? appState.currentItemStrokeColor,
+          roughness: host.roughness ?? appState.currentItemRoughness,
+          strokeWidth:
+            host.strokeWidth ??
+            getStrokeWidthByKey(
+              "rectangle",
+              appState.currentItemStrokeWidthKey,
+            ),
+          strokeStyle: host.strokeStyle ?? appState.currentItemStrokeStyle,
           roundness:
-            appState.currentItemRoundness === "round"
+            (host.roundness ?? appState.currentItemRoundness) === "round"
               ? {
                   type: isUsingAdaptiveRadius("rectangle")
                     ? ROUNDNESS.ADAPTIVE_RADIUS
                     : ROUNDNESS.PROPORTIONAL_RADIUS,
                 }
               : null,
-          opacity: 100,
+          opacity: host.opacity ?? 100,
           locked: false,
           x: textElement.x - BOUND_TEXT_PADDING,
           y: textElement.y - BOUND_TEXT_PADDING,

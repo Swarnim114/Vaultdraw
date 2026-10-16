@@ -4,6 +4,7 @@ import { API } from "../../../packages/excalidraw/tests/helpers/api";
 
 import {
   nearestStrokeWidthKey,
+  newContainerStyleOf,
   newTextStyleOf,
   newToolSession,
   styleFromAppState,
@@ -381,5 +382,26 @@ describe("newTextStyleOf", () => {
     expect(newTextStyleOf({ stroke_color: "#f08c00" })).toEqual({
       strokeColor: "#f08c00",
     });
+  });
+});
+
+describe("newContainerStyleOf", () => {
+  it("maps rectangle keys to element fields and drops unset ones", () => {
+    expect(
+      newContainerStyleOf({
+        stroke_color: "#e03131",
+        background_color: "#ffec99",
+        fill_style: "solid",
+        stroke_width: 4,
+        roundness: "sharp",
+      }),
+    ).toEqual({
+      strokeColor: "#e03131",
+      backgroundColor: "#ffec99",
+      fillStyle: "solid",
+      strokeWidth: 4,
+      roundness: "sharp",
+    });
+    expect(newContainerStyleOf({})).toEqual({});
   });
 });

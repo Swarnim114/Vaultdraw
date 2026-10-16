@@ -87,6 +87,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     freedrawPen,
     currentItemStrokeWidth,
     newTextStyle,
+    newContainerStyle,
     laserPointerOptions,
     renderTopLeftUI,
     renderTopRightUI,
@@ -235,6 +236,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           freedrawPen={freedrawPen}
           currentItemStrokeWidth={currentItemStrokeWidth}
           newTextStyle={newTextStyle}
+          newContainerStyle={newContainerStyle}
           laserPointerOptions={laserPointerOptions}
           renderTopLeftUI={renderTopLeftUI}
           renderTopRightUI={renderTopRightUI}

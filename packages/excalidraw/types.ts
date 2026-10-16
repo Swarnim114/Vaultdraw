@@ -950,6 +950,11 @@ export interface ExcalidrawProps {
    */
   newTextStyle?: () => NewTextStyle | null;
   /**
+   * Host-controlled style of the rectangle "Wrap selection in container"
+   * creates. Set fields win over the current-item state; null keeps it.
+   */
+  newContainerStyle?: () => NewContainerStyle | null;
+  /**
    * Host-controlled laser pointer look, read when a laser stroke starts.
    * Returns null for the built-in look.
    */
@@ -1762,6 +1767,20 @@ export type LaserPointerSettings = {
   /** Number of trail points over which the tail tapers off. */
   length: number;
 };
+
+/** Style a host can give wrapping containers (see `newContainerStyle`). */
+export type NewContainerStyle = Partial<
+  Pick<
+    ExcalidrawElement,
+    | "strokeColor"
+    | "backgroundColor"
+    | "fillStyle"
+    | "strokeWidth"
+    | "strokeStyle"
+    | "roughness"
+    | "opacity"
+  >
+> & { roundness?: "round" | "sharp" };
 
 /** Style a host can give new text elements (see `newTextStyle`). */
 export type NewTextStyle = Partial<
