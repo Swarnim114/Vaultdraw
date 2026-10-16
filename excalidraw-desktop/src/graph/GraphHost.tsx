@@ -15,12 +15,7 @@ import {
 import { registerCommandHandlers } from "../commands/handlerRegistry";
 import { GRAPH_COMMAND_IDS as ID } from "../commands/graphCommands";
 
-import {
-  createGraphSettingsSaver,
-  freshGraphSettings,
-  loadGraphSettings,
-  type GraphSettingsSaver,
-} from "./graphSettingsStore";
+import type { GraphSettingsSaver } from "./graphSettingsStore";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
 import type { GraphMode, GraphSettings, GraphViewProps } from "./settings";
@@ -32,6 +27,9 @@ const LOADING_STYLE = {
   background: "var(--vault-bg, #fff)",
   zIndex: 5,
 } as const;
+
+// The store pulls in the force defaults (barnesHut), so it loads with the view, not with the app.
+const loadStore = () => import("./graphSettingsStore");
 
 const GraphView = lazy(() => import("./GraphView"));
 
@@ -65,8 +63,8 @@ export function GraphHost({
 }: GraphHostProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<GraphMode>("global");
-  const [settings, setSettings] = useState<GraphSettings>(freshGraphSettings);
-  const settingsRef = useRef(settings);
+  const [settings, setSettings] = useState<GraphSettings | null>(null);
+  const settingsRef = useRef<GraphSettings | null>(null);
   const saver = useRef<GraphSettingsSaver | null>(null);
   const loading = useRef<Promise<GraphSettings> | null>(null);
   const live = useRef({ handle, currentPath, onOpenDrawing, onClosed });
@@ -81,14 +79,12 @@ export function GraphHost({
   /** Settings are read on the first open of a vault, never at startup. */
   const ensureLoaded = useCallback(() => {
     const h = live.current.handle;
-    if (!h) {
-      return Promise.resolve(settingsRef.current);
-    }
-    loading.current ??= loadGraphSettings(h, invoke).then((loaded) => {
+    loading.current ??= loadStore().then(async (store) => {
+      const loaded = await store.loadGraphSettings(h ?? "", invoke);
       if (live.current.handle === h) {
         settingsRef.current = loaded;
         setSettings(loaded);
-        saver.current = createGraphSettingsSaver(h, loaded, invoke);
+        saver.current = store.createGraphSettingsSaver(h ?? "", loaded, invoke);
       }
       return loaded;
     });
@@ -101,8 +97,8 @@ export function GraphHost({
       void saver.current?.flush();
       saver.current = null;
       loading.current = null;
-      settingsRef.current = freshGraphSettings();
-      setSettings(settingsRef.current);
+      settingsRef.current = null;
+      setSettings(null);
       setOpen(false);
       setMode("global");
     },
@@ -139,7 +135,10 @@ export function GraphHost({
   useEffect(() => {
     const toggle = (flag: Flag) => async () => {
       await show();
-      commit({ ...settingsRef.current, [flag]: !settingsRef.current[flag] });
+      const current = settingsRef.current;
+      if (current) {
+        commit({ ...current, [flag]: !current[flag] });
+      }
     };
     return registerCommandHandlers({
       [ID.open]: () => (open ? close() : show("global")),
@@ -162,7 +161,7 @@ export function GraphHost({
     });
   }, [open, show, close, commit]);
 
-  if (!open || !handle) {
+  if (!open || !handle || !settings) {
     return null;
   }
   return (
