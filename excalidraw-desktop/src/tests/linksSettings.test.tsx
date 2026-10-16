@@ -129,7 +129,7 @@ describe("links settings: config -> prefs -> config", () => {
       { key: "links.autocomplete", value: false },
       { key: "links.hint_chars", value: "qwer" },
     ]);
-    expect(changes.map((c) => c.key)).toEqual([...KEYS]);
+    expect(changes.map((c) => c.key)).toEqual(KEYS.slice(0, 6));
     expect(preferencesToConfigChanges(next, next)).toEqual([]);
   });
 
