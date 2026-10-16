@@ -141,20 +141,25 @@ export const TagsPanel = ({
   );
   const cursorRow: TagRow | undefined = rows[cursorIndex];
 
-  // Keep the cursor row visible (windowed rows are positioned by index).
-  useEffect(() => {
+  // Keep a row visible (windowed rows are positioned by index).
+  const reveal = (index: number) => {
     const list = listRef.current;
-    if (!list || !cursorRow) {
+    if (!list) {
       return;
     }
-    const top = cursorIndex * ROW_HEIGHT;
+    const top = index * ROW_HEIGHT;
     const view = list.clientHeight || FALLBACK_VIEWPORT;
     if (top < list.scrollTop) {
       list.scrollTop = top;
     } else if (top + ROW_HEIGHT > list.scrollTop + view) {
       list.scrollTop = top + ROW_HEIGHT - view;
     }
-    // Only a cursor move scrolls; typing in the search must not.
+  };
+  // Only a cursor move scrolls; typing in the search must not.
+  useEffect(() => {
+    if (cursorRow) {
+      reveal(cursorIndex);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursorIndex]);
 
@@ -204,6 +209,7 @@ export const TagsPanel = ({
     const row = rows[Math.min(rows.length - 1, Math.max(0, index))];
     if (row) {
       setCursorKey(row.node.key);
+      reveal(rows.indexOf(row));
     }
   };
 

@@ -361,6 +361,73 @@ if (nameCount > 0) {
   }
 }
 
+// ?tagcount=N (tags QA/perf): N distinct flat tags `tNNNN` (every third one in
+// three drawings, the rest in one) spread over 40 drawings, plus the nested
+// group `grp/a` (1 drawing), `grp/b` (3), `grp/c` (2) for sort checks.
+const tagCount = Number(params.get("tagcount")) || 0;
+if (tagCount > 0) {
+  const DRAWINGS = 40;
+  const perDrawing: string[][] = Array.from({ length: DRAWINGS }, () => []);
+  for (let i = 0; i < tagCount; i++) {
+    const tag = `#t${String(i).padStart(4, "0")}`;
+    perDrawing[i % DRAWINGS].push(tag);
+    if (i % 3 === 0) {
+      perDrawing[(i + 1) % DRAWINGS].push(tag);
+      perDrawing[(i + 2) % DRAWINGS].push(tag);
+    }
+  }
+  perDrawing[0].push("#grp/a", "#grp/b", "#grp/c");
+  perDrawing[1].push("#grp/b", "#grp/c");
+  perDrawing[2].push("#grp/b");
+  perDrawing.forEach((tags, d) => {
+    const text = tags.join(" ");
+    repository.seedDrawing(
+      `Tagged/Tag set ${String(d).padStart(2, "0")}.excalidraw`,
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        source: "e2e-tagcount",
+        elements: [
+          {
+            id: `tc-${d}`,
+            type: "text",
+            x: 600,
+            y: 40,
+            width: 200,
+            height: 25,
+            angle: 0,
+            strokeColor: "#1e1e1e",
+            backgroundColor: "transparent",
+            fillStyle: "solid",
+            strokeWidth: 1,
+            strokeStyle: "solid",
+            roughness: 1,
+            opacity: 100,
+            groupIds: [],
+            roundness: null,
+            link: null,
+            locked: false,
+            isDeleted: false,
+            text,
+            originalText: text,
+            fontSize: 20,
+            fontFamily: 1,
+            textAlign: "left",
+            verticalAlign: "top",
+            containerId: null,
+            lineHeight: 1.25,
+          },
+        ],
+        appState: {},
+        files: {},
+      }),
+    );
+  });
+}
+
+const vaultSearch = new FakeVaultSearch(repository);
+// The fake index only refreshes on demand: specs call __vaultSearch.setIndexState(null).
+(ownerWindow as any).__vaultSearch = vaultSearch;
 const libraryRepository = new FakeLibraryRepository();
 const vaultLinks = new FakeVaultLinks(repository);
 (ownerWindow as any).__vaultLinks = vaultLinks;
@@ -407,7 +474,7 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         ownerDocument={ownerDocument}
         ownerWindow={ownerWindow}
         repository={repository}
-        search={new FakeVaultSearch(repository)}
+        search={vaultSearch}
         links={vaultLinks}
         libraryRepository={libraryRepository}
         history={historyRepository}
