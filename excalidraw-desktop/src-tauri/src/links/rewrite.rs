@@ -8,10 +8,15 @@
 //!
 //! For a text element whose `originalText` changed, `text` is set to the new `originalText`,
 //! so a link that word-wrap had split is repaired (the frontend re-measures it).
+//!
+//! Tag mode (`FileRules::tag`, F6 rename tag) uses the same scanner: no element ids are given,
+//! every live text element (and frame name) is checked for whole `#tag` tokens under the old
+//! tag and only those byte ranges are replaced.
 
 use super::grammar::{parse_link_field, pct_encode, text_links, url_file_param, FieldForm, EXT, VAULT_URL};
 use super::resolve::{key_of_rel, key_of_target, rel_path};
 use super::types::{EditField, ElementEdit};
+use crate::search::{find_tags, key_under, tag_key};
 use crate::{err, Result};
 use memchr::{memchr2, memchr3};
 use serde::{Deserialize, Serialize};
@@ -29,12 +34,28 @@ pub(crate) struct Replace {
     pub new_path: String,
 }
 
+/// Rename of a tag (and its children): `#from/x` becomes `#to/x`. Keys are case/accent folded.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TagRule {
+    /// Folded key of the tag being renamed.
+    pub from_key: String,
+    /// New spelling, without `#`.
+    pub to: String,
+    /// Replay of a rename whose new tag lies under the old one (`a` to `a/b`): tokens already
+    /// under this key were rewritten by the interrupted run and are left alone.
+    #[serde(default)]
+    pub skip_under: Option<String>,
+}
+
 pub(crate) struct FileRules<'a> {
     /// Folder of the file before and after the move (relative links resolve from these).
     pub old_dir: &'a str,
     pub new_dir: &'a str,
     /// Element id to its replacements. Only these elements are touched.
     pub elements: &'a BTreeMap<String, Vec<Replace>>,
+    /// Tag mode: ignores `elements` and rewrites tag tokens in every live text element.
+    pub tag: Option<&'a TagRule>,
     pub now_ms: u64,
 }
 
@@ -129,6 +150,27 @@ fn text_edits(s: &str, reps: &[Replace]) -> Vec<(usize, usize, String)> {
     e
 }
 
+/// Edits `(start, end, new spelling)` for the tag tokens of `s` under the renamed tag. Only the
+/// segments of the old tag are replaced, so children keep their own spelling.
+pub(super) fn tag_edits(s: &str, rule: &TagRule) -> Vec<(usize, usize, String)> {
+    let mut e = Vec::new();
+    if !s.contains('#') {
+        return e;
+    }
+    let depth = rule.from_key.matches('/').count();
+    for m in find_tags(s) {
+        let key = tag_key(m.display);
+        if !key_under(&key, &rule.from_key) || rule.skip_under.as_deref().is_some_and(|k| key_under(&key, k)) {
+            continue;
+        }
+        let end = m.display.match_indices('/').map(|(i, _)| i).nth(depth).unwrap_or(m.display.len());
+        if m.display[..end] != rule.to {
+            e.push((m.range.0 + 1, m.range.0 + 1 + end, rule.to.clone()));
+        }
+    }
+    e
+}
+
 fn apply_edits(s: &str, edits: &[(usize, usize, String)]) -> String {
     let mut out = String::with_capacity(s.len() + 16);
     let mut at = 0;
@@ -189,6 +231,9 @@ enum K {
     Version,
     Nonce,
     Updated,
+    Type,
+    Name,
+    Deleted,
     Other,
 }
 
@@ -213,6 +258,9 @@ struct Fields {
     version: Option<Span>,
     nonce: Option<Span>,
     updated: Option<Span>,
+    ty: Option<Span>,
+    name: Option<Span>,
+    deleted: Option<Span>,
 }
 
 fn in_element(stack: &[Ctx]) -> bool {
@@ -229,6 +277,9 @@ fn classify(raw: &[u8], element: bool) -> K {
             b"version" => K::Version,
             b"versionNonce" => K::Nonce,
             b"updated" => K::Updated,
+            b"type" => K::Type,
+            b"name" => K::Name,
+            b"isDeleted" => K::Deleted,
             _ => K::Other,
         }
     } else if raw == b"elements" {
@@ -247,6 +298,9 @@ fn set_field(f: &mut Fields, key: K, span: Span) {
         K::Version => f.version = Some(span),
         K::Nonce => f.nonce = Some(span),
         K::Updated => f.updated = Some(span),
+        K::Type => f.ty = Some(span),
+        K::Name => f.name = Some(span),
+        K::Deleted => f.deleted = Some(span),
         _ => {}
     }
 }
@@ -291,36 +345,54 @@ impl Scan<'_> {
 
     fn finish(&mut self, f: &Fields) {
         let Some(id) = f.id.filter(|s| s.is_str) else { return };
+        let tag = self.rules.tag;
+        // Tag mode looks at live text elements and frame names (what the tag index reads).
+        let is_frame = match tag {
+            Some(_) => match f.ty.map(|t| self.raw(t)) {
+                _ if f.deleted.is_some_and(|d| self.raw(d) == b"true") => return,
+                Some(b"text") => false,
+                Some(b"frame" | b"magicframe") => true,
+                _ => return,
+            },
+            None => false,
+        };
         let (id, _) = decode(self.raw(id));
-        let Some(reps) = self.rules.elements.get(&id) else { return };
+        let reps: &[Replace] = match self.rules.elements.get(&id) {
+            Some(r) => r,
+            None if tag.is_some() => &[],
+            None => return,
+        };
         let mut local: Vec<Splice> = Vec::new();
         let mut links = 0u32;
         let mut edits: Vec<ElementEdit> = Vec::new();
 
         // Text: `originalText` is the source of truth, `text` when it has none.
-        let orig = f.orig.filter(|s| s.is_str && s.e > s.s);
-        let source = orig.or(f.text.filter(|s| s.is_str));
+        let orig = f.orig.filter(|s| s.is_str && s.e > s.s && !is_frame);
+        let source = if is_frame { f.name.filter(|s| s.is_str) } else { orig.or(f.text.filter(|s| s.is_str)) };
         let mut text_changed = false;
         if let Some(src) = source {
             let (decoded, map) = decode(self.raw(src));
-            let e = text_edits(&decoded, reps);
+            let e = match tag {
+                Some(rule) => tag_edits(&decoded, rule),
+                None => text_edits(&decoded, reps),
+            };
             if !e.is_empty() {
                 let new_raw = splice_raw(self.raw(src), &map, &e);
                 let value = apply_edits(&decoded, &e);
                 links += e.len() as u32;
                 text_changed = true;
                 local.push(Splice { start: src.s, end: src.e, bytes: new_raw.clone() });
-                for other in [f.text, f.orig].into_iter().flatten().filter(|o| o.is_str && o.s != src.s) {
+                for other in [f.text, f.orig].into_iter().flatten().filter(|o| o.is_str && o.s != src.s && !is_frame) {
                     // Keep `text` equal to the new `originalText` (fixes word-wrap splits).
                     if orig.is_some() || other.s == src.s {
                         local.push(Splice { start: other.s, end: other.e, bytes: new_raw.clone() });
                     }
                 }
-                edits.push(ElementEdit { element_id: id.clone(), field: EditField::Text, value });
+                edits.push(ElementEdit { element_id: id.clone(), field: if is_frame { EditField::Name } else { EditField::Text }, value });
             }
         }
         // Link field.
-        if let Some(l) = f.link.filter(|s| s.is_str) {
+        if let Some(l) = f.link.filter(|s| s.is_str && tag.is_none()) {
             let (decoded, _) = decode(self.raw(l));
             if let Some(new) = link_field_edit(&decoded, reps, self.rules) {
                 local.push(Splice { start: l.s, end: l.e, bytes: escaped(&new) });
@@ -354,7 +426,7 @@ impl Scan<'_> {
         self.splices.extend(local);
         self.result.links += links;
         self.result.edits.extend(edits);
-        if text_changed {
+        if text_changed && !is_frame {
             self.result.text_elements.push(id);
         }
     }
@@ -363,7 +435,7 @@ impl Scan<'_> {
 /// Rewrites `src` per `rules`. `Ok(None)` when nothing changed. The output is only as valid
 /// as the input: callers validate JSON when writing (`write_drawing_file` does).
 pub(crate) fn rewrite(src: &[u8], rules: &FileRules) -> Result<Option<Rewritten>> {
-    if rules.elements.is_empty() {
+    if rules.elements.is_empty() && rules.tag.is_none() {
         return Ok(None);
     }
     let bad = || err("INVALID_FILE", "Drawing JSON is truncated");

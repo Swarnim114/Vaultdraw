@@ -352,7 +352,7 @@ fn relative_links_follow_moved_sources_and_targets() {
 // ---------------------------------------------------------------- rewriter
 
 fn rules<'a>(elements: &'a BTreeMap<String, Vec<Replace>>) -> FileRules<'a> {
-    FileRules { old_dir: "", new_dir: "", elements, now_ms: 1_700_000_000_000 }
+    FileRules { old_dir: "", new_dir: "", elements, tag: None, now_ms: 1_700_000_000_000 }
 }
 
 fn rep(old: &str, new: &str) -> Replace {
@@ -424,7 +424,7 @@ fn text_without_original_text_and_url_and_relative_link_fields() {
     for id in ["a", "b", "c", "d"] {
         els.insert(id.to_string(), vec![Replace { old_key: "old".into(), new_target: "Dir/New one".into(), new_path: "Dir/New one".into() }]);
     }
-    let r = FileRules { old_dir: "", new_dir: "", elements: &els, now_ms: 5 };
+    let r = FileRules { old_dir: "", new_dir: "", elements: &els, tag: None, now_ms: 5 };
     let out = rewrite(src.as_bytes(), &r).unwrap().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.bytes).unwrap();
     let e = &v["elements"];
@@ -547,7 +547,7 @@ fn fuzz_rewrite_is_byte_preserving_and_only_targeted_fields_differ() {
             raws.join(",")
         );
         let els: BTreeMap<String, Vec<Replace>> = targeted.iter().map(|id| (id.clone(), vec![Replace { old_key: "old".into(), new_target: new_target.into(), new_path: "New".into() }])).collect();
-        let r = FileRules { old_dir: "", new_dir: "", elements: &els, now_ms: 1_700_000_000_123 };
+        let r = FileRules { old_dir: "", new_dir: "", elements: &els, tag: None, now_ms: 1_700_000_000_123 };
         let out = rewrite(src.as_bytes(), &r).unwrap_or_else(|e| panic!("round {round}: {}", e.message));
 
         let before: serde_json::Value = serde_json::from_str(&src).unwrap();
@@ -925,4 +925,375 @@ fn move_docs_keeps_content_and_updates_names() {
     // renaming a drawing to a non-drawing name drops it from the index
     ix.move_docs("b.excalidraw", "b.txt");
     assert!(ix.get("b.txt").is_none() && ix.get("b.excalidraw").is_none());
+}
+
+// ---------------------------------------------------------------- tag rename (F6 P2)
+
+mod tag_rename_tests {
+    use super::super::rewrite::TagRule;
+    use super::super::tag_rename::{plan, rename_tag_with};
+    use super::*;
+
+    fn rule(from: &str, to: &str) -> TagRule {
+        TagRule { from_key: from.into(), to: to.into(), skip_under: None }
+    }
+
+    /// Renames the tags in one text element through the real rewriter; None when unchanged.
+    fn rt(text: &str, from: &str, to: &str) -> Option<String> {
+        let src = scene(&[text_el("t", text)]);
+        let none = BTreeMap::new();
+        let rl = rule(from, to);
+        let r = FileRules { old_dir: "", new_dir: "", elements: &none, tag: Some(&rl), now_ms: 9 };
+        let out = rewrite(src.as_bytes(), &r).unwrap()?;
+        let v: serde_json::Value = serde_json::from_slice(&out.bytes).unwrap();
+        assert_eq!(v["elements"][0]["text"], v["elements"][0]["originalText"]);
+        Some(v["elements"][0]["originalText"].as_str().unwrap().to_string())
+    }
+
+    #[test]
+    fn matches_whole_tag_tokens_only() {
+        let src = "#dsa #DSA #dsa2 #dsa-x #dsa/graphs http://x.com/#dsa #ff00aa &#123; # heading [[Note#dsa]] a#dsa (#dsa) #dsa.";
+        let want = "#Algo #Algo #dsa2 #dsa-x #Algo/graphs http://x.com/#dsa #ff00aa &#123; # heading [[Note#dsa]] a#dsa (#Algo) #Algo.";
+        assert_eq!(rt(src, "dsa", "Algo").as_deref(), Some(want));
+        assert_eq!(rt("nothing #dsa2 here", "dsa", "Algo"), None);
+        assert_eq!(rt("#café/x #CAFE", "cafe", "Kaffee").as_deref(), Some("#Kaffee/x #Kaffee"));
+    }
+
+    #[test]
+    fn children_keep_their_spelling_and_nesting_works_in_one_pass() {
+        assert_eq!(rt("#Dsa/Graphs/BFS #dsa/trees #other", "dsa", "Algo").as_deref(), Some("#Algo/Graphs/BFS #Algo/trees #other"));
+        assert_eq!(rt("#dsa/graphs/bfs #dsa/graphs #dsa", "dsa/graphs", "g").as_deref(), Some("#g/bfs #g #dsa"));
+        assert_eq!(rt("#a #a/c #A/d", "a", "a/b").as_deref(), Some("#a/b #a/b/c #a/b/d"));
+        assert_eq!(rt("#a/b #a/b/c", "a/b", "a").as_deref(), Some("#a #a/c"));
+        // already spelled that way: nothing to do
+        assert_eq!(rt("#Algo", "algo", "Algo"), None);
+        assert_eq!(rt("#algo", "algo", "Algo").as_deref(), Some("#Algo"));
+    }
+
+    #[test]
+    fn frame_names_and_deleted_elements() {
+        let src = format!(
+            r##"{{"type":"excalidraw","elements":[{{"id":"f","type":"frame","name":"Plan #dsa","version":1,"versionNonce":1,"updated":1}},{{"id":"d","type":"text","text":"#dsa","originalText":"#dsa","isDeleted":true,"version":1}},{}]}}"##,
+            link_el("r", "[[#dsa]]")
+        );
+        let none = BTreeMap::new();
+        let rl = rule("dsa", "Algo");
+        let r = FileRules { old_dir: "", new_dir: "", elements: &none, tag: Some(&rl), now_ms: 9 };
+        let out = rewrite(src.as_bytes(), &r).unwrap().unwrap();
+        let s = String::from_utf8(out.bytes).unwrap();
+        assert!(s.contains(r#""name":"Plan #Algo","version":2"#), "{s}");
+        assert!(s.contains(r##""text":"#dsa","originalText":"#dsa","isDeleted":true"##), "deleted element untouched");
+        assert!(s.contains("[[#dsa]]"), "link fields are not touched in tag mode");
+        assert_eq!(out.edits, vec![ElementEdit { element_id: "f".into(), field: EditField::Name, value: "Plan #Algo".into() }]);
+        assert!(out.text_elements.is_empty());
+    }
+
+    // ---- fuzz: only target tokens change, everything else byte for byte ----
+
+    const TOKENS: &[(&str, &str, bool)] = &[
+        ("#dsa ", "#Algo ", true),
+        ("#DSA/x ", "#Algo/x ", true),
+        ("\"#dsa\" ", "\"#Algo\" ", true),
+        ("#dsa2 ", "#dsa2 ", false),
+        ("#dsa-x ", "#dsa-x ", false),
+        ("http://x.com/#dsa ", "http://x.com/#dsa ", false),
+        ("#ff00aa ", "#ff00aa ", false),
+        ("&#123; ", "&#123; ", false),
+        ("# head ", "# head ", false),
+        ("word ", "word ", false),
+        ("é😀日本\n", "é😀日本\n", false),
+        ("back\\slash\t ", "back\\slash\t ", false),
+        ("[[Note#dsa]] ", "[[Note#dsa]] ", false),
+    ];
+
+    fn random_tokens(r: &mut Rng) -> (String, String, u32) {
+        let (mut a, mut b, mut n) = (String::new(), String::new(), 0);
+        for _ in 0..r.below(8) {
+            let (x, y, hit) = TOKENS[r.below(TOKENS.len())];
+            a.push_str(x);
+            b.push_str(y);
+            n += hit as u32;
+        }
+        (a, b, n)
+    }
+
+    #[test]
+    fn fuzz_tag_mode_is_byte_preserving_and_changes_only_targeted_tokens() {
+        let mut rng = Rng(0xA5A5_1234_DEAD_BEEF);
+        for round in 0..400 {
+            let mut raws = Vec::new();
+            let mut expect: Vec<serde_json::Value> = Vec::new();
+            let mut changed = Vec::new();
+            let mut hits = 0u32;
+            let src_for = |raws: &[String], blob: &str, r: &mut Rng| {
+                format!(
+                    "{{\"type\":\"excalidraw\",\"version\":2,\"appState\":{{\"name\":{}}},\"elements\":[{}],\"files\":{{\"f\":{{\"dataURL\":\"data:image/png;base64,{blob}\"}}}}}}",
+                    json_string(r, "#dsa app name"),
+                    raws.join(",")
+                )
+            };
+            for i in 0..rng.below(14) {
+                let (old, new, n) = random_tokens(&mut rng);
+                let kind = rng.below(6);
+                let ver = rng.below(100);
+                let ws = if rng.chance(30) { "\n  " } else { "" };
+                let (raw, exp, did) = match kind {
+                    // wrapped text with originalText
+                    0 | 1 => {
+                        let wrapped = old.replace(' ', "\n");
+                        let raw = format!("{{{ws}\"id\":\"e{i}\",\"type\":\"text\",\"text\":{},\"originalText\":{},\"isDeleted\":false,\"version\":{ver},\"versionNonce\":5,\"updated\":7{ws}}}", json_string(&mut rng, &wrapped), json_string(&mut rng, &old));
+                        let exp = serde_json::json!({"id":format!("e{i}"),"type":"text","text":if n>0 {&new} else {&wrapped},"originalText":&new,"isDeleted":false,"version":if n>0 {ver+1} else {ver},"versionNonce":5,"updated":if n>0 {1_700_000_000_123u64} else {7}});
+                        (raw, exp, n > 0)
+                    }
+                    // text without originalText
+                    2 => {
+                        let raw = format!("{{\"id\":\"e{i}\",\"type\":\"text\",\"text\":{},\"version\":{ver}}}", json_string(&mut rng, &old));
+                        let exp = serde_json::json!({"id":format!("e{i}"),"type":"text","text":&new,"version":if n>0 {ver+1} else {ver}});
+                        (raw, exp, n > 0)
+                    }
+                    3 => {
+                        let raw = format!("{{\"id\":\"e{i}\",\"type\":\"frame\",\"name\":{},\"version\":{ver}}}", json_string(&mut rng, &old));
+                        let exp = serde_json::json!({"id":format!("e{i}"),"type":"frame","name":&new,"version":if n>0 {ver+1} else {ver}});
+                        (raw, exp, n > 0)
+                    }
+                    // deleted text and a shape whose customData looks like text: never touched
+                    4 => {
+                        let raw = format!("{{\"id\":\"e{i}\",\"type\":\"text\",\"text\":{o},\"originalText\":{o},\"isDeleted\":true,\"version\":{ver}}}", o = json_string(&mut rng, &old));
+                        let exp: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                        (raw, exp, false)
+                    }
+                    _ => {
+                        let raw = format!("{{\"id\":\"e{i}\",\"type\":\"rectangle\",\"text\":{o},\"name\":{o},\"customData\":{{\"text\":{o}}},\"version\":{ver}}}", o = json_string(&mut rng, &old));
+                        let exp: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                        (raw, exp, false)
+                    }
+                };
+                if did {
+                    hits += n;
+                    changed.push(format!("e{i}"));
+                }
+                raws.push(raw);
+                expect.push(exp);
+            }
+            let blob = "A".repeat(rng.below(5000));
+            let src = src_for(&raws, &blob, &mut rng);
+            let none = BTreeMap::new();
+            let rl = rule("dsa", "Algo");
+            let r = FileRules { old_dir: "", new_dir: "", elements: &none, tag: Some(&rl), now_ms: 1_700_000_000_123 };
+            let out = rewrite(src.as_bytes(), &r).unwrap_or_else(|e| panic!("round {round}: {}", e.message));
+            let Some(out) = out else {
+                assert!(changed.is_empty(), "round {round}: missed edits {changed:?}\n{src}");
+                continue;
+            };
+            let mut after: serde_json::Value = serde_json::from_slice(&out.bytes).unwrap_or_else(|e| panic!("round {round}: output must parse: {e}"));
+            assert_eq!(out.links, hits, "round {round}");
+            for (a, e) in after["elements"].as_array_mut().unwrap().iter_mut().zip(&expect) {
+                if e.get("versionNonce").is_some() && changed.contains(&a["id"].as_str().unwrap().to_string()) {
+                    assert!(a["versionNonce"].as_u64().unwrap() < (1 << 31));
+                    a["versionNonce"] = e["versionNonce"].clone();
+                }
+            }
+            assert_eq!(after["elements"], serde_json::Value::Array(expect.clone()), "round {round}\n{src}");
+            let before: serde_json::Value = serde_json::from_str(&src).unwrap();
+            assert_eq!(after["appState"], before["appState"]);
+            let out_text = String::from_utf8(out.bytes).unwrap();
+            for (i, raw) in raws.iter().enumerate() {
+                if !changed.contains(&format!("e{i}")) {
+                    assert!(out_text.contains(raw.as_str()), "round {round}: element {i} bytes changed");
+                }
+            }
+            assert!(out_text.contains(&blob));
+        }
+    }
+
+    // ---- plan ----
+
+    fn tag_index(docs: &[(&str, &[&str])]) -> Index {
+        let mut ix = Index::default();
+        for (p, texts) in docs {
+            let t: Vec<(String, &str)> = texts.iter().enumerate().map(|(i, t)| (format!("t{i}"), *t)).collect();
+            let items = t.iter().map(|(id, t)| item(id, None, t)).collect();
+            ix.upsert(p.to_string(), DocEntry::new(p, (1, 1), items));
+        }
+        ix
+    }
+
+    #[test]
+    fn plan_counts_files_tokens_keys_and_merges() {
+        let ix = tag_index(&[
+            ("a.excalidraw", &["#dsa and #DSA/graphs", "#dsa again"]),
+            ("b.excalidraw", &["#dsa/graphs/bfs only"]),
+            ("c.excalidraw", &["#dsa2 and #other"]),
+            ("d.excalidraw", &["#Algo exists"]),
+        ]);
+        let p = plan(&ix, "#dsa", "#Algo").unwrap().response;
+        assert_eq!((p.from.as_str(), p.to.as_str(), p.files, p.occurrences, p.merges), ("dsa", "Algo", 2, 4, true));
+        let keys: Vec<_> = p.keys.iter().map(|k| (k.from.as_str(), k.to.as_str())).collect();
+        assert_eq!(keys, vec![("dsa", "algo"), ("dsa/graphs", "algo/graphs"), ("dsa/graphs/bfs", "algo/graphs/bfs")]);
+        let fresh = plan(&ix, "DSA", "Fresh").unwrap().response;
+        assert!(!fresh.merges);
+        assert_eq!(serde_json::to_value(&fresh).unwrap()["keys"][0], serde_json::json!({"from":"dsa","to":"fresh"}));
+        // same spelling: nothing to do; spelling-only change is a rename without a merge
+        assert_eq!(plan(&ix, "dsa", "#dsa").unwrap().response.files, 0);
+        let case = plan(&ix, "algo", "ALGO").unwrap().response;
+        assert_eq!((case.files, case.merges, case.keys.len()), (1, false, 0));
+        // `to` nested under `from` is not a merge
+        assert!(!plan(&ix, "dsa", "dsa/new").unwrap().response.merges);
+    }
+
+    #[test]
+    fn plan_rejects_invalid_tags() {
+        let ix = tag_index(&[("a.excalidraw", &["#dsa"])]);
+        for bad in ["", "#", "two words", "a-", "#a//b", "123", "#ff00aa", "a b#c", "x/", &"a".repeat(65)] {
+            assert_eq!(plan(&ix, "dsa", bad).err().map(|e| e.code).as_deref(), Some("INVALID_TAG"), "to={bad:?}");
+        }
+        assert_eq!(plan(&ix, "no way", "ok").err().map(|e| e.code).as_deref(), Some("INVALID_TAG"));
+        assert!(plan(&ix, "dsa", "#ok/fine_2").is_ok());
+    }
+
+    // ---- job ----
+
+    fn run(e: &Env, from: &str, to: &str, open: Option<&str>, before: impl Fn(&str) + Send + Sync + 'static) -> Result<(MoveResult, Option<std::thread::JoinHandle<()>>)> {
+        rename_tag_with(&e.v, (from, to), open, (&e.search, &e.links), e.hooks(before))
+    }
+
+    fn run_wait(e: &Env, from: &str, to: &str, open: Option<&str>) -> MoveResult {
+        let (r, h) = run(e, from, to, open, |_| {}).unwrap();
+        if let Some(h) = h {
+            h.join().unwrap();
+        }
+        r
+    }
+
+    fn tag_keys(e: &Env) -> Vec<String> {
+        e.search.tags("h").unwrap().summary.tags.into_iter().map(|t| t.tag).collect()
+    }
+
+    #[test]
+    fn rename_rewrites_closed_drawings_and_the_tag_index_follows() {
+        let a = scene(&[text_el("t1", "#dsa notes #dsa2"), text_el("t2", "plain")]);
+        let e = env(&[("a.excalidraw", a.clone()), ("sub/b.excalidraw", scene(&[text_el("t", "#DSA/graphs")])), ("c.excalidraw", scene(&[text_el("t", "#other")]))]);
+        let (r, h) = run(&e, "dsa", "Algo", None, |_| {}).unwrap();
+        assert_eq!((r.planned_files, r.planned_links), (2, 2));
+        assert!(r.job_id.is_some() && r.open_drawing_edits.is_empty());
+        assert!(journal::journal_exists(&e.links_dir()) || h.is_none());
+        h.unwrap().join().unwrap();
+        let got: serde_json::Value = serde_json::from_str(&read(&e.root, "a.excalidraw")).unwrap();
+        assert_eq!(got["elements"][0]["originalText"], "#Algo notes #dsa2");
+        assert_eq!(got["elements"][0]["text"], "#Algo notes #dsa2");
+        assert_eq!(got["elements"][0]["version"], 4);
+        assert!(read(&e.root, "a.excalidraw").contains(r#"{"id":"t2","type":"text""#));
+        assert!(read(&e.root, "sub/b.excalidraw").contains("#Algo/graphs"));
+        assert_eq!(read(&e.root, "c.excalidraw"), scene(&[text_el("t", "#other")]));
+        let done = e.done.lock().unwrap().clone();
+        assert_eq!((done.len(), done[0].rewritten, done[0].links, done[0].failed.len()), (1, 2, 2, 0));
+        assert!(!journal::journal_exists(&e.links_dir()));
+        let set = journal::load_remeasure(&e.links_dir());
+        assert_eq!(set.paths.get("a.excalidraw"), Some(&vec!["t1".to_string()]));
+        assert_eq!(e.indexed.load(Ordering::SeqCst), 2);
+        let keys = tag_keys(&e);
+        assert!(keys.contains(&"algo".to_string()) && keys.contains(&"algo/graphs".to_string()) && !keys.contains(&"dsa".to_string()), "{keys:?}");
+        assert!(keys.contains(&"dsa2".to_string()));
+        // nothing left to do now
+        let again = run_wait(&e, "dsa", "Algo", None);
+        assert_eq!((again.job_id, again.planned_files, again.planned_links), (None, 0, 0));
+    }
+
+    #[test]
+    fn nesting_a_tag_under_itself_works() {
+        let e = env(&[("a.excalidraw", scene(&[text_el("t", "#a #a/c")]))]);
+        let r = run_wait(&e, "a", "a/b", None);
+        assert_eq!(r.planned_links, 2);
+        assert!(read(&e.root, "a.excalidraw").contains("#a/b #a/b/c"));
+    }
+
+    #[test]
+    fn same_spelling_is_no_job_and_invalid_tags_error() {
+        let e = env(&[("a.excalidraw", scene(&[text_el("t", "#dsa")]))]);
+        let r = run_wait(&e, "#dsa", "dsa", None);
+        assert_eq!((r.job_id, r.planned_files, r.planned_links), (None, 0, 0));
+        assert!(!journal::journal_exists(&e.links_dir()));
+        assert_eq!(run(&e, "dsa", "no good", None, |_| {}).err().map(|e| e.code).as_deref(), Some("INVALID_TAG"));
+    }
+
+    #[test]
+    fn the_open_drawing_gets_edits_not_a_disk_write() {
+        let a = scene(&[text_el("t1", "#dsa here"), format!(r##"{{"id":"f","type":"frame","name":"#dsa frame","isDeleted":false,"version":1,"versionNonce":1,"updated":1}}"##)]);
+        let e = env(&[("a.excalidraw", a.clone()), ("b.excalidraw", scene(&[text_el("t", "#dsa")]))]);
+        let r = run_wait(&e, "dsa", "Algo", Some("a.excalidraw"));
+        assert_eq!(read(&e.root, "a.excalidraw"), a, "open drawing untouched on disk");
+        let mut edits = r.open_drawing_edits.clone();
+        edits.sort_by(|x, y| x.element_id.cmp(&y.element_id));
+        assert_eq!(
+            edits,
+            vec![
+                ElementEdit { element_id: "f".into(), field: EditField::Name, value: "#Algo frame".into() },
+                ElementEdit { element_id: "t1".into(), field: EditField::Text, value: "#Algo here".into() },
+            ]
+        );
+        assert_eq!((r.planned_files, r.planned_links), (1, 1));
+        assert!(read(&e.root, "b.excalidraw").contains("#Algo"));
+        // only the open drawing carries the tag: edits, but no job
+        let e2 = env(&[("a.excalidraw", scene(&[text_el("t1", "#dsa")]))]);
+        let r2 = run_wait(&e2, "dsa", "Algo", Some("a.excalidraw"));
+        assert_eq!((r2.job_id, r2.planned_files, r2.open_drawing_edits.len()), (None, 0, 1));
+    }
+
+    #[test]
+    fn a_file_changed_underneath_is_skipped_and_reported() {
+        let e = env(&[("a.excalidraw", scene(&[text_el("t", "#dsa")])), ("b.excalidraw", scene(&[text_el("t", "#dsa")]))]);
+        let root = e.root.clone();
+        let theirs = scene(&[text_el("t", "#dsa edited elsewhere")]);
+        let theirs2 = theirs.clone();
+        let (_, h) = run(&e, "dsa", "Algo", None, move |p| {
+            if p == "a.excalidraw" {
+                fs::write(root.join("a.excalidraw"), &theirs2).unwrap();
+            }
+        })
+        .unwrap();
+        h.unwrap().join().unwrap();
+        assert_eq!(read(&e.root, "a.excalidraw"), theirs);
+        assert!(read(&e.root, "b.excalidraw").contains("#Algo"));
+        let done = e.done.lock().unwrap()[0].clone();
+        assert_eq!((done.rewritten, done.failed.len(), done.failed[0].code.as_str(), done.failed[0].path.as_str()), (1, 1, "CONFLICT", "a.excalidraw"));
+        assert!(!journal::journal_exists(&e.links_dir()));
+    }
+
+    fn tag_journal(e: &Env, paths: &[&str], from: &str, to: &str) {
+        let files = paths.iter().map(|p| FilePlan { from_path: (*p).into(), to_path: (*p).into(), elements: BTreeMap::new() }).collect();
+        journal::write_journal(&e.links_dir(), &Journal::new(3, files).with_tag(rule(from, to))).unwrap();
+    }
+
+    #[test]
+    fn journal_replay_is_idempotent() {
+        let e = env(&[("a.excalidraw", scene(&[text_el("t", "#dsa #dsa/x")]))]);
+        tag_journal(&e, &["a.excalidraw"], "dsa", "Algo");
+        let hooks = e.hooks(|_| {});
+        let first = replay_journal(&e.v, &hooks, &e.links).unwrap();
+        assert_eq!((first.rewritten, first.links), (1, 2));
+        let once = read(&e.root, "a.excalidraw");
+        assert!(once.contains("#Algo #Algo/x") && !journal::journal_exists(&e.links_dir()));
+        tag_journal(&e, &["a.excalidraw"], "dsa", "Algo");
+        let second = replay_journal(&e.v, &hooks, &e.links).unwrap();
+        assert_eq!((second.rewritten, second.links), (0, 0));
+        assert_eq!(read(&e.root, "a.excalidraw"), once);
+    }
+
+    #[test]
+    fn replay_of_a_nested_rename_does_not_nest_twice() {
+        let e = env(&[("done.excalidraw", scene(&[text_el("t", "#a/b #a/b/c")])), ("todo.excalidraw", scene(&[text_el("t", "#a #a/c")]))]);
+        tag_journal(&e, &["done.excalidraw", "todo.excalidraw"], "a", "a/b");
+        let hooks = e.hooks(|_| {});
+        replay_journal(&e.v, &hooks, &e.links).unwrap();
+        assert!(read(&e.root, "done.excalidraw").contains("#a/b #a/b/c"));
+        assert!(read(&e.root, "todo.excalidraw").contains("#a/b #a/b/c"));
+    }
+
+    #[test]
+    fn old_link_journals_without_a_tag_rule_still_read() {
+        let j: Journal = serde_json::from_str(r#"{"version":1,"jobId":2,"files":[]}"#).unwrap();
+        assert!(j.tag.is_none());
+        let s = serde_json::to_string(&Journal::new(1, vec![])).unwrap();
+        assert!(!s.contains("tag"));
+    }
 }

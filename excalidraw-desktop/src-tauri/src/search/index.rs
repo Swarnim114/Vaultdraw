@@ -456,6 +456,11 @@ impl Index {
         }
     }
 
+    /// Drawings that carry tags, with their distinct tags (no item scan).
+    pub(crate) fn tag_docs(&self) -> impl Iterator<Item = (&str, &[DocTag])> {
+        self.docs.iter().filter(|(_, d)| !d.tags.is_empty()).map(|(p, d)| (p.as_str(), &d.tags[..]))
+    }
+
     #[allow(dead_code)] // API for the tags feature
     /// Visits every text item of every drawing (for tag extraction without re-reading files).
     pub(crate) fn for_each_item(&self, mut f: impl FnMut(&str, &TextItem)) {

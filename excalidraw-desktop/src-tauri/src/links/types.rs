@@ -142,6 +142,8 @@ pub(crate) struct ElementEdit {
 pub(crate) enum EditField {
     Text,
     Link,
+    /// Frame `name` (tag renames reach frame names).
+    Name,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

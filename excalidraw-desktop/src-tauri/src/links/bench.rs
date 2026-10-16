@@ -431,7 +431,7 @@ fn bench_links_p1() {
     // rewriter: one 2 MB drawing, 200 elements, 160 targeted
     let src = big_drawing(200, 2_000_000);
     let plan = plan_for(160);
-    let rules = FileRules { old_dir: "", new_dir: "", elements: &plan.elements, now_ms: 1_700_000_000_000 };
+    let rules = FileRules { old_dir: "", new_dir: "", elements: &plan.elements, tag: None, now_ms: 1_700_000_000_000 };
     let (w50, w95) = timed(200, |_| {
         std::hint::black_box(rewrite(src.as_bytes(), &rules).unwrap().unwrap());
     });
@@ -439,7 +439,7 @@ fn bench_links_p1() {
     let t = Instant::now();
     for f in &many {
         let b = fs::read(v.root.join(&f.to_path)).unwrap();
-        let r = FileRules { old_dir: "", new_dir: "", elements: &f.elements, now_ms: 1 };
+        let r = FileRules { old_dir: "", new_dir: "", elements: &f.elements, tag: None, now_ms: 1 };
         std::hint::black_box(rewrite(&b, &r).unwrap());
     }
     let cpu100 = t.elapsed().as_secs_f64() * 1e3;
@@ -452,7 +452,7 @@ fn bench_links_p1() {
         let (_d, v, files) = job_files(100, elements, image, "job");
         let state = LinksState::default();
         let t = Instant::now();
-        let done = run_job(&v, &files, 1, &noop_hooks(), &state);
+        let done = run_job(&v, &files, None, 1, &noop_hooks(), &state);
         let ms = t.elapsed().as_secs_f64() * 1e3;
         assert_eq!((done.rewritten, done.failed.len()), (100, 0), "{:?}", done.failed.first());
         println!("job {label}: {ms:.0} ms ({:.2} ms/file)", ms / 100.0);

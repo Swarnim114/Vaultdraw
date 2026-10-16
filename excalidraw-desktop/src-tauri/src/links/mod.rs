@@ -12,6 +12,7 @@ mod plan;
 mod query;
 mod resolve;
 mod rewrite;
+mod tag_rename;
 mod types;
 
 #[cfg(test)]
@@ -27,7 +28,7 @@ use crate::{err, now_ms, Result, Vault, MAX_DRAWING_BYTES};
 use journal::Journal;
 use plan::{FilePlan, Plan};
 use resolve::dir_of;
-use rewrite::{rewrite, FileRules};
+use rewrite::{rewrite, FileRules, TagRule};
 use std::{
     path::PathBuf,
     sync::{
@@ -122,7 +123,7 @@ fn failure(path: &str, code: &str, message: impl Into<String>) -> RewriteFailure
 }
 
 /// Rewrites one closed drawing; `Ok(None)` when nothing needed changing.
-fn rewrite_file(v: &Vault, f: &FilePlan, hooks: &Hooks, parents: &mut std::collections::BTreeSet<PathBuf>) -> std::result::Result<Option<(u32, Vec<String>)>, RewriteFailure> {
+fn rewrite_file(v: &Vault, f: &FilePlan, tag: Option<&TagRule>, hooks: &Hooks, parents: &mut std::collections::BTreeSet<PathBuf>) -> std::result::Result<Option<(u32, Vec<String>)>, RewriteFailure> {
     let fail = |e: crate::NativeError| failure(&f.to_path, if e.code == "CONFLICT" { "CONFLICT" } else if e.code == "INVALID_FILE" { "INVALID_FILE" } else { "IO" }, e.message);
     let abs = crate::safe_path(&v.root, &f.to_path, false).map_err(fail)?;
     let bytes = match crate::read_bounded(&abs, MAX_DRAWING_BYTES) {
@@ -131,7 +132,7 @@ fn rewrite_file(v: &Vault, f: &FilePlan, hooks: &Hooks, parents: &mut std::colle
         Err(e) => return Err(fail(e)),
     };
     let revision = crate::revision(&bytes);
-    let rules = FileRules { old_dir: dir_of(&f.from_path), new_dir: dir_of(&f.to_path), elements: &f.elements, now_ms: now_ms(SystemTime::now()) };
+    let rules = FileRules { old_dir: dir_of(&f.from_path), new_dir: dir_of(&f.to_path), elements: &f.elements, tag, now_ms: now_ms(SystemTime::now()) };
     let Some(out) = rewrite(&bytes, &rules).map_err(fail)? else { return Ok(None) };
     let json = String::from_utf8(out.bytes).map_err(|_| failure(&f.to_path, "INVALID_FILE", "Rewritten drawing is not UTF-8"))?;
     (hooks.before_write)(&f.to_path);
@@ -145,7 +146,8 @@ fn rewrite_file(v: &Vault, f: &FilePlan, hooks: &Hooks, parents: &mut std::colle
 }
 
 /// Rewrites `files` (closed drawings) and finishes the job: re-measure set, journal, event.
-fn run_job(v: &Vault, files: &[FilePlan], job_id: u32, hooks: &Hooks, state: &LinksState) -> RewriteDone {
+/// `tag` switches the rewriter to tag mode (the files carry no element lists then).
+fn run_job(v: &Vault, files: &[FilePlan], tag: Option<&TagRule>, job_id: u32, hooks: &Hooks, state: &LinksState) -> RewriteDone {
     let started = Instant::now();
     let mut done = RewriteDone { handle: v.handle.clone(), job_id, rewritten: 0, links: 0, failed: Vec::new(), took_ms: 0.0 };
     let mut remeasure = Vec::new();
@@ -154,7 +156,7 @@ fn run_job(v: &Vault, files: &[FilePlan], job_id: u32, hooks: &Hooks, state: &Li
     } else {
         let mut parents = std::collections::BTreeSet::new();
         for f in files {
-            match rewrite_file(v, f, hooks, &mut parents) {
+            match rewrite_file(v, f, tag, hooks, &mut parents) {
                 Ok(Some((links, texts))) => {
                     done.rewritten += 1;
                     done.links += links;
@@ -191,7 +193,16 @@ pub(crate) fn replay_journal(v: &Vault, hooks: &Hooks, state: &LinksState) -> Op
         journal::clear_journal(dir);
         return None;
     };
-    Some(run_job(v, &j.files, j.job_id, hooks, state))
+    // A rename whose new tag lies under the old one is not idempotent token by token: on replay,
+    // tokens already under the new tag count as done.
+    let tag = j.tag.map(|mut t| {
+        let to_key = crate::search::tag_key(&t.to);
+        if crate::search::key_under(&to_key, &t.from_key) {
+            t.skip_under = Some(to_key);
+        }
+        t
+    });
+    Some(run_job(v, &j.files, tag.as_ref(), j.job_id, hooks, state))
 }
 
 /// Starts the journal replay for a vault that was just opened (a no-op without a journal).
@@ -252,7 +263,7 @@ pub(crate) fn move_with_links(
     if let Some(f) = open_plan {
         if let Ok(abs) = crate::safe_path(&v.root, &f.from_path, false) {
             if let Ok(bytes) = crate::read_bounded(&abs, MAX_DRAWING_BYTES) {
-                let rules = FileRules { old_dir: dir_of(&f.from_path), new_dir: dir_of(&f.to_path), elements: &f.elements, now_ms: now_ms(SystemTime::now()) };
+                let rules = FileRules { old_dir: dir_of(&f.from_path), new_dir: dir_of(&f.to_path), elements: &f.elements, tag: None, now_ms: now_ms(SystemTime::now()) };
                 if let Ok(Some(out)) = rewrite(&bytes, &rules) {
                     result.open_drawing_edits = out.edits;
                 }
@@ -289,7 +300,7 @@ pub(crate) fn move_with_links(
         .spawn(move || {
             let _run = run;
             crate::search::lower_priority();
-            run_job(&v2, &closed, id, &hooks, &state2);
+            run_job(&v2, &closed, None, id, &hooks, &state2);
         })
         .map_err(|e| err("INTERNAL", format!("Cannot start the link rewrite: {e}")))?;
     Ok((result, Some(handle)))
@@ -301,6 +312,23 @@ pub(crate) fn move_command(app: &AppHandle, v: &Arc<Vault>, from: &str, to: &str
     let hooks = tauri_hooks(app, v);
     let rename = || crate::move_entry_paths(&v.root, from, to);
     move_with_links(v, &MoveRequest { from, to, open_path }, (search, state), hooks, rename).map(|(r, _)| r)
+}
+
+// ---- tag rename commands (logic in tag_rename.rs) ----
+
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn tags_plan_rename(handle: String, from: String, to: String, search: State<'_, SearchService>) -> Result<tag_rename::TagRenamePlan> {
+    let vi = vault_index(&search, &handle)?;
+    let g = vi.read();
+    tag_rename::plan(&g, &from, &to).map(|p| p.response)
+}
+
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn rename_tag(app: AppHandle, handle: String, from: String, to: String, open_path: Option<String>, state: State<'_, crate::Service>, search: State<'_, SearchService>, links: State<'_, LinksState>) -> Result<MoveResult> {
+    let v = crate::vault_for(&state, &handle)?;
+    tag_rename::rename_command(&app, &v, (&from, &to), open_path.as_deref(), &search, &links)
 }
 
 // ---- commands ----

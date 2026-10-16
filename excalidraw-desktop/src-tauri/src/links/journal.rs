@@ -6,6 +6,7 @@
 //! Vaultdraw rewrote while their drawing was closed, so the editor re-measures just those.
 
 use super::plan::FilePlan;
+use super::rewrite::TagRule;
 use super::types::RemeasureSet;
 use crate::{err, ioerr, write_atomic, Result};
 use serde::{Deserialize, Serialize};
@@ -23,11 +24,19 @@ pub(crate) struct Journal {
     pub version: u32,
     pub job_id: u32,
     pub files: Vec<FilePlan>,
+    /// Set for a tag rename: the files carry no element lists, the rule picks the tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<TagRule>,
 }
 
 impl Journal {
     pub(crate) fn new(job_id: u32, files: Vec<FilePlan>) -> Journal {
-        Journal { version: JOURNAL_VERSION, job_id, files }
+        Journal { version: JOURNAL_VERSION, job_id, files, tag: None }
+    }
+
+    pub(crate) fn with_tag(mut self, tag: TagRule) -> Journal {
+        self.tag = Some(tag);
+        self
     }
 }
 

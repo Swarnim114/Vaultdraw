@@ -22,6 +22,7 @@ pub(crate) use extract::{extract_items, ItemKind, TextItem};
 #[allow(unused_imports)]
 pub(crate) use extract::ElementLink;
 pub(crate) use index::{word_snippet, DocEntry, Index};
+pub(crate) use tags::{find_tags, key_under, tag_key};
 // Shared with file history (one vault-id derivation, one walker, one QoS helper).
 pub(crate) use store::vault_id;
 #[allow(unused_imports)] // `walk` is used by file-history relink (H3)
