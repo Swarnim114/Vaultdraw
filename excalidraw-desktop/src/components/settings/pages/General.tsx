@@ -5,8 +5,7 @@ import {
   openConfigDir,
   reloadSettings,
 } from "../../../vault/settingsSync";
-import { IconDrawing, IconFolder, IconRefresh } from "../../Icons";
-import { getSettingSchema } from "../schema";
+import { IconFolder, IconRefresh } from "../../Icons";
 import { useSettings, type SettingControls } from "../SettingsContext";
 import { SettingRow } from "../SettingRow";
 
@@ -56,6 +55,16 @@ const ConfigFileSetting = () => {
     }
   };
 
+  if (settingsStatus.mode !== "tauri") {
+    return (
+      <SettingRow
+        id="config-file"
+        testId="settings-config-note"
+        description="Settings are saved in this browser. The desktop app keeps them in a plain config.toml you can edit by hand."
+      />
+    );
+  }
+
   return (
     <SettingRow
       id="config-file"
@@ -99,33 +108,10 @@ const ConfigFileSetting = () => {
   );
 };
 
-const AboutSetting = () => (
-  <div
-    className="vault-setting-block vault-settings-about"
-    data-setting-id="about"
-  >
-    <div className="vault-settings-about__hero">
-      <IconDrawing width="44" height="44" />
-      <h3 className="vault-settings-about__name">Vaultdraw</h3>
-      <div className="vault-settings-about__version">
-        Version 0.1.0 • Offline Private Local Vault
-      </div>
-    </div>
-    <div className="vault-setting-info">
-      <div className="vault-setting-label">
-        100% Offline &amp; Private Local Vault
-      </div>
-      <div className="vault-setting-desc">
-        {getSettingSchema("about").description}
-      </div>
-    </div>
-  </div>
-);
-
 export const generalControls: SettingControls = {
   "config-file": {
     Component: ConfigFileSetting,
-    available: (ctx) => ctx.settingsStatus.mode === "tauri",
+    // In the browser the row is only a note about where settings live.
+    searchable: (ctx) => ctx.settingsStatus.mode === "tauri",
   },
-  about: { Component: AboutSetting },
 };

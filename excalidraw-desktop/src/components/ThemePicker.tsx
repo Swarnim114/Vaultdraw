@@ -11,6 +11,8 @@ import {
   useState,
 } from "react";
 
+import { Segmented } from "./settings/pages/controls";
+
 import type { ThemeMode, ThemePreviewColors } from "../theme";
 import type { ThemeEntry } from "../theme/registry";
 
@@ -45,6 +47,34 @@ export const filterThemes = (
   );
 };
 
+export type ThemeSide = "all" | "dark" | "light";
+
+/**
+ * Sides a theme was written for: a side generated from the other one does
+ * not count (a dark-only theme shows under "Dark" only). Reads the entry's
+ * cheap summary, so call it only while a Dark/Light filter is on.
+ */
+export const themeNativeSides = (entry: ThemeEntry): readonly ThemeMode[] => {
+  const { generated } = entry.summary.preview;
+  const native = PREVIEW_MODES.filter((mode) => !generated[mode]);
+  return native.length > 0 ? native : PREVIEW_MODES;
+};
+
+/** Themes written for `side` (all of them for "all"). */
+export const filterThemeSide = (
+  themes: readonly ThemeEntry[],
+  side: ThemeSide,
+): readonly ThemeEntry[] =>
+  side === "all"
+    ? themes
+    : themes.filter((entry) => themeNativeSides(entry).includes(side));
+
+const SIDE_OPTIONS = [
+  { label: "All", val: "all" },
+  { label: "Dark", val: "dark" },
+  { label: "Light", val: "light" },
+] as const;
+
 const ThemeHalf = ({
   colors: c,
   mode,
@@ -60,34 +90,26 @@ const ThemeHalf = ({
     style={{ backgroundColor: c.surface, color: c.onSurface }}
   >
     <div
-      className="vault-theme-card__bar"
-      style={{ backgroundColor: c.surfaceVariant }}
-    />
-    <div
       className="vault-theme-card__line"
       style={{ backgroundColor: c.onSurface }}
     />
     <div
       className="vault-theme-card__line vault-theme-card__line--short"
-      style={{ backgroundColor: c.onSurfaceVariant }}
+      style={{ backgroundColor: c.onSurface }}
     />
     <div className="vault-theme-card__swatches">
       <span
         className="vault-theme-card__pill"
         style={{ backgroundColor: c.primary }}
       />
-      {[
-        c.terminal.red,
-        c.terminal.yellow,
-        c.terminal.green,
-        c.terminal.blue,
-      ].map((color, i) => (
-        <span
-          key={i}
-          className="vault-theme-card__dot"
-          style={{ backgroundColor: color }}
-        />
-      ))}
+      <span
+        className="vault-theme-card__dot"
+        style={{ backgroundColor: c.onSurface }}
+      />
+      <span
+        className="vault-theme-card__dot"
+        style={{ backgroundColor: c.onSurface }}
+      />
     </div>
     {generated && (
       <span
@@ -159,6 +181,22 @@ const ThemeCard = memo(
         </div>
         <div className="vault-theme-card__meta">
           <span className="vault-theme-card__name">{name}</span>
+          {selected && (
+            <svg
+              className="vault-theme-card__check"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m5 12 5 5L20 7" />
+            </svg>
+          )}
           {entry.source === "user" && (
             <span className="vault-theme-card__tag">
               {entry.overridesBuiltin ? "Custom override" : "Custom"}
@@ -202,6 +240,7 @@ export const ThemePicker = ({
   onSelect,
 }: ThemePickerProps) => {
   const [query, setQuery] = useState("");
+  const [side, setSide] = useState<ThemeSide>("all");
   const deferredQuery = useDeferredValue(query);
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridId = useId();
@@ -216,8 +255,8 @@ export const ThemePicker = ({
   );
 
   const visible = useMemo(
-    () => filterThemes(themes, deferredQuery),
-    [themes, deferredQuery],
+    () => filterThemeSide(filterThemes(themes, deferredQuery), side),
+    [themes, deferredQuery, side],
   );
 
   // Cards that have been near the viewport (monotonic). null = no
@@ -373,44 +412,57 @@ export const ThemePicker = ({
     }
   };
 
-  const filtering = deferredQuery.trim() !== "";
+  const filtering = deferredQuery.trim() !== "" || side !== "all";
 
   return (
     <div className="vault-theme-picker" data-testid="theme-picker">
-      <div className="vault-theme-search">
-        <svg
-          className="vault-theme-search__icon"
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
-          <circle
-            cx="7"
-            cy="7"
-            r="4.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
+      <div className="vault-theme-head">
+        <span className="vault-theme-head__title">Theme</span>
+        <span className="vault-theme-head__note">
+          {themes.length} · every theme has a light and dark side
+        </span>
+        <span className="vault-theme-head__spacer" />
+        <div className="vault-theme-search">
+          <svg
+            className="vault-theme-search__icon"
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            aria-hidden="true"
+          >
+            <circle
+              cx="7"
+              cy="7"
+              r="4.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M10.5 10.5 14 14"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          <input
+            type="search"
+            className="vault-input vault-theme-search__input"
+            placeholder="Search themes"
+            aria-label="Search colour themes"
+            aria-controls={gridId}
+            value={query}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
           />
-          <path
-            d="M10.5 10.5 14 14"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-        <input
-          type="search"
-          className="vault-input vault-theme-search__input"
-          placeholder={`Search ${themes.length} themes`}
-          aria-label="Search colour themes"
-          aria-controls={gridId}
-          value={query}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
+        </div>
+        <Segmented
+          options={SIDE_OPTIONS}
+          value={side}
+          onChange={setSide}
+          label="Show themes written for"
         />
       </div>
       <div

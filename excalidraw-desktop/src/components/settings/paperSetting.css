@@ -1,29 +1,7 @@
-/* Settings -> Appearance -> Background Pattern: stacked row + icon tiles. */
-
-.vault-setting-row.vault-setting-row--stacked {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 4px;
-}
-
-.vault-setting-stacked-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.vault-setting-wide {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 8px;
-  min-width: 0;
-}
+/* Settings -> Appearance -> Canvas pattern and Page -> Paper theme: icon
+ * tiles. The row frame (stacked, below, narrow) lives in settings.css. */
 
 .paper-tiles {
-  margin-bottom: 12px;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
@@ -37,11 +15,11 @@
   min-width: 0;
   padding: 10px 4px 8px;
   border: 1px solid var(--vault-border);
-  border-radius: var(--vault-radius);
+  border-radius: var(--vd-radius-control);
   background: var(--vault-bg);
   color: var(--vault-text-muted);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--vd-fs-small);
   cursor: pointer;
 }
 
@@ -58,20 +36,56 @@
 }
 
 .paper-tile:hover {
-  background: var(--vault-surface-hover);
+  background: var(--vault-hover);
   color: var(--vault-text);
 }
 
 .paper-tile[data-checked="true"] {
-  background: var(--vault-primary-light);
-  border-color: var(--vault-primary-border);
-  color: var(--vault-primary);
-  font-weight: 600;
+  background: var(--vault-sel);
+  border-color: var(--vault-primary);
+  color: var(--vault-text);
+  font-weight: 500;
 }
 
 .paper-tile:focus-visible {
   outline: 2px solid var(--vault-primary);
   outline-offset: 1px;
+}
+
+/* Canvas pattern: compact 44 x 32 tiles on the row's right; the name is the
+ * tooltip and the accessible name. */
+.paper-tiles--patterns {
+  display: flex;
+  gap: var(--vd-space-2);
+}
+
+.paper-tiles--patterns .paper-tile {
+  position: relative;
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.paper-tiles--patterns .paper-tile svg {
+  width: 18px;
+  height: 18px;
+}
+
+.paper-tiles--patterns .paper-tile__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.paper-tiles--patterns .paper-tile[data-checked="true"] {
+  background: var(--vault-bg);
+  border-color: var(--vault-border);
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 2px;
 }
 
 @media (max-width: 760px) {
@@ -85,19 +99,9 @@
   }
 }
 
-/* A row whose control is too wide beside its text at narrow widths. */
-@media (max-width: 760px) {
-  .vault-setting-row.vault-setting-row--stack-narrow {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 8px;
-  }
-
-  .vault-setting-row--stack-narrow .vault-setting-control {
-    max-width: 100%;
-    justify-content: flex-start;
-  }
+/* Pattern fine-tuning under the Canvas pattern row. */
+.vault-paper-tuning {
+  padding-top: var(--vd-space-3);
 }
 
 .paper-row .vault-cp.vault-fieldset {

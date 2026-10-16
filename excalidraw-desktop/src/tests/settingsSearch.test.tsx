@@ -78,7 +78,7 @@ describe("settings schema", () => {
     // Tool rows match their style keys too, so the Drawing row is one of many.
     expect(ids("stroke width")).toContain("stroke-width");
     expect(ids("stroke width")).toContain("tool-arrow");
-    expect(ids("ATOMICALLY")).toEqual(["autosave"]); // description
+    expect(ids("ATOMIC")).toEqual(["autosave"]); // description
     expect(ids("sloppiness")).toContain("roughness"); // keyword
     expect(ids("sloppiness")).toContain("tool-rectangle");
     expect(ids("saving.autosave_delay_ms")).toEqual(["autosave"]); // key
@@ -167,19 +167,21 @@ describe("settings search", () => {
     const { search } = renderModal();
     // Tauri-only rows are searchable too.
     fireEvent.change(search, { target: { value: "config.toml" } });
-    expect(within(results()).getByText("/cfg/config.toml")).toBeInTheDocument();
+    expect(
+      within(results()).getAllByText("/cfg/config.toml").length,
+    ).toBeGreaterThan(0);
 
     fireEvent.change(search, { target: { value: "autosave" } });
-    const select = within(results()).getByRole("combobox", {
-      name: "Autosave delay preset",
+    const stepper = within(results()).getByRole("spinbutton", {
+      name: "Autosave delay",
     });
-    fireEvent.change(select, { target: { value: "1000" } });
-    expect(getPreferences(window).autosaveDelayMs).toBe(1000);
+    fireEvent.keyDown(stepper, { key: "PageUp" }); // 5 steps of 50 ms
+    expect(getPreferences(window).autosaveDelayMs).toBe(750);
     await act(async () => {
       await flushSettings();
     });
     expect(invoke).toHaveBeenCalledWith("update_config", {
-      changes: [{ key: "saving.autosave_delay_ms", value: 1000 }],
+      changes: [{ key: "saving.autosave_delay_ms", value: 750 }],
     });
   });
 
@@ -187,7 +189,7 @@ describe("settings search", () => {
     const { search } = renderModal();
     fireEvent.change(search, { target: { value: "folder" } });
     const box = results();
-    expect(within(box).getByText("Current Vault Folder")).toBeInTheDocument();
+    expect(within(box).getByText("Vault folder")).toBeInTheDocument();
     expect(within(box).queryByText("Themes Folder")).toBeNull();
     expect(within(box).queryByText("Config File")).toBeNull();
   });
@@ -230,7 +232,9 @@ describe("settings search", () => {
     fireEvent.change(search, { target: { value: "autosave" } });
     fireEvent.click(screen.getByRole("tab", { name: "General" }));
     expect(search).toHaveValue("");
-    expect(screen.getByText("Vaultdraw")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Settings are saved in this browser/),
+    ).toBeInTheDocument();
   });
 
   it("focuses the search box when Settings opens", () => {

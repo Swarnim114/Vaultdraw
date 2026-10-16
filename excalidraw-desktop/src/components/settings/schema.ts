@@ -99,6 +99,8 @@ export interface SettingSchema {
   perVault?: boolean;
   /** Tools page section this row belongs to (search opens it there). */
   section?: ToolsSection;
+  /** Section label shown above this row and the rows after it (page view). */
+  heading?: string;
 }
 
 export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
@@ -111,39 +113,22 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
       "Settings live in a plain text file you can edit by hand; changes apply live.",
     keywords: ["config.toml", "toml", "reload", "open config folder", "file"],
   },
-  {
-    id: "about",
-    page: "general",
-    label: "About Vaultdraw",
-    description:
-      "Your vault is an ordinary folder stored on your local hard drive. Drawings are standard .excalidraw JSON files with atomic writes, crash recovery store, and complete offline privacy. Zero network tracking, zero accounts, zero lock-in.",
-    keywords: ["version", "offline", "privacy", "private", "local", "info"],
-  },
 
   // ---- Appearance ----
   {
     id: "mode",
     page: "appearance",
     label: "Mode",
-    description: "Light, dark, or follow the system appearance.",
+    description: "Light, dark, or follow macOS.",
     keywords: ["dark", "light", "system", "theme", "colour scheme", "color"],
     configKey: "appearance.mode",
-  },
-  {
-    id: "colour-theme",
-    page: "appearance",
-    label: "Colour Theme",
-    description:
-      "Colours for the whole app. Every theme works in light and dark mode.",
-    keywords: ["color", "theme", "palette", "noctalia", "skin"],
-    configKey: "appearance.theme",
   },
   {
     id: "sync-canvas",
     page: "appearance",
     label: "Sync canvas with theme",
     description:
-      "Shows the canvas and palette colours in the theme's colours. On screen only: files and exports keep standard colours.",
+      "Recolour the drawing background and default stroke to match the theme. On screen only: files and exports keep standard colours.",
     keywords: ["canvas", "colour", "color", "theme", "match"],
     configKey: "appearance.sync_canvas",
   },
@@ -156,11 +141,20 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "appearance.canvas_background",
   },
   {
+    id: "accent-colour",
+    page: "appearance",
+    label: "Accent",
+    description:
+      "Overrides the theme's primary colour. The first swatch is the theme's own.",
+    keywords: ["accent", "colour", "color", "primary", "highlight", "brand"],
+    configKey: "appearance.accent_color",
+  },
+  {
     id: "paper",
     page: "appearance",
-    label: "Background Pattern",
+    label: "Canvas pattern",
     description:
-      "Paper for new drawings: grid, ruled lines, dots, graph or isometric. Each drawing can change it from the canvas menu.",
+      "Background pattern drawn behind every drawing: grid, ruled lines, dots, graph or isometric. Each drawing can change it from the canvas menu.",
     keywords: [
       "paper",
       "grid",
@@ -177,22 +171,21 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     perVault: true,
   },
   {
+    id: "colour-theme",
+    page: "appearance",
+    label: "Colour Theme",
+    description:
+      "Colours for the whole app. Every theme works in light and dark mode.",
+    keywords: ["color", "theme", "palette", "noctalia", "skin"],
+    configKey: "appearance.theme",
+  },
+  {
     id: "themes-folder",
     page: "appearance",
     label: "Themes Folder",
     description:
       "Drop Noctalia palettes (.json) here; they appear above automatically.",
     keywords: ["theme", "folder", "noctalia", "json", "custom", "import"],
-  },
-
-  {
-    id: "accent-colour",
-    page: "appearance",
-    label: "Accent Colour",
-    description:
-      "Overrides the theme's primary colour. Leave unset to use the theme's own.",
-    keywords: ["accent", "colour", "color", "primary", "highlight", "brand"],
-    configKey: "appearance.accent_color",
   },
 
   // ---- Page ----
@@ -461,23 +454,23 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   {
     id: "vault-folder",
     page: "files",
-    label: "Current Vault Folder",
-    description: "Where the open vault lives on disk.",
+    label: "Vault folder",
+    description: "Where this vault lives on disk.",
     keywords: ["vault", "folder", "path", "reveal", "storage", "location"],
   },
   {
     id: "autosave",
     page: "files",
-    label: "Autosave Debounce Interval",
+    label: "Autosave delay",
     description:
-      "Time to wait after last drawing edit before writing atomically to disk.",
+      "Wait this long after the last edit before writing to disk. Writes are atomic.",
     keywords: ["save", "autosave", "delay", "debounce", "ms", "storage"],
     configKey: "saving.autosave_delay_ms",
   },
   {
     id: "confirm-delete",
     page: "files",
-    label: "Confirm before delete",
+    label: "Confirm before trashing",
     description: "Ask before moving a drawing or folder to the Trash.",
     keywords: ["delete", "trash", "confirm", "ask", "dialog"],
     configKey: "files.confirm_delete",
@@ -485,8 +478,8 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   {
     id: "new-drawing-folder",
     page: "files",
-    label: "Default Folder for New Drawings",
-    description: "Vault folder where new drawings are created.",
+    label: "New drawings go to",
+    description: "Leave empty to create next to the open drawing.",
     keywords: ["default folder", "location", "new drawing", "inbox", "folder"],
     configKey: "files.new_drawing_folder",
     perVault: true,
@@ -494,12 +487,37 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   {
     id: "templates-folder",
     page: "files",
-    label: "Templates Folder",
+    label: "Templates folder",
     description:
-      "Vault folder holding your templates. Global templates live in the config folder.",
+      "Vault-level templates. Global ones live in the config folder.",
     keywords: ["templates", "template", "folder", "location"],
     configKey: "files.templates_folder",
     perVault: true,
+  },
+
+  {
+    id: "recovery-store",
+    page: "files",
+    heading: "Recovery",
+    label: "Crash recovery store",
+    description:
+      "If a save fails, a copy of the drawing is kept here and offered on the next launch.",
+    keywords: ["recovery", "crash", "backup", "restore", "snapshot", "reveal"],
+  },
+  {
+    id: "settings-file",
+    page: "files",
+    heading: "Recovery",
+    label: "Settings file",
+    description:
+      "Every setting is a key in a plain text file you can edit by hand.",
+    keywords: [
+      "config.toml",
+      "toml",
+      "settings file",
+      "reveal",
+      "edit by hand",
+    ],
   },
 
   // ---- Links ----

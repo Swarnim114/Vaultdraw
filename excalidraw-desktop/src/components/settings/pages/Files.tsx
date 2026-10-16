@@ -1,37 +1,29 @@
 import { useState } from "react";
 
 import { DEFAULT_TEMPLATES_FOLDER } from "../../../templates/types";
-import { isVaultRelativeFolder } from "../../../vault/settingsSync";
+import {
+  isVaultRelativeFolder,
+  openConfigDir,
+} from "../../../vault/settingsSync";
 import { IconFolder } from "../../Icons";
 import { useSettings, type SettingControls } from "../SettingsContext";
 import { SettingRow } from "../SettingRow";
 
-import { Switch } from "./controls";
+import { RevealPath, Stepper, Switch } from "./controls";
 import { PerVaultRow } from "./perVault";
 
-const AUTOSAVE_OPTIONS = [250, 500, 1000, 2000] as const;
+/** Where the vault keeps crash-recovery copies (see `checked_recovery_dir`). */
+const RECOVERY_SUBPATH = ".excalidraw-vault/recovery";
 
 const VaultFolderSetting = () => {
   const { vault, onRevealVault } = useSettings();
   return (
-    <SettingRow
-      id="vault-folder"
-      details={
-        <code className="vault-config-path">
-          {vault?.path ?? "No vault currently open"}
-        </code>
-      }
-    >
-      {vault && onRevealVault && (
-        <button
-          type="button"
-          className="vault-btn vault-btn--sm"
-          onClick={() => onRevealVault("")}
-        >
-          <IconFolder />
-          <span>Reveal Folder</span>
-        </button>
-      )}
+    <SettingRow id="vault-folder">
+      <RevealPath
+        path={vault?.path ?? "No vault currently open"}
+        label="Reveal vault folder"
+        onReveal={vault && onRevealVault ? () => onRevealVault("") : undefined}
+      />
     </SettingRow>
   );
 };
@@ -39,34 +31,16 @@ const VaultFolderSetting = () => {
 const AutosaveSetting = () => {
   const { autosaveDelay, setAutosaveDelay } = useSettings();
   return (
-    <SettingRow
-      id="autosave"
-      description={`Time to wait after last drawing edit before writing atomically to disk (${autosaveDelay}ms).`}
-    >
-      <div className="vault-setting-inline">
-        <input
-          type="range"
-          className="vault-range"
-          min="200"
-          max="2000"
-          step="50"
-          value={autosaveDelay}
-          aria-label="Autosave delay"
-          onChange={(e) => setAutosaveDelay(Number(e.target.value))}
-        />
-        <select
-          className="vault-input vault-input--compact"
-          aria-label="Autosave delay preset"
-          value={autosaveDelay}
-          onChange={(e) => setAutosaveDelay(Number(e.target.value))}
-        >
-          {AUTOSAVE_OPTIONS.map((ms) => (
-            <option key={ms} value={ms}>
-              {ms} ms
-            </option>
-          ))}
-        </select>
-      </div>
+    <SettingRow id="autosave">
+      <Stepper
+        label="Autosave delay"
+        unit="ms"
+        min={200}
+        max={2000}
+        step={50}
+        value={autosaveDelay}
+        onChange={setAutosaveDelay}
+      />
     </SettingRow>
   );
 };
@@ -119,26 +93,29 @@ const FolderInput = ({
   };
   return (
     <div className="vault-setting-field">
-      <input
-        type="text"
-        className="vault-input"
-        aria-label={label}
-        aria-invalid={error !== null}
-        placeholder={placeholder}
-        spellCheck={false}
-        value={draft ?? value}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            commit();
-          } else if (e.key === "Escape" && draft !== null) {
-            e.stopPropagation();
-            setDraft(null);
-            setError(null);
-          }
-        }}
-      />
+      <div className="vault-folder-field">
+        <input
+          type="text"
+          className="vault-input"
+          aria-label={label}
+          aria-invalid={error !== null}
+          placeholder={placeholder}
+          spellCheck={false}
+          value={draft ?? value}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              commit();
+            } else if (e.key === "Escape" && draft !== null) {
+              e.stopPropagation();
+              setDraft(null);
+              setError(null);
+            }
+          }}
+        />
+        <IconFolder className="vault-folder-field__icon" aria-hidden="true" />
+      </div>
       {error && (
         <div
           className="vault-config-status vault-config-status--error"
@@ -152,13 +129,7 @@ const FolderInput = ({
 };
 
 const NewDrawingFolderSetting = () => (
-  <PerVaultRow
-    id="new-drawing-folder"
-    field="newDrawingFolder"
-    details={
-      <div className="vault-setting-hint">Empty = next to the open drawing</div>
-    }
-  >
+  <PerVaultRow id="new-drawing-folder" field="newDrawingFolder">
     {(value, onChange) => <FolderInput value={value} onCommit={onChange} />}
   </PerVaultRow>
 );
@@ -177,10 +148,44 @@ const TemplatesFolderSetting = () => (
   </PerVaultRow>
 );
 
+const RecoveryStoreSetting = () => {
+  const { vault, onRevealRecovery } = useSettings();
+  return (
+    <SettingRow id="recovery-store">
+      <RevealPath
+        path={`${vault?.path ?? ""}/${RECOVERY_SUBPATH}`}
+        label="Reveal recovery folder"
+        onReveal={onRevealRecovery}
+      />
+    </SettingRow>
+  );
+};
+
+const SettingsFileSetting = () => {
+  const { settingsStatus } = useSettings();
+  return (
+    <SettingRow id="settings-file">
+      <RevealPath
+        path={settingsStatus.configPath ?? "config.toml"}
+        label="Reveal settings file"
+        onReveal={() => void openConfigDir().catch(() => {})}
+      />
+    </SettingRow>
+  );
+};
+
 export const filesControls: SettingControls = {
   "vault-folder": { Component: VaultFolderSetting },
   autosave: { Component: AutosaveSetting },
   "confirm-delete": { Component: ConfirmDeleteSetting },
   "new-drawing-folder": { Component: NewDrawingFolderSetting },
   "templates-folder": { Component: TemplatesFolderSetting },
+  "recovery-store": {
+    Component: RecoveryStoreSetting,
+    available: (ctx) => ctx.vault !== null && !!ctx.onRevealRecovery,
+  },
+  "settings-file": {
+    Component: SettingsFileSetting,
+    available: (ctx) => ctx.settingsStatus.mode === "tauri",
+  },
 };

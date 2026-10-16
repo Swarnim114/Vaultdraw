@@ -54,6 +54,7 @@ export interface SettingsContextValue {
   win: Window | null;
   vault: VaultInfo | null;
   onRevealVault?: (path: string) => void;
+  onRevealRecovery?: () => void;
 
   mode: VaultTheme;
   setMode: (mode: VaultTheme) => void;
@@ -129,6 +130,7 @@ export interface SettingsControllerOptions {
   onThemeChanged?: (resolvedTheme: "light" | "dark") => void;
   onAppearanceChanged?: () => void;
   onRevealVault?: (path: string) => void;
+  onRevealRecovery?: () => void;
   pickDrawing?: () => Promise<string | null>;
 }
 
@@ -140,6 +142,7 @@ export const useSettingsController = ({
   onThemeChanged,
   onAppearanceChanged,
   onRevealVault,
+  onRevealRecovery,
   pickDrawing,
 }: SettingsControllerOptions): SettingsContextValue => {
   const [mode, setModeState] = useState<VaultTheme>(() => getTheme(win));
@@ -323,6 +326,7 @@ export const useSettingsController = ({
     win,
     vault,
     onRevealVault,
+    onRevealRecovery,
     mode,
     setMode,
     registry,
@@ -362,6 +366,8 @@ export interface SettingControl {
   SearchComponent?: () => ReactElement | null;
   /** False hides the setting (and excludes it from search). */
   available?: (ctx: SettingsContextValue) => boolean;
+  /** False keeps a shown setting out of search results (page notes). */
+  searchable?: (ctx: SettingsContextValue) => boolean;
 }
 
 export type SettingControls = Record<string, SettingControl>;

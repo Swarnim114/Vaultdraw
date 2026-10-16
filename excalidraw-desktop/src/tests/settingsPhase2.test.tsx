@@ -78,9 +78,8 @@ describe("accent, zoom and confirm-delete controls", () => {
     fireEvent.change(hex, { target: { value: "#336699" } });
     fireEvent.blur(hex);
     expect(getPreferences(window).accentColor).toBe("#336699");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reset Accent Colour" }),
-    );
+    // The theme's own swatch (first) clears the override.
+    fireEvent.click(screen.getByRole("button", { name: "Theme accent" }));
     expect(getPreferences(window).accentColor).toBe("");
   });
 
@@ -110,7 +109,7 @@ describe("accent, zoom and confirm-delete controls", () => {
     renderModal();
     fireEvent.click(screen.getByRole("tab", { name: "Files" }));
     const toggle = screen.getByRole("switch", {
-      name: "Confirm before delete",
+      name: "Confirm before trashing",
     });
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);
@@ -130,9 +129,7 @@ describe("per-vault rows", () => {
         "name_asc",
       ),
     );
-    expect(
-      screen.getByText("This vault", { selector: ".vault-setting-badge" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "This vault" })).toBeChecked();
 
     // Edits go to the override while it is on.
     fireEvent.change(screen.getByLabelText("Navigator sort order"), {

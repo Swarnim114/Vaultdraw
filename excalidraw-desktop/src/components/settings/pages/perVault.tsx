@@ -72,6 +72,7 @@ export const PerVaultRow = <F extends VaultField>({
   field,
   children,
   details,
+  below,
   description,
   onReset,
   layout,
@@ -84,6 +85,8 @@ export const PerVaultRow = <F extends VaultField>({
     onChange: (value: VaultPreferences[F]) => void,
   ) => ReactNode;
   details?: ReactNode;
+  /** Full-width block under the row. */
+  below?: ReactNode;
   description?: ReactNode;
   onReset?: () => void;
   layout?: "row" | "block" | "stacked";
@@ -98,10 +101,10 @@ export const PerVaultRow = <F extends VaultField>({
   return (
     <SettingRow
       id={id}
-      thisVault={vaultSettings.isOverridden(field)}
       description={description}
       onReset={onReset}
       layout={layout}
+      below={below}
       aside={stacked ? perVaultSwitch : undefined}
       testId={testId}
       details={

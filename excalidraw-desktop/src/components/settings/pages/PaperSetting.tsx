@@ -58,10 +58,10 @@ export const PaperSetting = () => {
     <PerVaultRow
       id="paper"
       field="paperStyle"
-      layout="stacked"
-      details={
+      testId="settings-paper"
+      below={
         pattern && (
-          <div className="vault-setting-field">
+          <div className="vault-setting-field vault-paper-tuning">
             <PaperControls value={pattern} onChange={tune} hideStyle />
             <PaperPreview pattern={pattern} theme={resolveTheme(mode, win)} />
           </div>

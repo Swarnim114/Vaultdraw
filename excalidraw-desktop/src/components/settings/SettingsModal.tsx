@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { IconClose } from "../Icons";
+
+import { APP_VERSION } from "../../appVersion";
+import { openConfigDir } from "../../vault/settingsSync";
 
 import { SETTING_CONTROLS } from "./pages";
 import { ToolsPage } from "./pages/Tools";
@@ -18,6 +21,8 @@ import {
   type SettingsTarget,
   type ToolsSection,
 } from "./schema";
+import "./settings.css";
+
 import { SettingsProvider, useSettingsController } from "./SettingsContext";
 import { SETTINGS_PANEL_ID, settingsTabId, Sidebar } from "./Sidebar";
 
@@ -33,6 +38,8 @@ export interface SettingsModalProps {
   /** Built-in + user themes; defaults to the cached registry. */
   themeRegistry?: ThemeRegistry;
   onRevealVault?: (path: string) => void;
+  /** Opens the vault's crash-recovery folder (Files > Recovery); absent = no Reveal. */
+  onRevealRecovery?: () => void;
   /** Lets the Hotkeys page bind a key to a drawing; absent = not offered. */
   pickDrawing?: () => Promise<string | null>;
   ownerDocument?: Document | null;
@@ -56,11 +63,18 @@ const SettingList = ({
   inSearch?: boolean;
 }) => (
   <div className="vault-settings-section">
-    {settings.map((s) => {
+    {settings.map((s, i) => {
       const control = SETTING_CONTROLS[s.id];
       const Component =
         (inSearch && control.SearchComponent) || control.Component;
-      return <Component key={s.id} />;
+      return (
+        <Fragment key={s.id}>
+          {!inSearch && s.heading && s.heading !== settings[i - 1]?.heading && (
+            <h3 className="vault-settings-heading">{s.heading}</h3>
+          )}
+          <Component />
+        </Fragment>
+      );
     })}
   </div>
 );
@@ -72,6 +86,7 @@ export const SettingsModal = ({
   onAppearanceChanged,
   themeRegistry,
   onRevealVault,
+  onRevealRecovery,
   pickDrawing,
   ownerDocument,
   initialPage = DEFAULT_SETTINGS_PAGE,
@@ -90,6 +105,7 @@ export const SettingsModal = ({
     onThemeChanged,
     onAppearanceChanged,
     onRevealVault,
+    onRevealRecovery,
     pickDrawing,
   });
 
@@ -114,8 +130,24 @@ export const SettingsModal = ({
     : pages[0]?.id ?? DEFAULT_SETTINGS_PAGE;
   const searching = query.trim() !== "";
   const results = searching
-    ? groupByPage(searchSettings(query, available))
+    ? groupByPage(
+        searchSettings(
+          query,
+          available.filter(
+            (s) => SETTING_CONTROLS[s.id].searchable?.(settings) ?? true,
+          ),
+        ),
+      )
     : [];
+
+  // Enter / ArrowRight on a nav tab: first control of the page.
+  const enterPage = () => {
+    modalRef.current
+      ?.querySelector<HTMLElement>(
+        `#${SETTINGS_PANEL_ID} :is(button, input, select, textarea, [tabindex="0"]):not(:disabled)`,
+      )
+      ?.focus();
+  };
 
   const openPage = (next: SettingsPageId, section?: ToolsSection) => {
     setQuery("");
@@ -170,7 +202,7 @@ export const SettingsModal = ({
 
   return (
     <div
-      className="vault-modal-backdrop"
+      className="vault-modal-backdrop vd-settings-scrim"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -188,6 +220,25 @@ export const SettingsModal = ({
           query={query}
           onQueryChange={setQuery}
           searchRef={searchRef}
+          onEnterPage={enterPage}
+          footer={
+            <>
+              Vaultdraw {APP_VERSION}
+              {settings.settingsStatus.mode === "tauri" && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="vault-settings-foot__link"
+                    title={settings.settingsStatus.configPath ?? "config.toml"}
+                    onClick={() => void openConfigDir().catch(() => {})}
+                  >
+                    config.toml
+                  </button>
+                </>
+              )}
+            </>
+          }
         />
 
         <section className="vault-settings-content">
@@ -195,6 +246,7 @@ export const SettingsModal = ({
             <h2 id="settings-title" className="vault-settings-title">
               {searching ? "Search results" : getPage(activePage).label}
             </h2>
+            <span className="vault-settings-live">Changes apply live</span>
             <button
               type="button"
               className="vault-btn vault-btn--ghost vault-btn--icon"

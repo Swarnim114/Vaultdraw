@@ -85,7 +85,8 @@ describe("ThemePicker", () => {
     const search = screen.getByRole("searchbox", {
       name: "Search colour themes",
     });
-    expect(search).toHaveAttribute("placeholder", "Search 120 themes");
+    expect(search).toHaveAttribute("placeholder", "Search themes");
+    expect(screen.getByText(/^120 ·/)).toBeInTheDocument();
 
     fireEvent.change(search, { target: { value: "theme 11" } });
     expect(names()).toEqual(

@@ -11,12 +11,15 @@ export interface SettingRowProps {
   description?: ReactNode;
   /** Shown under the description (paths, status messages). */
   details?: ReactNode;
+  /** Full-width block under the whole row (fine-tuning controls, previews). */
+  below?: ReactNode;
   /** The control(s). */
   children?: ReactNode;
   /**
    * "row": control beside the text; "block": control below it;
    * "stacked": a wide control on its own full-width line under the label and
-   * description, with `aside` on the title line.
+   * description, with `aside` on the title line. In "block" the label is only
+   * read by assistive tech (the control carries its own caption).
    */
   layout?: "row" | "block" | "stacked";
   /** Stacked layout only: right-aligned on the title line (e.g. a switch). */
@@ -26,8 +29,6 @@ export interface SettingRowProps {
   disabled?: boolean;
   /** Shows a ↺ button that restores the default. */
   onReset?: () => void;
-  /** Stored per vault (badge "This vault"). Used from later phases. */
-  thisVault?: boolean;
   testId?: string;
   className?: string;
 }
@@ -36,13 +37,13 @@ export const SettingRow = ({
   id,
   description,
   details,
+  below,
   children,
   layout = "row",
   aside,
   htmlFor,
   disabled = false,
   onReset,
-  thisVault = false,
   testId,
   className,
 }: SettingRowProps) => {
@@ -62,22 +63,11 @@ export const SettingRow = ({
   ) : (
     <div className="vault-setting-label">{schema.label}</div>
   );
-  const badgeNode = thisVault && (
-    <span
-      className="vault-setting-badge"
-      title="Stored in this vault's settings"
-    >
-      This vault
-    </span>
-  );
   if (layout === "stacked") {
     return (
       <div className={classes} data-setting-id={id} data-testid={testId}>
         <div className="vault-setting-stacked-head">
-          <div className="vault-setting-label-line">
-            {labelNode}
-            {badgeNode}
-          </div>
+          <div className="vault-setting-label-line">{labelNode}</div>
           {aside}
         </div>
         <div className="vault-setting-desc">
@@ -91,10 +81,7 @@ export const SettingRow = ({
   return (
     <div className={classes} data-setting-id={id} data-testid={testId}>
       <div className="vault-setting-info">
-        <div className="vault-setting-label-line">
-          {labelNode}
-          {badgeNode}
-        </div>
+        <div className="vault-setting-label-line">{labelNode}</div>
         <div className="vault-setting-desc">
           {description ?? schema.description}
         </div>
@@ -118,6 +105,7 @@ export const SettingRow = ({
               )}
             </div>
           )}
+      {below && <div className="vault-setting-below">{below}</div>}
     </div>
   );
 };

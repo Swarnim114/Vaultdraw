@@ -2056,6 +2056,7 @@ export const VaultApp = ({
             onRevealVault={(path) => {
               void handleRevealEntry(path);
             }}
+            onRevealRecovery={() => void handleRevealRecovery()}
             ownerDocument={doc}
           />
         </Suspense>

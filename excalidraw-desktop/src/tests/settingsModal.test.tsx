@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { SettingsModal } from "../components/settings/SettingsModal";
 import {
@@ -25,7 +25,7 @@ const mockVault: VaultInfo = {
 
 /** Theme cards only (colour swatches are radios too). */
 const themeCards = () =>
-  screen.getAllByRole("radio").filter((r) => !r.closest(".vault-cp"));
+  screen.getAllByRole("radio").filter((r) => r.hasAttribute("data-theme-key"));
 
 describe("SettingsModal component and preference persistence", () => {
   it("renders the sidebar pages (with search) and opens on Appearance", () => {
@@ -59,7 +59,7 @@ describe("SettingsModal component and preference persistence", () => {
     expect(screen.getByText("Colour Theme")).toBeInTheDocument();
   });
 
-  it("lists Mode first, then Colour Theme, then the sync switch", () => {
+  it("lists Mode, sync, accent, canvas pattern, then the theme grid", () => {
     render(
       <SettingsModal
         vault={mockVault}
@@ -68,12 +68,16 @@ describe("SettingsModal component and preference persistence", () => {
       />,
     );
     const mode = screen.getByText("Mode");
-    const colour = screen.getByText("Colour Theme");
     const sync = screen.getByText("Sync canvas with theme");
+    const accent = screen.getByText("Accent");
+    const pattern = screen.getByText("Canvas pattern");
+    const colour = screen.getByRole("radiogroup", { name: "Colour theme" });
     const follows = (a: Element, b: Element) =>
       !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(follows(mode, colour)).toBe(true);
-    expect(follows(colour, sync)).toBe(true);
+    expect(follows(mode, sync)).toBe(true);
+    expect(follows(sync, accent)).toBe(true);
+    expect(follows(accent, pattern)).toBe(true);
+    expect(follows(pattern, colour)).toBe(true);
   });
 
   it("Escape clears the theme search first and closes Settings only after", () => {
@@ -121,14 +125,15 @@ describe("SettingsModal component and preference persistence", () => {
       />,
     );
 
-    const darkBtn = screen.getByRole("button", { name: "Dark" });
+    const modeGroup = screen.getByRole("group", { name: "Mode" });
+    const darkBtn = within(modeGroup).getByRole("button", { name: "Dark" });
     fireEvent.click(darkBtn);
 
     expect(getTheme(window)).toBe("dark");
     expect(onThemeChanged).toHaveBeenCalledWith("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
 
-    const lightBtn = screen.getByRole("button", { name: "Light" });
+    const lightBtn = within(modeGroup).getByRole("button", { name: "Light" });
     fireEvent.click(lightBtn);
 
     expect(getTheme(window)).toBe("light");
@@ -181,9 +186,11 @@ describe("SettingsModal component and preference persistence", () => {
     fireEvent.click(vaultTab);
 
     expect(screen.getByText("/Users/test/Vault")).toBeInTheDocument();
-    expect(screen.getByText(/Autosave.*Interval/i)).toBeInTheDocument();
+    expect(screen.getByText("Autosave delay")).toBeInTheDocument();
 
-    const revealBtn = screen.getByRole("button", { name: /reveal folder/i });
+    const revealBtn = screen.getByRole("button", {
+      name: /reveal vault folder/i,
+    });
     fireEvent.click(revealBtn);
     expect(onReveal).toHaveBeenCalled();
   });
@@ -216,6 +223,7 @@ describe("SettingsModal component and preference persistence", () => {
     );
     fireEvent.click(screen.getByRole("tab", { name: "General" }));
     expect(screen.queryByTestId("settings-config-row")).toBeNull();
+    expect(screen.getByTestId("settings-config-note")).toBeInTheDocument();
     expect(screen.queryByText(/open config folder/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /^reload$/i })).toBeNull();
   });
@@ -289,18 +297,28 @@ describe("SettingsModal component and preference persistence", () => {
           ownerDocument={document}
         />,
       );
-      expect(screen.getByRole("button", { name: "Light" })).toHaveClass(
-        "vault-segmented-btn--active",
-      );
+      expect(
+        within(screen.getByRole("group", { name: "Mode" })).getByRole(
+          "button",
+          {
+            name: "Light",
+          },
+        ),
+      ).toHaveClass("vault-segmented-btn--active");
       config.appearance.mode = "dark";
       config.editor.stroke_width = 4;
       await act(async () => {
         await reloadSettings();
       });
       expect(getPreferences(window).theme).toBe("dark");
-      expect(screen.getByRole("button", { name: "Dark" })).toHaveClass(
-        "vault-segmented-btn--active",
-      );
+      expect(
+        within(screen.getByRole("group", { name: "Mode" })).getByRole(
+          "button",
+          {
+            name: "Dark",
+          },
+        ),
+      ).toHaveClass("vault-segmented-btn--active");
       fireEvent.click(screen.getByRole("tab", { name: "Drawing" }));
       expect(screen.getByRole("button", { name: "Bold (4px)" })).toHaveClass(
         "vault-segmented-btn--active",

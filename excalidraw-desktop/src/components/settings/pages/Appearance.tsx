@@ -5,16 +5,19 @@ import { openThemesDir } from "../../../theme/registry";
 import { resolveTheme } from "../../../vault/preferences";
 import { IconFolder } from "../../Icons";
 import { ThemePicker } from "../../ThemePicker";
+import { accentSwatches } from "../accentSwatches";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { ColorSwatches, Segmented, Switch } from "./controls";
 import { PaperSetting } from "./PaperSetting";
 
+import type { CSSProperties } from "react";
+
 import type { VaultTheme } from "../../../vault/preferences";
 
 const MODES: readonly { key: VaultTheme; label: string }[] = [
-  { key: "system", label: "Match System" },
+  { key: "system", label: "System" },
   { key: "light", label: "Light" },
   { key: "dark", label: "Dark" },
 ];
@@ -33,6 +36,7 @@ const ModeSetting = () => {
   return (
     <SettingRow id="mode">
       <Segmented
+        label="Mode"
         options={MODES.map((m) => ({ label: m.label, val: m.key }))}
         value={mode}
         onChange={setMode}
@@ -126,6 +130,8 @@ const AccentSetting = () => {
   const resolvedMode = resolveTheme(mode, win);
   const variant = selection.entry.theme[resolvedMode];
   const resolved = resolveAccent(variant, accentColor, resolvedMode);
+  const own = resolveAccent(variant, "", resolvedMode).primary;
+  const { swatches, custom } = accentSwatches(own, accentColor);
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? accentColor;
   const commitDraft = () => {
@@ -141,7 +147,6 @@ const AccentSetting = () => {
     <SettingRow
       id="accent-colour"
       testId="settings-accent"
-      onReset={accentColor ? () => setAccentColor("") : undefined}
       details={
         accentColor && resolved.adjusted ? (
           <div className="vault-setting-note" role="status">
@@ -150,14 +155,36 @@ const AccentSetting = () => {
         ) : undefined
       }
     >
-      <div className="vault-setting-inline">
-        <input
-          type="color"
-          className="vault-color-input"
-          aria-label="Accent colour picker"
-          value={resolved.primary}
-          onChange={(e) => setAccentColor(e.target.value)}
-        />
+      <div className="vault-accent" role="group" aria-label="Accent">
+        {swatches.map((sw) => (
+          <button
+            key={sw.name}
+            type="button"
+            aria-pressed={sw.selected}
+            aria-label={sw.name}
+            title={sw.name}
+            className={`vault-accent__sw ${
+              sw.selected ? "vault-accent__sw--on" : ""
+            }`}
+            style={{ "--sw": sw.paint } as CSSProperties}
+            onClick={() => setAccentColor(sw.hex)}
+          />
+        ))}
+        <label
+          className={`vault-accent__sw vault-accent__custom ${
+            custom ? "vault-accent__sw--on vault-accent__custom--set" : ""
+          }`}
+          title="Custom accent colour"
+          style={custom ? ({ "--sw": custom } as CSSProperties) : undefined}
+        >
+          +
+          <input
+            type="color"
+            aria-label="Accent colour picker"
+            value={resolved.primary}
+            onChange={(e) => setAccentColor(e.target.value)}
+          />
+        </label>
         <input
           type="text"
           className="vault-input vault-input--compact"

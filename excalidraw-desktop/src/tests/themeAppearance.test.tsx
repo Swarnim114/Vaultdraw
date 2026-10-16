@@ -86,7 +86,7 @@ const root = () => document.documentElement;
 
 /** Theme cards only (colour swatches are radios too). */
 const themeCards = () =>
-  screen.getAllByRole("radio").filter((r) => !r.closest(".vault-cp"));
+  screen.getAllByRole("radio").filter((r) => r.hasAttribute("data-theme-key"));
 
 describe("computeAppearance + applyAppearance", () => {
   it("resolves system mode and the selected theme", () => {

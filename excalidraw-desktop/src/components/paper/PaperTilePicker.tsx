@@ -44,7 +44,7 @@ export const PaperTilePicker = ({
   return (
     <div
       ref={group}
-      className="paper-tiles"
+      className="paper-tiles paper-tiles--patterns"
       role="group"
       aria-label={label}
       onKeyDown={onKeyDown}
@@ -57,6 +57,7 @@ export const PaperTilePicker = ({
           data-style={style.id}
           data-checked={value === style.id}
           aria-pressed={value === style.id}
+          title={style.label}
           tabIndex={value === style.id ? 0 : -1}
           onClick={() => onChange(style.id)}
         >
