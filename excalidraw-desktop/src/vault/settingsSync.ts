@@ -67,6 +67,7 @@ import {
   isNewLinkFormat,
   isOpenModifier,
   isShapeLinkFormat,
+  isTagSort,
   isUpdateOnRename,
   isPaperOpacity,
   isPaperSpacing,
@@ -188,6 +189,8 @@ type ConfigField =
   | "linkUpdateOnRename"
   | "linkAutocomplete"
   | "linkHintChars"
+  | "tagAutocomplete"
+  | "tagPaneSort"
   | "penPresets"
   | "laserColor"
   | "laserSize"
@@ -480,6 +483,18 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     expected:
       'at least 2 different lowercase characters with no spaces, like "asdfghjkl"',
     valid: isHintChars,
+  },
+  {
+    field: "tagAutocomplete",
+    key: "tags.autocomplete",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "tagPaneSort",
+    key: "tags.pane_sort",
+    expected: '"name" or "count"',
+    valid: isTagSort,
   },
   {
     field: "penPresets",

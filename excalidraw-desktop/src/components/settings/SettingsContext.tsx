@@ -11,6 +11,7 @@ import {
   getEditorDefaults,
   getPreferences,
   getLinksSettings,
+  getTagsSettings,
   getTheme,
   resolveTheme,
   setAutosaveDelayMs,
@@ -37,6 +38,7 @@ import { clampZoom } from "../../vault/zoom";
 import { useVaultSettingsView } from "../../vault/useVaultSettingsView";
 
 import type { LinksSettings } from "../../links/types";
+import type { TagsSettings } from "../../tags/types";
 import type { UseVaultSettings } from "../../vault/useVaultSettings";
 import type { VaultPreferences } from "../../vault/preferences";
 import type { VaultInfo } from "../../vault/types";
@@ -78,6 +80,9 @@ export interface SettingsContextValue {
   /** The `[links]` settings. */
   links: LinksSettings;
   setLinks: (partial: Partial<LinksSettings>) => void;
+  /** The `[tags]` settings. */
+  tags: TagsSettings;
+  setTags: (partial: Partial<TagsSettings>) => void;
   /**
    * Asks the user for a drawing (vault-relative path, null = cancelled).
    * Supplied by the app shell; without it "Add drawing shortcut" is hidden.
@@ -168,6 +173,9 @@ export const useSettingsController = ({
   const [links, setLinksState] = useState(() =>
     getLinksSettings(getPreferences(win)),
   );
+  const [tags, setTagsState] = useState(() =>
+    getTagsSettings(getPreferences(win)),
+  );
   const vaultSettings = useVaultSettingsView(win);
   const [settingsStatus, setSettingsStatus] = useState(getSettingsStatus);
 
@@ -194,6 +202,7 @@ export const useSettingsController = ({
       setConfirmDeleteState(prefs.confirmDelete);
       setShowTagChipsState(prefs.showTagChips);
       setLinksState(getLinksSettings(prefs));
+      setTagsState(getTagsSettings(prefs));
     };
     const handleStatus = () => setSettingsStatus(getSettingsStatus());
     win.addEventListener(PREFERENCES_CHANGED_EVENT, handlePreferencesChanged);
@@ -270,6 +279,15 @@ export const useSettingsController = ({
     );
   };
 
+  const setTags = (partial: Partial<TagsSettings>) => {
+    const next = { ...tags, ...partial };
+    setTagsState(next);
+    updatePreferences(
+      { tagAutocomplete: next.autocomplete, tagPaneSort: next.paneSort },
+      win,
+    );
+  };
+
   const setPerVaultValue = <F extends VaultField>(
     field: F,
     value: VaultPreferences[F],
@@ -319,6 +337,8 @@ export const useSettingsController = ({
     setShowTagChips,
     links,
     setLinks,
+    tags,
+    setTags,
     pickDrawing,
     vaultSettings,
     setPerVaultValue,

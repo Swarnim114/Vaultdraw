@@ -39,6 +39,8 @@ const KEYS = [
   "links.update_on_rename",
   "links.autocomplete",
   "links.hint_chars",
+  "tags.autocomplete",
+  "tags.pane_sort",
 ] as const;
 
 describe("links settings: config -> prefs -> config", () => {
@@ -208,8 +210,9 @@ describe("Links settings page", () => {
     ]) {
       expect(within(panel).getByText(label)).toBeInTheDocument();
     }
-    expect(within(panel).getAllByRole("combobox")).toHaveLength(4);
-    expect(within(panel).getByRole("switch")).toBeChecked();
+    // The Tags section shares the page: one more select and one more switch.
+    expect(within(panel).getAllByRole("combobox")).toHaveLength(5);
+    expect(within(panel).getAllByRole("switch")[0]).toBeChecked();
   });
 
   it("edits write to the preferences", () => {
@@ -228,7 +231,7 @@ describe("Links settings page", () => {
     fireEvent.change(shape, { target: { value: "vaultdraw-url" } });
     fireEvent.change(modifier, { target: { value: "alt" } });
     fireEvent.change(update, { target: { value: "ask" } });
-    fireEvent.click(within(panel).getByRole("switch"));
+    fireEvent.click(within(panel).getAllByRole("switch")[0]);
     const chars = within(panel).getByRole("textbox");
     fireEvent.change(chars, { target: { value: "a" } });
     fireEvent.blur(chars);

@@ -28,6 +28,11 @@ import {
   type HistoryPreferences,
 } from "../history/historySettings";
 
+import {
+  DEFAULT_TAGS_SETTINGS,
+  type TagSort,
+  type TagsSettings,
+} from "../tags/types";
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
   DEFAULT_LASER,
@@ -171,6 +176,10 @@ interface VaultPreferencesBase {
   linkAutocomplete: boolean;
   /** links.hint_chars */
   linkHintChars: string;
+  /** tags.autocomplete */
+  tagAutocomplete: boolean;
+  /** tags.pane_sort */
+  tagPaneSort: TagSort;
   /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
   hotkeys: Record<string, string[]>;
   /** Saved pens (1 to 9), selected with the pen.selectN commands (Alt+1..9). */
@@ -261,6 +270,8 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   linkUpdateOnRename: DEFAULT_LINKS_SETTINGS.updateOnRename,
   linkAutocomplete: DEFAULT_LINKS_SETTINGS.autocomplete,
   linkHintChars: DEFAULT_LINKS_SETTINGS.hintChars,
+  tagAutocomplete: DEFAULT_TAGS_SETTINGS.autocomplete,
+  tagPaneSort: DEFAULT_TAGS_SETTINGS.paneSort,
   hotkeys: {},
   penPresets: DEFAULT_PEN_PRESETS.map((p) => ({ ...p })),
   laserColor: DEFAULT_LASER.color,
@@ -288,6 +299,15 @@ export const getLinksSettings = (prefs: VaultPreferences): LinksSettings => ({
   autocomplete: prefs.linkAutocomplete,
   hintChars: prefs.linkHintChars,
 });
+
+/** The tags fields of the preferences as one settings object. */
+export const getTagsSettings = (prefs: VaultPreferences): TagsSettings => ({
+  autocomplete: prefs.tagAutocomplete,
+  paneSort: prefs.tagPaneSort,
+});
+
+export const isTagSort = (v: unknown): v is TagSort =>
+  v === "name" || v === "count";
 
 export const isNewLinkFormat = (v: unknown): v is NewLinkFormat =>
   v === "shortest" || v === "relative" || v === "absolute";
@@ -518,6 +538,8 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       d.linkAutocomplete,
     ),
     linkHintChars: pick(parsed.linkHintChars, isHintChars, d.linkHintChars),
+    tagAutocomplete: pick(parsed.tagAutocomplete, isBoolean, d.tagAutocomplete),
+    tagPaneSort: pick(parsed.tagPaneSort, isTagSort, d.tagPaneSort),
     hotkeys: normalizeHotkeys(parsed.hotkeys),
     penPresets: normalizePenPresets(parsed.penPresets, d.penPresets),
     laserColor: pick(parsed.laserColor, isString, d.laserColor),

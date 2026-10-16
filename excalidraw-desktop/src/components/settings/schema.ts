@@ -571,6 +571,25 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "links.hint_chars",
   },
 
+  // ---- Tags (shares the Links page) ----
+  {
+    id: "tags-autocomplete",
+    page: "links",
+    label: "Tag Suggestions",
+    description: "Suggest existing tags while you type # in a text element.",
+    keywords: ["tag", "hashtag", "autocomplete", "suggest", "popup", "#"],
+    configKey: "tags.autocomplete",
+  },
+  {
+    id: "tags-pane-sort",
+    page: "links",
+    label: "Tags Pane Order",
+    description:
+      "Default order of the Tags pane: by name or by number of drawings. Each vault can switch it from the pane.",
+    keywords: ["tag", "sort", "order", "count", "name", "pane"],
+    configKey: "tags.pane_sort",
+  },
+
   // ---- Hotkeys ----
   {
     id: "hotkeys-list",
