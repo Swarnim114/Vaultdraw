@@ -407,7 +407,9 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
   if (ctx.refreshRate?.only) {
     await scenario("vault-open", async () => {
       const openButton = Array.from(root.querySelectorAll("button")).find(
-        (item) => item.textContent?.trim() === "Open Vault Folder",
+        (item) =>
+          item.getAttribute("aria-label") === "Open Vault Folder" ||
+          item.textContent?.trim() === "Open Vault Folder",
       );
       if (!openButton) {
         throw new Error('"Open Vault Folder" button not found');
@@ -443,7 +445,9 @@ export async function runPerfScenarios(ctx: PerfContext): Promise<PerfResult> {
       throw new Error("Onboarding is not visible");
     }
     const openButton = Array.from(root.querySelectorAll("button")).find(
-      (item) => item.textContent?.trim() === "Open Vault Folder",
+      (item) =>
+        item.getAttribute("aria-label") === "Open Vault Folder" ||
+        item.textContent?.trim() === "Open Vault Folder",
     );
     if (!openButton) {
       throw new Error('"Open Vault Folder" button not found');
