@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ToolStylePreview,
@@ -39,5 +39,16 @@ describe("text preview font", () => {
       />,
     );
     expect(fontOf()).toContain("Cascadia");
+  });
+});
+
+describe("text preview Assistant", () => {
+  it("uses the Assistant UI face for id 10 and asks the browser to load it", () => {
+    const load = vi.fn().mockResolvedValue([]);
+    const fonts = document.fonts as unknown as { load: unknown };
+    fonts.load = load;
+    render(<ToolStylePreview tool="text" style={{}} fallback={fallback(10)} />);
+    expect(fontOf()).toContain("Assistant");
+    expect(load).toHaveBeenCalledWith("16px Assistant");
   });
 });

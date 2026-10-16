@@ -8,7 +8,7 @@
  */
 import { useEffect, useId, type ReactNode } from "react";
 
-import { getFontFamilyString } from "@excalidraw/common";
+import { FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 import { Fonts } from "@excalidraw/excalidraw";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
@@ -43,6 +43,11 @@ const useLoadedFont = (fontFamily: number | null) => {
       typeof document === "undefined" ||
       !document.fonts
     ) {
+      return;
+    }
+    if (fontFamily === FONT_FAMILY.Assistant) {
+      // Assistant is the UI face (fonts.css), not a registered scene font.
+      document.fonts.load("16px Assistant").catch(() => {});
       return;
     }
     const sample = { type: "text", fontFamily, text: SAMPLE_TEXT };
