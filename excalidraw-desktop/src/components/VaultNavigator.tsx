@@ -26,7 +26,9 @@ import {
   IconCopy,
   IconDrawing,
   IconEdit,
-  IconExport,
+  IconExportDocument,
+  IconExportImage,
+  IconExportVector,
   IconFolder,
   IconFolderPlus,
   IconMore,
@@ -36,6 +38,7 @@ import {
   IconPlus,
   IconRefresh,
   IconReveal,
+  IconSaveCopy,
   IconSearch,
   IconSettings,
   IconSort,
@@ -1319,10 +1322,18 @@ const RowMenu = ({
       {!isFolder && onExport && (
         <>
           <div className="vault-menu__separator" role="separator" />
-          {item("Export as PNG…", <IconExport />, () => onExport(entry, "png"))}
-          {item("Export as SVG…", <IconExport />, () => onExport(entry, "svg"))}
-          {item("Export as PDF…", <IconExport />, () => onExport(entry, "pdf"))}
-          {item("Save a copy…", <IconExport />, () => onExport(entry, "copy"))}
+          {item("Export as PNG…", <IconExportImage />, () =>
+            onExport(entry, "png"),
+          )}
+          {item("Export as SVG…", <IconExportVector />, () =>
+            onExport(entry, "svg"),
+          )}
+          {item("Export as PDF…", <IconExportDocument />, () =>
+            onExport(entry, "pdf"),
+          )}
+          {item("Save a copy…", <IconSaveCopy />, () =>
+            onExport(entry, "copy"),
+          )}
         </>
       )}
       {!readOnly && (

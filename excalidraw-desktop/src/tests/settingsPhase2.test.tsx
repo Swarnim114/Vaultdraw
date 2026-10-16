@@ -274,6 +274,16 @@ describe("VaultNavigator sort and delete", () => {
     ).toBeNull();
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.contextMenu(screen.getByText("a"));
+    const exportIcons = [
+      "Export as PNG…",
+      "Export as SVG…",
+      "Export as PDF…",
+      "Save a copy…",
+    ].map(
+      (name) =>
+        screen.getByRole("menuitem", { name }).querySelector("svg")?.innerHTML,
+    );
+    expect(new Set(exportIcons).size).toBe(4);
     for (const [label, format] of [
       ["Export as PNG…", "png"],
       ["Export as SVG…", "svg"],

@@ -48,7 +48,7 @@ export const IconFolder = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-/** A drawing file: a canvas with a hand-drawn stroke. */
+/** A drawing file: a pen nib over a line (Lucide "pen-line"). */
 export const IconDrawing = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width="15"
@@ -61,8 +61,7 @@ export const IconDrawing = (props: SVGProps<SVGSVGElement>) => (
     strokeLinejoin="round"
     {...props}
   >
-    <rect x="3" y="3" width="18" height="18" rx="4" />
-    <path d="M7 15.5c1.2-2.6 2.6-4 3.8-3.1 1.1.9.6 2.6 1.9 2.7 1.5.1 2.4-3.3 4.3-5.6" />
+    <path d="M12 20h9M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6l-4 1 1-4z" />
   </svg>
 );
 
@@ -556,5 +555,43 @@ export const IconLock = strokeIcon(
   <>
     <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </>,
+);
+
+/** Export as PNG: a picture (Lucide "image"). */
+export const IconExportImage = strokeIcon(
+  13,
+  <>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
+  </>,
+);
+
+/** Export as SVG: a vector curve with handles (Lucide "spline"). */
+export const IconExportVector = strokeIcon(
+  13,
+  <>
+    <circle cx="19" cy="5" r="2" />
+    <circle cx="5" cy="19" r="2" />
+    <path d="M5 17A12 12 0 0 1 17 5" />
+  </>,
+);
+
+/** Export as PDF: a document with text lines (Lucide "file-text"). */
+export const IconExportDocument = strokeIcon(
+  13,
+  <>
+    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
+    <path d="M14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8" />
+  </>,
+);
+
+/** Save a copy: a floppy disk (Lucide "save"). */
+export const IconSaveCopy = strokeIcon(
+  13,
+  <>
+    <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+    <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7" />
   </>,
 );
