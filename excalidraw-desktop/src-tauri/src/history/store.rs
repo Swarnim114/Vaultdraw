@@ -379,6 +379,39 @@ impl Store {
         Err(err("VERSION_GONE", "Image is not available"))
     }
 
+    /// Deletes one version file (validated name, symlink-checked directory, regular file only).
+    /// `Ok(false)` when it was already gone (another device deleted it).
+    pub fn remove_version(&self, lineage: &str, name: &VersionName) -> io::Result<bool> {
+        let dir = self.lineage_dir(lineage, false).map_err(|e| io::Error::other(e.message))?;
+        match dir {
+            Some(d) => remove_regular(&d.join(name.format())),
+            None => Ok(false),
+        }
+    }
+
+    /// Deletes one blob copy (same rules as `remove_version`).
+    pub fn remove_blob(&self, name: &BlobName) -> io::Result<bool> {
+        match self.blob_dir(name.shard(), false).map_err(|e| io::Error::other(e.message))? {
+            Some(d) => remove_regular(&d.join(name.format())),
+            None => Ok(false),
+        }
+    }
+
+    /// Best effort: removes the lineage folder when nothing is left in it (an unknown or invalid
+    /// file keeps it; those are never deleted).
+    pub fn remove_lineage_dir_if_empty(&self, lineage: &str) {
+        if let Ok(Some(d)) = self.lineage_dir(lineage, false) {
+            let _ = fs::remove_dir(d);
+        }
+    }
+
+    /// Best effort: removes an empty blob shard folder.
+    pub fn remove_blob_shard_if_empty(&self, shard: &str) {
+        if let Ok(Some(d)) = self.blob_dir(shard, false) {
+            let _ = fs::remove_dir(d);
+        }
+    }
+
     /// Removes our own `.<final>.tmp` leftovers older than `older_than` in `dir` (never anything else).
     pub fn clean_own_tmp(dir: &Path, dev: &str, older_than: Duration) -> usize {
         let Ok(rd) = fs::read_dir(dir) else { return 0 };
@@ -418,6 +451,20 @@ pub fn cleanup_own_tmp(store: &Store, dev: &str, older_than: Duration) -> usize 
         }
     }
     n
+}
+
+/// Unlinks a regular file (never a symlink or folder). `Ok(false)` when it doesn't exist.
+fn remove_regular(p: &Path) -> io::Result<bool> {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.is_file() => match fs::remove_file(p) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        },
+        Ok(_) => Err(io::Error::other("not a regular file")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 fn create_dir_ok(p: &Path) -> Result<()> {
