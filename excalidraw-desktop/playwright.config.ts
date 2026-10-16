@@ -8,6 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
 // screenshot gallery spec.
 const full = process.env.E2E_FULL === "1";
 
+// E2E_PORT lets two e2e runs (different worktrees) share one machine.
+const port = process.env.E2E_PORT ?? "1421";
+
 const viewport = { width: 1280, height: 850 };
 
 export default defineConfig({
@@ -17,16 +20,16 @@ export default defineConfig({
   fullyParallel: false,
   workers: Number(process.env.E2E_WORKERS) || 2,
   reporter: [["list"]],
-  outputDir: "../.cache/e2e-results",
+  outputDir: `../.cache/e2e-results-${port}`,
   use: {
-    baseURL: "http://localhost:1421",
+    baseURL: `http://localhost:${port}`,
     viewport,
     trace: "retain-on-failure",
   },
   webServer: {
     command:
       "npx vite build --config vite.e2e.config.mts --logLevel warn && npx vite preview --config vite.e2e.config.mts",
-    url: "http://localhost:1421/e2e.html",
+    url: `http://localhost:${port}/e2e.html`,
     reuseExistingServer: false,
     timeout: 180_000,
   },
