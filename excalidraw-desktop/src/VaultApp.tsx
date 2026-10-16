@@ -128,12 +128,26 @@ const LinksDock = lazy(() =>
   })),
 );
 
-// Settings (every page, the Links and Hotkeys editors) load on first open.
+// Settings (every page, the Links and Hotkeys editors) stay out of the
+// startup chunk; prefetchSettings loads them once the vault is idle, so the
+// first Cmd+, still opens in the same frame.
+const loadSettingsModal = () => import("./components/settings/SettingsModal");
 const SettingsModal = lazy(() =>
-  import("./components/settings/SettingsModal").then((m) => ({
-    default: m.SettingsModal,
-  })),
+  loadSettingsModal().then((m) => ({ default: m.SettingsModal })),
 );
+const prefetchSettings = () => {
+  const ric = (
+    globalThis as {
+      requestIdleCallback?: (cb: () => void, o: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  const run = () => void loadSettingsModal().catch(() => {});
+  if (ric) {
+    ric(run, { timeout: 3000 });
+  } else {
+    setTimeout(run, 1500);
+  }
+};
 
 export interface VaultAppProps {
   ownerDocument?: Document | null;
@@ -267,6 +281,13 @@ export const VaultApp = ({
     (name: string, bytes: Uint8Array) => repository.exportFile(name, bytes),
     [repository],
   );
+
+  const vaultOpen = vault !== null;
+  useEffect(() => {
+    if (vaultOpen) {
+      prefetchSettings();
+    }
+  }, [vaultOpen]);
 
   // Live config folder sync: config.toml edits (by hand or another window)
   // reload preferences; re-render so autosave delay and defaults follow
