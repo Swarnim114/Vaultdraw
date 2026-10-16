@@ -72,6 +72,8 @@ import {
   useCommandDispatcher,
   type CommandRunner,
 } from "./commands/useCommands";
+import { drawingOpenCommandId } from "./commands/drawingCommands";
+import { useCommandShortcutLookup } from "./commands/useCommandShortcut";
 import {
   collectPaletteItems,
   registerPaletteProvider,
@@ -80,6 +82,7 @@ import { focusCanvasIfIdle } from "./palette/focus";
 import { createCommandsProvider } from "./palette/providers/commands";
 import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
+import { GraphHost } from "./graph/GraphHost";
 import { HistoryHost } from "./history/HistoryHost";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
@@ -1477,6 +1480,22 @@ export const VaultApp = ({
     }
   };
 
+  // Graph view (D14): it takes over the canvas area; the editor stays mounted
+  // but frozen (no key or pointer handling) and hidden, so closing is instant.
+  const [graphOpen, setGraphOpen] = useState(false);
+  const shortcutLabel = useCommandShortcutLookup(win);
+  const graphShortcutFor = useCallback(
+    (path: string) => shortcutLabel(drawingOpenCommandId(path)) || null,
+    [shortcutLabel],
+  );
+  const focusCanvas = useCallback(
+    () =>
+      doc
+        ?.querySelector<HTMLElement>(".vault-editor .excalidraw-container")
+        ?.focus({ preventScroll: true }),
+    [doc],
+  );
+
   const runnerRef = useRef<CommandRunner | null>(null);
   const idle = !isBusy && !isClosing;
   const commandHandlers = appCommandHandlers({
@@ -1839,9 +1858,14 @@ export const VaultApp = ({
       />
 
       <div className="vault-main">
-        <div className="vault-editor-pane">
+        <div
+          className={`vault-editor-pane ${
+            graphOpen ? "vault-editor-pane--graph" : ""
+          }`}
+        >
           {activeDoc ? (
             <div
+              inert={graphOpen}
               className={`vault-editor-container ${
                 vault.readOnly ? "vault-editor-container--readonly" : ""
               } ${
@@ -1858,9 +1882,13 @@ export const VaultApp = ({
                 onChange={changeDoc}
                 onExport={exportEditorFile}
                 readOnly={
-                  vault.readOnly || isBusy || isClosing || docHook.loading
+                  vault.readOnly ||
+                  isBusy ||
+                  isClosing ||
+                  docHook.loading ||
+                  graphOpen
                 }
-                disabled={isBusy || isClosing || docHook.loading}
+                disabled={isBusy || isClosing || docHook.loading || graphOpen}
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
                 onOpenSettings={openSettings}
@@ -1872,7 +1900,7 @@ export const VaultApp = ({
               />
             </div>
           ) : (
-            <div className="vault-empty-state">
+            <div className="vault-empty-state" inert={graphOpen}>
               <div className="vault-empty-state__icon">
                 <IconDrawing width="48" height="48" />
               </div>
@@ -1925,6 +1953,17 @@ export const VaultApp = ({
               )}
             </div>
           )}
+          <GraphHost
+            handle={vault.handle}
+            currentPath={activeDoc?.path ?? null}
+            themeKey={appearance.snapshot.key}
+            shortcutFor={graphShortcutFor}
+            onOpenDrawing={(path) =>
+              path === activeDoc?.path ? undefined : handleOpenDrawing(path)
+            }
+            onOpenChange={setGraphOpen}
+            onClosed={focusCanvas}
+          />
         </div>
 
         <HistoryHost

@@ -2119,3 +2119,8 @@ html.vault-macos .vault-global-alert {
 .vault-input--number {
   width: 5.5em;
 }
+
+/* Graph view open: the editor stays mounted (instant return) but is hidden. */
+.vault-editor-pane--graph > :not(.vd-graph) {
+  visibility: hidden;
+}
