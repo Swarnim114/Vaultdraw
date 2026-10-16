@@ -1,0 +1,219 @@
+/* Graph view. Colours come from the app theme's --vault-* tokens. */
+.vd-graph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--vault-bg, #fff);
+  color: var(--vault-text, #1d1d20);
+  font-family: var(--vault-font, system-ui, sans-serif);
+  font-size: 13px;
+  outline: none;
+  z-index: 5;
+}
+
+.vd-graph__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--vault-surface, #f6f6f7);
+  border-bottom: 1px solid var(--vault-border, #e4e4e8);
+}
+
+.vd-graph__spacer {
+  flex: 1 1 auto;
+}
+
+.vd-graph__seg {
+  display: inline-flex;
+  border: 1px solid var(--vault-border-strong, #d2d2d8);
+  border-radius: var(--vault-radius, 6px);
+  overflow: hidden;
+}
+
+.vd-graph button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.vd-graph__seg button[aria-pressed="true"],
+.vd-graph__btn[aria-expanded="true"] {
+  background: var(--vault-surface-active, #e6e5f7);
+}
+
+.vd-graph button:hover {
+  background: var(--vault-surface-hover, #ebebee);
+}
+
+.vd-graph__btn {
+  border: 1px solid var(--vault-border-strong, #d2d2d8) !important;
+  border-radius: var(--vault-radius, 6px);
+}
+
+.vd-graph__filter {
+  font: inherit;
+  width: 190px;
+  padding: 3px 8px;
+  color: inherit;
+  background: var(--vault-bg, #fff);
+  border: 1px solid var(--vault-border-strong, #d2d2d8);
+  border-radius: var(--vault-radius, 6px);
+}
+
+.vd-graph__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.vd-graph__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.vd-graph__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+
+.vd-graph__overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.vd-graph__card {
+  position: absolute;
+  z-index: 3;
+  width: 240px;
+  padding: 8px 10px;
+  pointer-events: none;
+  background: var(--vault-menu-bg, #fff);
+  border: 1px solid var(--vault-border-strong, #d2d2d8);
+  border-radius: var(--vault-radius-lg, 10px);
+  box-shadow: var(--vault-shadow-md, 0 4px 12px rgba(0, 0, 0, 0.08));
+}
+
+.vd-graph__card-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vd-graph__card-meta,
+.vd-graph__card-tags {
+  color: var(--vault-text-muted, #64646d);
+  margin-top: 2px;
+}
+
+.vd-graph__card-tags {
+  color: var(--vault-primary, #6965db);
+}
+
+.vd-graph__card-keys {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--vault-border, #e4e4e8);
+  color: var(--vault-text-faint, #9b9ba3);
+  font-size: 12px;
+}
+
+.vd-graph__hint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  padding: 0 4px;
+  font: 600 12px var(--vault-mono-font, ui-monospace, monospace);
+  text-transform: uppercase;
+  color: var(--vault-on-primary, #fff);
+  background: var(--vault-primary, #6965db);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.vd-graph__hint b {
+  opacity: 0.55;
+}
+
+.vd-graph__note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--vault-text-muted, #64646d);
+  pointer-events: none;
+}
+
+.vd-graph__panel {
+  flex: 0 0 260px;
+  overflow: auto;
+  padding: 8px 12px 16px;
+  background: var(--vault-surface, #f6f6f7);
+  border-left: 1px solid var(--vault-border, #e4e4e8);
+}
+
+.vd-graph__panel h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vault-text-muted, #64646d);
+}
+
+.vd-graph__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.vd-graph__row input[type="range"] {
+  width: 110px;
+}
+
+.vd-graph__group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.vd-graph__group input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  padding: 2px 6px;
+  color: inherit;
+  background: var(--vault-bg, #fff);
+  border: 1px solid var(--vault-border-strong, #d2d2d8);
+  border-radius: var(--vault-radius-sm, 4px);
+}
+
+.vd-graph__group input[type="color"] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.vd-graph input[type="checkbox"],
+.vd-graph input[type="range"] {
+  accent-color: var(--vault-primary, #6965db);
+}

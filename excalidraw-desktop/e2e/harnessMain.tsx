@@ -468,23 +468,34 @@ repository.writeDrawing = async (input) => {
 (ownerWindow as any).__flushSync = flushSync;
 (ownerWindow as any).__libraryRepo = libraryRepository;
 
-void import("../src/VaultApp").then(({ default: VaultApp }) => {
-  createRoot(mountNode).render(
-    <StrictMode>
-      <VaultApp
-        ownerDocument={ownerDocument}
-        ownerWindow={ownerWindow}
-        repository={repository}
-        search={vaultSearch}
-        tagRename={
-          params.get("tagrename") === "1"
-            ? new E2ETagRename(repository, vaultLinks)
-            : undefined
-        }
-        links={vaultLinks}
-        libraryRepository={libraryRepository}
-        history={historyRepository}
-      />
-    </StrictMode>,
+if (params.has("graph")) {
+  // ?graph=N: the graph view over a fake N-node vault graph (see graphHarness.tsx).
+  void import("./graphHarness").then(({ mountGraphHarness }) =>
+    mountGraphHarness(mountNode, params),
   );
-});
+} else {
+  void mountVaultApp();
+}
+
+function mountVaultApp() {
+  return import("../src/VaultApp").then(({ default: VaultApp }) => {
+    createRoot(mountNode).render(
+      <StrictMode>
+        <VaultApp
+          ownerDocument={ownerDocument}
+          ownerWindow={ownerWindow}
+          repository={repository}
+          search={vaultSearch}
+          tagRename={
+            params.get("tagrename") === "1"
+              ? new E2ETagRename(repository, vaultLinks)
+              : undefined
+          }
+          links={vaultLinks}
+          libraryRepository={libraryRepository}
+          history={historyRepository}
+        />
+      </StrictMode>,
+    );
+  });
+}
