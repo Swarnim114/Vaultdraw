@@ -326,17 +326,29 @@ pub(crate) struct Index {
     links: Option<Box<LinkIndex>>,
     /// Bumped by every mutation (lets the lazy link build detect concurrent changes).
     generation: u64,
+    /// Encoded `vault_graph` bytes for one generation; dropped by every mutation.
+    graph_cache: crate::links::GraphCache,
 }
 
 impl Index {
     pub(crate) fn from_docs(mut docs: HashMap<String, DocEntry>) -> Option<Index> {
-        docs.iter_mut().all(|(p, d)| d.rebuild(p)).then_some(Index { docs, links: None, generation: 0 })
+        docs.iter_mut().all(|(p, d)| d.rebuild(p)).then_some(Index { docs, links: None, generation: 0, graph_cache: Default::default() })
     }
     pub(crate) fn links(&self) -> Option<&LinkIndex> {
         self.links.as_deref()
     }
     pub(crate) fn generation(&self) -> u64 {
         self.generation
+    }
+    fn bump(&mut self) {
+        self.generation += 1;
+        self.graph_cache.clear();
+    }
+    /// The encoded vault graph, rebuilt only when a mutation happened since the last call
+    /// (the encode walks the whole link index: ~20 ms at 50k drawings). None without a link index.
+    pub(crate) fn graph_bytes(&self, encode: impl FnOnce(&LinkIndex, &HashMap<String, DocEntry>) -> Vec<u8>) -> Option<std::sync::Arc<Vec<u8>>> {
+        let (li, docs) = self.links_and_docs()?;
+        Some(self.graph_cache.get_or_build(self.generation, || encode(li, docs)))
     }
     /// Builds a link index from the current docs (read-only; install it with `install_links`).
     pub(crate) fn build_links(&self) -> LinkIndex {
@@ -351,6 +363,7 @@ impl Index {
     }
     /// Mutable link index with read access to the docs (rename planning).
     pub(crate) fn links_and_docs_mut(&mut self) -> Option<(&mut LinkIndex, &HashMap<String, DocEntry>)> {
+        self.bump(); // the caller may change the link index
         let Index { docs, links, .. } = self;
         links.as_deref_mut().map(|l| (l, &*docs))
     }
@@ -365,14 +378,14 @@ impl Index {
         self.docs.contains_key(path)
     }
     pub(crate) fn upsert(&mut self, path: String, entry: DocEntry) {
-        self.generation += 1;
+        self.bump();
         if let Some(l) = self.links.as_deref_mut() {
             l.upsert(&path, &entry);
         }
         self.docs.insert(path, entry);
     }
     pub(crate) fn remove(&mut self, path: &str) -> bool {
-        self.generation += 1;
+        self.bump();
         if let Some(l) = self.links.as_deref_mut() {
             l.remove(path);
         }
@@ -383,7 +396,7 @@ impl Index {
         self.retain(|p| !p.starts_with(prefix))
     }
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) -> usize {
-        self.generation += 1;
+        self.bump();
         let before = self.docs.len();
         let links = &mut self.links;
         self.docs.retain(|p, _| {
@@ -424,7 +437,7 @@ impl Index {
         moved
     }
     fn take(&mut self, path: &str) -> Option<DocEntry> {
-        self.generation += 1;
+        self.bump();
         if let Some(l) = self.links.as_deref_mut() {
             l.remove(path);
         }

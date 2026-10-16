@@ -186,6 +186,45 @@ mod tests {
     }
 
     #[test]
+    fn graph_table_round_trips_next_to_other_tables_and_comments() {
+        let t = tempdir().unwrap();
+        let v = vault(t.path(), false);
+        update_vault_settings_at(&v, &[change("saving.autosave_delay_ms", json!(750))]).unwrap();
+        let groups = json!([{ "query": "tag:#a", "colour": "#ff0000" }, { "query": "path:Notes", "colour": "#00ff00" }]);
+        update_vault_settings_at(
+            &v,
+            &[
+                change("graph.show_orphans", json!(false)),
+                change("graph.force_repel", json!(7.5)),
+                change("graph.colour_by", json!("mono")),
+                change("graph.groups", groups.clone()),
+            ],
+        )
+        .unwrap();
+        let loaded = load_vault_settings_at(t.path());
+        let settings = loaded.settings.unwrap();
+        assert_eq!(settings["saving"]["autosave_delay_ms"], json!(750));
+        assert_eq!(settings["graph"]["show_orphans"], json!(false));
+        assert_eq!(settings["graph"]["force_repel"], json!(7.5));
+        assert_eq!(settings["graph"]["colour_by"], json!("mono"));
+        assert_eq!(settings["graph"]["groups"], groups);
+
+        update_vault_settings_at(
+            &v,
+            &[
+                change("graph.show_orphans", Json::Null),
+                change("graph.force_repel", Json::Null),
+                change("graph.colour_by", Json::Null),
+                change("graph.groups", Json::Null),
+            ],
+        )
+        .unwrap();
+        let settings = load_vault_settings_at(t.path()).settings.unwrap();
+        assert_eq!(settings["saving"]["autosave_delay_ms"], json!(750));
+        assert!(settings.get("graph").is_none_or(|g| g.as_object().is_some_and(|o| o.is_empty())));
+    }
+
+    #[test]
     fn missing_file_loads_as_empty_without_creating_anything() {
         let t = tempdir().unwrap();
         let loaded = load_vault_settings_at(t.path());

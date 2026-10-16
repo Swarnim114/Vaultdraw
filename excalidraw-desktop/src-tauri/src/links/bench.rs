@@ -589,6 +589,10 @@ fn bench_graph_export() {
             std::hint::black_box(super::graph::export(li, docs));
         });
         let g = super::graph::build(li, docs);
+        let (hit50, hit95) = timed(20, |_| {
+            std::hint::black_box(ix.graph_bytes(super::graph::export).unwrap().to_vec());
+        });
+        println!("cache: {n} drawings -> {} bytes held while cached; repeat open (hit + copy) p50 {hit50:.3} ms p95 {hit95:.3} ms", bytes.len());
         println!("{n:>7} {cold:>10.2} {p50:>10.3} {p95:>10.3} {:>9} {:>7.1} {:>9} {:>9}", bytes.len(), bytes.len() as f64 / g.node_count() as f64, g.node_count(), g.edges.len() / 2);
     }
 }

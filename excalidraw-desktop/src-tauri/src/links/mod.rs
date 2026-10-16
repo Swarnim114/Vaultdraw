@@ -22,6 +22,7 @@ mod bench;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use graph::GraphCache;
 pub(crate) use index::LinkIndex;
 pub(crate) use types::*;
 
@@ -402,8 +403,8 @@ pub(crate) async fn links_remeasure_done(handle: String, path: String, state: St
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) async fn vault_graph(handle: String, search: State<'_, SearchService>) -> Result<tauri::ipc::Response> {
     let vi = vault_index(&search, &handle)?;
-    let bytes = with_links(&vi, |i| i.links_and_docs().map(|(li, docs)| graph::export(li, docs)).unwrap_or_default());
-    Ok(tauri::ipc::Response::new(bytes))
+    let bytes = with_links(&vi, |i| i.graph_bytes(graph::export).unwrap_or_default());
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
 fn graph_dir_for(v: &Vault) -> Result<PathBuf> {

@@ -216,6 +216,28 @@ pub(crate) fn export(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Vec<u8
     build(li, docs).encode()
 }
 
+/// The encoded graph of one index generation. Held inside `Index`, which clears it on every
+/// mutation, so a hit is always current; the generation check is a second guard.
+#[derive(Default)]
+pub(crate) struct GraphCache(std::sync::Mutex<Option<(u64, std::sync::Arc<Vec<u8>>)>>);
+
+impl GraphCache {
+    pub(crate) fn get_or_build(&self, generation: u64, build: impl FnOnce() -> Vec<u8>) -> std::sync::Arc<Vec<u8>> {
+        let mut slot = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((g, bytes)) = slot.as_ref() {
+            if *g == generation {
+                return bytes.clone();
+            }
+        }
+        let bytes = std::sync::Arc::new(build());
+        *slot = Some((generation, bytes.clone()));
+        bytes
+    }
+    pub(crate) fn clear(&mut self) {
+        *self.0.get_mut().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -256,6 +278,42 @@ pub(crate) mod tests {
             "_doc": "Golden description of fixtures/graph_small.bin (links/graph.rs test small_vault_fixture); the TS decoder test checks the same bytes. Regenerate: VD_UPDATE_FIXTURES=1 cargo test --lib links::graph",
             "nodeCount": g.node_count(), "edgeCount": g.edges.len() / 2, "folders": g.folders, "nodes": nodes, "edges": edges,
         })
+    }
+
+    #[test]
+    fn cached_graph_bytes_hit_until_a_mutation_invalidates() {
+        let mut ix = Index::default();
+        assert!(ix.graph_bytes(export).is_none(), "no link index yet");
+        for (p, d) in [drawing("a.excalidraw", "[[b]]"), drawing("b.excalidraw", "x")] {
+            ix.upsert(p, d);
+        }
+        let li = ix.build_links();
+        ix.install_links(li);
+        let builds = std::cell::Cell::new(0);
+        let encode = |li: &LinkIndex, docs: &HashMap<String, DocEntry>| {
+            builds.set(builds.get() + 1);
+            export(li, docs)
+        };
+        let first = ix.graph_bytes(encode).unwrap();
+        let second = ix.graph_bytes(encode).unwrap();
+        assert_eq!(builds.get(), 1, "second call is a cache hit");
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+
+        let (p, d) = drawing("c.excalidraw", "[[a]] [[b]]");
+        ix.upsert(p, d);
+        let third = ix.graph_bytes(encode).unwrap();
+        assert_eq!(builds.get(), 2, "an edit rebuilds");
+        assert_ne!(*first, *third);
+        let again = ix.graph_bytes(encode).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&third, &again));
+
+        ix.remove("c.excalidraw");
+        let fourth = ix.graph_bytes(encode).unwrap();
+        assert_eq!(builds.get(), 3, "a removal rebuilds");
+        assert_eq!(*fourth, *first, "back to the original content, same bytes");
+        let _ = ix.links_and_docs_mut();
+        ix.graph_bytes(encode).unwrap();
+        assert_eq!(builds.get(), 4, "possible link-index mutation invalidates");
     }
 
     #[test]
