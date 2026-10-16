@@ -1,5 +1,7 @@
 import { startTransition, useEffect, useState } from "react";
 
+import { tagStore } from "./tagStore";
+
 import type { VaultSearch } from "../search/types";
 import type { TagCount } from "./types";
 
@@ -52,6 +54,7 @@ export function useVaultTags(
   useEffect(() => {
     setData(EMPTY);
     setLoading(false);
+    tagStore.set(EMPTY.tags);
     if (!search || !handle) {
       return;
     }
@@ -77,6 +80,7 @@ export function useVaultTags(
             const next = { tags: res.tags, byPath: res.byPath };
             if (!sameTags(current, next)) {
               current = next;
+              tagStore.set(next.tags);
               // Refetches follow index changes: never block a keystroke render.
               startTransition(() => setData(next));
             }
