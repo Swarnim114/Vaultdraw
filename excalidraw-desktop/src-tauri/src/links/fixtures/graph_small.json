@@ -1,0 +1,102 @@
+{
+  "_doc": "Golden description of fixtures/graph_small.bin (links/graph.rs test small_vault_fixture); the TS decoder test checks the same bytes. Regenerate: VD_UPDATE_FIXTURES=1 cargo test --lib links::graph",
+  "edgeCount": 8,
+  "edges": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      5
+    ],
+    [
+      0,
+      6
+    ],
+    [
+      0,
+      7
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      1,
+      4
+    ],
+    [
+      2,
+      6
+    ],
+    [
+      3,
+      5
+    ]
+  ],
+  "folders": [
+    "",
+    "A",
+    "B"
+  ],
+  "nodeCount": 8,
+  "nodes": [
+    {
+      "flags": 0,
+      "folder": 1,
+      "in": 1,
+      "label": "A/x",
+      "out": 4
+    },
+    {
+      "flags": 0,
+      "folder": 1,
+      "in": 1,
+      "label": "A/y",
+      "out": 2
+    },
+    {
+      "flags": 4,
+      "folder": 2,
+      "in": 0,
+      "label": "B/lone",
+      "out": 1
+    },
+    {
+      "flags": 0,
+      "folder": 2,
+      "in": 0,
+      "label": "B/z",
+      "out": 1
+    },
+    {
+      "flags": 0,
+      "folder": 0,
+      "in": 1,
+      "label": "root",
+      "out": 0
+    },
+    {
+      "flags": 1,
+      "folder": 0,
+      "in": 2,
+      "label": "missing thing",
+      "out": 0
+    },
+    {
+      "flags": 2,
+      "folder": 0,
+      "in": 2,
+      "label": "#t1",
+      "out": 0
+    },
+    {
+      "flags": 2,
+      "folder": 0,
+      "in": 1,
+      "label": "#t2",
+      "out": 0
+    }
+  ]
+}

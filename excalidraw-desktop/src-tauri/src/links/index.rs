@@ -155,6 +155,10 @@ impl LinkIndex {
     pub(crate) fn path(&self, d: u32) -> &str {
         &self.docs[d as usize].path
     }
+    /// `(id, path)` of every live drawing (free slots have an empty path).
+    pub(crate) fn live_docs(&self) -> impl Iterator<Item = (u32, &str)> + '_ {
+        self.docs.iter().enumerate().filter(|(_, d)| !d.path.is_empty()).map(|(i, d)| (i as u32, &*d.path))
+    }
     pub(crate) fn out_links(&self, d: u32) -> &[(u32, u32)] {
         &self.docs[d as usize].fwd
     }

@@ -5,9 +5,11 @@
 //! first demand, then maintained by the same upsert/remove path. Nothing here runs, or costs
 //! memory, until a link command is first used.
 
+mod graph;
 mod grammar;
 mod index;
 mod journal;
+mod layout_store;
 mod plan;
 mod query;
 mod resolve;
@@ -391,4 +393,40 @@ pub(crate) async fn links_remeasure_done(handle: String, path: String, state: St
     let Some(dir) = links_dir_for(&v) else { return Ok(()) };
     let _io = links.io.lock().unwrap_or_else(|p| p.into_inner());
     journal::remeasure_done(&dir, &path)
+}
+
+// ---- graph view (P3) ----
+
+/// Whole-vault graph as raw `VDG1` bytes (format in `graph.rs`).
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn vault_graph(handle: String, search: State<'_, SearchService>) -> Result<tauri::ipc::Response> {
+    let vi = vault_index(&search, &handle)?;
+    let bytes = with_links(&vi, |i| i.links_and_docs().map(|(li, docs)| graph::export(li, docs)).unwrap_or_default());
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+fn graph_dir_for(v: &Vault) -> Result<PathBuf> {
+    let d = crate::config::resolve_dirs()?;
+    Ok(layout_store::graph_dir(&d.state, &v.root))
+}
+
+/// Saved graph layout bytes (empty when none); the format is owned by `src/graph/layoutStore.ts`.
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn graph_layout_load(handle: String, state: State<'_, crate::Service>) -> Result<tauri::ipc::Response> {
+    let v = crate::vault_for(&state, &handle)?;
+    Ok(tauri::ipc::Response::new(graph_dir_for(&v).map(|d| layout_store::load(&d)).unwrap_or_default()))
+}
+
+/// Saves the layout: raw request body, vault handle in the `handle` header (empty body clears).
+#[tauri::command]
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) async fn graph_layout_save(request: tauri::ipc::Request<'_>, state: State<'_, crate::Service>) -> Result<()> {
+    let handle = crate::clipboard::header(&request, "handle")?;
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(err("INVALID_ARGUMENT", "Expected a raw binary body"));
+    };
+    let v = crate::vault_for(&state, &handle)?;
+    layout_store::save(&graph_dir_for(&v)?, bytes)
 }

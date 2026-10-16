@@ -566,4 +566,29 @@ fn bench_tag_rename() {
     runs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     println!("tag job over 100 x {:.0} KB files incl. fsync: min {:.0} ms  p50 {:.0} ms  max {:.0} ms ({:.2} ms/file)", body.len() as f64 / 1e3, runs[0], runs[3], runs[6], runs[3] / 100.0);
     println!("budgets: plan <= 50 ms; job <= 500 ms; 2 MB rewrite <= 1 ms [min {:.3}, p50 {w50:.3}]", one[0]);
+
+/// P3 graph export: `cargo test --release --lib links::bench::bench_graph_export -- --ignored --nocapture`
+/// Budgets: encode (warm link index) 10k <= 2 ms, 50k <= 10 ms. Report-only.
+#[test]
+#[ignore]
+fn bench_graph_export() {
+    println!("\n{:>7} {:>10} {:>10} {:>10} {:>9} {:>7} {:>9} {:>9}", "n", "cold ms", "warm p50", "warm p95", "bytes", "B/node", "nodes", "edges");
+    for n in [1_000usize, 10_000, 50_000] {
+        let s = generate(n, 0xC0FFEE ^ n as u64);
+        let mut ix = Index::default();
+        for (p, items, el) in &s.docs {
+            ix.upsert(p.clone(), entry(p, items, el));
+        }
+        let t = Instant::now();
+        let li = ix.build_links();
+        ix.install_links(li);
+        let (li, docs) = ix.links_and_docs().unwrap();
+        let bytes = super::graph::export(li, docs);
+        let cold = t.elapsed().as_secs_f64() * 1e3 + 0.0;
+        let (p50, p95) = timed(20, |_| {
+            std::hint::black_box(super::graph::export(li, docs));
+        });
+        let g = super::graph::build(li, docs);
+        println!("{n:>7} {cold:>10.2} {p50:>10.3} {p95:>10.3} {:>9} {:>7.1} {:>9} {:>9}", bytes.len(), bytes.len() as f64 / g.node_count() as f64, g.node_count(), g.edges.len() / 2);
+    }
 }

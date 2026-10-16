@@ -99,6 +99,10 @@ impl DocEntry {
     }
 
     /// Re-derives the path-based fields after the drawing moved.
+    /// `(key, display)` of each distinct `#tag` of the drawing.
+    pub(crate) fn tag_pairs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.tags.iter().map(|t| (&*t.key, &*t.display))
+    }
     pub(crate) fn set_path(&mut self, path: &str) {
         self.derive_name(path);
     }
