@@ -15,7 +15,11 @@ import { checkTreeDrop, getParentPath } from "../vault/treeStore";
 
 import { useVaultTags } from "../tags/useVaultTags";
 
-import { tagQuery } from "../tags/types";
+import { tagQuery, type TagSort } from "../tags/types";
+import { registerTagActions } from "../tags/tagActions";
+import { tagStore } from "../tags/tagStore";
+import { registerPaletteProvider } from "../palette/registry";
+import { createTagsProvider } from "../palette/providers/tags";
 
 import {
   IconChevronDown,
@@ -47,7 +51,7 @@ import {
 } from "./Icons";
 import { SearchResults } from "./search/SearchResults";
 import { TagChips } from "./tags/TagChips";
-import { TagsPanel } from "./tags/TagsPanel";
+import { TagsPanel, type TagsPanelHandle } from "./tags/TagsPanel";
 
 import { ConfirmModal } from "./ConfirmModal";
 import { MoveModal } from "./MoveModal";
@@ -131,6 +135,10 @@ interface VaultNavigatorProps {
   confirmDelete: boolean;
   /** Show tag chips after drawing names (default on). */
   showTagChips?: boolean;
+  /** Order of the Tags pane when the vault has no saved choice (`tags.pane_sort`). */
+  tagsDefaultSort?: TagSort;
+  /** Rename a tag (key, display): the Tags pane row action and r/F2. */
+  onRenameTag?: (key: string, display: string) => void;
   /** Rendered between the tree and the footer (the Links dock). */
   dockSlot?: ReactNode;
   ownerDocument?: Document | null;
@@ -168,6 +176,8 @@ export const VaultNavigator = ({
   onSortChange,
   confirmDelete,
   showTagChips = true,
+  tagsDefaultSort,
+  onRenameTag,
   dockSlot,
   ownerDocument,
 }: VaultNavigatorProps) => {
@@ -283,6 +293,41 @@ export const VaultNavigator = ({
   const isSearching = searchQuery.trim() !== "";
   const { tags, byPath: tagsByPath } = useVaultTags(search, vault.handle);
   const filterByTag = (key: string) => setSearchQuery(tagQuery(key));
+  const tagsPanelRef = useRef<TagsPanelHandle>(null);
+  // Palette "Tag: #x" entries, the dock chips and a focus command reach the
+  // navigator through these slots (nothing runs until they are called).
+  const tagActionsRef = useRef({ collapsed, onToggleCollapse });
+  tagActionsRef.current = { collapsed, onToggleCollapse };
+  useEffect(() => {
+    const expand = () => {
+      if (tagActionsRef.current.collapsed) {
+        tagActionsRef.current.onToggleCollapse();
+      }
+    };
+    const unActions = registerTagActions({
+      filter: (key) => {
+        expand();
+        setSearchQuery(tagQuery(key));
+      },
+      focusPane: () => {
+        expand();
+        setTimeout(() => tagsPanelRef.current?.focus(), 0);
+      },
+    });
+    const unPalette = registerPaletteProvider(
+      createTagsProvider({
+        tags: tagStore.get,
+        apply: (key) => {
+          expand();
+          setSearchQuery(tagQuery(key));
+        },
+      }),
+    );
+    return () => {
+      unActions();
+      unPalette();
+    };
+  }, []);
   // Keep the panel during a plain tag filter so the active tag can be toggled off.
   const isTagFilter = tags.some((t) => tagQuery(t.tag) === searchQuery.trim());
 
@@ -618,9 +663,15 @@ export const VaultNavigator = ({
 
       {(!isSearching || isTagFilter) && (
         <TagsPanel
+          ref={tagsPanelRef}
+          key={vault.path}
+          vaultKey={vault.path}
           tags={tags}
           query={searchQuery}
           onQueryChange={setSearchQuery}
+          defaultSort={tagsDefaultSort}
+          onRenameTag={onRenameTag}
+          onExit={() => treeContainerRef.current?.focus()}
         />
       )}
 

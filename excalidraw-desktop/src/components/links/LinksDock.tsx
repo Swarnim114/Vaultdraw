@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { IconChevronDown, IconChevronRight } from "../Icons";
+import { DrawingTags } from "../tags/TagChips";
 
 import "./LinksDock.css";
 
@@ -362,6 +363,7 @@ export function LinksDock(props: LinksDockProps) {
       aria-label="Links"
       onKeyDown={onKeyDown}
     >
+      <DrawingTags path={path} />
       <div className="vault-links__tabs" role="tablist">
         <button
           type="button"

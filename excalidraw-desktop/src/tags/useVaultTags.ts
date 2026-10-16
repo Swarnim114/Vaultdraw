@@ -54,7 +54,7 @@ export function useVaultTags(
   useEffect(() => {
     setData(EMPTY);
     setLoading(false);
-    tagStore.set(EMPTY.tags);
+    tagStore.set(EMPTY.tags, EMPTY.byPath);
     if (!search || !handle) {
       return;
     }
@@ -80,7 +80,7 @@ export function useVaultTags(
             const next = { tags: res.tags, byPath: res.byPath };
             if (!sameTags(current, next)) {
               current = next;
-              tagStore.set(next.tags);
+              tagStore.set(next.tags, next.byPath);
               // Refetches follow index changes: never block a keystroke render.
               startTransition(() => setData(next));
             }
