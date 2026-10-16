@@ -141,6 +141,9 @@ export const ToolsPage = ({
 }: ToolsPageProps) => (
   <div className="vault-tools-page">
     <ToolTabs section={section} onSelect={onSectionChange} />
+    <p className="vault-tools-legend">
+      customised · unset values keep Excalidraw&apos;s current style
+    </p>
     <div
       id={TOOLS_PANEL_ID}
       role="tabpanel"
