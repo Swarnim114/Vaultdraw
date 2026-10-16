@@ -19,6 +19,7 @@ import {
   type ToolStyle,
   type ToolStyleKey,
 } from "../../../toolDefaults/toolStyles";
+import { defaultFontLabel } from "../../../toolDefaults/fontName";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { BG_COLORS, FONT_OPTIONS, STROKE_COLORS } from "./Drawing";
@@ -71,6 +72,8 @@ const NUMBER_HINTS: Partial<Record<ToolStyleKey, string>> = {
   stroke_width: "px",
   opacity: "%",
   font_size: "px",
+  font_family:
+    "[editor] defaults only seed new drawings; existing drawings keep their own fonts.",
 };
 
 const COLOR_PRESETS: Partial<Record<ToolStyleKey, readonly string[]>> = {
@@ -173,11 +176,13 @@ const SelectControl = ({
   label,
   options,
   value,
+  defaultLabel = "Default",
   onChange,
 }: {
   testId: string;
   label: string;
   options: Choice[];
+  defaultLabel?: string;
   value: string | undefined;
   onChange: (value: string | undefined) => void;
 }) => (
@@ -190,7 +195,7 @@ const SelectControl = ({
       onChange(e.target.value === "" ? undefined : e.target.value)
     }
   >
-    <option value="">Default</option>
+    <option value="">{defaultLabel}</option>
     {value !== undefined && !options.some((o) => o.value === value) && (
       <option value={value}>{value}: Other</option>
     )}
@@ -207,11 +212,13 @@ const StyleField = ({
   styleKey,
   style,
   setKey,
+  defaultFont,
 }: {
   tool: StyledTool;
   styleKey: ToolStyleKey;
   style: ToolStyle;
   setKey: SetKey;
+  defaultFont: number;
 }) => {
   const testId = `tool-default-${tool}-${styleKey}`;
   const title = STYLE_KEY_LABELS[styleKey];
@@ -249,6 +256,9 @@ const StyleField = ({
         testId={testId}
         label={label}
         options={options}
+        defaultLabel={
+          styleKey === "font_family" ? defaultFontLabel(defaultFont) : undefined
+        }
         value={raw === undefined ? undefined : String(raw)}
         onChange={(v) =>
           setKey(styleKey, v === undefined || !numeric ? v : Number(v))
@@ -329,6 +339,7 @@ export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
             styleKey={key}
             style={style}
             setKey={setKey}
+            defaultFont={fallback.fontFamily}
           />
         ))}
       </div>

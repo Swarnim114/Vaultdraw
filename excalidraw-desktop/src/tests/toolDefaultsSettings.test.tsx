@@ -293,6 +293,16 @@ describe("Tools page: tool defaults", () => {
     expect(getPreferences(window).toolArrow).toEqual({});
   });
 
+  it("names the effective default font and explains it only seeds new drawings", async () => {
+    await open();
+    tab("Text");
+    const select = screen.getByTestId(
+      "tool-default-text-font_family",
+    ) as HTMLSelectElement;
+    expect(select.options[0].textContent).toMatch(/^Default \(\w[\w ]*\)$/);
+    expect(screen.getByText(/only seed new drawings/)).toBeTruthy();
+  });
+
   it("clamps numbers and sets a colour", async () => {
     await open();
     tab("Line");
