@@ -42,6 +42,8 @@ export interface VaultRepository {
   move(handle: string, from: string, to: string): Promise<void>;
   trash(handle: string, path: string): Promise<void>;
   reveal(handle: string, path: string): Promise<void>;
+  /** Opens the vault's crash-recovery folder in the OS file manager. */
+  revealRecovery(handle: string): Promise<void>;
   exportFile(name: string, bytes: Uint8Array): Promise<boolean>;
   /** Copies a drawing's bytes, unchanged, to a place picked in the save
    *  dialog. false = cancelled. */

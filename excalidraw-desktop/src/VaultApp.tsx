@@ -1422,6 +1422,20 @@ export const VaultApp = ({
     }
   };
 
+  const handleRevealRecovery = async () => {
+    if (!vault) {
+      return;
+    }
+    try {
+      await repository.revealRecovery(vault.handle);
+    } catch (err) {
+      setGlobalAlert({
+        message: `Failed to open the recovery folder: ${errorMessage(err)}`,
+        type: "error",
+      });
+    }
+  };
+
   const handleExportDrawing = useExplorerExport({
     repository,
     vault,
@@ -1616,6 +1630,7 @@ export const VaultApp = ({
       }
     },
     revealVault: () => handleRevealEntry(""),
+    revealRecovery: handleRevealRecovery,
     setSort: handleSortChange,
     openRecovered:
       recoveryCount > 0 ? () => setShowRecoveryDialog(true) : undefined,

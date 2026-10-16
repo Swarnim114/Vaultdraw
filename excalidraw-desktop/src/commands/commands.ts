@@ -489,6 +489,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen"],
   },
   {
+    id: "vault.revealRecovery",
+    title: "Reveal recovery folder",
+    category: "Vault",
+    keys: { default: [] },
+    when: ["vaultOpen"],
+  },
+  {
     id: "vault.openRecovered",
     title: "Open recovered drawings",
     category: "Vault",

@@ -981,6 +981,16 @@ async fn trash_entry(handle: String, path: String, state: State<'_, Service>, hi
     history.trashed(&handle, &path);
     Ok(())
 }
+/// The folder "Reveal" opens for Files > Recovery: the vault's crash-recovery
+/// store, created on first use (never in a read-only vault).
+fn recovery_reveal_target(v: &Vault) -> Result<PathBuf> {
+    checked_recovery_dir(v, !v.read_only)?.ok_or_else(|| err("NOT_FOUND", "No recovery folder yet"))
+}
+#[tauri::command]
+async fn reveal_recovery_dir(handle: String, state: State<'_, Service>) -> Result<()> {
+    let v = vault_for(&state, &handle)?;
+    config::open_dir(&recovery_reveal_target(&v)?)
+}
 #[tauri::command]
 async fn reveal_entry(handle: String, path: String, state: State<'_, Service>) -> Result<()> {
     let v = vault_for(&state, &handle)?;
@@ -1171,6 +1181,17 @@ mod tests {
         assert!(safe_path(&root, "escape/file.excalidraw", true).is_err());
         symlink(&outside, root.join(META_DIR)).unwrap();
         assert_eq!(checked_recovery_dir(&vault(&root), true).unwrap_err().code, "INVALID_PATH");
+    }
+    #[test]
+    fn recovery_reveal_target_is_created_and_refused_when_read_only() {
+        let t = tempdir().unwrap(); let root = t.path().join("root"); fs::create_dir(&root).unwrap();
+        let v = vault(&root);
+        let dir = recovery_reveal_target(&v).unwrap();
+        assert!(dir.is_dir() && dir.ends_with(format!("{META_DIR}/{RECOVERY_DIR}")));
+        let ro = t.path().join("ro"); fs::create_dir(&ro).unwrap();
+        let mut v = vault(&ro); v.read_only = true;
+        assert_eq!(recovery_reveal_target(&v).unwrap_err().code, "NOT_FOUND");
+        assert!(!ro.join(META_DIR).exists());
     }
     #[cfg(unix)]
     #[test]
@@ -1460,7 +1481,7 @@ pub fn run() {
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
@@ -1479,7 +1500,7 @@ pub fn run() {
         } else {
             builder.invoke_handler(tauri::generate_handler![
                 choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
+                write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
                 themes::list_themes, themes::open_themes_dir,
@@ -1495,7 +1516,7 @@ pub fn run() {
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
             choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
-            write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry,
+            write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
             export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
             themes::list_themes, themes::open_themes_dir,

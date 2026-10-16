@@ -450,6 +450,10 @@ export class FakeVaultRepository implements VaultRepository {
     assertValidRelativePath(path);
   }
 
+  async revealRecovery(handle: string): Promise<void> {
+    this.ensureOpen(handle);
+  }
+
   async exportFile(name: string, bytes: Uint8Array): Promise<boolean> {
     if (!name) {
       throw makeError("INVALID_PATH", "export name is required");

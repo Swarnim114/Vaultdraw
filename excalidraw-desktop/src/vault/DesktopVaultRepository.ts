@@ -304,6 +304,15 @@ export class DesktopVaultRepository implements VaultRepository {
     }
   }
 
+  async revealRecovery(handle: string): Promise<void> {
+    const invoke = await this.getInvoke();
+    try {
+      await invoke<void>("reveal_recovery_dir", { handle });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
   async exportFile(name: string, bytes: Uint8Array): Promise<boolean> {
     const invoke = await this.getInvoke();
     try {

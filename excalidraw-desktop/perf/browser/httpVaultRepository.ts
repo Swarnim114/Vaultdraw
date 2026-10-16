@@ -133,6 +133,7 @@ export class HttpVaultRepository implements VaultRepository {
   async move() {}
   async trash() {}
   async reveal() {}
+  async revealRecovery() {}
   async exportFile() {
     return true;
   }

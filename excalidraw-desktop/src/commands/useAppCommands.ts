@@ -47,6 +47,7 @@ export interface AppCommandActions {
   moveActive(): void;
   trashActive(): void;
   revealVault(): void | Promise<void>;
+  revealRecovery(): void | Promise<void>;
   setSort(order: SortOrder): void;
   /** Only while recovered snapshots exist: no handler = not offered. */
   openRecovered?: () => void;
@@ -93,6 +94,7 @@ export function appCommandHandlers(
     "file.move": actions.moveActive,
     "file.trash": actions.trashActive,
     "vault.reveal": actions.revealVault,
+    "vault.revealRecovery": actions.revealRecovery,
     "vault.openRecovered": actions.openRecovered,
     "file.resolveConflict": actions.resolveConflict,
     ...Object.fromEntries(
