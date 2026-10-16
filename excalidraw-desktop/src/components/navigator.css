@@ -287,6 +287,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  transition: background-color 0.1s ease, color 0.1s ease;
   height: 26px;
   padding: 0 6px 0 calc(6px + var(--depth, 0) * 16px);
   font-size: 12.5px;
@@ -390,7 +391,6 @@ svg.vault-tree-item__icon {
   flex: none;
   margin-left: 6px;
   color: var(--vault-text-faint);
-  font-family: var(--vd-mono, monospace);
   font-size: 11px;
 }
 
