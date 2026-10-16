@@ -44,11 +44,21 @@ export class HitGrid {
     for (let i = 0; i < n; i++) {
       const x = positions[2 * i];
       const y = positions[2 * i + 1];
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-      if (radius[i] > maxR) maxR = radius[i];
+      if (x < x0) {
+        x0 = x;
+      }
+      if (x > x1) {
+        x1 = x;
+      }
+      if (y < y0) {
+        y0 = y;
+      }
+      if (y > y1) {
+        y1 = y;
+      }
+      if (radius[i] > maxR) {
+        maxR = radius[i];
+      }
     }
     this.maxRadius = maxR;
     if (n === 0) {

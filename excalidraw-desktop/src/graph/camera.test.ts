@@ -49,21 +49,40 @@ describe("camera maths", () => {
   });
 
   it("fitCamera centres and respects padding / max scale", () => {
-    const f = fitCamera({ minX: 0, minY: 0, maxX: 1000, maxY: 500 }, { w: 1000, h: 700 }, 50);
+    const f = fitCamera(
+      { minX: 0, minY: 0, maxX: 1000, maxY: 500 },
+      { w: 1000, h: 700 },
+      50,
+    );
     expect(f.x).toBe(500);
     expect(f.y).toBe(250);
     expect(f.scale).toBeCloseTo(0.9, 9);
-    const tiny = fitCamera({ minX: 0, minY: 0, maxX: 1, maxY: 1 }, { w: 1000, h: 700 }, 50);
+    const tiny = fitCamera(
+      { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+      { w: 1000, h: 700 },
+      50,
+    );
     expect(tiny.scale).toBe(2);
-    const point = fitCamera({ minX: 5, minY: 5, maxX: 5, maxY: 5 }, { w: 100, h: 100 });
+    const point = fitCamera(
+      { minX: 5, minY: 5, maxX: 5, maxY: 5 },
+      { w: 100, h: 100 },
+    );
     expect(Number.isFinite(point.scale)).toBe(true);
   });
 
   it("computeBounds skips hidden nodes and empty sets", () => {
     const p = new Float32Array([0, 0, 10, 20, -5, 3]);
-    expect(computeBounds(p, 3)).toEqual({ minX: -5, minY: 0, maxX: 10, maxY: 20 });
+    expect(computeBounds(p, 3)).toEqual({
+      minX: -5,
+      minY: 0,
+      maxX: 10,
+      maxY: 20,
+    });
     expect(computeBounds(p, 3, new Uint8Array([0, 1, 0]))).toEqual({
-      minX: -5, minY: 0, maxX: 0, maxY: 3,
+      minX: -5,
+      minY: 0,
+      maxX: 0,
+      maxY: 3,
     });
     expect(computeBounds(p, 0)).toBeNull();
   });

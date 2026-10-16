@@ -42,10 +42,18 @@ export function computeBounds(
     }
     const x = positions[2 * i];
     const y = positions[2 * i + 1];
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
+    if (x < minX) {
+      minX = x;
+    }
+    if (x > maxX) {
+      maxX = x;
+    }
+    if (y < minY) {
+      minY = y;
+    }
+    if (y > maxY) {
+      maxY = y;
+    }
   }
   return minX > maxX ? null : { minX, minY, maxX, maxY };
 }
@@ -62,8 +70,15 @@ export function fitCamera(
   const bh = Math.max(bounds.maxY - bounds.minY, 1e-6);
   const aw = Math.max(1, viewport.w - 2 * padding);
   const ah = Math.max(1, viewport.h - 2 * padding);
-  const scale = Math.min(maxScale, Math.max(minScale, Math.min(aw / bw, ah / bh)));
-  return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, scale };
+  const scale = Math.min(
+    maxScale,
+    Math.max(minScale, Math.min(aw / bw, ah / bh)),
+  );
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+    scale,
+  };
 }
 
 export class Camera implements CameraState {
@@ -105,13 +120,21 @@ export class Camera implements CameraState {
   }
 
   /** World -> screen (CSS px relative to the canvas). */
-  worldToScreen(wx: number, wy: number, out: { x: number; y: number } = { x: 0, y: 0 }) {
+  worldToScreen(
+    wx: number,
+    wy: number,
+    out: { x: number; y: number } = { x: 0, y: 0 },
+  ) {
     out.x = (wx - this.x) * this.scale + this.w / 2;
     out.y = (wy - this.y) * this.scale + this.h / 2;
     return out;
   }
 
-  screenToWorld(sx: number, sy: number, out: { x: number; y: number } = { x: 0, y: 0 }) {
+  screenToWorld(
+    sx: number,
+    sy: number,
+    out: { x: number; y: number } = { x: 0, y: 0 },
+  ) {
     out.x = (sx - this.w / 2) / this.scale + this.x;
     out.y = (sy - this.h / 2) / this.scale + this.y;
     return out;
@@ -128,7 +151,10 @@ export class Camera implements CameraState {
   /** Zoom by `factor` keeping the world point under (sx, sy) fixed. */
   zoomAt(sx: number, sy: number, factor: number): void {
     this.animating = false;
-    const next = Math.min(this.maxScale, Math.max(this.minScale, this.scale * factor));
+    const next = Math.min(
+      this.maxScale,
+      Math.max(this.minScale, this.scale * factor),
+    );
     const k = next / this.scale;
     // world point under the pointer stays: x' = wx - (sx - w/2)/next
     const wx = (sx - this.w / 2) / this.scale + this.x;
@@ -146,7 +172,12 @@ export class Camera implements CameraState {
     return Math.exp(-deltaY * 0.0015);
   }
 
-  fit(bounds: Bounds, padding = 40, animate = true, now = performance.now()): void {
+  fit(
+    bounds: Bounds,
+    padding = 40,
+    animate = true,
+    now = performance.now(),
+  ): void {
     const target = fitCamera(bounds, this.viewport, padding, 2, this.minScale);
     if (animate) {
       this.animateTo(target, now);

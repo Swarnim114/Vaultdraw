@@ -40,17 +40,20 @@ describe("FrameLoop", () => {
     let left = 3;
     const loop = new FrameLoop(() => --left > 0, f);
     loop.invalidate();
-    for (let i = 0; i < 10; i++) f.flush();
+    for (let i = 0; i < 10; i++) {
+      f.flush();
+    }
     expect(loop.stats.frames).toBe(3);
     expect(f.pending).toBe(0);
   });
 
   it("invalidate during render schedules exactly one more frame", () => {
     const f = fakeRaf();
-    let loop!: FrameLoop;
     let calls = 0;
-    loop = new FrameLoop(() => {
-      if (calls++ === 0) loop.invalidate();
+    const loop: FrameLoop = new FrameLoop(() => {
+      if (calls++ === 0) {
+        loop.invalidate();
+      }
     }, f);
     loop.invalidate();
     f.flush();

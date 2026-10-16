@@ -5,7 +5,7 @@ import { nodeZoomFactor } from "./renderer/shared";
 
 function lcg(seed: number) {
   let s = seed >>> 0;
-  return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
 }
 
 function randomNodes(n: number, extent = 2000) {
@@ -20,12 +20,23 @@ function randomNodes(n: number, extent = 2000) {
   return { pos, rad };
 }
 
-function brute(pos: Float32Array, rad: Float32Array, n: number, wx: number, wy: number, scale: number, slop: number, mask?: Uint8Array) {
+function brute(
+  pos: Float32Array,
+  rad: Float32Array,
+  n: number,
+  wx: number,
+  wy: number,
+  scale: number,
+  slop: number,
+  mask?: Uint8Array,
+) {
   const zf = nodeZoomFactor(scale);
   let best = -1;
   let bd = Infinity;
   for (let i = 0; i < n; i++) {
-    if (mask?.[i]) continue;
+    if (mask?.[i]) {
+      continue;
+    }
     const dx = pos[2 * i] - wx;
     const dy = pos[2 * i + 1] - wy;
     const d = dx * dx + dy * dy;
@@ -43,7 +54,9 @@ describe("HitGrid", () => {
     const n = 3000;
     const { pos, rad } = randomNodes(n);
     const mask = new Uint8Array(n);
-    for (let i = 0; i < n; i += 3) mask[i] = 1;
+    for (let i = 0; i < n; i += 3) {
+      mask[i] = 1;
+    }
     const g = new HitGrid();
     const r = lcg(99);
     for (const m of [null, mask]) {
@@ -52,7 +65,9 @@ describe("HitGrid", () => {
         for (let q = 0; q < 300; q++) {
           const wx = (r() - 0.5) * 2200;
           const wy = (r() - 0.5) * 2200;
-          expect(g.pick(wx, wy, scale)).toBe(brute(pos, rad, n, wx, wy, scale, 2, m ?? undefined));
+          expect(g.pick(wx, wy, scale)).toBe(
+            brute(pos, rad, n, wx, wy, scale, 2, m ?? undefined),
+          );
         }
       }
     }
@@ -74,7 +89,11 @@ describe("HitGrid", () => {
     const g = new HitGrid();
     g.build(new Float32Array(0), new Float32Array(0), 0);
     expect(g.pick(0, 0, 1)).toBe(-1);
-    g.build(new Float32Array([1, 1, 1, 1, 1, 1]), new Float32Array([4, 4, 4]), 3);
+    g.build(
+      new Float32Array([1, 1, 1, 1, 1, 1]),
+      new Float32Array([4, 4, 4]),
+      3,
+    );
     expect(g.pick(1, 1, 1)).toBeGreaterThanOrEqual(0);
     const { pos, rad } = randomNodes(500);
     g.build(pos, rad, 500);
