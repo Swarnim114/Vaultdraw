@@ -1,0 +1,12 @@
+.vault-version-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Read-only look: no editing cursor on the canvas. */
+.vault-version-preview .excalidraw canvas.interactive {
+  cursor: default;
+}
