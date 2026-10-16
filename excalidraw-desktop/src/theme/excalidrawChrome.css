@@ -130,7 +130,6 @@
 .excalidraw
   .ToolIcon.ToolIcon_type_toggle.ToolIcon--checked
   .ToolIcon__keybinding {
-  font-family: var(--vd-mono);
   font-size: 8.5px;
   line-height: 1;
   right: 3px;

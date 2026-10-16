@@ -9,7 +9,8 @@
   border-radius: var(--vd-radius-chip);
   background: var(--vault-chip);
   color: var(--vault-text-muted);
-  font-family: var(--vd-mono);
+  /* UI font, not the mono stack: its first use costs ~6 ms of layout on
+     vault open at 4x throttle (D16, D17). */
   font-size: 10.5px;
   line-height: 1;
   text-align: center;
@@ -354,7 +355,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--vd-mono);
   font-size: var(--vd-fs-small);
   color: var(--vault-text);
 }
