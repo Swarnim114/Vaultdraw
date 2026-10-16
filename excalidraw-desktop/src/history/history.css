@@ -11,6 +11,9 @@
   bottom: 24px;
   transform: translateX(-50%);
   z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 8px 14px;
   font-size: 0.85rem;
   color: var(--vault-text);

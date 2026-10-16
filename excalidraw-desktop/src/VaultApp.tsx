@@ -1934,6 +1934,10 @@ export const VaultApp = ({
           document={activeDoc}
           flush={() => flushDoc({ commitText: false })}
           ownerDocument={doc}
+          status={saveStatus}
+          onOpenDrawing={handleOpenDrawing}
+          theme={appTheme}
+          onSaveFile={exportEditorFile}
         />
         {templates.dialogs}
         {appLinks.dialogs}

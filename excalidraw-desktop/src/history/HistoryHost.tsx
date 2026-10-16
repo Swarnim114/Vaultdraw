@@ -2,19 +2,29 @@
  * The single mount point of file history inside the app shell. It owns the
  * panel state, the checkpoint dialog and a small confirmation toast, syncs the
  * native service (useHistorySync) and binds the app-level commands. The panel
- * is a static import on purpose: it is tiny, and a separate lazy chunk for it
- * measurably slowed the vault-open paint (see perf notes in the commit).
+ * (list, timeline, preview, restore) is one lazy chunk fetched on first open,
+ * never prefetched: while history is closed nothing of it is loaded or running.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { CheckpointDialog } from "./CheckpointDialog";
-import HistoryPanel from "./panel/HistoryPanel";
 import { useHistoryCommands } from "./useHistoryCommands";
 import { useHistorySync } from "./useHistorySync";
 
 import "./history.css";
 
+import type { SaveStatus } from "../vault/types";
+import type { PanelMode, PanelNotice } from "./panel/HistoryPanel";
 import type { HistoryRepository, HistorySettings } from "./types";
+
+const HistoryPanel = lazy(() => import("./panel/HistoryPanel"));
 
 export interface HistoryHostProps {
   repository: HistoryRepository;
@@ -25,10 +35,24 @@ export interface HistoryHostProps {
   /** Persists pending edits (the existing flush bridge). */
   flush: () => Promise<void>;
   ownerDocument?: Document | null;
+  /** Save state of the open drawing (restore is refused on conflict/deleted). */
+  status?: SaveStatus;
+  /** The drawing was deleted outside the editor (not exposed by every caller). */
+  deleted?: boolean;
+  /** Opens a vault drawing (the "Restored as <name>" toast's Open button). */
+  onOpenDrawing?: (path: string) => void;
+  theme?: "light" | "dark";
+  /** Native save for image exports of a version. */
+  onSaveFile?: (fileName: string, bytes: Uint8Array) => Promise<unknown>;
 }
 
-type Toast = { message: string; error: boolean };
+type Toast = {
+  message: string;
+  error: boolean;
+  action?: PanelNotice["action"];
+};
 const TOAST_MS = 3000;
+const TOAST_ACTION_MS = 8000;
 
 export const HistoryHost = ({
   repository,
@@ -37,21 +61,41 @@ export const HistoryHost = ({
   document: activeDoc,
   flush,
   ownerDocument,
+  status = "saved",
+  deleted = false,
+  onOpenDrawing,
+  theme,
+  onSaveFile,
 }: HistoryHostProps) => {
   const [panelOpen, setPanelOpen] = useState(false);
+  const [mode, setMode] = useState<PanelMode>("side");
+  const saveRef = useRef({ status, deleted });
+  saveRef.current = { status, deleted };
+  const getSaveState = useCallback(() => saveRef.current, []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useHistorySync(repository, vault, settings, activeDoc);
 
-  const showToast = useCallback((message: string, error = false) => {
-    if (toastTimer.current) {
-      clearTimeout(toastTimer.current);
-    }
-    setToast({ message, error });
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
-  }, []);
+  const showToast = useCallback(
+    (message: string, error = false, action?: Toast["action"]) => {
+      if (toastTimer.current) {
+        clearTimeout(toastTimer.current);
+      }
+      setToast({ message, error, action });
+      toastTimer.current = setTimeout(
+        () => setToast(null),
+        action ? TOAST_ACTION_MS : TOAST_MS,
+      );
+    },
+    [],
+  );
+  const notify = useCallback(
+    (message: string, notice?: PanelNotice) =>
+      showToast(message, notice?.error ?? false, notice?.action),
+    [showToast],
+  );
   useEffect(
     () => () => {
       if (toastTimer.current) {
@@ -71,8 +115,14 @@ export const HistoryHost = ({
         setDialogOpen(true);
       }
     },
-    toggle: () => setPanelOpen((open) => !open),
-    timeTravel: () => setPanelOpen(true),
+    toggle: () => {
+      setMode("side");
+      setPanelOpen((open) => !open);
+    },
+    timeTravel: () => {
+      setMode("fullscreen");
+      setPanelOpen(true);
+    },
   });
 
   // The panel and dialog belong to one drawing: closing it closes them.
@@ -106,12 +156,25 @@ export const HistoryHost = ({
   return (
     <>
       {panelOpen && handle && path && (
-        <HistoryPanel
-          repository={repository}
-          handle={handle}
-          path={path}
-          onClose={closePanel}
-        />
+        <Suspense fallback={null}>
+          <HistoryPanel
+            repository={repository}
+            handle={handle}
+            path={path}
+            documentId={activeDoc?.id}
+            onClose={closePanel}
+            mode={mode}
+            onModeChange={setMode}
+            theme={theme}
+            readOnly={vault?.readOnly}
+            saveState={getSaveState}
+            flush={flush}
+            notify={notify}
+            onOpenDrawing={onOpenDrawing}
+            onSaveFile={onSaveFile}
+            ownerDocument={ownerDocument}
+          />
+        </Suspense>
       )}
       {dialogOpen && (
         <CheckpointDialog
@@ -128,6 +191,18 @@ export const HistoryHost = ({
           role="status"
         >
           {toast.message}
+          {toast.action && (
+            <button
+              type="button"
+              className="vault-btn vault-btn--sm"
+              onClick={() => {
+                toast.action?.run();
+                setToast(null);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
     </>

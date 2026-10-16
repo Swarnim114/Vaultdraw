@@ -20,6 +20,10 @@ import {
 
 import { FakeHistoryRepository } from "./fakeHistoryRepository";
 
+vi.mock("../history/preview/VersionPreview", () => ({
+  default: () => <div data-testid="mock-preview" />,
+}));
+
 const H = "fake-handle-1";
 const P = "a.excalidraw";
 const SETTINGS = toHistorySettings(HISTORY_DEFAULTS);
@@ -160,6 +164,70 @@ describe("HistoryPanel", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("windows a long list: 500 versions mount only the visible rows", async () => {
+    const history = await ready();
+    for (let i = 0; i < 500; i++) {
+      history.inject(P, "{}", { reason: "auto" });
+    }
+    const t0 = performance.now();
+    render(
+      <HistoryPanel
+        repository={history}
+        handle={H}
+        path={P}
+        onClose={() => {}}
+      />,
+    );
+    const rows = await screen.findAllByRole("listitem");
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(rows.length).toBeLessThan(40);
+    expect(rows.length).toBeGreaterThan(5);
+  });
+
+  it("selecting a version previews it; Escape returns to current, then closes", async () => {
+    const history = await ready();
+    history.inject(P, '{"elements":[]}', { reason: "auto" });
+    const onClose = vi.fn();
+    render(
+      <HistoryPanel
+        repository={history}
+        handle={H}
+        path={P}
+        onClose={onClose}
+      />,
+    );
+    const row = (await screen.findAllByRole("listitem"))[0];
+    fireEvent.click(row);
+    expect(await screen.findByTestId("history-preview")).toHaveTextContent(
+      "Viewing Automatic",
+    );
+    expect(await screen.findByTestId("mock-preview")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByTestId("mock-preview"), { key: "Escape" });
+    expect(screen.queryByTestId("history-preview")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("list", { name: "Versions" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("list", { name: "Versions" }), {
+      key: "Escape",
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("the Back button leaves the preview", async () => {
+    const history = await ready();
+    history.inject(P, '{"elements":[]}');
+    render(
+      <HistoryPanel
+        repository={history}
+        handle={H}
+        path={P}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click((await screen.findAllByRole("listitem"))[0]);
+    fireEvent.click(await screen.findByTestId("history-back"));
+    expect(screen.queryByTestId("history-preview")).toBeNull();
+  });
+
   it("unsubscribes on unmount", async () => {
     const history = await ready();
     const { unmount } = render(
@@ -212,6 +280,27 @@ describe("HistoryHost", () => {
     await waitFor(() => expect(screen.queryByLabelText("History")).toBeNull());
     act(() => void getRegisteredHandler("history.timeTravel")!());
     expect(await screen.findByLabelText("History")).toBeInTheDocument();
+  });
+
+  it("loads nothing while closed (no listing, no panel)", async () => {
+    const list = vi.spyOn(FakeHistoryRepository.prototype, "list");
+    await mount();
+    expect(list).not.toHaveBeenCalled();
+    list.mockRestore();
+    expect(screen.queryByLabelText("History")).toBeNull();
+  });
+
+  it("time travel opens the panel in full-screen mode", async () => {
+    const { history } = await mount();
+    history.inject(P, '{"elements":[]}', { reason: "auto" });
+    act(() => void getRegisteredHandler("history.timeTravel")!());
+    expect(await screen.findByTestId("history-preview")).toHaveClass(
+      "vault-history-preview--fullscreen",
+    );
+    expect(screen.getByTestId("history-fullscreen")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("checkpoint: flushes first, then saves, then confirms", async () => {
