@@ -102,6 +102,13 @@ pub trait Backend {
     fn error(&mut self, code: &str, message: &str);
     /// A version appeared for `path` (the service debounces `history-change`).
     fn changed(&mut self, path: &str, lineage: &str);
+    /// A drawing moved (H3): rename its staged clone to the new path's key and repoint the sidecar.
+    /// `None` = not renamed (fakes, non-staged).
+    fn rename_clone(&mut self, _file: &Path, _old: &str, _new: &str) -> Option<PathBuf> {
+        None
+    }
+    /// After a move: drop the old path's sidecar when no clone uses its key anymore.
+    fn drop_sidecar(&mut self, _old: &str, _new: &str) {}
 }
 
 struct Memo(HashMap<(String, usize, u32), String>);
@@ -180,11 +187,21 @@ pub struct Writer {
     memo: Memo,
     confirmed: HashSet<String>,
     layout_ok: bool,
+    /// Lineages that got a version since the last `take_written` (the worker runs retention on them).
+    written: Vec<String>,
 }
 
 impl Writer {
     pub fn new(store: Store, index: Arc<RwLock<Index>>, dev: String, ulid: UlidGen, epoch: Epoch, clock: Arc<dyn Clock>, free_ok: Box<dyn Fn() -> bool + Send>, is_current: Box<dyn Fn() -> bool + Send>) -> Writer {
-        Writer { store, index, dev, ulid, epoch, clock, free_ok, is_current, memo: Memo(HashMap::new()), confirmed: HashSet::new(), layout_ok: false }
+        Writer { store, index, dev, ulid, epoch, clock, free_ok, is_current, memo: Memo(HashMap::new()), confirmed: HashSet::new(), layout_ok: false, written: Vec::new() }
+    }
+
+    /// Lineages written to since the last call (deduplicated, bounded).
+    pub fn take_written(&mut self) -> Vec<String> {
+        let mut w = std::mem::take(&mut self.written);
+        w.sort();
+        w.dedup();
+        w
     }
 
     pub fn latest_of(&self, path: &str) -> Option<Latest> {
@@ -295,6 +312,7 @@ impl Writer {
             sha_ext.split_once('.').is_some_and(|(sha, ext)| store.blob_exists(&BlobName { sha: sha.into(), dev: dev.clone(), epoch: own_epoch.clone(), ext: ext.into() }))
         };
         let stripped = codec::strip(&bytes, &mut self.memo, &own_exists, &self.dev, &epoch)?;
+        let source_len = bytes.len() as u64;
         drop(bytes);
         // 1. own blobs first (dependencies are durable before the referencing file appears)
         for b in &stripped.new_blobs {
@@ -327,7 +345,7 @@ impl Writer {
             blobs: stripped.blobs.clone(),
             app: format!("vaultdraw {}", env!("CARGO_PKG_VERSION")),
         };
-        header.file_size = req.size.unwrap_or(0);
+        header.file_size = req.size.unwrap_or(source_len);
         let mut kind = NameKind::Keyframe(req.reason);
         let mut container_bytes: Option<(Vec<u8>, Vec<u8>)> = None;
         if existing.is_some() {
@@ -372,10 +390,56 @@ impl Writer {
         }
         self.index.write().unwrap_or_else(|p| p.into_inner()).insert(&lineage, Entry { name: vname, size, dataless: false, head: Some(head) }, now);
         self.epoch.wrote(now);
+        if self.written.len() < 4096 {
+            self.written.push(lineage.clone());
+        }
         if size > 1024 * 1024 || stripped.text.len() > 4 * 1024 * 1024 {
             crate::memory::schedule_release();
         }
         Ok(Outcome::Written(Written { id, lineage, revision, bytes: size }))
+    }
+
+    /// A path record (`<id>-<dev>.pm.vdh`, kind `path`, reason `moved`): the lineage's drawing now
+    /// lives at `path`. No scene, no hashes (the index keeps revision `""`, which is never a real
+    /// revision), full fsync like every explicit state change.
+    pub fn write_path_record(&mut self, lineage: &str, path: &str) -> Result<Outcome> {
+        if !(self.is_current)() {
+            return Ok(Outcome::Skipped("stopped"));
+        }
+        if !(self.free_ok)() {
+            return Ok(Outcome::DiskLow);
+        }
+        if !self.layout_ok {
+            self.store.ensure_layout()?;
+            self.layout_ok = true;
+        }
+        let now = self.clock.now_ms();
+        let epoch = self.epoch.current(now).to_string();
+        let id = self.ulid.next(now);
+        let header = Header {
+            format: 1,
+            kind: "path".into(),
+            id: id.clone(),
+            lineage: lineage.to_string(),
+            device: self.dev.clone(),
+            epoch,
+            created: now,
+            reason: Reason::Moved.as_str().into(),
+            path: path.to_string(),
+            app: format!("vaultdraw {}", env!("CARGO_PKG_VERSION")),
+            ..Header::default()
+        };
+        let bytes = container::write_container(&header, &[], container::ZSTD_LEVEL);
+        if container::read_header(&bytes).map(|h| h.id != id).unwrap_or(true) || container::read_body(&bytes, 16).is_err() {
+            return Err(err("INTERNAL", "History encoder produced an unreadable path record"));
+        }
+        let vname = VersionName { id: id.clone(), dev: self.dev.clone(), kind: NameKind::Path };
+        if !self.guard(self.store.write_version(lineage, &vname, &bytes, true))? {
+            return Ok(Outcome::DiskLow);
+        }
+        let head = Head { path: path.to_string(), name: None, note: None, rev: String::new(), element_count: 0, blobs: Vec::new() };
+        self.index.write().unwrap_or_else(|p| p.into_inner()).insert(lineage, Entry { name: vname, size: bytes.len() as u64, dataless: false, head: Some(head) }, now);
+        Ok(Outcome::Written(Written { id, lineage: lineage.to_string(), revision: String::new(), bytes: bytes.len() as u64 }))
     }
 
     /// `true` on success; `false` on ENOSPC (nothing partial remains); other IO errors are history
@@ -434,6 +498,12 @@ impl Backend for RealBackend {
     }
     fn changed(&mut self, path: &str, lineage: &str) {
         (self.on_change)(path, lineage);
+    }
+    fn rename_clone(&mut self, file: &Path, old: &str, new: &str) -> Option<PathBuf> {
+        staging::rename_clone(&self.staged_dir, file, old, new, self.flags.fold.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    fn drop_sidecar(&mut self, old: &str, new: &str) {
+        staging::drop_sidecar_if_unused(&self.staged_dir, old, new, self.flags.fold.load(std::sync::atomic::Ordering::Relaxed));
     }
 }
 

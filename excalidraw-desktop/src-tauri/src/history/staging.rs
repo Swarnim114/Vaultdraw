@@ -191,6 +191,61 @@ pub fn drop_clones(staged_dir: &Path, keep: &dyn Fn(&StagedFile) -> bool) {
     }
 }
 
+/// Scratch files that are not clones: `xs-` (bytes handed in by `history_snapshot_bytes`) and
+/// `xr-` (live file cloned before a link rewrite). They never parse as clone names, so no
+/// survivor logic mistakes them for a pending state; the startup scan deletes them.
+pub const TEMP_PREFIXES: [&str; 2] = ["xs-", "xr-"];
+
+pub fn temp_path(staged_dir: &Path, prefix: &str) -> PathBuf {
+    use std::sync::atomic::AtomicU64;
+    static N: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos());
+    staged_dir.join(format!("{prefix}{}-{}-{nanos}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)))
+}
+
+/// Leftover scratch files (see `TEMP_PREFIXES`).
+pub fn list_temps(staged_dir: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = fs::read_dir(staged_dir) else { return Vec::new() };
+    rd.flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".tmp") && TEMP_PREFIXES.iter().any(|p| n.starts_with(p))))
+        .map(|e| e.path())
+        .collect()
+}
+
+/// Clones the live drawing `rel` into a scratch file (link rewrite, D-R2). `None` when clones
+/// aren't possible here (non-APFS, missing file, a symlink).
+pub fn clone_live_temp(staged_dir: &Path, root: &Path, rel: &str) -> Option<PathBuf> {
+    let src = crate::safe_path(root, rel, false).ok()?;
+    let dst = temp_path(staged_dir, "xr-");
+    store::clone_file(&src, &dst).ok().map(|()| dst)
+}
+
+/// A drawing moved: the clone `file` (named after the old path's key) gets the new key and the
+/// sidecar names the new path. The old key's sidecar is repointed FIRST, so a crash between the
+/// steps still attributes the survivor to the new path. Returns the clone's new location.
+pub fn rename_clone(staged_dir: &Path, file: &Path, old_rel: &str, new_rel: &str, fold: bool) -> Option<PathBuf> {
+    let (old_key, new_key) = (key_for(old_rel, fold), key_for(new_rel, fold));
+    let name = parse_clone_name(file.file_name()?.to_str()?)?;
+    write_sidecar(staged_dir, &old_key, new_rel);
+    if old_key == new_key {
+        return Some(file.to_path_buf());
+    }
+    let new_name = if name.open { open_clone_name(&new_key, &name.rev16) } else { clone_name(&new_key, &name.rev16) };
+    let dst = staged_dir.join(new_name);
+    fs::rename(file, &dst).ok()?;
+    write_sidecar(staged_dir, &new_key, new_rel);
+    Some(dst)
+}
+
+/// Removes the sidecar of `old_rel` once no clone carries its key (after a move).
+pub fn drop_sidecar_if_unused(staged_dir: &Path, old_rel: &str, new_rel: &str, fold: bool) {
+    let key = key_for(old_rel, fold);
+    if key == key_for(new_rel, fold) || list_clones(staged_dir).iter().any(|c| c.name.key == key) {
+        return;
+    }
+    let _ = fs::remove_file(staged_dir.join(format!("{key}.path")));
+}
+
 #[cfg(test)]
 mod unit_tests {
     use super::*;

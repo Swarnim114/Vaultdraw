@@ -36,6 +36,16 @@ pub enum Msg {
     /// Explicit deletes (H3, `gc.rs`); handled by the thread loop, which owns the vault context.
     DeleteCheckpoint { id: String, ack: Sender<Result<()>> },
     DeleteAll { path: String, ack: Sender<Result<()>> },
+    /// A drawing or folder moved inside the app (`lineage::apply_moved`).
+    Moved { from: String, to: String },
+    /// A drawing went to the OS Trash from the app (`lineage::apply_trashed`).
+    Trashed { path: String },
+    /// Watcher paths (only `.excalidraw` ones are ever queued), see `outside::apply_watched`.
+    Watched(Vec<String>),
+    /// `history_snapshot_bytes`: the body sits in `temp` (deleted by the worker in every case).
+    SnapshotBytes { path: String, reason: Reason, revision: String, temp: PathBuf, ack: Sender<Result<SnapshotOutcome>> },
+    /// Links are about to rewrite `path`; `clone` = its live state, if it could be cloned.
+    BeforeRewrite { path: String, clone: Option<PathBuf> },
     Stop,
 }
 
@@ -157,26 +167,38 @@ pub struct CatchUp {
 }
 
 #[derive(Clone, Debug)]
-struct Pending {
-    rev: String,
-    size: u64,
+pub(super) struct Pending {
+    pub(super) rev: String,
+    pub(super) size: u64,
     /// Size without `isDeleted` tombstones (what the shrink rule compares).
     live: u64,
-    staged: Option<PathBuf>,
+    pub(super) staged: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
-struct OpenClone {
-    file: PathBuf,
-    rev: String,
-    size: u64,
+pub(super) struct OpenClone {
+    pub(super) file: PathBuf,
+    pub(super) rev: String,
+    pub(super) size: u64,
     live: u64,
 }
 
+/// The staged state of a drawing: what its live file looked like at the last commit (pending) or
+/// at open time. `pending` = unversioned committed state.
+#[derive(Clone, Debug)]
+pub(super) struct Staged {
+    pub(super) file: PathBuf,
+    pub(super) rev: String,
+    pub(super) size: u64,
+    pub(super) pending: bool,
+}
+
 #[derive(Default)]
-struct Track {
-    pending: Option<Pending>,
-    open_clone: Option<OpenClone>,
+pub(super) struct Track {
+    pub(super) pending: Option<Pending>,
+    pub(super) open_clone: Option<OpenClone>,
+    /// Stat of the staged clone (file, size, mtime), cached for the outside-change identity check.
+    ident: Option<(PathBuf, u64, Option<std::time::SystemTime>)>,
     /// Reference for the interval rule: time of the newest known version (or first dirty time).
     base_ms: Option<u64>,
     last_commit_ms: u64,
@@ -189,8 +211,10 @@ pub struct Core<B: Backend> {
     pub b: B,
     clock: Arc<dyn Clock>,
     settings: Option<HistorySettings>,
-    tracks: HashMap<String, Track>,
+    pub(super) tracks: HashMap<String, Track>,
     open: Option<String>,
+    /// An orphan appeared or an unlinked drawing showed up: a relink pass is wanted (read by the loop).
+    pub(super) want_relink: bool,
 }
 
 fn skipped(why: &str) -> SnapshotOutcome {
@@ -199,7 +223,7 @@ fn skipped(why: &str) -> SnapshotOutcome {
 
 impl<B: Backend> Core<B> {
     pub fn new(b: B, clock: Arc<dyn Clock>) -> Core<B> {
-        Core { b, clock, settings: None, tracks: HashMap::new(), open: None }
+        Core { b, clock, settings: None, tracks: HashMap::new(), open: None, want_relink: false }
     }
 
     /// Configured and enabled (unconfigured = off, Minor 3).
@@ -295,16 +319,27 @@ impl<B: Backend> Core<B> {
                 // Only the thread loop (which has the vault) can run deletes.
                 let _ = ack.send(Err(err("INTERNAL", "Delete reached the trigger core")));
             }
-            Msg::Stop => {}
+            Msg::SnapshotBytes { path, reason, revision, temp, ack } => {
+                let r = self.snapshot_bytes(&path, reason, &revision, &temp);
+                self.b.remove_clone(&temp);
+                let _ = ack.send(r);
+            }
+            Msg::BeforeRewrite { path, clone } => self.before_rewrite(&path, clone),
+            // Vault-level messages are handled by the thread loop (they need the index).
+            Msg::Moved { .. } | Msg::Trashed { .. } | Msg::Watched(_) | Msg::Stop => {}
         }
     }
 
-    fn request(&self, path: &str, reason: Reason, source: Source, revision: Option<String>, size: Option<u64>, verify: bool) -> VersionRequest {
+    pub(super) fn clock_ms(&self) -> u64 {
+        self.clock.now_ms()
+    }
+
+    pub(super) fn request(&self, path: &str, reason: Reason, source: Source, revision: Option<String>, size: Option<u64>, verify: bool) -> VersionRequest {
         VersionRequest { path: path.to_string(), reason, name: None, note: None, source, revision, size, verify, allow_unchanged: false, rev_prefix: None }
     }
 
     /// Writes `req` and applies the bookkeeping common to every outcome. `Ok(Some)` = written.
-    fn run(&mut self, req: &VersionRequest) -> Result<Outcome> {
+    pub(super) fn run(&mut self, req: &VersionRequest) -> Result<Outcome> {
         let out = self.b.write(req);
         match &out {
             Ok(Outcome::Written(w)) => {
@@ -321,7 +356,7 @@ impl<B: Backend> Core<B> {
         out
     }
 
-    fn mark_versioned(&mut self, path: &str, now: u64) {
+    pub(super) fn mark_versioned(&mut self, path: &str, now: u64) {
         if let Some(t) = self.tracks.get_mut(path) {
             if let Some(p) = t.pending.take() {
                 if let Some(f) = p.staged {
@@ -334,7 +369,7 @@ impl<B: Backend> Core<B> {
     }
 
     /// Versions the latest pending state of `path`. Returns true when nothing is pending anymore.
-    fn version_pending(&mut self, path: &str, reason: Reason) -> bool {
+    pub(super) fn version_pending(&mut self, path: &str, reason: Reason) -> bool {
         let now = self.clock.now_ms();
         let Some(p) = self.tracks.get(path).and_then(|t| t.pending.clone()) else { return true };
         let source = p.staged.clone().map_or(Source::Live, Source::Clone);
@@ -534,6 +569,144 @@ impl<B: Backend> Core<B> {
         }
     }
 
+    // ---- H3: moves, staged identity, outside changes ----
+
+    /// The staged state of `path` (pending clone first, else the open-time clone).
+    pub(super) fn staged_state(&self, path: &str) -> Option<Staged> {
+        let t = self.tracks.get(path)?;
+        if let Some(p) = &t.pending {
+            return p.staged.clone().map(|file| Staged { file, rev: p.rev.clone(), size: p.size, pending: true });
+        }
+        t.open_clone.as_ref().map(|o| Staged { file: o.file.clone(), rev: o.rev.clone(), size: o.size, pending: false })
+    }
+
+    /// (size, mtime) of the staged clone of `path`, stat'ed once per clone and cached. `clonefile`
+    /// keeps the source's mtime on APFS, so the live file of our own save has the same identity.
+    pub(super) fn staged_identity(&mut self, st: &Staged, path: &str) -> Option<(u64, Option<std::time::SystemTime>)> {
+        let t = self.tracks.get_mut(path)?;
+        if let Some((f, size, mtime)) = &t.ident {
+            if *f == st.file {
+                return Some((*size, *mtime));
+            }
+        }
+        let md = std::fs::metadata(&st.file).ok()?;
+        let id = (md.len(), md.modified().ok());
+        t.ident = Some((st.file.clone(), id.0, id.1));
+        Some(id)
+    }
+
+    /// Versions the staged state of `path` with `reason` (verified against its revision) and
+    /// settles it (pending dropped / open clone removed). `false` = kept for a retry.
+    pub(super) fn version_staged(&mut self, path: &str, reason: Reason) -> bool {
+        let Some(st) = self.staged_state(path) else { return false };
+        let now = self.clock.now_ms();
+        let req = self.request(path, reason, Source::Clone(st.file.clone()), Some(st.rev.clone()), Some(st.size), true);
+        let settled = match self.run(&req) {
+            Ok(Outcome::Written(_)) => true,
+            // Already versioned, or the clone no longer holds that state: nothing more to keep.
+            Ok(Outcome::Skipped(why)) => why != "stopped",
+            Ok(Outcome::DiskLow) | Err(_) => false,
+        };
+        if settled {
+            if st.pending {
+                self.mark_versioned(path, now);
+            } else if let Some(t) = self.tracks.get_mut(path) {
+                if let Some(o) = t.open_clone.take() {
+                    self.b.remove_clone(&o.file);
+                }
+            }
+        }
+        settled
+    }
+
+    /// Drops the track of a drawing that is gone (clones removed).
+    pub(super) fn drop_track(&mut self, path: &str) {
+        if let Some(t) = self.tracks.remove(path) {
+            if let Some(f) = t.pending.and_then(|p| p.staged) {
+                self.b.remove_clone(&f);
+            }
+            if let Some(o) = t.open_clone {
+                self.b.remove_clone(&o.file);
+            }
+        }
+        if self.open.as_deref() == Some(path) {
+            self.open = None;
+        }
+    }
+
+    /// A drawing or folder moved: tracks, pending/open clones and sidecars follow (pending commits
+    /// are versioned into the right lineage even after a crash).
+    pub(super) fn on_moved(&mut self, from: &str, to: &str, fold: bool) {
+        let moves: Vec<(String, String)> = self.tracks.keys().filter_map(|k| rebase(k, from, to, fold).map(|n| (k.clone(), n))).collect();
+        for (old, new) in moves {
+            let Some(mut t) = self.tracks.remove(&old) else { continue };
+            if old != new {
+                self.drop_track(&new);
+            }
+            if let Some(p) = t.pending.as_mut() {
+                if let Some(nf) = p.staged.as_ref().and_then(|f| self.b.rename_clone(f, &old, &new)) {
+                    p.staged = Some(nf);
+                }
+            }
+            if let Some(o) = t.open_clone.as_mut() {
+                if let Some(nf) = self.b.rename_clone(&o.file, &old, &new) {
+                    o.file = nf;
+                }
+            }
+            t.ident = None;
+            self.tracks.insert(new.clone(), t);
+            self.b.drop_sidecar(&old, &new);
+        }
+        if let Some(n) = self.open.as_deref().and_then(|o| rebase(o, from, to, fold)) {
+            self.open = Some(n);
+        }
+    }
+
+    /// `history_snapshot_bytes` (M15, Minor 14): the exact bytes sit in `temp`, `revision` = their sha256.
+    /// `before-outside-change` only when that is the path's unversioned commit (staging off or
+    /// unsupported: no clone exists, so the frontend's copy is the only one); `discarded-edits` always.
+    pub(super) fn snapshot_bytes(&mut self, path: &str, reason: Reason, revision: &str, temp: &std::path::Path) -> Result<SnapshotOutcome> {
+        if !self.on() {
+            return Ok(skipped("off"));
+        }
+        let before = reason == Reason::BeforeOutside;
+        if before && self.tracks.get(path).and_then(|t| t.pending.as_ref()).map(|p| p.rev.as_str()) != Some(revision) {
+            return Ok(skipped("not-pending"));
+        }
+        let now = self.clock.now_ms();
+        let req = self.request(path, reason, Source::Clone(temp.to_path_buf()), Some(revision.to_string()), None, true);
+        match self.run(&req)? {
+            Outcome::Written(w) => {
+                if before {
+                    self.mark_versioned(path, now);
+                }
+                Ok(SnapshotOutcome { id: Some(w.id), skipped: None })
+            }
+            Outcome::Skipped(why) => {
+                if before && why == "unchanged" {
+                    self.mark_versioned(path, now);
+                }
+                Ok(skipped(why))
+            }
+            Outcome::DiskLow => Err(err("HISTORY_DISK_LOW", "Free disk space is low; history is paused")),
+        }
+    }
+
+    /// Links are about to rewrite `path` (D-R2): keep the pre-rewrite state. A pending state is
+    /// that state; otherwise the cloned live file is versioned unless it equals the newest version.
+    pub(super) fn before_rewrite(&mut self, path: &str, clone: Option<PathBuf>) {
+        if self.on() && self.tracks.get(path).is_some_and(|t| t.pending.is_some()) {
+            self.version_pending(path, Reason::BeforeOutside);
+        } else if let (true, Some(c)) = (self.on(), clone.as_ref()) {
+            let req = self.request(path, Reason::BeforeOutside, Source::Clone(c.clone()), None, None, true);
+            // "unchanged" (equals the newest version) is the common case: nothing to do.
+            let _ = self.run(&req);
+        }
+        if let Some(c) = clone {
+            self.b.remove_clone(&c);
+        }
+    }
+
     /// Next time a timer needs attention (ms, wall clock); `None` = nothing to wait for.
     pub fn next_deadline(&self) -> Option<u64> {
         if !self.on() {
@@ -587,6 +760,18 @@ impl<B: Backend> Core<B> {
     }
 }
 
+/// `path` after moving `from` → `to`: the path itself, or something under the moved folder.
+pub(super) fn rebase(path: &str, from: &str, to: &str, fold: bool) -> Option<String> {
+    let (p, f) = if fold { (path.to_lowercase(), from.to_lowercase()) } else { (path.to_string(), from.to_string()) };
+    if p == f {
+        return Some(to.to_string());
+    }
+    let rest = p.strip_prefix(&f)?.strip_prefix('/')?;
+    // `rest` is as long in bytes as the original tail only when folding kept lengths: slice the original.
+    let tail = path.get(path.len() - rest.len()..)?;
+    Some(format!("{to}/{tail}"))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Thread
 // ---------------------------------------------------------------------------------------------
@@ -611,6 +796,8 @@ pub fn collect_survivors(staged_dir: &Path) -> Survivors {
     if writer::ensure_plain_dir(staged_dir).is_err() {
         return out;
     }
+    // Scratch files of `history_snapshot_bytes` and link rewrites never outlive their request.
+    out.delete.extend(staging::list_temps(staged_dir));
     let mut by_key: HashMap<String, Vec<staging::StagedFile>> = HashMap::new();
     for c in staging::list_clones(staged_dir) {
         if c.name.open {
@@ -708,6 +895,98 @@ fn with_gc<T>(vh: &VaultHistory, core: &Core<writer::RealBackend>, clock: &Arc<d
     f(&ctx)
 }
 
+
+/// Background work of the worker thread, run in ≤ 5 ms chunks whenever the urgent queue is empty:
+/// index reconcile, orphan check, relink, GC sweep. With nothing pending the loop blocks (idle CPU 0).
+#[derive(Default)]
+struct Bg {
+    units: Vec<index::Unit>,
+    orphan: Option<super::lineage::OrphanRun>,
+    relink: Option<super::lineage::RelinkRun>,
+    sweep: Option<super::gc::Sweep>,
+    want_orphan: bool,
+    want_sweep: bool,
+    started: bool,
+    /// Next daily orphan check + GC sweep (wall clock ms).
+    daily_due: Option<u64>,
+}
+
+const DAY_MS: u64 = 24 * 3600 * 1000;
+
+impl Bg {
+    fn pending(&self) -> bool {
+        !self.units.is_empty() || self.orphan.is_some() || self.relink.is_some() || self.sweep.is_some()
+    }
+
+    /// Queues the open-time and daily jobs, and starts wanted ones once the reconcile is done.
+    fn schedule(&mut self, vh: &VaultHistory, core: &mut Core<writer::RealBackend>, clock: &Arc<dyn Clock>, now: u64) {
+        if !core.on() {
+            self.orphan = None;
+            self.relink = None;
+            self.sweep = None;
+            self.want_orphan = false;
+            self.want_sweep = false;
+            core.want_relink = false;
+            return;
+        }
+        if !self.started || self.daily_due.is_some_and(|d| now >= d) {
+            self.started = true;
+            self.want_orphan = true;
+            self.want_sweep = true;
+            self.daily_due = Some(now + DAY_MS);
+        }
+        if !self.units.is_empty() {
+            return;
+        }
+        if self.want_orphan && self.orphan.is_none() {
+            self.want_orphan = false;
+            self.orphan = Some(super::lineage::OrphanRun::new(vh));
+        }
+        if core.want_relink && self.orphan.is_none() && self.relink.is_none() {
+            core.want_relink = false;
+            self.relink = super::lineage::RelinkRun::new(vh, core);
+        }
+        if self.want_sweep && self.sweep.is_none() {
+            self.want_sweep = false;
+            self.sweep = with_gc(vh, core, clock, |ctx| Ok(super::gc::Sweep::new(ctx))).ok();
+        }
+    }
+
+    /// One ≤ 5 ms chunk of the first pending job.
+    fn step(&mut self, vh: &VaultHistory, core: &mut Core<writer::RealBackend>, clock: &Arc<dyn Clock>) {
+        if !self.units.is_empty() {
+            if index::reconcile_chunk(&vh.store, &vh.index, &mut self.units, CHUNK, clock.now_ms()) {
+                super::lineage::apply_hidden(vh);
+                super::lock(&vh.notifier).changed("", "");
+            }
+        } else if let Some(o) = self.orphan.as_mut() {
+            if o.step(vh, core, clock.now_ms(), CHUNK) {
+                self.orphan = None;
+                core.want_relink |= super::lineage::has_orphans(vh);
+            }
+        } else if let Some(r) = self.relink.as_mut() {
+            if r.step(vh, core, CHUNK) {
+                self.relink = None;
+            }
+        } else if let Some(sw) = self.sweep.as_mut() {
+            // Only reached with the urgent queue empty (`Inbox::pop` serves urgent messages first).
+            if with_gc(vh, core, clock, |ctx| Ok(sw.step(ctx, CHUNK))).unwrap_or(true) {
+                self.sweep = None;
+            }
+        }
+    }
+}
+
+/// Retention for every lineage that got a version since the last pass (`gc::after_write`).
+fn drain_gc(vh: &VaultHistory, core: &mut Core<writer::RealBackend>, clock: &Arc<dyn Clock>) {
+    for lin in core.b.writer.take_written() {
+        let _ = with_gc(vh, core, clock, |ctx| {
+            super::gc::after_write(ctx, &lin);
+            Ok(())
+        });
+    }
+}
+
 /// The worker thread of one writable vault.
 pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Clock>, free_probe: Option<Arc<dyn Fn() -> bool + Send + Sync>>) {
     crate::search::lower_priority();
@@ -752,11 +1031,13 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
         writing: vh.writing.clone(),
     };
     let mut core = Core::new(backend, clock.clone());
+    super::lineage::load(&vh);
     let mut survivors = Some(survivors.catch_up);
-    let mut units: Vec<index::Unit> = Vec::new();
+    let mut bg = Bg::default();
     let mut touched = now;
     loop {
         core.tick();
+        drain_gc(&vh, &mut core, &clock);
         // `last-opened` stays fresh while the vault is open (no timer: only when the worker runs anyway).
         let t = clock.now_ms();
         if t.saturating_sub(touched) >= 24 * 3600 * 1000 {
@@ -765,13 +1046,13 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
         }
         flush_events(&vh, false);
         save_index_if_due(&vh, false);
+        super::lineage::save_if_dirty(&vh);
         let now = clock.now_ms();
+        bg.schedule(&vh, &mut core, &clock, now);
         let timer = core.next_deadline().map(|d| Duration::from_millis(d.saturating_sub(now)));
-        let wait = match (timer, super::lock(&vh.notifier).wait()) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
-        match vh.inbox.pop(wait, !units.is_empty()) {
+        let daily = bg.daily_due.filter(|_| core.on()).map(|d| Duration::from_millis(d.saturating_sub(now)));
+        let wait = [timer, super::lock(&vh.notifier).wait(), daily].into_iter().flatten().min();
+        match vh.inbox.pop(wait, bg.pending()) {
             Popped::Stop => break,
             Popped::Msg(Msg::Stop) => break,
             Popped::Msg(Msg::DeleteCheckpoint { id, ack }) => {
@@ -780,6 +1061,9 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
             Popped::Msg(Msg::DeleteAll { path, ack }) => {
                 let _ = ack.send(with_gc(&vh, &core, &clock, |ctx| super::gc::delete_all(ctx, &path).map(|_| ())));
             }
+            Popped::Msg(Msg::Moved { from, to }) => super::lineage::apply_moved(&vh, &mut core, &from, &to),
+            Popped::Msg(Msg::Trashed { path }) => super::lineage::apply_trashed(&vh, &mut core, &path),
+            Popped::Msg(Msg::Watched(paths)) => super::outside::apply_watched(&vh, &mut core, &paths),
             Popped::Msg(m) => {
                 let configure = matches!(m, Msg::Configure(_));
                 core.dispatch(m);
@@ -790,7 +1074,7 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
                 }
             }
             Popped::Task(Task::Reconcile) => {
-                units = index::plan_units(&vh.store, &vh.index);
+                bg.units = index::plan_units(&vh.store, &vh.index);
             }
             Popped::Task(Task::LoadHeaders(mut ids)) => {
                 let t0 = Instant::now();
@@ -808,11 +1092,7 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
                     super::lock(&vh.notifier).changed("", "");
                 }
             }
-            Popped::Timeout => {
-                if !units.is_empty() && index::reconcile_chunk(&vh.store, &vh.index, &mut units, CHUNK, clock.now_ms()) {
-                    super::lock(&vh.notifier).changed("", "");
-                }
-            }
+            Popped::Timeout => bg.step(&vh, &mut core, &clock),
         }
     }
     // Stop wins over versioning work, but a commit queued before it must stay recoverable.
