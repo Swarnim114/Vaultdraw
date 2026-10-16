@@ -16,11 +16,14 @@ import {
 import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
 import { DesktopVaultLinks } from "./links/DesktopVaultLinks";
 import { useAppLinks } from "./links/useAppLinks";
+import { DesktopVaultTagRename } from "./tags/DesktopVaultTagRename";
+import { useAppTags } from "./tags/useAppTags";
 import { usePalettePick } from "./palette/usePalettePick";
 import {
   addRecentVault,
   getExpandedFolders,
   getLinksSettings,
+  getTagsSettings,
   getLastVaultPath,
   getNavigatorCollapsed,
   getPreferences,
@@ -111,6 +114,7 @@ import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
 import type { VaultLinks } from "./links/types";
+import type { VaultTagRename } from "./tags/types";
 
 import type { LibraryRepository } from "./library/types";
 import type { HistoryRepository } from "./history/types";
@@ -165,6 +169,8 @@ export interface VaultAppProps {
   search?: VaultSearch | null;
   /** Link index; defaults to the native one under Tauri, else none. */
   links?: VaultLinks | null;
+  /** Tag rename client; defaults to the native one under Tauri, else none. */
+  tagRename?: VaultTagRename | null;
   initialVault?: VaultInfo | null;
   libraryRepository?: LibraryRepository;
   /** File history; defaults to the native service. */
@@ -177,6 +183,7 @@ export const VaultApp = ({
   repository = desktopRepository,
   search,
   links,
+  tagRename,
   initialVault = null,
   libraryRepository = desktopLibraryRepository,
   history = desktopHistoryRepository,
@@ -204,6 +211,11 @@ export const VaultApp = ({
     [win],
   );
   const vaultLinks = links === undefined ? defaultLinks : links;
+  const defaultTagRename = useMemo(
+    () => (isTauriAvailable(win) ? new DesktopVaultTagRename() : null),
+    [win],
+  );
+  const vaultTagRename = tagRename === undefined ? defaultTagRename : tagRename;
   const setRootNode = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       setMountedDocument(node.ownerDocument);
@@ -1144,11 +1156,35 @@ export const VaultApp = ({
       }
     },
   });
+  const tagsSettings = useMemo(
+    () => getTagsSettings(prefsNow),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [prefsNow.tagAutocomplete, prefsNow.tagPaneSort],
+  );
+  const appTags = useAppTags({
+    api: vaultTagRename,
+    links: vaultLinks,
+    handle: vault?.handle ?? null,
+    activePath: activeDoc?.path ?? null,
+    bridge: appLinks.bridge,
+    flushActive: () => flushDoc({ commitText: false }),
+    notify: (message, type) => {
+      setGlobalAlert({ message, type });
+      if (type === "info") {
+        (win ?? window).setTimeout(
+          () => setGlobalAlert((a) => (a?.message === message ? null : a)),
+          6000,
+        );
+      }
+    },
+    doc,
+  });
   const editorLinks = useMemo(
     () =>
       vaultLinks
         ? {
             settings: linksSettings,
+            tagsSettings,
             names: appLinks.names,
             currentPath: activeDoc?.path ?? null,
             callbacks: appLinks.editorCallbacks,
@@ -1164,6 +1200,7 @@ export const VaultApp = ({
     [
       vaultLinks,
       linksSettings,
+      tagsSettings,
       appLinks.names,
       appLinks.editorCallbacks,
       activeDoc?.path,
@@ -1900,6 +1937,7 @@ export const VaultApp = ({
         />
         {templates.dialogs}
         {appLinks.dialogs}
+        {appTags.dialog}
         <VaultNavigator
           vault={vault}
           activePath={activeDoc?.path ?? null}
@@ -1925,6 +1963,8 @@ export const VaultApp = ({
           onSortChange={handleSortChange}
           confirmDelete={confirmDelete}
           showTagChips={showTagChips}
+          tagsDefaultSort={tagsSettings.paneSort}
+          onRenameTag={vaultTagRename ? appTags.renameTag : undefined}
           treeNodes={treeNodes}
           expandedFolders={expandedFolders}
           onToggleFolder={handleToggleFolder}

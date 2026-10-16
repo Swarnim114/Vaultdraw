@@ -20,6 +20,8 @@ import { setHotkeyOverride } from "../commands/useCommands";
 import { ensureFolder, folderChain } from "../vault/newDrawing";
 import { errorMessage } from "../vault/types";
 
+import { isTagJob } from "../tags/renameJobs";
+
 import { createSpot } from "./createTarget";
 import { getDockVisible, setDockVisible } from "./dockState";
 import { linkTargetFor, wikiLink } from "./format";
@@ -298,7 +300,9 @@ export function useAppLinks(deps: AppLinksDeps) {
           return;
         }
         setRefreshKey((n) => n + 1);
-        if (done.failed.length > 0) {
+        if (isTagJob(done.jobId)) {
+          // The tag rename flow reports its own result.
+        } else if (done.failed.length > 0) {
           const names = done.failed
             .map(
               (f) =>

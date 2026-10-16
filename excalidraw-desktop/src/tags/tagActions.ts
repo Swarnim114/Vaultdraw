@@ -30,3 +30,18 @@ export const applyTagFilter = (key: string) => bound?.filter(key);
  * no tags). For the lead to bind to a command, e.g. `tags.focus`.
  */
 export const focusTagsPane = () => bound?.focusPane();
+
+let toggleSort: (() => void) | null = null;
+
+/** The mounted Tags pane binds its sort toggle until the returned function is called. */
+export function registerTagSortToggle(toggle: () => void): () => void {
+  toggleSort = toggle;
+  return () => {
+    if (toggleSort === toggle) {
+      toggleSort = null;
+    }
+  };
+}
+
+/** Flip the Tags pane between name and count order (no-op while it is not mounted). */
+export const toggleTagSort = () => toggleSort?.();

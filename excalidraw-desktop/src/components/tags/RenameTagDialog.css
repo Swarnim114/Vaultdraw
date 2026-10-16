@@ -1,0 +1,38 @@
+.vault-modal--compact {
+  max-width: 420px;
+}
+.vault-rename-tag__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.vault-rename-tag__list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: var(--vault-radius-sm, 4px);
+  cursor: pointer;
+}
+.vault-rename-tag__list li.is-active {
+  background: var(--vault-surface);
+}
+.vault-rename-tag__count,
+.vault-rename-tag__empty {
+  color: var(--vault-text-faint);
+}
+.vault-rename-tag__plan {
+  font-size: 0.85em;
+  color: var(--vault-text-faint);
+}
+.vault-rename-tag__plan ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.vault-rename-tag__warn {
+  margin-top: 4px;
+  color: var(--vault-danger, #c0392b);
+}

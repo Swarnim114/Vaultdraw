@@ -45,6 +45,8 @@ export function applyEdits(
     for (const edit of list) {
       if (edit.field === "link") {
         patch.link = edit.value || null;
+      } else if (edit.field === "name") {
+        patch.name = edit.value;
       } else if (el.type === "text") {
         patch = { ...patch, text: edit.value, originalText: edit.value };
       }

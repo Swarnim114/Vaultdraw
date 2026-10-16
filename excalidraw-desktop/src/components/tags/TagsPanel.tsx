@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import { flattenTree, buildTagTree, type TagRow } from "../../tags/tagTree";
+import { registerTagSortToggle } from "../../tags/tagActions";
 import { loadPaneState, savePaneState } from "../../tags/tagPaneState";
 import {
   DEFAULT_TAGS_SETTINGS,
@@ -156,6 +157,15 @@ export const TagsPanel = ({
     // Only a cursor move scrolls; typing in the search must not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursorIndex]);
+
+  // The "Tags: Toggle sort" command flips the order through the latest closure.
+  const toggleSortRef = useRef(() => {});
+  toggleSortRef.current = () => {
+    const next: TagSort = sort === "name" ? "count" : "name";
+    setSortChoice(next);
+    persist({ sort: next });
+  };
+  useEffect(() => registerTagSortToggle(() => toggleSortRef.current()), []);
 
   if (tags.length === 0) {
     return null;

@@ -191,6 +191,31 @@ const LINKS_COMMANDS: CommandDefinition[] = [
   },
 ];
 
+/** Tags (P2). No default keys: bind them on the Hotkeys page. */
+const TAGS_COMMANDS: CommandDefinition[] = [
+  {
+    id: "tags.rename",
+    title: "Tags: Rename tag…",
+    category: "Tags",
+    keys: { default: [] },
+    when: ["vaultOpen", "writable", "!modalOpen"],
+  },
+  {
+    id: "tags.focusPane",
+    title: "Tags: Focus tags pane",
+    category: "Tags",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "tags.toggleSort",
+    title: "Tags: Toggle sort by name/count",
+    category: "Tags",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+];
+
 export const COMMANDS: readonly CommandDefinition[] = [
   {
     id: "file.save",
@@ -445,6 +470,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...PEN_COMMANDS,
   ...TOOL_DEFAULT_COMMANDS,
   ...LINKS_COMMANDS,
+  ...TAGS_COMMANDS,
   ...HISTORY_COMMANDS,
 ];
 

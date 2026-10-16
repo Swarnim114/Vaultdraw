@@ -71,10 +71,13 @@ export type MovePlan = {
   rePointed: RePointed[];
 };
 
-/** "text" sets `text` and `originalText`; "link" sets the element `link`. */
+/**
+ * "text" sets `text` and `originalText`; "link" sets the element `link`;
+ * "name" sets a frame's `name` (tag rename).
+ */
 export type ElementEdit = {
   elementId: string;
-  field: "text" | "link";
+  field: "text" | "link" | "name";
   value: string;
 };
 
