@@ -367,6 +367,14 @@ Typing `[[` in a text element opens a list of drawings that narrows as you type:
 
 The last row, **Create 'x'**, makes a new drawing in the default folder for new drawings. Cmd+clicking an unresolved link offers the same. Set `links.autocomplete = false` to turn the list off.
 
+### How links look
+
+On the canvas, a `[[link]]` is drawn in the link colour and underlined, still in the drawing's font. The brackets stay, dimmed, so the text keeps exactly the size and wrapping it has on excalidraw.com. In `[[Name|label]]`, the label is emphasised and `Name|` is dimmed. A link to a drawing that doesn't exist yet is fainter, with a dashed underline, like the hollow dots in the graph view. The file still stores plain `[[Name]]` text, and exports (PNG, SVG, clipboard, PDF) show the plain text, as excalidraw.com does.
+
+The colour is the theme's accent by default. Set `links.color` to a hex colour such as `"#1971c2"` to choose your own; it follows dark mode and canvas sync like any other colour. `links.style_links = false` draws links as plain text.
+
+Hover over a link for a moment to see a preview of the linked drawing: its name, folder and a thumbnail. It disappears when you move away, click or scroll. Set `links.hover_preview` to `"modifier"` to show it only while the open modifier (Cmd) is held, as in Obsidian's editing view, or to `"off"`.
+
 ### Shape links
 
 Select a shape and press ⌥⌘K (**Links: Link selection to drawing…**) to pick a drawing. The shape stores `[[Name]]` in its link field, and Cmd+clicking the shape opens the drawing. Set `links.shape_link_format = "vaultdraw-url"` to store a `vaultdraw://open?file=…` link instead. Vaultdraw also reads relative paths such as `./x.excalidraw`, so drawings made with the Obsidian Excalidraw plugin work.
@@ -434,6 +442,8 @@ All of these are in the Cmd+Shift+P palette, and each can be rebound on the Hotk
 | Links: Copy link to this drawing | — | — |
 | Links: Show link hints | Shift+F | Shift+F |
 | Links: Assign hotkey to this drawing | — | — |
+| Links: Toggle link styling | — | — |
+| Links: Toggle link hover preview | — | — |
 
 ### Settings
 
@@ -447,12 +457,15 @@ open_modifier = "mod"              # mod | alt | ctrl | shift
 update_on_rename = true            # true | false | "ask"
 autocomplete = true                # the list that opens on [[
 hint_chars = "asdfghjkl"           # letters used by Shift+F hints
+style_links = true                 # draw [[links]] in the link colour, underlined
+color = "accent"                   # accent (theme) | "#rrggbb"
+hover_preview = "always"           # always | modifier | off
 ```
 
 ### Notes
 
 - **excalidraw.com** reads `[[links]]` as plain text, and shape links show the normal link icon. Nothing is lost when a file is saved there.
-- **Speed.** Links cost nothing until you use them. The link index is built on first use, off the UI thread.
+- **Speed.** Links cost nothing until you use them. The link index is built on first use, off the UI thread. Link styling is painted into the same cached bitmap Excalidraw already keeps for each text element, so panning and zooming cost the same with or without it.
 
 ## Graph view
 
