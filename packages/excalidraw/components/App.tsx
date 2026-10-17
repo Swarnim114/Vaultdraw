@@ -5277,6 +5277,12 @@ class App extends React.Component<AppProps, AppState> {
           isImageElement(selectedElements[0]) &&
           event.key === KEYS.ENTER
         ) {
+          // Vaultdraw: let the host take over image editing (e.g. formulas)
+          if (this.props.onImageEdit?.(selectedElements[0])) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
           this.startImageCropping(selectedElements[0]);
           return;
         }
@@ -6458,6 +6464,10 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     if (selectedElements.length === 1 && isImageElement(selectedElements[0])) {
+      // Vaultdraw: let the host take over image editing (e.g. formulas)
+      if (this.props.onImageEdit?.(selectedElements[0])) {
+        return;
+      }
       this.startImageCropping(selectedElements[0]);
       return;
     }

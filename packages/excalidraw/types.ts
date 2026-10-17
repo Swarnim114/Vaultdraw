@@ -21,6 +21,7 @@ import type {
   NonDeleted,
   TextAlign,
   ExcalidrawElement,
+  ExcalidrawImageElement,
   GroupId,
   ExcalidrawBindableElement,
   ExcalidrawArrowElement,
@@ -1112,6 +1113,12 @@ export interface ExcalidrawProps {
       nativeEvent: MouseEvent | React.PointerEvent<HTMLCanvasElement>;
     }>,
   ) => void;
+  /**
+   * Vaultdraw: called when the user asks to edit a single selected image
+   * (double-click or Enter). Return true to handle it yourself and skip the
+   * built-in crop editor.
+   */
+  onImageEdit?: (element: ExcalidrawImageElement) => boolean;
   onPointerDown?: (
     activeTool: AppState["activeTool"],
     pointerDownState: PointerDownState,
