@@ -65,7 +65,30 @@ export const PreviewOverlay = ({
       }
     };
     el.addEventListener("keydown", onEscape, true);
-    return () => el.removeEventListener("keydown", onEscape, true);
+    // WebKit does not focus a clicked <button>, so after "Time travel" focus is
+    // on <body> and no Escape reaches the panel or the overlay. Catch it at
+    // the document, except where something else owns Escape (dialogs, text
+    // fields) or a handler already took it.
+    const doc = el.ownerDocument;
+    const onDocEscape = (e: KeyboardEvent) => {
+      const t = e.target as Element | null;
+      if (
+        e.key !== "Escape" ||
+        e.defaultPrevented ||
+        t?.closest?.(
+          ".Modal, .vault-modal-backdrop, input, textarea, select, [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      e.preventDefault();
+      back.current();
+    };
+    doc.addEventListener("keydown", onDocEscape);
+    return () => {
+      el.removeEventListener("keydown", onEscape, true);
+      doc.removeEventListener("keydown", onDocEscape);
+    };
   }, []);
 
   return createPortal(

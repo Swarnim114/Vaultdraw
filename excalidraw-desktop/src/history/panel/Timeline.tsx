@@ -78,6 +78,18 @@ export const Timeline = ({
     [],
   );
 
+  // A selection made elsewhere (list, Previous/Next commands) wins over a
+  // pending settle, which would otherwise snap back to the scrubbed stop.
+  useEffect(() => {
+    if (dragStop !== null && idAt(dragStop) !== selectedId && timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+      setDragStop(null);
+    }
+    // Only an outside selection change should cancel; dragStop changes are ours.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   const move = useCallback(
     (stop: number) => {
       const next = Math.min(count, Math.max(0, stop));
