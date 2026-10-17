@@ -34,6 +34,12 @@ import {
   type TagSort,
   type TagsSettings,
 } from "../tags/types";
+import {
+  DEFAULT_PDF_IMPORT_SETTINGS,
+  PDF_IMPORT_LIMITS,
+  type PdfImageFormat,
+  type PdfImportSettings,
+} from "../pdfImport/types";
 import { DEFAULT_TEMPLATES_FOLDER } from "../templates/types";
 import {
   DEFAULT_LASER,
@@ -189,6 +195,18 @@ interface VaultPreferencesBase {
   tagAutocomplete: boolean;
   /** tags.pane_sort */
   tagPaneSort: TagSort;
+  /** pdf_import.max_side */
+  pdfMaxSide: number;
+  /** pdf_import.format */
+  pdfFormat: PdfImageFormat;
+  /** pdf_import.quality */
+  pdfQuality: number;
+  /** pdf_import.lock_pages */
+  pdfLockPages: boolean;
+  /** pdf_import.warn_pages */
+  pdfWarnPages: number;
+  /** pdf_import.pixel_budget_mp */
+  pdfPixelBudgetMp: number;
   /** Hotkey overrides (`[hotkeys]`): command id -> chords. [] = unassigned. */
   hotkeys: Record<string, string[]>;
   /** Saved pens (1 to 9), selected with the pen.selectN commands (Alt+1..9). */
@@ -285,6 +303,12 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   linkHoverPreview: DEFAULT_LINKS_SETTINGS.hoverPreview,
   tagAutocomplete: DEFAULT_TAGS_SETTINGS.autocomplete,
   tagPaneSort: DEFAULT_TAGS_SETTINGS.paneSort,
+  pdfMaxSide: DEFAULT_PDF_IMPORT_SETTINGS.maxSide,
+  pdfFormat: DEFAULT_PDF_IMPORT_SETTINGS.format,
+  pdfQuality: DEFAULT_PDF_IMPORT_SETTINGS.quality,
+  pdfLockPages: DEFAULT_PDF_IMPORT_SETTINGS.lockPages,
+  pdfWarnPages: DEFAULT_PDF_IMPORT_SETTINGS.warnPages,
+  pdfPixelBudgetMp: DEFAULT_PDF_IMPORT_SETTINGS.pixelBudgetMp,
   hotkeys: {},
   penPresets: DEFAULT_PEN_PRESETS.map((p) => ({ ...p })),
   laserColor: DEFAULT_LASER.color,
@@ -321,6 +345,29 @@ export const getTagsSettings = (prefs: VaultPreferences): TagsSettings => ({
   autocomplete: prefs.tagAutocomplete,
   paneSort: prefs.tagPaneSort,
 });
+
+/** The `[pdf_import]` fields of the preferences as one settings object. */
+export const getPdfImportSettings = (
+  prefs: VaultPreferences,
+): PdfImportSettings => ({
+  maxSide: prefs.pdfMaxSide,
+  format: prefs.pdfFormat,
+  quality: prefs.pdfQuality,
+  lockPages: prefs.pdfLockPages,
+  warnPages: prefs.pdfWarnPages,
+  pixelBudgetMp: prefs.pdfPixelBudgetMp,
+});
+
+export const isPdfFormat = (v: unknown): v is PdfImageFormat =>
+  v === "jpeg" || v === "png";
+export const isPdfMaxSide = (v: unknown) =>
+  Number.isInteger(v) && inRange(v, PDF_IMPORT_LIMITS.maxSide);
+export const isPdfQuality = (v: unknown) =>
+  inRange(v, PDF_IMPORT_LIMITS.quality);
+export const isPdfWarnPages = (v: unknown) =>
+  Number.isInteger(v) && inRange(v, PDF_IMPORT_LIMITS.warnPages);
+export const isPdfPixelBudgetMp = (v: unknown) =>
+  inRange(v, PDF_IMPORT_LIMITS.pixelBudgetMp);
 
 export const isTagSort = (v: unknown): v is TagSort =>
   v === "name" || v === "count";
@@ -568,6 +615,16 @@ export function normalizePreferences(input: unknown): VaultPreferences {
     ),
     tagAutocomplete: pick(parsed.tagAutocomplete, isBoolean, d.tagAutocomplete),
     tagPaneSort: pick(parsed.tagPaneSort, isTagSort, d.tagPaneSort),
+    pdfMaxSide: pick(parsed.pdfMaxSide, isPdfMaxSide, d.pdfMaxSide),
+    pdfFormat: pick(parsed.pdfFormat, isPdfFormat, d.pdfFormat),
+    pdfQuality: pick(parsed.pdfQuality, isPdfQuality, d.pdfQuality),
+    pdfLockPages: pick(parsed.pdfLockPages, isBoolean, d.pdfLockPages),
+    pdfWarnPages: pick(parsed.pdfWarnPages, isPdfWarnPages, d.pdfWarnPages),
+    pdfPixelBudgetMp: pick(
+      parsed.pdfPixelBudgetMp,
+      isPdfPixelBudgetMp,
+      d.pdfPixelBudgetMp,
+    ),
     hotkeys: normalizeHotkeys(parsed.hotkeys),
     penPresets: normalizePenPresets(parsed.penPresets, d.penPresets),
     laserColor: pick(parsed.laserColor, isString, d.laserColor),

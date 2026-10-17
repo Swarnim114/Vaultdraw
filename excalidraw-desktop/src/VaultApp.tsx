@@ -24,6 +24,7 @@ import {
   addRecentVault,
   getExpandedFolders,
   getLinksSettings,
+  getPdfImportSettings,
   getTagsSettings,
   getLastVaultPath,
   getNavigatorCollapsed,
@@ -91,6 +92,10 @@ import { toHistorySettings } from "./history/historySettings";
 import { LibraryStore } from "./library/libraryStore";
 import { desktopLibraryRepository } from "./library/DesktopLibraryRepository";
 import VaultEditor from "./editor/VaultEditor";
+import { getEditorApi } from "./editor/editorApi";
+import { desktopPdfBridge } from "./pdfImport/DesktopPdfBridge";
+import { usePdfImport } from "./pdfImport/usePdfImport";
+
 import { VaultHeader } from "./components/VaultHeader";
 import {
   VaultNavigator,
@@ -112,6 +117,7 @@ import { VaultHome } from "./components/VaultHome";
 import "./components/VaultShell.css";
 import "./components/shell.css";
 
+import type { PdfBridge } from "./pdfImport/types";
 import type { SettingsTarget } from "./components/settings/schema";
 import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
@@ -181,6 +187,8 @@ export interface VaultAppProps {
   history?: HistoryRepository;
   /** Tests / e2e: graph source and settings transport instead of the native ones. */
   graph?: Pick<GraphHostProps, "graphSource" | "invoke" | "onSession">;
+  /** PDF import (native renderer); defaults to the desktop bridge. */
+  pdf?: PdfBridge;
 }
 
 export const VaultApp = ({
@@ -194,6 +202,7 @@ export const VaultApp = ({
   libraryRepository = desktopLibraryRepository,
   history = desktopHistoryRepository,
   graph,
+  pdf = desktopPdfBridge,
 }: VaultAppProps) => {
   const libraryBundle = useMemo(
     () => ({
@@ -1543,6 +1552,28 @@ export const VaultApp = ({
     [doc],
   );
 
+  const pdfImport = usePdfImport({
+    bridge: pdf,
+    getApi: () => (activeDoc ? getEditorApi(activeDoc.id) : undefined),
+    getSettings: () => getPdfImportSettings(getPreferences(win)),
+    notify: (message, type) => {
+      setGlobalAlert({ message, type });
+      if (type === "info") {
+        (win ?? window).setTimeout(
+          () => setGlobalAlert((a) => (a?.message === message ? null : a)),
+          6000,
+        );
+      }
+    },
+    ownerDocument: doc,
+  });
+
+  const { start: startPdfImport, openFile: openPdfFile } = pdfImport;
+  const pdfControls = useMemo(
+    () => ({ start: startPdfImport, openFile: openPdfFile }),
+    [startPdfImport, openPdfFile],
+  );
+
   const runnerRef = useRef<CommandRunner | null>(null);
   const idle = !isBusy && !isClosing;
   const commandHandlers = appCommandHandlers({
@@ -1601,6 +1632,7 @@ export const VaultApp = ({
         return handleExportDrawing(activeDoc.path, format);
       }
     },
+    importPdf: startPdfImport,
     saveActiveAsTemplate: () => {
       if (activeDoc) {
         templates.requestSave(activeDoc.path);
@@ -1920,6 +1952,7 @@ export const VaultApp = ({
                 }
                 library={libraryBundle}
                 links={editorLinks}
+                pdfImport={pdfControls}
               />
             </div>
           ) : (
@@ -2106,6 +2139,8 @@ export const VaultApp = ({
           ownerDocument={doc}
         />
       )}
+
+      {pdfImport.dialog}
 
       {showCloseDiscardConfirm && (
         <ConfirmModal

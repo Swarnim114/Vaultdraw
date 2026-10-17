@@ -494,6 +494,58 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "files.templates_folder",
     perVault: true,
   },
+  {
+    id: "pdf-max-side",
+    page: "files",
+    label: "PDF Import Resolution",
+    description:
+      "Longest side, in pixels, of an imported PDF page. Large imports are lowered automatically to stay within the pixel budget.",
+    keywords: ["pdf", "import", "resolution", "size", "pixels", "quality"],
+    configKey: "pdf_import.max_side",
+  },
+  {
+    id: "pdf-format",
+    page: "files",
+    label: "PDF Import Image Format",
+    description:
+      "JPEG is much smaller; PNG is lossless but uses far more of the drawing size limit.",
+    keywords: ["pdf", "import", "jpeg", "png", "format", "image"],
+    configKey: "pdf_import.format",
+  },
+  {
+    id: "pdf-quality",
+    page: "files",
+    label: "PDF Import JPEG Quality",
+    description: "JPEG quality for imported pages (0.5 to 1).",
+    keywords: ["pdf", "import", "jpeg", "quality", "compression"],
+    configKey: "pdf_import.quality",
+  },
+  {
+    id: "pdf-lock-pages",
+    page: "files",
+    label: "Lock Imported PDF Pages",
+    description:
+      "Lock pages so annotating does not drag them. Use Unlock all (Cmd+Shift+L) to edit them.",
+    keywords: ["pdf", "import", "lock", "pages", "annotate"],
+    configKey: "pdf_import.lock_pages",
+  },
+  {
+    id: "pdf-warn-pages",
+    page: "files",
+    label: "PDF Page Count Warning",
+    description: "Warn before importing a PDF with more pages than this.",
+    keywords: ["pdf", "import", "warn", "pages", "limit"],
+    configKey: "pdf_import.warn_pages",
+  },
+  {
+    id: "pdf-pixel-budget",
+    page: "files",
+    label: "PDF Import Pixel Budget",
+    description:
+      "Total megapixels one import may decode (memory use). Lower it on low-memory machines.",
+    keywords: ["pdf", "import", "memory", "budget", "megapixels"],
+    configKey: "pdf_import.pixel_budget_mp",
+  },
 
   {
     id: "recovery-store",

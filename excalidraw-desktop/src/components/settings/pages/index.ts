@@ -1,3 +1,5 @@
+import { pdfImportControls } from "../../../pdfImport/PdfImportSettings";
+
 import { appearanceControls } from "./Appearance";
 import { drawingControls } from "./Drawing";
 import { filesControls } from "./Files";
@@ -22,6 +24,7 @@ export const SETTING_CONTROLS: SettingControls = {
   ...pensControls,
   ...toolDefaultsControls,
   ...filesControls,
+  ...pdfImportControls,
   ...linksControls,
   ...tagsControls,
   ...hotkeysControls,

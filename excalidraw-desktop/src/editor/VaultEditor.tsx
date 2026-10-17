@@ -18,7 +18,11 @@ import {
 } from "@excalidraw/excalidraw";
 import { DEFAULT_SIDEBAR } from "@excalidraw/common";
 
-import { saveAs, settingsIcon } from "@excalidraw/excalidraw/components/icons";
+import {
+  LoadIcon,
+  saveAs,
+  settingsIcon,
+} from "@excalidraw/excalidraw/components/icons";
 
 import type {
   BinaryFiles,
@@ -95,6 +99,8 @@ type Props = {
   library?: { store: LibraryStore; repository: LibraryRepository };
   /** Links (open/insert/hints, rename edits, re-measure); omit for none. */
   links?: EditorLinksWiring;
+  /** PDF import (menu item, dropped PDFs); omit for none. */
+  pdfImport?: { start: () => void; openFile: (file: File) => void };
 };
 
 type Snapshot = Parameters<
@@ -119,6 +125,7 @@ const VaultEditorComponent = ({
   focusRequest = null,
   library,
   links,
+  pdfImport,
 }: Props) => {
   const host = useRef<HTMLDivElement | null>(null);
   const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
@@ -200,7 +207,26 @@ const VaultEditorComponent = ({
     );
   }, []);
 
+  const pdfImportRef = useRef(pdfImport);
+  pdfImportRef.current = pdfImport;
+  const hasPdfImport = !!pdfImport;
+  const canImportPdf = hasPdfImport && !readOnly && !disabled;
+  const canImportPdfRef = useRef(canImportPdf);
+  canImportPdfRef.current = canImportPdf;
+
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    // A dropped PDF opens the import dialog instead of Excalidraw's handling.
+    const pdf = Array.from(event.dataTransfer.files).find(
+      (file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name),
+    );
+    if (pdf && pdfImportRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (canImportPdfRef.current) {
+        pdfImportRef.current.openFile(pdf);
+      }
+      return;
+    }
     // Files that carry a scene (.excalidraw/.json, or Excalidraw's
     // "embed scene" exports named *.excalidraw.png/.svg) would replace the
     // drawing. Plain images are inserted as image elements, so let them through.
@@ -537,6 +563,16 @@ const VaultEditorComponent = ({
           >
             Save a copy…
           </CommandMenuItem>
+          {hasPdfImport && (
+            <CommandMenuItem
+              commandId="file.importPdf"
+              icon={LoadIcon}
+              onSelect={() => pdfImportRef.current?.start()}
+              disabled={!canImportPdf}
+            >
+              Import PDF…
+            </CommandMenuItem>
+          )}
           <MainMenu.DefaultItems.SearchMenu />
           <MainMenu.DefaultItems.Help />
           <MainMenu.DefaultItems.ClearCanvas />
@@ -584,6 +620,8 @@ const VaultEditorComponent = ({
       canExport,
       canOpenSettings,
       canOpenGraph,
+      canImportPdf,
+      hasPdfImport,
       saveCopy,
       paperDialogOpen,
       pageSetupOpen,

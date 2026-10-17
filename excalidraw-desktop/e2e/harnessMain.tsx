@@ -7,6 +7,7 @@ import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgro
 
 import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
+import { FakePdfBridge } from "../src/tests/fakePdfBridge";
 import { toastStore } from "../src/toasts/toastStore";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
 import {
@@ -500,6 +501,11 @@ repository.writeDrawing = async (input) => {
 // render) synchronously so its cost can be timed.
 (ownerWindow as any).__flushSync = flushSync;
 (ownerWindow as any).__libraryRepo = libraryRepository;
+// PDF import: the next Import PDF pick returns a 3-page A4 doc; specs replace
+// `nextPick` (bridge.makeDoc(name, pages)) or set delays / failing pages.
+const pdfBridge = new FakePdfBridge();
+pdfBridge.nextPick = pdfBridge.makeDoc("sample.pdf");
+(ownerWindow as any).__pdfBridge = pdfBridge;
 
 if (params.has("graph")) {
   // ?graph=N: the graph view over a fake N-node vault graph (see graphHarness.tsx).
@@ -527,6 +533,7 @@ function mountVaultApp() {
           links={vaultLinks}
           libraryRepository={libraryRepository}
           history={historyRepository}
+          pdf={pdfBridge}
           graph={{
             graphSource,
             invoke: graphInvoke,

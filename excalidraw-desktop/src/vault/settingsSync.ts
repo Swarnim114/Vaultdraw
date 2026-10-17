@@ -27,6 +27,7 @@ import {
   type HistoryField,
 } from "../history/historySettings";
 import { parseChord } from "../commands/keys";
+import { PDF_IMPORT_LIMITS } from "../pdfImport/types";
 import { inRange, LASER_LIMITS } from "../pens/laserSettings";
 import {
   isPenPresets,
@@ -70,6 +71,11 @@ import {
   isOpenModifier,
   isShapeLinkFormat,
   isTagSort,
+  isPdfFormat,
+  isPdfMaxSide,
+  isPdfPixelBudgetMp,
+  isPdfQuality,
+  isPdfWarnPages,
   isUpdateOnRename,
   isPaperOpacity,
   isPaperSpacing,
@@ -196,6 +202,12 @@ type ConfigField =
   | "linkHoverPreview"
   | "tagAutocomplete"
   | "tagPaneSort"
+  | "pdfMaxSide"
+  | "pdfFormat"
+  | "pdfQuality"
+  | "pdfLockPages"
+  | "pdfWarnPages"
+  | "pdfPixelBudgetMp"
   | "penPresets"
   | "laserColor"
   | "laserSize"
@@ -518,6 +530,42 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     key: "tags.pane_sort",
     expected: '"name" or "count"',
     valid: isTagSort,
+  },
+  {
+    field: "pdfMaxSide",
+    key: "pdf_import.max_side",
+    expected: `a whole number of pixels between ${PDF_IMPORT_LIMITS.maxSide.min} and ${PDF_IMPORT_LIMITS.maxSide.max}`,
+    valid: isPdfMaxSide,
+  },
+  {
+    field: "pdfFormat",
+    key: "pdf_import.format",
+    expected: '"jpeg" or "png"',
+    valid: isPdfFormat,
+  },
+  {
+    field: "pdfQuality",
+    key: "pdf_import.quality",
+    expected: `a number between ${PDF_IMPORT_LIMITS.quality.min} and ${PDF_IMPORT_LIMITS.quality.max}`,
+    valid: isPdfQuality,
+  },
+  {
+    field: "pdfLockPages",
+    key: "pdf_import.lock_pages",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "pdfWarnPages",
+    key: "pdf_import.warn_pages",
+    expected: `a whole number between ${PDF_IMPORT_LIMITS.warnPages.min} and ${PDF_IMPORT_LIMITS.warnPages.max}`,
+    valid: isPdfWarnPages,
+  },
+  {
+    field: "pdfPixelBudgetMp",
+    key: "pdf_import.pixel_budget_mp",
+    expected: `a number of megapixels between ${PDF_IMPORT_LIMITS.pixelBudgetMp.min} and ${PDF_IMPORT_LIMITS.pixelBudgetMp.max}`,
+    valid: isPdfPixelBudgetMp,
   },
   {
     field: "penPresets",
