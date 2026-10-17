@@ -19,6 +19,7 @@ import {
 import "../src/desktop.css";
 
 import { E2E_AUTOSAVE_MS } from "./constants";
+import { E2ETagRename } from "./fakeTagRename";
 import {
   smallScene,
   TEMPLATE_BACKGROUNDS,
@@ -475,6 +476,11 @@ void import("../src/VaultApp").then(({ default: VaultApp }) => {
         ownerWindow={ownerWindow}
         repository={repository}
         search={vaultSearch}
+        tagRename={
+          params.get("tagrename") === "1"
+            ? new E2ETagRename(repository, vaultLinks)
+            : undefined
+        }
         links={vaultLinks}
         libraryRepository={libraryRepository}
         history={historyRepository}
