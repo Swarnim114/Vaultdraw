@@ -26,7 +26,6 @@ import {
   GIT_EXCLUDED_MESSAGE,
 } from "./historyConfirms";
 import { useHistoryCommands } from "./useHistoryCommands";
-import { useHistoryStatus } from "./useHistoryStatus";
 import { useHistorySync } from "./useHistorySync";
 
 import "./history.css";
@@ -122,14 +121,9 @@ const HistoryHostImpl = ({
   const readOnly = vault?.readOnly ?? false;
   const canCheckpoint = !!handle && !!path && !readOnly;
 
-  // One status read per vault (and after an action): only the git state is
-  // used here, to offer "Exclude history from git" in git vaults.
-  const { status: vaultStatus, refresh: refreshStatus } = useHistoryStatus(
-    repository,
-    handle,
-  );
-  const canExclude =
-    !!handle && !readOnly && !!vaultStatus?.gitRepo && !vaultStatus.gitExcluded;
+  // No status read on vault open (it would sit on the vault-open path): the
+  // command is offered in every writable vault and checks git when it runs.
+  const canExclude = !!handle && !readOnly;
 
   useEffect(() => {
     publishHistoryBridge(
@@ -143,13 +137,21 @@ const HistoryHostImpl = ({
       return;
     }
     try {
+      const status = await repository.status(handle);
+      if (!status.gitRepo) {
+        showToast("This vault is not a git repository");
+        return;
+      }
+      if (status.gitExcluded) {
+        showToast("History is already excluded from git");
+        return;
+      }
       await repository.excludeFromGit(handle);
       showToast(GIT_EXCLUDED_MESSAGE);
     } catch (cause) {
       showToast(errorMessage(cause), true);
     }
-    void refreshStatus();
-  }, [handle, repository, showToast, refreshStatus]);
+  }, [handle, repository, showToast]);
 
   const deleteAll = useCallback(async () => {
     setConfirmDeleteAll(false);
@@ -162,8 +164,7 @@ const HistoryHostImpl = ({
     } catch (cause) {
       showToast(errorMessage(cause), true);
     }
-    void refreshStatus();
-  }, [handle, path, repository, showToast, refreshStatus]);
+  }, [handle, path, repository, showToast]);
 
   useHistoryCommands({
     checkpoint: () => {
@@ -229,7 +230,6 @@ const HistoryHostImpl = ({
             readOnly={vault?.readOnly}
             vaultKey={vault?.path}
             highlightChanges={settings.highlightChanges}
-            onGitChange={() => void refreshStatus()}
             saveState={getSaveState}
             flush={flush}
             notify={notify}

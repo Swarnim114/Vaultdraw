@@ -1011,6 +1011,22 @@ export const VaultApp = ({
     });
   };
 
+  // Stable props for the memoised HistoryHost (it would re-render on every
+  // VaultApp render otherwise).
+  const historySettings = useMemo(
+    () => toHistorySettings(vaultSettings.effective),
+    [vaultSettings.effective],
+  );
+  const flushHistory = useCallback(
+    () => flushDoc({ commitText: false }),
+    [flushDoc],
+  );
+  const openDrawingRef = useRef<(path: string) => Promise<void>>();
+  const openFromHistory = useCallback(
+    (path: string) => void openDrawingRef.current?.(path),
+    [],
+  );
+
   // Open drawing with busy freeze and error catching
   /** False when the open failed (an alert says why). */
   const handleOpenDrawing = async (drawingPath: string) => {
@@ -1899,6 +1915,8 @@ export const VaultApp = ({
     }
   >;
 
+  openDrawingRef.current = handleOpenDrawing;
+
   const shell = (
     <div
       ref={setRootNode}
@@ -2022,12 +2040,12 @@ export const VaultApp = ({
         <HistoryHost
           repository={history}
           vault={vault}
-          settings={toHistorySettings(vaultSettings.effective)}
+          settings={historySettings}
           document={activeDoc}
-          flush={() => flushDoc({ commitText: false })}
+          flush={flushHistory}
           ownerDocument={doc}
           status={saveStatus}
-          onOpenDrawing={handleOpenDrawing}
+          onOpenDrawing={openFromHistory}
           theme={appTheme}
           onSaveFile={exportEditorFile}
         />

@@ -176,17 +176,26 @@ describe("history.excludeFromGit command", () => {
     });
   };
 
-  it("is not offered outside a git vault", async () => {
+  it("makes no status call when the vault opens", async () => {
     await host();
-    expect(getRegisteredHandler("history.excludeFromGit")).toBeUndefined();
+    expect(repo.calls).not.toContain("status");
+    expect(getRegisteredHandler("history.excludeFromGit")).toBeDefined();
   });
 
-  it("is offered in a git vault, excludes, and then disappears", async () => {
+  it("says so outside a git vault and changes nothing", async () => {
+    await host();
+    await act(async () => {
+      await getRegisteredHandler("history.excludeFromGit")!();
+    });
+    expect(repo.calls).not.toContain("excludeFromGit");
+    expect(
+      await screen.findByText("This vault is not a git repository"),
+    ).toBeInTheDocument();
+  });
+
+  it("excludes in a git vault, then reports it is already excluded", async () => {
     repo.gitRepo = true;
     await host();
-    await waitFor(() =>
-      expect(getRegisteredHandler("history.excludeFromGit")).toBeDefined(),
-    );
     await act(async () => {
       await getRegisteredHandler("history.excludeFromGit")!();
     });
@@ -194,25 +203,17 @@ describe("history.excludeFromGit command", () => {
     expect(
       await screen.findByText("History is now excluded from git"),
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(getRegisteredHandler("history.excludeFromGit")).toBeUndefined(),
-    );
+    await act(async () => {
+      await getRegisteredHandler("history.excludeFromGit")!();
+    });
+    expect(repo.calls.filter((c) => c === "excludeFromGit")).toHaveLength(1);
+    expect(
+      await screen.findByText("History is already excluded from git"),
+    ).toBeInTheDocument();
   });
 
-  it("is not offered once excluded or in a read-only vault", async () => {
-    repo.gitRepo = true;
-    await repo.excludeFromGit(H);
-    await host();
-    await waitFor(() => expect(repo.calls).toContain("status"));
-    expect(getRegisteredHandler("history.excludeFromGit")).toBeUndefined();
-    cleanup();
-
-    const fresh = new FakeHistoryRepository(H);
-    await fresh.configure(H, SETTINGS);
-    fresh.gitRepo = true;
-    repo = fresh;
+  it("is not offered in a read-only vault", async () => {
     await host(true);
-    await waitFor(() => expect(repo.calls).toContain("status"));
     expect(getRegisteredHandler("history.excludeFromGit")).toBeUndefined();
   });
 });
