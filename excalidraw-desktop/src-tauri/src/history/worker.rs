@@ -127,7 +127,7 @@ impl Inbox {
         let _ = self.tx.send(Item::Wake);
     }
     /// Next item: urgent first, then background; blocks up to `wait` (forever for `None`).
-    /// `poll_only` = return `Timeout` instead of blocking (background chunks pending).
+    /// `poll_only` = background chunks pending: block at most `BG_YIELD`, then return `Timeout`.
     pub fn pop(&self, wait: Option<Duration>, poll_only: bool) -> Popped {
         let mut s = self.rx.lock().unwrap_or_else(|p| p.into_inner());
         loop {
@@ -143,9 +143,9 @@ impl Inbox {
             if let Some(t) = s.bg.pop_front() {
                 return Popped::Task(t);
             }
-            if poll_only {
-                return Popped::Timeout;
-            }
+            // Background chunks pending: sleep a short slice (an urgent message still wakes the
+            // recv at once) so the chunks run at a ~25% duty cycle instead of back-to-back.
+            let wait = if poll_only { Some(wait.map_or(BG_YIELD, |w| w.min(BG_YIELD))) } else { wait };
             let got = match wait {
                 None => s.rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
                 Some(d) => s.rx.recv_timeout(d),
@@ -780,6 +780,9 @@ use super::{index, staging, store, writer, HistoryEvent, ChangeEvent, VaultHisto
 use std::{path::Path, time::Instant};
 
 const CHUNK: Duration = Duration::from_millis(5);
+/// Pause between background chunks: 5 ms of work per ~15 ms pause is a ~25% duty cycle, and the
+/// pause is a blocking recv, so an urgent message (a save snapshot) wakes the worker immediately.
+const BG_YIELD: Duration = Duration::from_millis(15);
 const STATE_SWEEP_MS: u64 = 90 * 24 * 3600 * 1000;
 
 /// What the previous run left in the staged dir: clones to turn into `v` versions, files to drop.
