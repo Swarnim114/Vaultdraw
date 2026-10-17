@@ -75,6 +75,12 @@ import { getCornerRadius } from "./utils";
 import { ShapeCache } from "./shape";
 import { ElementCanvasCache } from "./elementCanvasCache";
 import {
+  fillTextLineWithRuns,
+  getTextRuns,
+  getTextRunStylerEpoch,
+  getTextRunsVersion,
+} from "./textRuns";
+import {
   getStickyNoteFooter,
   getStickyNotePathCommands,
   type StickyNotePathCommand,
@@ -93,6 +99,8 @@ import type {
 } from "./types";
 
 import type { RoughCanvas } from "roughjs/bin/canvas";
+
+import type { TextRun } from "./textRuns";
 
 const isPendingImageElement = (
   element: ExcalidrawElement,
@@ -214,6 +222,10 @@ export interface ExcalidrawElementWithCanvas {
   canvasOffsetY: number;
   imageCrop: ExcalidrawImageElement["crop"] | null;
   containingFrameOpacity: number;
+  /** Vaultdraw text runs (textRuns.ts): styler epoch for text, null otherwise. */
+  textStylerEpoch: number | null;
+  /** Runs version when this raster was styled, null when it was not. */
+  textRunsVersion: number | null;
 }
 
 const cappedElementCanvasSize = (
@@ -323,7 +335,10 @@ const generateElementCanvas = (
 
   const rc = rough.canvas(canvas);
 
-  drawElementOnCanvas(element, rc, context, renderConfig);
+  const textRuns = isTextElement(element)
+    ? getTextRuns(element, renderConfig.theme === THEME.DARK)
+    : null;
+  drawElementOnCanvas(element, rc, context, renderConfig, textRuns);
 
   context.restore();
 
@@ -339,6 +354,8 @@ const generateElementCanvas = (
     containingFrameOpacity:
       getContainingFrame(element, elementsMap)?.opacity || 100,
     imageCrop: isImageElement(element) ? element.crop : null,
+    textStylerEpoch: isTextElement(element) ? getTextRunStylerEpoch() : null,
+    textRunsVersion: textRuns ? getTextRunsVersion() : null,
   };
 };
 
@@ -437,6 +454,8 @@ const drawElementOnCanvas = (
   rc: RoughCanvas,
   context: CanvasRenderingContext2D,
   renderConfig: StaticCanvasRenderConfig,
+  /** Vaultdraw: styled runs for an on-screen text raster (never for exports). */
+  textRuns: readonly TextRun[] | null = null,
 ) => {
   switch (element.type) {
     case "stickynote": {
@@ -665,7 +684,21 @@ const drawElementOnCanvas = (
           lineHeightPx,
         );
 
+        let lineStart = 0;
         for (let index = 0; index < lines.length; index++) {
+          if (textRuns && !rtl) {
+            fillTextLineWithRuns(
+              context,
+              lines[index],
+              lineStart,
+              horizontalOffset,
+              index * lineHeightPx + verticalOffset,
+              element.fontSize,
+              textRuns,
+            );
+            lineStart += lines[index].length + 1;
+            continue;
+          }
           context.fillText(
             lines[index],
             horizontalOffset,
@@ -720,7 +753,11 @@ const generateElementWithCanvas = (
     prevElementWithCanvas.displayColorTransformVersion !==
       getDisplayColorTransformVersion() ||
     prevElementWithCanvas.imageCrop !== imageCrop ||
-    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity
+    prevElementWithCanvas.containingFrameOpacity !== containingFrameOpacity ||
+    (prevElementWithCanvas.textStylerEpoch !== null &&
+      prevElementWithCanvas.textStylerEpoch !== getTextRunStylerEpoch()) ||
+    (prevElementWithCanvas.textRunsVersion !== null &&
+      prevElementWithCanvas.textRunsVersion !== getTextRunsVersion())
   ) {
     const elementWithCanvas = generateElementCanvas(
       element,

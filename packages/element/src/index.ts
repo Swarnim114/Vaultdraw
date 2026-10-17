@@ -86,6 +86,7 @@ export * from "./mutateElement";
 export * from "./newElement";
 export * from "./positionElementsOnGrid";
 export * from "./renderElement";
+export * from "./textRuns";
 export * from "./elementCanvasCache";
 export * from "./resizeElements";
 export * from "./resizeTest";
