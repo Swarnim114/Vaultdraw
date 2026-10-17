@@ -473,7 +473,9 @@ hover_preview = "always"           # always | modifier | off
 
 You can also open it with the mouse: the **Graph view** button in the navigator toolbar (its tooltip shows the current key), **Graph view** in the canvas main menu, or **Open local graph** in a drawing's ⋯ menu in the navigator, which opens that drawing and shows its local graph. All three run the same commands as the keys, so they follow your rebinding.
 
-Drawings in the same top-level folder share a colour. Links to drawings that don't exist yet are hollow dots. Hover a dot to see its name, folder, link counts and the shortcut assigned to it.
+Each dot is labelled with the drawing's name, and dots with more links are bigger. Drawings in the same top-level folder share a colour. Tags are dots too (turn them off with **Graph: Toggle tags**), and links to drawings that don't exist yet are hollow dots. Hover a dot to light up its links and neighbours and fade the rest. A card shows its name, folder, link counts and the shortcut assigned to it.
+
+The graph is alive: it spreads out when it opens and settles within a few seconds. Drag a dot and its neighbours follow on springs. Let go and it rejoins the layout. Scroll or pinch to zoom around the pointer. Drag the background to pan, and flick to let it glide.
 
 | Key | Action |
 | --- | --- |
@@ -498,7 +500,7 @@ colour_by = "mono"
 local_depth = 3
 ```
 
-The layout is computed once in the background and saved, so the graph opens already settled. Dots you drag stay where you leave them. The saved layout lives in Vaultdraw's own state folder, never inside your vault, and the graph costs nothing until you first open it.
+The layout runs in the background, off the main thread, and is saved, so the graph reopens in the same shape. It blooms out of its saved shape each time. Once the layout settles, the graph uses no CPU. The saved layout lives in Vaultdraw's own state folder, never inside your vault, and the graph costs nothing until you first open it.
 
 ## Templates
 
