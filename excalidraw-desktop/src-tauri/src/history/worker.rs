@@ -912,11 +912,20 @@ struct Bg {
     started: bool,
     /// Next daily orphan check + GC sweep (wall clock ms).
     daily_due: Option<u64>,
+    /// Earliest start of the next relink walk (wall clock ms): outside changes coalesce into one walk per gap.
+    relink_ok_at: u64,
 }
 
 const DAY_MS: u64 = 24 * 3600 * 1000;
+/// Minimum gap between relink walks (each walks and hashes the whole vault).
+const RELINK_GAP_MS: u64 = 30_000;
 
 impl Bg {
+    /// Time until a debounced relink may start (so it still runs when nothing else wakes the worker).
+    fn relink_due(&self, core: &Core<writer::RealBackend>, now: u64) -> Option<Duration> {
+        (core.on() && core.want_relink && self.relink_ok_at > now).then(|| Duration::from_millis(self.relink_ok_at - now))
+    }
+
     fn pending(&self) -> bool {
         !self.units.is_empty() || self.orphan.is_some() || self.relink.is_some() || self.sweep.is_some()
     }
@@ -945,8 +954,9 @@ impl Bg {
             self.want_orphan = false;
             self.orphan = Some(super::lineage::OrphanRun::new(vh));
         }
-        if core.want_relink && self.orphan.is_none() && self.relink.is_none() {
+        if core.want_relink && self.orphan.is_none() && self.relink.is_none() && now >= self.relink_ok_at {
             core.want_relink = false;
+            self.relink_ok_at = now + RELINK_GAP_MS;
             self.relink = super::lineage::RelinkRun::new(vh, core);
         }
         if self.want_sweep && self.sweep.is_none() {
@@ -1054,7 +1064,8 @@ pub(crate) fn run(vh: Arc<VaultHistory>, survivors: Survivors, clock: Arc<dyn Cl
         bg.schedule(&vh, &mut core, &clock, now);
         let timer = core.next_deadline().map(|d| Duration::from_millis(d.saturating_sub(now)));
         let daily = bg.daily_due.filter(|_| core.on()).map(|d| Duration::from_millis(d.saturating_sub(now)));
-        let wait = [timer, super::lock(&vh.notifier).wait(), daily].into_iter().flatten().min();
+        let relink = bg.relink_due(&core, now);
+        let wait = [timer, super::lock(&vh.notifier).wait(), daily, relink].into_iter().flatten().min();
         match vh.inbox.pop(wait, bg.pending()) {
             Popped::Stop => break,
             Popped::Msg(Msg::Stop) => break,
