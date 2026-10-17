@@ -14,7 +14,6 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { registerCommandHandlers } from "../commands/handlerRegistry";
 
 import { FORMULA_COMMAND_IDS } from "./formulaCommands";
-import { insertFormula, replaceFormula } from "./insertFormula";
 import { getFormulaData } from "./types";
 
 import type { ReactNode, RefObject } from "react";
@@ -23,6 +22,9 @@ import type { RenderedFormula } from "./insertFormula";
 import type { FormulaData } from "./types";
 
 const FormulaDialog = lazy(() => import("./FormulaDialog"));
+// Insert/replace (hash, base64, element building) loads with the dialog's
+// chunk, not at startup.
+const loadInsert = () => import("./insertFormula");
 
 type Target = { element: ExcalidrawImageElement; data: FormulaData };
 type DialogState =
@@ -122,7 +124,7 @@ export function useFormulaCommands({
         return;
       }
       if (current.mode === "insert") {
-        void insertFormula(api, formula);
+        void loadInsert().then((m) => m.insertFormula(api, formula));
         return;
       }
       // Re-read: the element may have changed or gone while the dialog was open.
@@ -131,7 +133,9 @@ export function useFormulaCommands({
         .find((e) => e.id === current.element.id);
       const target = el && formulaTarget(el as ExcalidrawImageElement);
       if (target) {
-        void replaceFormula(api, target.element, target.data, formula);
+        void loadInsert().then((m) =>
+          m.replaceFormula(api, target.element, target.data, formula),
+        );
       }
     },
     [apiRef, state],
