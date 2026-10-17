@@ -8,6 +8,10 @@ import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgro
 import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakeVaultRepository } from "../src/tests/fakeVaultRepository";
+import {
+  FakeVaultGraph,
+  fakeVaultSettingsInvoke,
+} from "../src/tests/fakeVaultGraph";
 import { FakeVaultLinks } from "../src/tests/fakeVaultLinks";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
@@ -433,6 +437,33 @@ const libraryRepository = new FakeLibraryRepository();
 const vaultLinks = new FakeVaultLinks(repository);
 (ownerWindow as any).__vaultLinks = vaultLinks;
 
+// Graph view: a graph built from the fake links, in-memory layout, and a fake settings.toml that
+// survives a page reload (sessionStorage) so "persists across reopen" can be tested.
+const graphSource = new FakeVaultGraph(repository, vaultLinks);
+const GRAPH_STORE_KEY = "e2e-graph-settings-toml";
+const graphStore = (() => {
+  try {
+    return JSON.parse(
+      ownerWindow.sessionStorage.getItem(GRAPH_STORE_KEY) ?? "{}",
+    );
+  } catch {
+    return {};
+  }
+})();
+const graphInvokeBase = fakeVaultSettingsInvoke(graphStore);
+const graphInvoke = (async (cmd: string, args?: any, opts?: any) => {
+  const out = await graphInvokeBase(cmd, args, opts);
+  if (cmd === "update_vault_settings") {
+    ownerWindow.sessionStorage.setItem(
+      GRAPH_STORE_KEY,
+      JSON.stringify(graphStore),
+    );
+  }
+  return out;
+}) as typeof graphInvokeBase;
+(ownerWindow as any).__graphSource = graphSource;
+(ownerWindow as any).__graphSettingsToml = graphStore;
+
 // File history: in-memory fake that sees the vault's committed writes (the real
 // service watches the save path natively, so autosave costs no history IPC).
 const historyRepository = new FakeHistoryRepository(repository.handle, {
@@ -494,6 +525,13 @@ function mountVaultApp() {
           links={vaultLinks}
           libraryRepository={libraryRepository}
           history={historyRepository}
+          graph={{
+            graphSource,
+            invoke: graphInvoke,
+            onSession: (session) => {
+              (ownerWindow as any).__graphApp = session;
+            },
+          }}
         />
       </StrictMode>,
     );

@@ -24,6 +24,8 @@ export interface GraphViewExtraProps {
   forceCanvas2d?: boolean;
   /** Tests / e2e: receives the live session once the graph is ready (null on close). */
   onSession?: (session: GraphSession | null) => void;
+  /** Bump to refit the camera to the graph (the `graph.fit` command). */
+  fitNonce?: number;
 }
 
 type HintState = {
@@ -77,6 +79,14 @@ export default function GraphView(props: GraphViewProps & GraphViewExtraProps) {
     onSession?.(sessionRef.current);
     return () => onSession?.(null);
   }, [state.phase, onSession, sessionRef]);
+  const { fitNonce } = props;
+  const lastFit = useRef(fitNonce);
+  useEffect(() => {
+    if (fitNonce !== lastFit.current) {
+      lastFit.current = fitNonce;
+      sessionRef.current?.userFit();
+    }
+  }, [fitNonce, sessionRef]);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) {

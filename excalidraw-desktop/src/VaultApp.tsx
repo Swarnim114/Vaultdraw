@@ -82,7 +82,7 @@ import { focusCanvasIfIdle } from "./palette/focus";
 import { createCommandsProvider } from "./palette/providers/commands";
 import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
-import { GraphHost } from "./graph/GraphHost";
+import { GraphHost, type GraphHostProps } from "./graph/GraphHost";
 import { HistoryHost } from "./history/HistoryHost";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
@@ -178,6 +178,8 @@ export interface VaultAppProps {
   libraryRepository?: LibraryRepository;
   /** File history; defaults to the native service. */
   history?: HistoryRepository;
+  /** Tests / e2e: graph source and settings transport instead of the native ones. */
+  graph?: Pick<GraphHostProps, "graphSource" | "invoke" | "onSession">;
 }
 
 export const VaultApp = ({
@@ -190,6 +192,7 @@ export const VaultApp = ({
   initialVault = null,
   libraryRepository = desktopLibraryRepository,
   history = desktopHistoryRepository,
+  graph,
 }: VaultAppProps) => {
   const libraryBundle = useMemo(
     () => ({
@@ -1963,6 +1966,7 @@ export const VaultApp = ({
             }
             onOpenChange={setGraphOpen}
             onClosed={focusCanvas}
+            {...graph}
           />
         </div>
 

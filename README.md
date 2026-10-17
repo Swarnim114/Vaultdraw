@@ -454,6 +454,37 @@ hint_chars = "asdfghjkl"           # letters used by Shift+F hints
 - **excalidraw.com** reads `[[links]]` as plain text, and shape links show the normal link icon. Nothing is lost when a file is saved there.
 - **Speed.** Links cost nothing until you use them. The link index is built on first use, off the UI thread.
 
+## Graph view
+
+⌘⌥G (**Graph: Open graph view**) shows every drawing as a dot and every link as a line, over the canvas. Esc, or ⌘⌥G again, returns to the drawing you left, at the same zoom and position. ⌘⌥L opens the **local graph**: the open drawing and the drawings within 1–3 links of it.
+
+Drawings in the same top-level folder share a colour. Links to drawings that don't exist yet are hollow dots. Hover a dot to see its name, folder, link counts and the shortcut assigned to it.
+
+| Key | Action |
+| --- | --- |
+| h j k l or ← ↓ ↑ → | Move to the nearest dot in that direction |
+| Enter, or click | Open the drawing and close the graph |
+| F | Show a letter on every visible dot. Type the letters to open one |
+| / | Filter by name. `path:Folder` and `tag:#x` also work. Dots that don't match are dimmed |
+| Shift+L | Switch between global and local |
+| 1 2 3 | Local graph depth |
+| 0, + and - | Fit, zoom in, zoom out |
+| Esc | Close |
+
+**Graph: Toggle orphans**, **Toggle tags**, **Toggle unresolved links** and **Fit graph to view** are in the command palette (⌘⇧P) and on the Hotkeys page, with no default key. Every graph command can be rebound.
+
+The settings button in the graph's toolbar opens colour groups, display (arrows, label fade, dot size, line thickness) and forces (centre, repel, link strength, link distance). They are stored per vault in `<vault>/.excalidraw-vault/settings.toml` under `[graph]`, and only values that differ from the default are written:
+
+```toml
+# <vault>/.excalidraw-vault/settings.toml
+[graph]
+show_orphans = false
+colour_by = "mono"
+local_depth = 3
+```
+
+The layout is computed once in the background and saved, so the graph opens already settled. Dots you drag stay where you leave them. The saved layout lives in Vaultdraw's own state folder, never inside your vault, and the graph costs nothing until you first open it.
+
 ## Templates
 
 A template is an ordinary `.excalidraw` file, so any drawing can become one, and a template can be opened and edited like any other drawing.

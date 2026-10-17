@@ -8,12 +8,12 @@ import type { GraphHostProps } from "../graph/GraphHost";
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
 
 const viewLoaded = vi.fn();
-let lastProps: GraphViewProps | null = null;
+let lastProps: (GraphViewProps & { fitNonce?: number }) | null = null;
 
 vi.mock("../graph/GraphView", () => {
   viewLoaded();
   return {
-    default: (props: GraphViewProps) => {
+    default: (props: GraphViewProps & { fitNonce?: number }) => {
       lastProps = props;
       return <div data-testid="graph-view">{props.mode}</div>;
     },
@@ -127,6 +127,16 @@ describe("GraphHost", () => {
     expect(lastProps!.settings.showUnresolved).toBe(
       !DEFAULT_GRAPH_SETTINGS.showUnresolved,
     );
+  });
+
+  it("fit opens the graph and bumps fitNonce each time (no synthetic key)", async () => {
+    await mount();
+    await run("graph.fit");
+    await waitFor(() => screen.getByTestId("graph-view"));
+    const first = lastProps!.fitNonce;
+    expect(first).toBeGreaterThan(0);
+    await run("graph.fit");
+    expect(lastProps!.fitNonce).toBe(first! + 1);
   });
 
   it("local graph needs a current drawing; no vault means nothing opens", async () => {

@@ -1,0 +1,151 @@
+/**
+ * Test/harness-only graph transport over the fake repository and fake links: builds the same
+ * `GraphData` the native `vault_graph` decodes to (drawings by path, then unresolved ghosts), keeps
+ * the layout bytes in memory, and fakes the settings.toml commands the per-vault graph settings use.
+ */
+import { createGraphData } from "../graph/decode";
+import { FLAG_ORPHAN, FLAG_UNRESOLVED } from "../graph/types";
+
+import type { GraphSource } from "../graph/GraphSession";
+import type { GraphData } from "../graph/types";
+import type { VaultLinks } from "../links/types";
+import type { InvokeFn } from "../vault/DesktopVaultRepository";
+import type { VaultRepository } from "../vault/types";
+
+const EXT = ".excalidraw";
+
+async function drawingPaths(repo: VaultRepository, handle: string) {
+  const out: string[] = [];
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await repo.listDirectory(handle, dir)) {
+      if (e.kind === "folder") {
+        await walk(e.path);
+      } else if (e.path.endsWith(EXT)) {
+        out.push(e.path);
+      }
+    }
+  };
+  await walk("");
+  return out.sort();
+}
+
+export class FakeVaultGraph implements GraphSource {
+  layout: Uint8Array = new Uint8Array(0);
+  /** Layout saves, for tests. */
+  saves = 0;
+
+  constructor(
+    private readonly repo: VaultRepository,
+    private readonly links: VaultLinks,
+  ) {}
+
+  async graph(handle: string): Promise<GraphData> {
+    const paths = await drawingPaths(this.repo, handle);
+    const index = new Map(paths.map((p, i) => [p, i]));
+    const labels = paths.map((p) => p.slice(0, -EXT.length));
+    const ghosts = new Map<string, number>();
+    const edgeSet = new Set<string>();
+    for (const [i, p] of paths.entries()) {
+      const r = await this.links.links(handle, p);
+      for (const l of r.outgoing) {
+        const j = l.resolved ? index.get(l.resolved) : undefined;
+        if (j !== undefined && j !== i) {
+          edgeSet.add(`${i},${j}`);
+        }
+      }
+      for (const l of r.unresolved) {
+        let g = ghosts.get(l.target);
+        if (g === undefined) {
+          g = paths.length + ghosts.size;
+          ghosts.set(l.target, g);
+          labels.push(l.target);
+        }
+        edgeSet.add(`${i},${g}`);
+      }
+    }
+    const n = labels.length;
+    const edgeList = [...edgeSet]
+      .map((k) => k.split(",").map(Number) as [number, number])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const edges = new Uint32Array(edgeList.length * 2);
+    const outDeg = new Uint32Array(n);
+    const inDeg = new Uint32Array(n);
+    edgeList.forEach(([a, b], k) => {
+      edges[2 * k] = a;
+      edges[2 * k + 1] = b;
+      outDeg[a]++;
+      inDeg[b]++;
+    });
+    const folders = [""];
+    const folder = new Uint32Array(n);
+    const flags = new Uint32Array(n);
+    for (let i = 0; i < n; i++) {
+      if (i >= paths.length) {
+        flags[i] = FLAG_UNRESOLVED;
+        continue;
+      }
+      const top = paths[i].includes("/") ? paths[i].split("/")[0] : "";
+      let f = folders.indexOf(top);
+      if (f < 0) {
+        f = folders.push(top) - 1;
+      }
+      folder[i] = f;
+      if (outDeg[i] + inDeg[i] === 0) {
+        flags[i] = FLAG_ORPHAN;
+      }
+    }
+    return createGraphData(
+      {
+        nodeCount: n,
+        edgeCount: edgeList.length,
+        folderCount: folders.length,
+        folder,
+        outDeg,
+        inDeg,
+        flags,
+        edges,
+      },
+      { label: (i) => labels[i], folderName: (f) => folders[f] },
+    );
+  }
+
+  async loadLayout(): Promise<Uint8Array> {
+    return this.layout;
+  }
+
+  async saveLayout(_handle: string, bytes: Uint8Array): Promise<void> {
+    this.layout = bytes;
+    this.saves++;
+  }
+}
+
+/** In-memory settings.toml behind `load_vault_settings` / `update_vault_settings` (dotted keys). */
+export function fakeVaultSettingsInvoke(
+  store: Record<string, unknown> = {},
+): InvokeFn & { store: Record<string, unknown> } {
+  const fn = (async (cmd: string, args?: unknown) => {
+    if (cmd === "load_vault_settings") {
+      const nested: Record<string, Record<string, unknown>> = {};
+      for (const [key, value] of Object.entries(store)) {
+        const [table, k] = key.split(".");
+        (nested[table] ??= {})[k] = value;
+      }
+      return { settings: nested };
+    }
+    if (cmd === "update_vault_settings") {
+      const { changes } = args as {
+        changes: { key: string; value: unknown }[];
+      };
+      for (const c of changes) {
+        if (c.value === null) {
+          delete store[c.key];
+        } else {
+          store[c.key] = c.value;
+        }
+      }
+    }
+    return undefined;
+  }) as InvokeFn & { store: Record<string, unknown> };
+  fn.store = store;
+  return fn;
+}

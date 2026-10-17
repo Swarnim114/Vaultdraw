@@ -15,6 +15,7 @@ import {
 import { registerCommandHandlers } from "../commands/handlerRegistry";
 import { GRAPH_COMMAND_IDS as ID } from "../commands/graphCommands";
 
+import type { GraphSession, GraphSource } from "./GraphSession";
 import type { GraphSettingsSaver } from "./graphSettingsStore";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
@@ -47,6 +48,10 @@ export interface GraphHostProps {
   onClosed: () => void;
   /** Tests: settings.toml transport. */
   invoke?: InvokeFn;
+  /** Tests / e2e: a fake graph source instead of the native `vault_graph`. */
+  graphSource?: GraphSource;
+  /** Tests / e2e: receives the live session once ready (null on close). */
+  onSession?: (session: GraphSession | null) => void;
 }
 
 type Flag = "showOrphans" | "showTags" | "showUnresolved";
@@ -60,9 +65,12 @@ export function GraphHost({
   onOpenChange,
   onClosed,
   invoke,
+  graphSource,
+  onSession,
 }: GraphHostProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<GraphMode>("global");
+  const [fitNonce, setFitNonce] = useState(0);
   const [settings, setSettings] = useState<GraphSettings | null>(null);
   const settingsRef = useRef<GraphSettings | null>(null);
   const saver = useRef<GraphSettingsSaver | null>(null);
@@ -149,14 +157,7 @@ export function GraphHost({
       [ID.toggleUnresolved]: toggle("showUnresolved"),
       [ID.fit]: async () => {
         await show();
-        // The view's own "fit" key (0); it bubbles to the view's key handler.
-        requestAnimationFrame(() =>
-          document
-            .querySelector(".vd-graph")
-            ?.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "0", bubbles: true }),
-            ),
-        );
+        setFitNonce((n) => n + 1);
       },
     });
   }, [open, show, close, commit]);
@@ -184,6 +185,9 @@ export function GraphHost({
         onClose={close}
         shortcutFor={shortcutFor}
         themeKey={themeKey}
+        fitNonce={fitNonce}
+        source={graphSource}
+        onSession={onSession}
       />
     </Suspense>
   );
