@@ -7,6 +7,7 @@
  */
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
@@ -14,8 +15,18 @@ import {
   useState,
 } from "react";
 
+import { ConfirmModal } from "../components/ConfirmModal";
+import { errorMessage } from "../vault/types";
+
 import { CheckpointDialog } from "./CheckpointDialog";
+import { publishHistoryBridge } from "./historyBridge";
+import {
+  deleteAllConfirm,
+  drawingName,
+  GIT_EXCLUDED_MESSAGE,
+} from "./historyConfirms";
 import { useHistoryCommands } from "./useHistoryCommands";
+import { useHistoryStatus } from "./useHistoryStatus";
 import { useHistorySync } from "./useHistorySync";
 
 import "./history.css";
@@ -28,7 +39,7 @@ const HistoryPanel = lazy(() => import("./panel/HistoryPanel"));
 
 export interface HistoryHostProps {
   repository: HistoryRepository;
-  vault: { handle: string; readOnly: boolean } | null;
+  vault: { handle: string; readOnly: boolean; path?: string } | null;
   /** Effective (global + per-vault) settings. */
   settings: HistorySettings;
   document: { id: string; path: string; revision: string } | null;
@@ -54,7 +65,7 @@ type Toast = {
 const TOAST_MS = 3000;
 const TOAST_ACTION_MS = 8000;
 
-export const HistoryHost = ({
+const HistoryHostImpl = ({
   repository,
   vault,
   settings,
@@ -73,6 +84,7 @@ export const HistoryHost = ({
   saveRef.current = { status, deleted };
   const getSaveState = useCallback(() => saveRef.current, []);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,7 +119,51 @@ export const HistoryHost = ({
 
   const handle = vault?.handle ?? null;
   const path = activeDoc?.path ?? null;
-  const canCheckpoint = !!handle && !!path && !vault?.readOnly;
+  const readOnly = vault?.readOnly ?? false;
+  const canCheckpoint = !!handle && !!path && !readOnly;
+
+  // One status read per vault (and after an action): only the git state is
+  // used here, to offer "Exclude history from git" in git vaults.
+  const { status: vaultStatus, refresh: refreshStatus } = useHistoryStatus(
+    repository,
+    handle,
+  );
+  const canExclude =
+    !!handle && !readOnly && !!vaultStatus?.gitRepo && !vaultStatus.gitExcluded;
+
+  useEffect(() => {
+    publishHistoryBridge(
+      handle ? { repository, handle, path, readOnly } : null,
+    );
+    return () => publishHistoryBridge(null);
+  }, [repository, handle, path, readOnly]);
+
+  const excludeFromGit = useCallback(async () => {
+    if (!handle) {
+      return;
+    }
+    try {
+      await repository.excludeFromGit(handle);
+      showToast(GIT_EXCLUDED_MESSAGE);
+    } catch (cause) {
+      showToast(errorMessage(cause), true);
+    }
+    void refreshStatus();
+  }, [handle, repository, showToast, refreshStatus]);
+
+  const deleteAll = useCallback(async () => {
+    setConfirmDeleteAll(false);
+    if (!handle || !path) {
+      return;
+    }
+    try {
+      await repository.deleteAll(handle, path);
+      showToast(`Deleted all history of ${drawingName(path)}`);
+    } catch (cause) {
+      showToast(errorMessage(cause), true);
+    }
+    void refreshStatus();
+  }, [handle, path, repository, showToast, refreshStatus]);
 
   useHistoryCommands({
     checkpoint: () => {
@@ -123,6 +179,9 @@ export const HistoryHost = ({
       setMode("fullscreen");
       setPanelOpen(true);
     },
+    deleteAll:
+      handle && path && !readOnly ? () => setConfirmDeleteAll(true) : undefined,
+    excludeFromGit: canExclude ? () => void excludeFromGit() : undefined,
   });
 
   // The panel and dialog belong to one drawing: closing it closes them.
@@ -130,6 +189,7 @@ export const HistoryHost = ({
     if (!path) {
       setPanelOpen(false);
       setDialogOpen(false);
+      setConfirmDeleteAll(false);
     }
   }, [path]);
 
@@ -167,6 +227,9 @@ export const HistoryHost = ({
             onModeChange={setMode}
             theme={theme}
             readOnly={vault?.readOnly}
+            vaultKey={vault?.path}
+            highlightChanges={settings.highlightChanges}
+            onGitChange={() => void refreshStatus()}
             saveState={getSaveState}
             flush={flush}
             notify={notify}
@@ -180,6 +243,14 @@ export const HistoryHost = ({
         <CheckpointDialog
           onSave={saveCheckpoint}
           onCancel={() => setDialogOpen(false)}
+          ownerDocument={ownerDocument}
+        />
+      )}
+      {confirmDeleteAll && path && (
+        <ConfirmModal
+          {...deleteAllConfirm(path)}
+          onConfirm={() => void deleteAll()}
+          onCancel={() => setConfirmDeleteAll(false)}
           ownerDocument={ownerDocument}
         />
       )}
@@ -208,3 +279,6 @@ export const HistoryHost = ({
     </>
   );
 };
+
+/** Memoised: re-renders only when a prop changes (the shell re-renders often). */
+export const HistoryHost = memo(HistoryHostImpl);

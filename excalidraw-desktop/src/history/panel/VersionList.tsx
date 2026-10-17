@@ -15,6 +15,8 @@ export interface VersionListProps {
   /** +1 = older (Down), -1 = newer (Up). */
   onStep: (delta: 1 | -1) => void;
   onEnter: () => void;
+  /** Delete a checkpoint row; absent = no delete button. */
+  onDelete?: (id: string) => void;
 }
 
 /** Windowed list: only the rows near the scroll position are mounted. */
@@ -26,6 +28,7 @@ export const VersionList = ({
   onSelect,
   onStep,
   onEnter,
+  onDelete,
 }: VersionListProps) => {
   const { start, end, scrollToRow } = useRowWindow(listRef, versions.length);
 
@@ -66,6 +69,7 @@ export const VersionList = ({
           selected={v.id === selectedId}
           thumbs={thumbs}
           onSelect={onSelect}
+          onDelete={onDelete}
         />
       ))}
     </ul>

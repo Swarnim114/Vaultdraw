@@ -1,0 +1,40 @@
+.vault-history-usage {
+  margin-top: 8px;
+  max-width: 420px;
+}
+
+.vault-history-usage__bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  background-color: var(--vault-surface-hover);
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vault-radius);
+}
+
+.vault-history-usage__fill,
+.vault-history-usage__checkpoints {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.vault-history-usage__fill {
+  background-color: var(--vault-primary-border);
+}
+
+.vault-history-usage__checkpoints {
+  background-color: var(--vault-primary);
+}
+
+.vault-history-usage__text,
+.vault-history-note-line {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: var(--vault-text-muted);
+}
+
+.vault-history-note-line--error {
+  color: var(--vault-danger);
+}

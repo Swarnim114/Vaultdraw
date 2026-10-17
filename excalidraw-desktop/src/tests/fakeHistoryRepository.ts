@@ -92,6 +92,9 @@ export class FakeHistoryRepository implements HistoryRepository {
   private committed = new Map<string, string>(); // path -> latest committed json
   private dirty = new Set<string>(); // paths whose committed state is unversioned
   private openPath: string | null = null;
+  private gitExcluded = false;
+  /** Test hook: make `status` report a git vault. */
+  gitRepo = false;
   private counter = 0;
   private lastTime = 0;
   private listeners = new Set<(event: HistoryChange) => void>();
@@ -239,7 +242,8 @@ export class FakeHistoryRepository implements HistoryRepository {
       staging: true,
       gcBlocked: false,
       formatNewer: false,
-      gitRepo: false,
+      gitRepo: this.gitRepo,
+      gitExcluded: this.gitExcluded,
       lastError: null,
     };
   }
@@ -405,6 +409,7 @@ export class FakeHistoryRepository implements HistoryRepository {
 
   async excludeFromGit(_handle: string): Promise<void> {
     this.calls.push("excludeFromGit");
+    this.gitExcluded = true;
   }
 
   async subscribe(cb: (event: HistoryChange) => void) {

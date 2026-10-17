@@ -1,5 +1,7 @@
 import { memo } from "react";
 
+import { IconTrash } from "../../components/Icons";
+
 import { formatTime, versionLabel } from "./versionLabels";
 import { useThumbnail, type PanelThumbnails } from "./thumbnails";
 
@@ -10,6 +12,8 @@ export interface VersionRowProps {
   selected: boolean;
   thumbs: PanelThumbnails;
   onSelect: (id: string) => void;
+  /** Offered on checkpoint rows only. */
+  onDelete?: (id: string) => void;
 }
 
 /** Memoised: a scrub or a 30 s tick re-renders only the rows whose props change. */
@@ -18,6 +22,7 @@ const VersionRowImpl = ({
   selected,
   thumbs,
   onSelect,
+  onDelete,
 }: VersionRowProps) => {
   const thumb = useThumbnail(thumbs, v);
   return (
@@ -58,6 +63,22 @@ const VersionRowImpl = ({
           </span>
         )}
       </span>
+      {onDelete && v.reason === "checkpoint" && (
+        <button
+          type="button"
+          className="vault-btn vault-btn--ghost vault-btn--icon vault-history-row__delete"
+          aria-label={`Delete ${versionLabel(v)}`}
+          title="Delete checkpoint"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(v.id);
+          }}
+          // The list handles Enter (restore); a button press must stay its own.
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <IconTrash width="14" height="14" />
+        </button>
+      )}
     </li>
   );
 };

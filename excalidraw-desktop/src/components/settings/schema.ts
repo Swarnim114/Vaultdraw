@@ -8,6 +8,10 @@
  */
 
 import {
+  HISTORY_SETTINGS_PAGES,
+  HISTORY_SETTINGS_SCHEMA,
+} from "../../history/historySettingsSchema";
+import {
   STYLE_KEY_LABELS,
   TOOL_DEFAULT_TOOLS,
   TOOL_LABELS,
@@ -24,6 +28,7 @@ export type SettingsPageId =
   | "tools"
   | "files"
   | "links"
+  | "history"
   | "hotkeys";
 
 export interface SettingsPage {
@@ -57,6 +62,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
   },
   { id: "files", label: "Files", group: "Options" },
   { id: "links", label: "Links", group: "Options" },
+  ...HISTORY_SETTINGS_PAGES,
   { id: "hotkeys", label: "Hotkeys", group: "Options" },
 ];
 
@@ -695,6 +701,8 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["tag", "sort", "order", "count", "name", "pane"],
     configKey: "tags.pane_sort",
   },
+
+  ...HISTORY_SETTINGS_SCHEMA,
 
   // ---- Hotkeys ----
   {

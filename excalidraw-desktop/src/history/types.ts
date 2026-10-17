@@ -65,6 +65,8 @@ export interface HistoryStatus {
   gcBlocked: boolean;
   formatNewer: boolean;
   gitRepo: boolean;
+  /** The vault's .gitignore already excludes the history folder. */
+  gitExcluded: boolean;
   lastError: { code: string; message: string } | null;
 }
 

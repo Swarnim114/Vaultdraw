@@ -5,6 +5,7 @@ import { drawingControls } from "./Drawing";
 import { filesControls } from "./Files";
 import { generalControls } from "./General";
 import { hotkeysControls } from "./Hotkeys";
+import { historyControls } from "./History";
 import { interfaceControls } from "./Interface";
 import { linksControls } from "./Links";
 import { tagsControls } from "./TagsSettings";
@@ -27,5 +28,6 @@ export const SETTING_CONTROLS: SettingControls = {
   ...pdfImportControls,
   ...linksControls,
   ...tagsControls,
+  ...historyControls,
   ...hotkeysControls,
 };

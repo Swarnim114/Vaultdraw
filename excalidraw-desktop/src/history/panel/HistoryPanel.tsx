@@ -4,7 +4,15 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { getEditorApi } from "../../editor/editorApi";
 import { errorMessage } from "../../vault/types";
+import { ConfirmModal } from "../../components/ConfirmModal";
 import { IconClose } from "../../components/Icons";
+import { GitNotice } from "../GitNotice";
+import {
+  deleteCheckpointConfirm,
+  GIT_EXCLUDED_MESSAGE,
+} from "../historyConfirms";
+import { useHistoryStatus } from "../useHistoryStatus";
+
 import { RestoreDialog } from "../RestoreDialog";
 import {
   copySelectionInto,
@@ -17,10 +25,13 @@ import {
 import { openImageExport } from "../preview/exportImage";
 import { createVersionCache } from "../preview/versionCache";
 
+import { HistoryWarnings } from "./HistoryWarnings";
+
 import { PreviewOverlay } from "./PreviewOverlay";
 import { Timeline } from "./Timeline";
 import { VersionList } from "./VersionList";
 import { createPanelThumbnails } from "./thumbnails";
+import { useCheckpointDelete } from "./useCheckpointDelete";
 import { usePanelCommands } from "./usePanelCommands";
 import {
   formatClock,
@@ -66,6 +77,12 @@ export interface HistoryPanelProps {
   /** Native save used by the preview's image export dialog. */
   onSaveFile?: (fileName: string, bytes: Uint8Array) => Promise<unknown>;
   ownerDocument?: Document | null;
+  /** Key of per-vault UI state (the vault path); the handle when omitted. */
+  vaultKey?: string;
+  /** `history.highlight_changes`, passed on to the preview overlay. */
+  highlightChanges?: boolean;
+  /** The git state changed (the notice's Exclude button was used). */
+  onGitChange?: () => void;
 }
 
 const PREVIEW_LIVE_MAX_ELEMENTS = 500;
@@ -95,6 +112,9 @@ const HistoryPanel = ({
   onOpenDrawing,
   onSaveFile,
   ownerDocument,
+  vaultKey,
+  highlightChanges = true,
+  onGitChange,
 }: HistoryPanelProps) => {
   const doc = ownerDocument ?? document;
   const [listing, setListing] = useState<HistoryListing | null>(null);
@@ -136,6 +156,11 @@ const HistoryPanel = ({
     [cache, thumbs],
   );
 
+  const { status, refresh: refreshStatus } = useHistoryStatus(
+    repository,
+    handle,
+  );
+
   const refresh = useCallback(async () => {
     const mine = ++generation.current;
     try {
@@ -161,6 +186,7 @@ const HistoryPanel = ({
       .subscribe((event) => {
         if (event.handle === handle && event.paths.includes(path)) {
           void refresh();
+          void refreshStatus();
         }
       })
       .then((unsubscribe) => {
@@ -178,7 +204,7 @@ const HistoryPanel = ({
       generation.current++;
       off?.();
     };
-  }, [repository, handle, path, refresh]);
+  }, [repository, handle, path, refresh, refreshStatus]);
 
   // Keep "N min ago" honest while the panel is open (the only timer).
   useEffect(() => {
@@ -388,6 +414,27 @@ const HistoryPanel = ({
     { hasVersion: !!selected, hasSelection: selectionCount > 0 },
   );
 
+  const checkpointDelete = useCheckpointDelete({
+    repository,
+    handle,
+    versions,
+    selected,
+    readOnly,
+    refresh: () => Promise.all([refresh(), refreshStatus()]).then(() => {}),
+    notify,
+  });
+
+  const excludeFromGit = async () => {
+    try {
+      await repository.excludeFromGit(handle);
+      notify(GIT_EXCLUDED_MESSAGE);
+    } catch (cause) {
+      fail(cause);
+    }
+    void refreshStatus();
+    onGitChange?.();
+  };
+
   // Scrubbing: a cached small scene may preview live; the rest waits to settle.
   const onScrub = useCallback(
     (id: string | null) => {
@@ -431,7 +478,7 @@ const HistoryPanel = ({
       aria-label="History"
       onKeyDown={(e) => {
         // The restore dialog owns its own Escape.
-        if (e.key !== "Escape" || dialog) {
+        if (e.key !== "Escape" || dialog || checkpointDelete.confirming) {
           return;
         }
         e.preventDefault();
@@ -474,6 +521,14 @@ const HistoryPanel = ({
           ? "No versions yet"
           : `Last version: ${relativeTime(last, now)}`}
       </p>
+      <GitNotice
+        status={status}
+        vaultKey={vaultKey ?? handle}
+        disabled={readOnly}
+        onExclude={excludeFromGit}
+        ownerWindow={doc.defaultView}
+      />
+      <HistoryWarnings status={status} />
       {error && <div className="vault-error-text">{error}</div>}
       <VersionList
         versions={versions}
@@ -483,6 +538,7 @@ const HistoryPanel = ({
         onSelect={select}
         onStep={step}
         onEnter={openDialog}
+        onDelete={readOnly ? undefined : checkpointDelete.request}
       />
       {versions.length > 0 && !fullscreen && timeline}
       {selected && (
@@ -502,6 +558,21 @@ const HistoryPanel = ({
           onCopy={copySelection}
           onBack={() => backToCurrent()}
           timeline={timeline}
+          getCurrentElements={() =>
+            (documentId
+              ? getEditorApi(documentId)
+              : undefined
+            )?.getSceneElementsIncludingDeleted() ?? []
+          }
+          highlightChanges={highlightChanges}
+        />
+      )}
+      {checkpointDelete.pending && (
+        <ConfirmModal
+          {...deleteCheckpointConfirm(versionLabel(checkpointDelete.pending))}
+          onConfirm={() => void checkpointDelete.confirm()}
+          onCancel={checkpointDelete.cancel}
+          ownerDocument={ownerDocument}
         />
       )}
       {dialog && selected && (

@@ -3,6 +3,7 @@ import { useRef } from "react";
 import {
   IconClose,
   IconFolder,
+  IconHistory,
   IconKeyboard,
   IconLink,
   IconLayout,
@@ -30,6 +31,7 @@ export const PAGE_ICONS: Record<SettingsPageId, ReactNode> = {
   tools: <IconTools {...NAV_ICON} />,
   files: <IconFolder {...NAV_ICON} />,
   links: <IconLink {...NAV_ICON} />,
+  history: <IconHistory {...NAV_ICON} />,
   hotkeys: <IconKeyboard {...NAV_ICON} />,
 };
 

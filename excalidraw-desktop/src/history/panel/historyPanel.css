@@ -272,3 +272,43 @@ body.vault-history-previewing > .excalidraw-modal-container {
   inset: 0;
   z-index: 1000;
 }
+
+/* Git notice, warnings */
+.vault-history-panel__notice,
+.vault-history-panel__warnings {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--vault-text-muted);
+  background-color: var(--vault-surface-hover);
+  border-bottom: 1px solid var(--vault-border);
+}
+
+.vault-history-panel__notice p,
+.vault-history-panel__warnings p {
+  margin: 0 0 6px;
+}
+
+.vault-history-panel__warnings p:last-child {
+  margin-bottom: 0;
+}
+
+.vault-history-panel__notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Delete button of checkpoint rows: on hover, on focus, or when selected */
+.vault-history-row__delete {
+  flex: 0 0 auto;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.vault-history-row:hover .vault-history-row__delete,
+.vault-history-row[data-selected="true"] .vault-history-row__delete,
+.vault-history-row__delete:focus-visible {
+  opacity: 1;
+}
