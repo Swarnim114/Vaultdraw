@@ -1,0 +1,89 @@
+// Base-vs-head A/B: interleaved single-run harness invocations, merged per side.
+// Pure helpers (interleaveOrder, mergeSide, buildAbResult) are unit-tested; the rest shells out to git / run.mjs.
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { aggregate } from "./stats.mjs";
+
+/** [{side, index}] base,head,base,head,... (pairs of each; index = per-side run number). */
+export function interleaveOrder(pairs) {
+  const out = [];
+  for (let i = 0; i < pairs; i++) out.push({ side: "base", index: i }, { side: "head", index: i });
+  return out;
+}
+
+/** Per-run result JSONs of one side -> { raw (per-run samples), metrics (aggregated), errors, perRunLoad }. */
+export function mergeSide(results, unitOf = () => "") {
+  const raw = results.flatMap((r) => r.raw?.browser ?? []);
+  return {
+    raw,
+    metrics: aggregate(raw, unitOf),
+    errors: results.flatMap((r) => r.errors ?? []),
+    perRunLoad: results.map((r) => r.load?.start).filter(Number.isFinite),
+  };
+}
+
+/** Head result in run.mjs's result format, plus the ab field. `template` is any head run result (git, machine, mode...). */
+export function buildAbResult({ template, head, base, baseSha, pairs, load, notes = [] }) {
+  const perRun = [...head.perRunLoad, ...base.perRunLoad];
+  const fullLoad = { ...load, perRun };
+  return {
+    ...template,
+    createdAt: new Date().toISOString(),
+    config: { ...template.config, runs: head.raw.length, warmup: 0 },
+    load: fullLoad,
+    metrics: head.metrics,
+    raw: { app: [], browser: head.raw },
+    notes: [...notes, ...(template.notes ?? []).filter((n) => !n.startsWith("browser info"))],
+    errors: [...head.errors, ...base.errors.map((e) => `base: ${e}`)],
+    ab: { base: { sha: baseSha, metrics: base.metrics }, pairs, load: fullLoad },
+  };
+}
+
+const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
+
+/** Main checkout (owner of the shared node_modules) = parent of the repo's common git dir. */
+export const mainCheckout = (wt) => path.dirname(path.resolve(wt, git(wt, "rev-parse", "--git-common-dir")));
+
+/** Create (or reuse) a detached worktree of `ref` under <headWt>/.cache/perf/ab/base-<shortsha>. */
+export function ensureBaseWorktree(headWt, ref) {
+  const sha = git(headWt, "rev-parse", "--verify", `${ref}^{commit}`);
+  const dir = path.join(headWt, ".cache", "perf", "ab", `base-${sha.slice(0, 10)}`);
+  if (!existsSync(dir)) {
+    mkdirSync(path.dirname(dir), { recursive: true });
+    git(headWt, "worktree", "add", "--detach", "-f", dir, sha);
+  }
+  linkNodeModules(mainCheckout(headWt), dir);
+  return { dir, sha };
+}
+
+/** Same set as personal/feature/new-worktree.sh. */
+export function linkNodeModules(main, wt) {
+  const rels = ["node_modules", "excalidraw-desktop/node_modules"];
+  const pkgs = path.join(main, "packages");
+  if (existsSync(pkgs)) for (const d of readdirSync(pkgs)) rels.push(`packages/${d}/node_modules`);
+  for (const rel of rels) {
+    const src = path.join(main, rel);
+    const dst = path.join(wt, rel);
+    if (existsSync(src) && !existsSync(dst)) symlinkSync(src, dst);
+  }
+}
+
+/** One `run.mjs --runs 1` invocation (head's runner, pointed at `wtRoot` via PERF_WT_ROOT). */
+export function runOnce({ runMjs, wtRoot, fixturesDir, out, lowEnd, build, log }) {
+  const args = [runMjs, "--skip-app", "--runs", "1", "--quiet-wait", "0", "--out", out];
+  if (lowEnd) args.push("--low-end");
+  if (!build) args.push("--no-build");
+  return new Promise((resolve, reject) => {
+    const c = spawn(process.execPath, args, {
+      stdio: ["ignore", "ignore", "inherit"],
+      env: { ...process.env, PERF_WT_ROOT: wtRoot, PERF_FIXTURES_DIR: fixturesDir },
+    });
+    c.on("error", reject);
+    c.on("exit", (code) => {
+      if (!existsSync(out)) return reject(new Error(`run.mjs exited ${code} without a result file`));
+      log?.(`run exited ${code}`);
+      resolve(JSON.parse(readFileSync(out, "utf8")));
+    });
+  });
+}

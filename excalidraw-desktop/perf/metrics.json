@@ -123,6 +123,15 @@
     },
     "browser.memory.jsHeapPeakMB": { "unit": "MB", "gate": ["median"], "slack": 5 },
     "browser.longTasks.count": { "unit": "count", "gate": ["median"], "slack": 1 },
-    "browser.longTasks.totalMs": { "unit": "ms", "gate": ["median"], "slack": 5 }
+    "browser.longTasks.totalMs": { "unit": "ms", "gate": ["median"], "slack": 5 },
+    "browser.cpu.task": { "unit": "ms", "gate": ["median"], "slack": 20, "desc": "load-insensitive CDP delta over one page run, TaskDuration: main-thread task time over the whole page run" },
+    "browser.cpu.script": { "unit": "ms", "gate": ["median"], "slack": 10, "desc": "load-insensitive CDP delta over one page run, ScriptDuration: JS execution time" },
+    "browser.cpu.layout": { "unit": "ms", "gate": ["median"], "slack": 5, "desc": "load-insensitive CDP delta over one page run, LayoutDuration: layout time" },
+    "browser.cpu.recalcStyle": { "unit": "ms", "gate": ["median"], "slack": 5, "desc": "load-insensitive CDP delta over one page run, RecalcStyleDuration: style recalculation time" },
+    "browser.cpu.v8Compile": { "unit": "ms", "gate": ["median"], "slack": 5, "desc": "load-insensitive CDP delta over one page run, V8CompileDuration: V8 compile time" },
+    "browser.cpu.thread": { "unit": "ms", "gate": ["median"], "slack": 20, "desc": "load-insensitive CDP delta over one page run, ThreadTime: CPU time of the renderer main thread (real CPU, not wall)" },
+    "browser.cpu.process": { "unit": "ms", "gate": ["median"], "slack": 30, "desc": "load-insensitive CDP delta over one page run, ProcessTime: CPU time of the whole renderer process (real CPU, not wall)" },
+    "browser.count.layout": { "unit": "count", "gate": ["median"], "slack": 5, "desc": "CDP LayoutCount delta over one page run (deterministic, load-independent)" },
+    "browser.count.recalcStyle": { "unit": "count", "gate": ["median"], "slack": 5, "desc": "CDP RecalcStyleCount delta over one page run (deterministic, load-independent)" }
   }
 }

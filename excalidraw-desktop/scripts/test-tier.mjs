@@ -91,8 +91,9 @@ if (tier === "fast") {
   }
   if (!o["no-perf"]) {
     if (tier === "merge") {
-      // Quick perf: interleaved A/B of the merge base vs this checkout, headless Chromium, normal profile.
-      perf("perf A/B vs base (2 pairs)", ["ab.mjs", "--base", base, "--pairs", "2"]);
+      // Quick perf: one interleaved base/head pair (headless Chromium, normal profile). The CPU-time and
+      // count metrics carry the signal under load; a flagged regression is confirmed with --pairs 3.
+      perf("perf A/B vs base (1 pair)", ["ab.mjs", "--base", base, "--quiet-wait", "60"]);
     } else {
       perf("perf milestone (normal)", ["run.mjs", "--milestone"]);
       perf("perf milestone (low-end)", ["run.mjs", "--milestone", "--low-end"]);

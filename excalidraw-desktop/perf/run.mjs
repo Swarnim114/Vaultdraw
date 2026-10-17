@@ -12,6 +12,7 @@ import { loadCatalogue, specFor, unitOf } from "./lib/catalogue.mjs";
 import { aggregate } from "./lib/stats.mjs";
 import { compare, pickBaseline } from "./lib/compare.mjs";
 import { buildPerfApp, reuseBuiltApp, runAppOnce, gitInfo, perfCacheDir, isScreenLocked } from "./lib/app.mjs";
+import { waitQuiet, loadAvg1, loadNote, loadSummary, DEFAULT_QUIET_LOAD, DEFAULT_QUIET_WAIT_S } from "./lib/load.mjs";
 import { machineInfo, resultTable, comparisonTable, updateBaseline } from "./lib/report.mjs";
 
 const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
@@ -31,7 +32,15 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
   --memory-pressure      run 'memory_pressure -S' (simulated; needs root, else noted and ignored) in normal mode too
   --keep-runs            keep per-run vault clones under .cache/perf/runs
   PERF_MEM_TIMELINE=1    (env) note per-process footprint at every phase boundary
+  --quiet-load X         quiet gate: wait for 1-min load average < X before measuring (default ${DEFAULT_QUIET_LOAD})
+  --quiet-wait S         wait up to S seconds for it (default ${DEFAULT_QUIET_WAIT_S}; 0 = don't wait), then measure anyway
+  --require-quiet        exit 1 instead of measuring when the machine never got quiet
+  PERF_WT_ROOT           (env) measure another worktree's app/harness with this runner's code (ab.mjs uses it for the base side)
+  PERF_FIXTURES_DIR      (env) fixture vault cache dir (default <wt>/.cache/perf/fixtures); ab.mjs shares one
   --quick                1 run, no warmup, no extra noise runs (harness smoke test)
+
+Recommended merge gate: node excalidraw-desktop/perf/ab.mjs --base <ref> (interleaved base/head A/B in one session; bisect only after a
+confirmed regression). Wall-clock metrics swing with machine load; browser.cpu.* / browser.count.* (CDP CPU time, event counts) are load-insensitive.
 
 The runner does not take the build lock. Wrap the whole command:
   lockf -k /Users/kalon/Opensource/excalidraw/.cache/build.lock node excalidraw-desktop/perf/run.mjs [options]
@@ -42,14 +51,15 @@ const { values: o } = parseArgs({
     "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
     out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
     "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
-    "keep-runs": { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help) { console.log(HELP); process.exit(0); }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const wtRoot = path.resolve(here, "..", "..");
+const wtRoot = process.env.PERF_WT_ROOT ? path.resolve(process.env.PERF_WT_ROOT) : path.resolve(here, "..", "..");
 const cacheDir = perfCacheDir(wtRoot);
+const fixturesDir = process.env.PERF_FIXTURES_DIR ? path.resolve(process.env.PERF_FIXTURES_DIR) : path.join(cacheDir, "fixtures");
 const mode = o["low-end"] ? "low-end" : "normal";
 const runs = o.quick ? 1 : Number(o.runs ?? (o.milestone ? 4 : 2));
 const warmup = o.quick ? 0 : Number(o.warmup ?? (o.milestone ? 1 : 0));
@@ -68,6 +78,19 @@ let rawBrowser = [];
 let git = gitInfo(wtRoot);
 let fixtureHash = createHash("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 12);
 
+// ---- quiet-machine gate ----
+const load = await waitQuiet({
+  threshold: o["quiet-load"] !== undefined ? Number(o["quiet-load"]) : DEFAULT_QUIET_LOAD,
+  waitS: o["quiet-wait"] !== undefined ? Number(o["quiet-wait"]) : DEFAULT_QUIET_WAIT_S,
+  log,
+});
+load.perRun = [];
+const sampleRunLoad = () => { const l = loadAvg1(); if (Number.isFinite(l)) load.perRun.push(Math.round(l * 100) / 100); };
+if (!load.quiet && o["require-quiet"]) {
+  console.error(`[perf] machine not quiet after ${load.waitedS}s: ${loadSummary(load)}; exiting (--require-quiet)`);
+  process.exit(1);
+}
+
 // Keep the display awake (and the session from idle-locking) for the whole run: a locked or
 // sleeping screen hides the WebView, which stops requestAnimationFrame in the packaged app.
 try {
@@ -85,7 +108,7 @@ if (!skipApp && isScreenLocked()) {
 } else if (!skipApp) {
   try {
     const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
-    const { vaultDir, manifest } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
+    const { vaultDir, manifest } = await ensureVault({ cacheDir: fixturesDir, config, log });
     if (manifest?.hash) fixtureHash = String(manifest.hash).slice(0, 12);
     const built = o["no-build"] ? reuseBuiltApp({ wtRoot }) : await buildPerfApp({ wtRoot, log });
     git = built.git ?? git;
@@ -113,6 +136,7 @@ async function collectApp(count, label) {
       return;
     }
     log(`app ${label} run ${i + 1}/${count} (${mode})`);
+    if (label !== "warmup") sampleRunLoad();
     let r = await appTarget.runOne(rawApp.length + i + (label === "warmup" ? 1000 : 0));
     if (r.errors.length) {
       // One retry: other sessions launch apps with the same bundle id and can quit ours from outside.
@@ -149,9 +173,9 @@ if (!o["skip-browser"]) {
     try {
       const { runBrowser } = await import(pathToFileURL(bf).href);
       const { ensureVault } = await import(pathToFileURL(path.join(here, "lib", "fixtures.mjs")).href);
-      const { vaultDir } = await ensureVault({ cacheDir: path.join(cacheDir, "fixtures"), config, log });
+      const { vaultDir } = await ensureVault({ cacheDir: fixturesDir, config, log });
       // runBrowser discards its own warmup runs and returns only measured ones.
-      const r = await runBrowser({ mode, runs, warmup, vaultDir, config, build: !o["no-build"], log });
+      const r = await runBrowser({ mode, runs, warmup, vaultDir, config, wtRoot, build: !o["no-build"], onRun: () => { if (!appTarget) sampleRunLoad(); }, log });
       for (const e of r.errors ?? []) errors.push(`browser mode: ${e}`);
       rawBrowser = (r.samplesPerRun ?? []).map((run) =>
         Object.fromEntries(Object.entries(run).map(([k, v]) => [k.startsWith("browser.") ? k : `browser.${k}`, v])));
@@ -170,10 +194,14 @@ for (const [id, m] of Object.entries(metrics)) if (!specFor(catalogue, id)) note
 const noisyIds = Object.entries(metrics).filter(([id, m]) => m.noisy && specFor(catalogue, id)).map(([id]) => id);
 if (noisyIds.length) notes.push(`still noisy: ${noisyIds.join(", ")}`);
 
+load.end = Math.round((loadAvg1() || load.end) * 100) / 100;
+const lnote = loadNote(load);
+if (lnote) notes.push(lnote);
+
 const result = {
   version: 1, mode, createdAt: new Date().toISOString(), git, machine: machineInfo(),
   config: { runs: rawApp.length || rawBrowser.length, warmup, fixtureHash, drawingCount: config.drawingCount },
-  metrics, raw: { app: rawApp, browser: rawBrowser }, notes, errors,
+  load, metrics, raw: { app: rawApp, browser: rawBrowser }, notes, errors,
 };
 
 const outFile = o.out ? path.resolve(o.out) : path.join(cacheDir, "results", `${new Date().toISOString().replace(/[:.]/g, "-")}-${mode}.json`);
@@ -182,6 +210,7 @@ writeFileSync(outFile, JSON.stringify(result, null, 2) + "\n");
 
 console.log(`\nVaultdraw perf - ${mode} - ${rawApp.length || rawBrowser.length} measured run(s) + ${warmup} warmup - ${git.sha.slice(0, 10)}${git.dirty ? " (dirty)" : ""}`);
 console.log(resultTable(result, catalogue));
+console.log(loadSummary(load));
 for (const n of notes) console.log(`note: ${n}`);
 
 let exitCode = 0;

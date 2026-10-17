@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "@playwright/test";
 
+import { cdpDeltas } from "./cdp-metrics.mjs";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(here, "../..");
 const defaultWtRoot = path.resolve(desktopDir, "..");
@@ -189,6 +191,9 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
     if (mode === "low-end") {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE_RATE });
     }
+    const getMetrics = async () =>
+      (await cdp.send("Performance.getMetrics")).metrics;
+    const startMetrics = await getMetrics();
     let peak = 0;
     const sampleHeap = async () => {
       try {
@@ -204,6 +209,7 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
     let tasks = [];
     let marks = [];
     let endT = 0;
+    let endMetrics = [];
     try {
       await page.goto(`http://127.0.0.1:${port}/`);
       try {
@@ -253,6 +259,7 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
         );
       }
       await sampleHeap();
+      endMetrics = await getMetrics();
       ({ result, tasks, marks, endT } = await page.evaluate(() => ({
         result: window.__perfResult,
         tasks: window.__longTasks,
@@ -262,7 +269,14 @@ async function onePage(browser, { port, mode, timeoutMs, log }) {
     } finally {
       clearInterval(timer);
     }
-    return { result, tasks, marks, endT, peakMB: peak / (1024 * 1024) };
+    return {
+      result,
+      tasks,
+      marks,
+      endT,
+      peakMB: peak / (1024 * 1024),
+      cdp: { start: startMetrics, end: endMetrics },
+    };
   } finally {
     await context.close().catch(() => {});
   }
@@ -276,6 +290,7 @@ export async function runBrowser({
   config,
   wtRoot = defaultWtRoot,
   build = true,
+  onRun = () => {},
   log = () => {},
 }) {
   const desktop = path.join(wtRoot, "excalidraw-desktop");
@@ -320,6 +335,9 @@ export async function runBrowser({
           isWarmup ? "warmup" : `run ${i - warmup + 1}/${runs}`
         } (${mode})`,
       );
+      if (!isWarmup) {
+        onRun(i - warmup);
+      }
       let page;
       // Headless rAF occasionally stalls under heavy machine load: retry a stalled run once.
       for (let attempt = 0; ; attempt++) {
@@ -337,7 +355,10 @@ export async function runBrowser({
           log(`[browser] ${error.message.slice(0, 300)}; retrying`);
         }
       }
-      const { result, tasks, marks, endT, peakMB } = page;
+      const { result, tasks, marks, endT, peakMB, cdp } = page;
+      if (!info.cdpMetricNames) {
+        info.cdpMetricNames = cdp.end.map((m) => m.name);
+      }
       if (isWarmup) {
         continue;
       }
@@ -349,6 +370,8 @@ export async function runBrowser({
       const lt = longTaskStats(tasks, marks, endT);
       out["browser.longTasks.count"] = [lt.count];
       out["browser.longTasks.totalMs"] = [lt.totalMs];
+      // CPU time / event counts over the whole page run: far less load-sensitive than wall time.
+      Object.assign(out, cdpDeltas(cdp.start, cdp.end));
       samplesPerRun.push(out);
       Object.assign(info, result.info ?? {});
       for (const e of result.errors ?? []) {
