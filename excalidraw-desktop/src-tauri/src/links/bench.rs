@@ -566,6 +566,7 @@ fn bench_tag_rename() {
     runs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     println!("tag job over 100 x {:.0} KB files incl. fsync: min {:.0} ms  p50 {:.0} ms  max {:.0} ms ({:.2} ms/file)", body.len() as f64 / 1e3, runs[0], runs[3], runs[6], runs[3] / 100.0);
     println!("budgets: plan <= 50 ms; job <= 500 ms; 2 MB rewrite <= 1 ms [min {:.3}, p50 {w50:.3}]", one[0]);
+}
 
 /// P3 graph export: `cargo test --release --lib links::bench::bench_graph_export -- --ignored --nocapture`
 /// Budgets: encode (warm link index) 10k <= 2 ms, 50k <= 10 ms. Report-only.
