@@ -8,7 +8,6 @@ import { DEFAULT_GRAPH_SETTINGS } from "../src/graph/settings";
 import type { GraphSession, GraphSource } from "../src/graph/GraphSession";
 import type { GraphMode, GraphSettings } from "../src/graph/settings";
 
-
 /**
  * Graph e2e/perf harness (`e2e.html?graph=N`): mounts the real GraphView over `fakeGraph(N)` and
  * an in-memory layout store, no Rust. Params: `graph=N` (nodes), `canvas2d=1` (skip WebGL),
