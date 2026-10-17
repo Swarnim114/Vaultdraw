@@ -64,6 +64,8 @@ import {
   isPaperColor,
   isPaperMajorEvery,
   isHintChars,
+  isHoverPreview,
+  isLinkColor,
   isNewLinkFormat,
   isOpenModifier,
   isShapeLinkFormat,
@@ -189,6 +191,9 @@ type ConfigField =
   | "linkUpdateOnRename"
   | "linkAutocomplete"
   | "linkHintChars"
+  | "linkStyle"
+  | "linkColor"
+  | "linkHoverPreview"
   | "tagAutocomplete"
   | "tagPaneSort"
   | "penPresets"
@@ -483,6 +488,24 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     expected:
       'at least 2 different lowercase characters with no spaces, like "asdfghjkl"',
     valid: isHintChars,
+  },
+  {
+    field: "linkStyle",
+    key: "links.style_links",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "linkColor",
+    key: "links.color",
+    expected: '"accent" or a hex colour like "#6965db"',
+    valid: isLinkColor,
+  },
+  {
+    field: "linkHoverPreview",
+    key: "links.hover_preview",
+    expected: '"always", "modifier" or "off"',
+    valid: isHoverPreview,
   },
   {
     field: "tagAutocomplete",

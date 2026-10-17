@@ -21,6 +21,7 @@ import type { MutableRefObject } from "react";
 import type { TagsSettings } from "../../tags/types";
 import type { ElementEdit, LinksSettings, VaultLinks } from "../../links/types";
 import type { EditorLinksCallbacks } from "./useEditorLinks";
+import type { ReadDrawing } from "./preview/previewThumbnails";
 
 /** What the app can call on the open editor. */
 export type EditorLinksBridge = {
@@ -43,10 +44,17 @@ export type EditorLinksWiring = {
   getRecent?: () => readonly string[];
   /** `tags.autocomplete`. Omitted: default (on). Wire the real settings here. */
   tagsSettings?: TagsSettings;
+  /** Reads a vault drawing (hover preview thumbnails). */
+  readDrawing?: ReadDrawing;
 };
 
 const NO_NAMES: readonly string[] = [];
-const OFF: LinksSettings = { ...DEFAULT_LINKS_SETTINGS, autocomplete: false };
+const OFF: LinksSettings = {
+  ...DEFAULT_LINKS_SETTINGS,
+  autocomplete: false,
+  styleLinks: false,
+  hoverPreview: "off",
+};
 const TAGS_OFF: TagsSettings = {
   ...DEFAULT_TAGS_SETTINGS,
   autocomplete: false,
@@ -74,6 +82,7 @@ export function useVaultEditorLinks(
     handle: wiring?.handle,
     getRecent: wiring?.getRecent,
     tagsSettings: wiring ? wiring.tagsSettings : TAGS_OFF,
+    readDrawing: wiring?.readDrawing,
   });
   const live = useRef({ controller, wiring, api, containerEl });
   live.current = { controller, wiring, api, containerEl };

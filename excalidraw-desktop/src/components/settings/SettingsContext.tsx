@@ -274,6 +274,9 @@ export const useSettingsController = ({
         linkUpdateOnRename: next.updateOnRename,
         linkAutocomplete: next.autocomplete,
         linkHintChars: next.hintChars,
+        linkStyle: next.styleLinks,
+        linkColor: next.linkColor,
+        linkHoverPreview: next.hoverPreview,
       },
       win,
     );

@@ -184,6 +184,20 @@ const LINKS_COMMANDS: CommandDefinition[] = [
     when: ["canvasFocus", "!textEditing", "!modalOpen", "drawingOpen"],
   },
   {
+    id: "links.toggleStyling",
+    title: "Links: Toggle link styling",
+    category: "Links",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "links.toggleHoverPreview",
+    title: "Links: Toggle link hover preview",
+    category: "Links",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
     id: "links.bindDrawingHotkey",
     title: "Links: Assign hotkey to this drawing",
     category: "Links",

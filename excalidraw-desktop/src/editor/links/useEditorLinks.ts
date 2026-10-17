@@ -31,6 +31,8 @@ import { LinkHints } from "./linkHints";
 import { createLinkOpener, createOnLinkOpen } from "./onLinkOpen";
 import { remeasureElements } from "./remeasure";
 import { linksOf } from "./textLinkHitTest";
+import { useLinkPreview } from "./preview/useLinkPreview";
+import { useLinkStyling } from "./style/useLinkStyling";
 import { useModifierLinks } from "./useModifierLinks";
 
 import type { ReactNode } from "react";
@@ -43,6 +45,7 @@ import type {
 } from "../../links/types";
 import type { TagsSettings } from "../../tags/types";
 import type { LinkOpenCallbacks } from "./onLinkOpen";
+import type { ReadDrawing } from "./preview/previewThumbnails";
 import type { WikiAutocomplete } from "./wikiAutocomplete";
 import type { TextLike } from "./textLinkHitTest";
 
@@ -67,6 +70,8 @@ export type UseEditorLinksOptions = {
   getRecent?: () => readonly string[];
   /** `tags.autocomplete`: the `#` popup (default: on). */
   tagsSettings?: TagsSettings;
+  /** Reads a vault drawing (hover preview thumbnails). */
+  readDrawing?: ReadDrawing;
 };
 
 const LinkSuggest = lazy(() =>
@@ -161,6 +166,24 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
     return () => autocomplete.stop();
   }, [autocomplete, autocompleteOn]);
 
+  useLinkStyling({
+    api: opts.api,
+    enabled: opts.settings.styleLinks,
+    linkColor: opts.settings.linkColor,
+    resolver,
+    currentPath: opts.currentPath,
+  });
+
+  const preview = useLinkPreview({
+    api: opts.api,
+    containerEl: opts.containerEl,
+    mode: opts.settings.hoverPreview,
+    modifier: opts.settings.openModifier,
+    resolver,
+    currentPath: opts.currentPath,
+    readDrawing: opts.readDrawing,
+  });
+
   const startLinkHints = useCallback(() => hints.start(), [hints]);
 
   const openLinkUnderSelection = useCallback((): boolean => {
@@ -243,8 +266,9 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
             createElement(LinkSuggest, { controller: autocomplete }),
           ),
         createElement(LinkHintsOverlay, { hints }),
+        preview,
       ),
-    [modifier, autocomplete, hints],
+    [modifier, autocomplete, hints, preview],
   );
 
   return {

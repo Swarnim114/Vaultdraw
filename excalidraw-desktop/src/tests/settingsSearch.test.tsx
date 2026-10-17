@@ -92,6 +92,7 @@ describe("settings schema", () => {
       "appearance",
       "drawing",
       "tools",
+      "links",
     ]);
   });
 });
@@ -123,7 +124,7 @@ describe("settings search", () => {
     const groups = within(results())
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label"));
-    expect(groups).toEqual(["Appearance", "Drawing", "Tools"]);
+    expect(groups).toEqual(["Appearance", "Drawing", "Tools", "Links"]);
   });
 
   it("editing a control in the results persists like on its page", () => {

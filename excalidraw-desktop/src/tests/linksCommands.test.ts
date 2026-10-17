@@ -55,6 +55,11 @@ const EXPECTED: Record<string, { title: string; keys: string[] }> = {
     keys: [],
   },
   "links.hints": { title: "Links: Show link hints", keys: ["Shift+F"] },
+  "links.toggleStyling": { title: "Links: Toggle link styling", keys: [] },
+  "links.toggleHoverPreview": {
+    title: "Links: Toggle link hover preview",
+    keys: [],
+  },
   "links.bindDrawingHotkey": {
     title: "Links: Assign hotkey to this drawing",
     keys: [],

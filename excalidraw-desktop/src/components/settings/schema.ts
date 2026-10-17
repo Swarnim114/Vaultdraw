@@ -570,6 +570,33 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     keywords: ["hint", "vimium", "keys", "letters", "alphabet", "keyboard"],
     configKey: "links.hint_chars",
   },
+  {
+    id: "link-style",
+    page: "links",
+    label: "Style Links in Text",
+    description:
+      "Draw [[links]] in text elements with the link colour and an underline. Brackets are dimmed, unresolved links are fainter with a dashed underline.",
+    keywords: ["color", "colour", "underline", "highlight", "wikilink", "[["],
+    configKey: "links.style_links",
+  },
+  {
+    id: "link-color",
+    page: "links",
+    label: "Link Colour",
+    description:
+      "Colour of styled links: the theme accent, or a fixed colour that follows dark mode like any stroke.",
+    keywords: ["color", "accent", "theme", "hex", "custom"],
+    configKey: "links.color",
+  },
+  {
+    id: "link-hover-preview",
+    page: "links",
+    label: "Hover Preview",
+    description:
+      "Show a preview card of the linked drawing when you hover a link: always, only while holding the open modifier, or never.",
+    keywords: ["preview", "hover", "card", "popup", "thumbnail", "tooltip"],
+    configKey: "links.hover_preview",
+  },
 
   // ---- Tags (shares the Links page) ----
   {

@@ -16,6 +16,7 @@ import {
   registerCommandHandlers,
   registerCommandPrefixHandler,
 } from "../commands/handlerRegistry";
+import { getPreferences, updatePreferences } from "../vault/preferences";
 import { setHotkeyOverride } from "../commands/useCommands";
 import { ensureFolder, folderChain } from "../vault/newDrawing";
 import { errorMessage } from "../vault/types";
@@ -443,6 +444,18 @@ export function useAppLinks(deps: AppLinksDeps) {
       "links.back": () => go("back"),
       "links.forward": () => go("forward"),
       "links.copyLinkToDrawing": copyLink,
+      "links.toggleStyling": () => {
+        const win = live.current.win;
+        updatePreferences({ linkStyle: !getPreferences(win).linkStyle }, win);
+      },
+      "links.toggleHoverPreview": () => {
+        const win = live.current.win;
+        const now = getPreferences(win).linkHoverPreview;
+        updatePreferences(
+          { linkHoverPreview: now === "off" ? "always" : "off" },
+          win,
+        );
+      },
       "links.bindDrawingHotkey": () => {
         const d = live.current;
         if (d.activePath) {

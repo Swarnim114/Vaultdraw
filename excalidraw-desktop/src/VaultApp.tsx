@@ -1128,6 +1128,9 @@ export const VaultApp = ({
       prefsNow.linkUpdateOnRename,
       prefsNow.linkAutocomplete,
       prefsNow.linkHintChars,
+      prefsNow.linkStyle,
+      prefsNow.linkColor,
+      prefsNow.linkHoverPreview,
     ],
   );
   const palettePick = usePalettePick();
@@ -1204,6 +1207,10 @@ export const VaultApp = ({
             bridge: appLinks.bridge,
             remeasureIds: appLinks.remeasureIdsFor(activeDoc?.path ?? null),
             onRemeasured: () => appLinks.onRemeasured(activeDoc?.path ?? null),
+            readDrawing: (path: string) =>
+              vault
+                ? repository.readDrawing(vault.handle, path)
+                : Promise.reject(new Error("no vault")),
           }
         : undefined,
     // eslint-disable-next-line react-hooks/exhaustive-deps

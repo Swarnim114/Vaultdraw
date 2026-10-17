@@ -66,7 +66,11 @@ describe("useEditorLinks", () => {
   it("costs only the idle listeners until a link is used", async () => {
     const observe = vi.spyOn(MutationObserver.prototype, "observe");
     const docAdd = vi.spyOn(document, "addEventListener");
-    const { hook, containerEl } = mount(fakeApi([]).api);
+    // Styling and hover preview have their own cost tests (style/, preview/).
+    const { hook, containerEl } = mount(fakeApi([]).api, {
+      styleLinks: false,
+      hoverPreview: "off",
+    });
     // The autocomplete engine loads as its own chunk.
     await vi.waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
     expect(observe.mock.calls[0][1]).toEqual({
@@ -87,7 +91,7 @@ describe("useEditorLinks", () => {
 
   it("attaches no observer when autocomplete is off", () => {
     const observe = vi.spyOn(MutationObserver.prototype, "observe");
-    mount(fakeApi([]).api, { autocomplete: false });
+    mount(fakeApi([]).api, { autocomplete: false, styleLinks: false });
     expect(observe).not.toHaveBeenCalled();
     observe.mockRestore();
   });
@@ -133,7 +137,7 @@ describe("useEditorLinks", () => {
   it("links the selection in the configured shape format, undoably", () => {
     const rect = newElement({ type: "rectangle", x: 0, y: 0 });
     const a = fakeApi([rect], { [rect.id]: true });
-    const wiki = mount(a.api);
+    const wiki = mount(a.api, { styleLinks: false });
     expect(
       wiki.hook.result.current.linkSelectionTo("Graphs/Dijkstra.excalidraw"),
     ).toBe(1);
@@ -142,11 +146,47 @@ describe("useEditorLinks", () => {
     );
     expect(a.updateScene.mock.calls[0][0].captureUpdate).toBe("IMMEDIATELY");
     const b = fakeApi([rect], { [rect.id]: true });
-    const url = mount(b.api, { shapeLinkFormat: "vaultdraw-url" });
+    const url = mount(b.api, {
+      shapeLinkFormat: "vaultdraw-url",
+      styleLinks: false,
+    });
     url.hook.result.current.linkSelectionTo("Graphs/Dijkstra.excalidraw");
     expect(b.updateScene.mock.calls[0][0].elements[0].link).toBe(
       "vaultdraw://open?file=Dijkstra",
     );
+  });
+
+  it("default settings add the link styler and the hover listener only", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    const { api, updateScene } = fakeApi([]);
+    const containerEl = document.createElement("div");
+    const add = vi.spyOn(containerEl, "addEventListener");
+    const hook = renderHook(() =>
+      useEditorLinks({
+        api,
+        containerEl,
+        settings: { ...DEFAULT_LINKS_SETTINGS, autocomplete: false },
+        names: NAMES,
+        currentPath: null,
+        callbacks: {
+          openDrawing: vi.fn(),
+          onUnresolved: vi.fn(),
+          onCreate: vi.fn(),
+        },
+      }),
+    );
+    // accent watcher; one repaint when the styler installs
+    expect(observe.mock.calls.map((c) => c[1])).toEqual([
+      { attributes: true, attributeFilter: ["style"] },
+    ]);
+    expect(updateScene).toHaveBeenCalledTimes(1);
+    expect(add.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "pointerdown",
+      "pointerleave",
+      "pointermove",
+      "wheel",
+    ]);
+    hook.unmount();
   });
 
   it("starts hint mode and renders its overlay; nothing without an api", () => {

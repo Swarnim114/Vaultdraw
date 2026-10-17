@@ -148,6 +148,10 @@ export type NewLinkFormat = "shortest" | "relative" | "absolute";
 export type ShapeLinkFormat = "wikilink" | "vaultdraw-url";
 export type OpenModifier = "mod" | "alt" | "ctrl" | "shift";
 export type UpdateOnRename = boolean | "ask";
+/** When the hover preview card of a text link shows. */
+export type HoverPreview = "always" | "modifier" | "off";
+/** `"accent"` (theme accent) or a `#rrggbb` scene colour. */
+export type LinkColor = string;
 
 export type LinksSettings = {
   /** links.new_link_format */
@@ -162,6 +166,12 @@ export type LinksSettings = {
   autocomplete: boolean;
   /** links.hint_chars: alphabet for hint letters (Vim/Vimium style). */
   hintChars: string;
+  /** links.style_links: draw `[[links]]` in text with the link colour + underline. */
+  styleLinks: boolean;
+  /** links.color: "accent" (theme accent) or "#rrggbb" (follows dark mode like any stroke). */
+  linkColor: LinkColor;
+  /** links.hover_preview: preview card of the linked drawing on hover. */
+  hoverPreview: HoverPreview;
 };
 
 export const DEFAULT_LINKS_SETTINGS: LinksSettings = {
@@ -171,4 +181,7 @@ export const DEFAULT_LINKS_SETTINGS: LinksSettings = {
   updateOnRename: true,
   autocomplete: true,
   hintChars: "asdfghjkl",
+  styleLinks: true,
+  linkColor: "accent",
+  hoverPreview: "always",
 };

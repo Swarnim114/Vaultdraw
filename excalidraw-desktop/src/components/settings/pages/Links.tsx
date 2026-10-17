@@ -3,11 +3,12 @@ import { useState } from "react";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
-import { isHintChars } from "../../../vault/preferences";
+import { isHintChars, isLinkColor } from "../../../vault/preferences";
 
 import { Switch } from "./controls";
 
 import type {
+  HoverPreview,
   NewLinkFormat,
   OpenModifier,
   ShapeLinkFormat,
@@ -36,6 +37,12 @@ const UPDATE_OPTIONS: readonly { val: string; label: string }[] = [
   { val: "true", label: "Always" },
   { val: "ask", label: "Ask each time" },
   { val: "false", label: "Never" },
+];
+
+const HOVER_PREVIEWS: readonly { val: HoverPreview; label: string }[] = [
+  { val: "always", label: "Always" },
+  { val: "modifier", label: "While holding the open modifier" },
+  { val: "off", label: "Off" },
 ];
 
 const parseUpdate = (text: string): UpdateOnRename =>
@@ -189,6 +196,78 @@ const HintCharsSetting = () => {
   );
 };
 
+const StyleLinksSetting = () => {
+  const { links, setLinks } = useSettings();
+  return (
+    <SettingRow id="link-style" htmlFor="vault-link-style">
+      <Switch
+        id="vault-link-style"
+        checked={links.styleLinks}
+        onChange={(styleLinks) => setLinks({ styleLinks })}
+      />
+    </SettingRow>
+  );
+};
+
+const FALLBACK_PICKER_COLOR = "#6965db";
+
+const LinkColorSetting = () => {
+  const { links, setLinks } = useSettings();
+  const custom = links.linkColor !== "accent";
+  return (
+    <SettingRow id="link-color" htmlFor="vault-link-color-mode">
+      <select
+        id="vault-link-color-mode"
+        className="vault-input"
+        value={custom ? "custom" : "accent"}
+        onChange={(e) =>
+          setLinks({
+            linkColor:
+              e.target.value === "accent" ? "accent" : FALLBACK_PICKER_COLOR,
+          })
+        }
+      >
+        <option value="accent">Theme accent</option>
+        <option value="custom">Custom colour</option>
+      </select>
+      {custom && (
+        <input
+          type="color"
+          aria-label="Custom link colour"
+          value={
+            isLinkColor(links.linkColor)
+              ? links.linkColor
+              : FALLBACK_PICKER_COLOR
+          }
+          onChange={(e) => setLinks({ linkColor: e.target.value })}
+        />
+      )}
+    </SettingRow>
+  );
+};
+
+const HoverPreviewSetting = () => {
+  const { links, setLinks } = useSettings();
+  return (
+    <SettingRow id="link-hover-preview" htmlFor="vault-link-hover-preview">
+      <select
+        id="vault-link-hover-preview"
+        className="vault-input"
+        value={links.hoverPreview}
+        onChange={(e) =>
+          setLinks({ hoverPreview: e.target.value as HoverPreview })
+        }
+      >
+        {HOVER_PREVIEWS.map((o) => (
+          <option key={o.val} value={o.val}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </SettingRow>
+  );
+};
+
 export const linksControls: SettingControls = {
   "link-format": { Component: NewLinkFormatSetting },
   "link-shape-format": { Component: ShapeLinkFormatSetting },
@@ -196,4 +275,7 @@ export const linksControls: SettingControls = {
   "link-update-on-rename": { Component: UpdateOnRenameSetting },
   "link-autocomplete": { Component: AutocompleteSetting },
   "link-hint-chars": { Component: HintCharsSetting },
+  "link-style": { Component: StyleLinksSetting },
+  "link-color": { Component: LinkColorSetting },
+  "link-hover-preview": { Component: HoverPreviewSetting },
 };

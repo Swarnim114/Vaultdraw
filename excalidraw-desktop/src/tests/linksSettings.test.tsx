@@ -39,6 +39,9 @@ const KEYS = [
   "links.update_on_rename",
   "links.autocomplete",
   "links.hint_chars",
+  "links.style_links",
+  "links.color",
+  "links.hover_preview",
   "tags.autocomplete",
   "tags.pane_sort",
 ] as const;
@@ -64,6 +67,9 @@ describe("links settings: config -> prefs -> config", () => {
         update_on_rename: "ask",
         autocomplete: false,
         hint_chars: "jkl;",
+        style_links: false,
+        color: "#ff8800",
+        hover_preview: "modifier",
       },
     });
     expect(problems).toEqual([]);
@@ -74,6 +80,9 @@ describe("links settings: config -> prefs -> config", () => {
       updateOnRename: "ask",
       autocomplete: false,
       hintChars: "jkl;",
+      styleLinks: false,
+      linkColor: "#ff8800",
+      hoverPreview: "modifier",
     });
   });
 
@@ -96,6 +105,10 @@ describe("links settings: config -> prefs -> config", () => {
     ["hint_chars", "a b"],
     ["hint_chars", "ABC"],
     ["hint_chars", 5],
+    ["style_links", "yes"],
+    ["color", "red"],
+    ["color", "#fff"],
+    ["hover_preview", "sometimes"],
   ])("reports an invalid links.%s = %j and falls back", (name, value) => {
     const { values, problems } = configToPreferences({
       links: { [name]: value },
@@ -119,6 +132,9 @@ describe("links settings: config -> prefs -> config", () => {
       linkUpdateOnRename: "ask" as const,
       linkAutocomplete: false,
       linkHintChars: "qwer",
+      linkStyle: false,
+      linkColor: "#ff8800",
+      linkHoverPreview: "off" as const,
     };
     const changes = preferencesToConfigChanges(DEFAULT_PREFERENCES, next);
     expect(changes).toEqual([
@@ -128,8 +144,11 @@ describe("links settings: config -> prefs -> config", () => {
       { key: "links.update_on_rename", value: "ask" },
       { key: "links.autocomplete", value: false },
       { key: "links.hint_chars", value: "qwer" },
+      { key: "links.style_links", value: false },
+      { key: "links.color", value: "#ff8800" },
+      { key: "links.hover_preview", value: "off" },
     ]);
-    expect(changes.map((c) => c.key)).toEqual(KEYS.slice(0, 6));
+    expect(changes.map((c) => c.key)).toEqual(KEYS.slice(0, 9));
     expect(preferencesToConfigChanges(next, next)).toEqual([]);
   });
 
@@ -207,11 +226,14 @@ describe("Links settings page", () => {
       "Update Links on Rename",
       "Link Suggestions",
       "Hint Characters",
+      "Style Links in Text",
+      "Link Colour",
+      "Hover Preview",
     ]) {
       expect(within(panel).getByText(label)).toBeInTheDocument();
     }
     // The Tags section shares the page: one more select and one more switch.
-    expect(within(panel).getAllByRole("combobox")).toHaveLength(5);
+    expect(within(panel).getAllByRole("combobox")).toHaveLength(7);
     expect(within(panel).getAllByRole("switch")[0]).toBeChecked();
   });
 
@@ -225,13 +247,16 @@ describe("Links settings page", () => {
       />,
     );
     const panel = screen.getByRole("tabpanel");
-    const [format, shape, modifier, update] =
+    const [format, shape, modifier, update, colorMode, hover] =
       within(panel).getAllByRole("combobox");
     fireEvent.change(format, { target: { value: "absolute" } });
     fireEvent.change(shape, { target: { value: "vaultdraw-url" } });
     fireEvent.change(modifier, { target: { value: "alt" } });
     fireEvent.change(update, { target: { value: "ask" } });
     fireEvent.click(within(panel).getAllByRole("switch")[0]);
+    fireEvent.click(within(panel).getAllByRole("switch")[1]);
+    fireEvent.change(colorMode, { target: { value: "custom" } });
+    fireEvent.change(hover, { target: { value: "modifier" } });
     const chars = within(panel).getByRole("textbox");
     fireEvent.change(chars, { target: { value: "a" } });
     fireEvent.blur(chars);
@@ -245,6 +270,9 @@ describe("Links settings page", () => {
       updateOnRename: "ask",
       autocomplete: false,
       hintChars: "qwert",
+      styleLinks: false,
+      linkColor: "#6965db",
+      hoverPreview: "modifier",
     });
     fireEvent.change(update, { target: { value: "false" } });
     expect(getPreferences(window).linkUpdateOnRename).toBe(false);

@@ -16,6 +16,7 @@ import {
 
 import {
   DEFAULT_LINKS_SETTINGS,
+  type HoverPreview,
   type LinksSettings,
   type NewLinkFormat,
   type OpenModifier,
@@ -176,6 +177,12 @@ interface VaultPreferencesBase {
   linkAutocomplete: boolean;
   /** links.hint_chars */
   linkHintChars: string;
+  /** links.style_links */
+  linkStyle: boolean;
+  /** links.color: "accent" or "#rrggbb" */
+  linkColor: string;
+  /** links.hover_preview */
+  linkHoverPreview: HoverPreview;
   /** tags.autocomplete */
   tagAutocomplete: boolean;
   /** tags.pane_sort */
@@ -270,6 +277,9 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   linkUpdateOnRename: DEFAULT_LINKS_SETTINGS.updateOnRename,
   linkAutocomplete: DEFAULT_LINKS_SETTINGS.autocomplete,
   linkHintChars: DEFAULT_LINKS_SETTINGS.hintChars,
+  linkStyle: DEFAULT_LINKS_SETTINGS.styleLinks,
+  linkColor: DEFAULT_LINKS_SETTINGS.linkColor,
+  linkHoverPreview: DEFAULT_LINKS_SETTINGS.hoverPreview,
   tagAutocomplete: DEFAULT_TAGS_SETTINGS.autocomplete,
   tagPaneSort: DEFAULT_TAGS_SETTINGS.paneSort,
   hotkeys: {},
@@ -298,6 +308,9 @@ export const getLinksSettings = (prefs: VaultPreferences): LinksSettings => ({
   updateOnRename: prefs.linkUpdateOnRename,
   autocomplete: prefs.linkAutocomplete,
   hintChars: prefs.linkHintChars,
+  styleLinks: prefs.linkStyle,
+  linkColor: prefs.linkColor,
+  hoverPreview: prefs.linkHoverPreview,
 });
 
 /** The tags fields of the preferences as one settings object. */
@@ -315,6 +328,10 @@ export const isShapeLinkFormat = (v: unknown): v is ShapeLinkFormat =>
   v === "wikilink" || v === "vaultdraw-url";
 export const isOpenModifier = (v: unknown): v is OpenModifier =>
   v === "mod" || v === "alt" || v === "ctrl" || v === "shift";
+export const isLinkColor = (v: unknown): v is string =>
+  v === "accent" || (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v));
+export const isHoverPreview = (v: unknown): v is HoverPreview =>
+  v === "always" || v === "modifier" || v === "off";
 export const isUpdateOnRename = (v: unknown): v is UpdateOnRename =>
   typeof v === "boolean" || v === "ask";
 /** At least 2 distinct characters, no whitespace, nothing uppercase. */
@@ -538,6 +555,13 @@ export function normalizePreferences(input: unknown): VaultPreferences {
       d.linkAutocomplete,
     ),
     linkHintChars: pick(parsed.linkHintChars, isHintChars, d.linkHintChars),
+    linkStyle: pick(parsed.linkStyle, isBoolean, d.linkStyle),
+    linkColor: pick(parsed.linkColor, isLinkColor, d.linkColor),
+    linkHoverPreview: pick(
+      parsed.linkHoverPreview,
+      isHoverPreview,
+      d.linkHoverPreview,
+    ),
     tagAutocomplete: pick(parsed.tagAutocomplete, isBoolean, d.tagAutocomplete),
     tagPaneSort: pick(parsed.tagPaneSort, isTagSort, d.tagPaneSort),
     hotkeys: normalizeHotkeys(parsed.hotkeys),

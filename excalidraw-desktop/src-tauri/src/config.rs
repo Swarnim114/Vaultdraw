@@ -122,6 +122,12 @@ autosave_delay_ms = 500
 # autocomplete = true
 # Letters used by link hint mode
 # hint_chars = "asdfghjkl"
+# Draw [[links]] in text with the link colour and an underline
+# style_links = true
+# Link colour: "accent" (theme accent) or "#rrggbb"
+# color = "accent"
+# Hover preview card: always | modifier | off
+# hover_preview = "always"
 
 [pens]
 # Saved pens of the freedraw tool (Alt+1 .. Alt+9 by default, see [hotkeys] pen.select1..9). width: 0.5 thin, 1 medium, 2 bold, ~10 highlighter.
@@ -1442,7 +1448,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 29, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 32, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
