@@ -57,6 +57,22 @@ describe("LinkStyler", () => {
     spy.mockRestore();
   });
 
+  it("returns the same runs array until the element, colour or resolution changes", () => {
+    const { styler, accent } = make();
+    track(styler).update(opts());
+    const el = text("[[A]] [[B]]");
+    const first = styler.style(el, false);
+    expect(styler.style(el, false)).toBe(first);
+    expect(styler.style(text("[[A]] [[B]]", 2), false)).not.toBe(first);
+    accent.v = "#445566";
+    const recoloured = styler.style(el, false);
+    expect(recoloured).not.toBe(first);
+    styler.update(
+      opts({ resolver: new LinkResolver(["A.excalidraw", "B.excalidraw"]) }),
+    );
+    expect(styler.style(el, false)).not.toBe(recoloured);
+  });
+
   it("installs when enabled and styles links with the accent", () => {
     const { styler, repaint } = make();
     track(styler).update(opts());

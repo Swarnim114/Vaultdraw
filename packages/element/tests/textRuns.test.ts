@@ -3,7 +3,11 @@ import rough from "roughjs/bin/rough";
 import { arrayToMap, THEME } from "@excalidraw/common";
 import { API } from "@excalidraw/excalidraw/tests/helpers/api";
 
-import { clearElementCanvasCache, renderElement } from "../src/renderElement";
+import {
+  clearElementCanvasCache,
+  elementWithCanvasCache,
+  renderElement,
+} from "../src/renderElement";
 import {
   fillTextLineWithRuns,
   getTextRuns,
@@ -138,6 +142,25 @@ describe("text run styler and the element bitmap cache", () => {
     draw(linked);
     draw(plain);
     expect(styler).toHaveBeenCalledTimes(5);
+  });
+
+  it("reuses the measured layout when only the zoom changes", () => {
+    const runs = [{ start: 0, end: 7, color: "#00f", underline: "solid" }];
+    setTextRunStyler(() => runs as TextRun[]);
+    const el = API.createElement({ type: "text", text: "[[Map]]" });
+    draw(el);
+    const first = elementWithCanvasCache.get(el)!.textRunLayout;
+    expect(first?.lines.size).toBe(1);
+    appState.zoom = { value: 2 };
+    draw(el);
+    appState.zoom = { value: 1 };
+    const second = elementWithCanvasCache.get(el)!;
+    expect(second.zoomValue).toBe(2);
+    expect(second.textRunLayout).toBe(first);
+    // new runs (e.g. the target got created) -> fresh layout
+    setTextRunStyler(() => [...runs] as TextRun[]);
+    draw(el);
+    expect(elementWithCanvasCache.get(el)!.textRunLayout).not.toBe(first);
   });
 
   it("never styles exports", () => {

@@ -7,6 +7,7 @@ import { applyDarkModeFilter, getDisplayColorKey } from "@excalidraw/common";
 import {
   invalidateTextRunStyles,
   setTextRunStyler,
+  type TextRun,
   type TextRunStyler,
 } from "@excalidraw/element";
 
@@ -42,10 +43,20 @@ export type LinkStylerDeps = {
  */
 const installedStack: LinkStyler[] = [];
 
+type RunsEntry = {
+  version: number;
+  palette: LinkPalette;
+  /** Resolved flags of the element's spans, e.g. "10". */
+  resolved: string;
+  runs: TextRun[];
+};
+
 export class LinkStyler {
   private opts: LinkStylerOptions | null = null;
   private installed = false;
   private readonly memo = new Map<string, boolean>();
+  /** Same runs array while nothing changed, so the renderer reuses its layout on zoom. */
+  private runsCache = new WeakMap<object, RunsEntry>();
   private palette: { key: string; value: LinkPalette } | null = null;
   private lastAccent: string | null = null;
   private observer: MutationObserver | null = null;
@@ -183,9 +194,30 @@ export class LinkStyler {
     if (spans.length === 0) {
       return null;
     }
-    return buildLinkRuns(element.text, spans, this.paletteFor(isDark), (t) =>
+    const palette = this.paletteFor(isDark);
+    let resolved = "";
+    for (const span of spans) {
+      resolved += this.resolve(span.target) ? "1" : "0";
+    }
+    const hit = this.runsCache.get(element);
+    if (
+      hit &&
+      hit.version === element.version &&
+      hit.palette === palette &&
+      hit.resolved === resolved
+    ) {
+      return hit.runs;
+    }
+    const runs = buildLinkRuns(element.text, spans, palette, (t) =>
       this.resolve(t),
     );
+    this.runsCache.set(element, {
+      version: element.version,
+      palette,
+      resolved,
+      runs,
+    });
+    return runs;
   };
 
   private watchAccent() {

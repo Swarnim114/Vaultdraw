@@ -54,21 +54,45 @@ export const getTextRuns = (
   return runs && runs.length > 0 ? runs : null;
 };
 
+type Segment = {
+  text: string;
+  /** Offset from the line's left edge. */
+  x: number;
+  /** Underline end, offset from the line's left edge. */
+  x2: number;
+  run: TextRun | null;
+};
+
+type LineLayout = { width: number; segments: Segment[] };
+
 /**
- * `fillText(line, x, y)` with `runs` applied. `lineStart` is the line's offset
- * in the element text. Segment positions are prefix widths of the whole line,
- * so they match `measureText`-based hit testing. Restores the context's fill,
- * stroke and alignment.
+ * Measured segments of a styled text, reused across re-rasters of the same
+ * element bitmap (zoom changes) while the runs (by identity) and font are the
+ * same. Widths are in scene units, so they don't depend on the zoom. It lives
+ * on the bitmap cache entry, which font loads and element changes delete.
  */
-export const fillTextLineWithRuns = (
+export type TextRunLayout = {
+  runs: readonly TextRun[];
+  font: string;
+  /** By line start offset; null = no run on that line. */
+  lines: Map<number, LineLayout | null>;
+};
+
+export const textRunLayoutFor = (
+  prev: TextRunLayout | null | undefined,
+  runs: readonly TextRun[],
+  font: string,
+): TextRunLayout =>
+  prev && prev.runs === runs && prev.font === font
+    ? prev
+    : { runs, font, lines: new Map() };
+
+const layoutLine = (
   context: CanvasRenderingContext2D,
   line: string,
   lineStart: number,
-  x: number,
-  y: number,
-  fontSize: number,
   runs: readonly TextRun[],
-) => {
+): LineLayout | null => {
   const lineEnd = lineStart + line.length;
   const local: { start: number; end: number; run: TextRun }[] = [];
   for (const run of runs) {
@@ -79,12 +103,11 @@ export const fillTextLineWithRuns = (
     }
   }
   if (local.length === 0) {
-    context.fillText(line, x, y);
-    return;
+    return null;
   }
   local.sort((a, b) => a.start - b.start);
-
-  // Prefix widths, each measured once (segment ends are the next starts).
+  // Prefix widths of the whole line, each measured once, so segment
+  // positions match measureText-based hit testing.
   const widths = new Map<number, number>();
   const width = (n: number) => {
     if (n <= 0) {
@@ -97,21 +120,16 @@ export const fillTextLineWithRuns = (
     }
     return w;
   };
-  const align = context.textAlign;
-  const left =
-    align === "center"
-      ? x - width(line.length) / 2
-      : align === "right"
-      ? x - width(line.length)
-      : x;
-  const baseFill = context.fillStyle;
-  context.textAlign = "left";
-
+  const segments: Segment[] = [];
   let at = 0;
   const plain = (to: number) => {
     if (to > at) {
-      context.fillStyle = baseFill;
-      context.fillText(line.slice(at, to), left + width(at), y);
+      segments.push({
+        text: line.slice(at, to),
+        x: width(at),
+        x2: width(to),
+        run: null,
+      });
     }
   };
   for (const { start, end, run } of local) {
@@ -119,11 +137,55 @@ export const fillTextLineWithRuns = (
       continue; // overlapping runs: the first one wins
     }
     plain(start);
-    const x1 = left + width(start);
-    context.fillStyle = run.color ?? baseFill;
-    context.fillText(line.slice(start, end), x1, y);
-    if (run.underline) {
-      const x2 = left + width(end);
+    segments.push({
+      text: line.slice(start, end),
+      x: width(start),
+      x2: width(end),
+      run,
+    });
+    at = end;
+  }
+  plain(line.length);
+  return { width: width(line.length), segments };
+};
+
+/**
+ * `fillText(line, x, y)` with `runs` applied. `lineStart` is the line's offset
+ * in the element text; `layout` (optional) caches the measured segments.
+ * Restores the context's fill and alignment.
+ */
+export const fillTextLineWithRuns = (
+  context: CanvasRenderingContext2D,
+  line: string,
+  lineStart: number,
+  x: number,
+  y: number,
+  fontSize: number,
+  runs: readonly TextRun[],
+  layout?: TextRunLayout,
+) => {
+  let lineLayout = layout?.lines.get(lineStart);
+  if (lineLayout === undefined) {
+    lineLayout = layoutLine(context, line, lineStart, runs);
+    layout?.lines.set(lineStart, lineLayout);
+  }
+  if (!lineLayout) {
+    context.fillText(line, x, y);
+    return;
+  }
+  const align = context.textAlign;
+  const left =
+    align === "center"
+      ? x - lineLayout.width / 2
+      : align === "right"
+      ? x - lineLayout.width
+      : x;
+  const baseFill = context.fillStyle;
+  context.textAlign = "left";
+  for (const { text, x: sx, x2, run } of lineLayout.segments) {
+    context.fillStyle = run?.color ?? baseFill;
+    context.fillText(text, left + sx, y);
+    if (run?.underline) {
       const uy = y + fontSize * 0.12;
       context.save();
       context.strokeStyle = context.fillStyle;
@@ -132,14 +194,12 @@ export const fillTextLineWithRuns = (
         run.underline === "dashed" ? [fontSize * 0.25, fontSize * 0.18] : [],
       );
       context.beginPath();
-      context.moveTo(x1, uy);
-      context.lineTo(x2, uy);
+      context.moveTo(left + sx, uy);
+      context.lineTo(left + x2, uy);
       context.stroke();
       context.restore();
     }
-    at = end;
   }
-  plain(line.length);
   context.fillStyle = baseFill;
   context.textAlign = align;
 };

@@ -79,6 +79,7 @@ import {
   getTextRuns,
   getTextRunStylerEpoch,
   getTextRunsVersion,
+  textRunLayoutFor,
 } from "./textRuns";
 import {
   getStickyNoteFooter,
@@ -100,7 +101,7 @@ import type {
 
 import type { RoughCanvas } from "roughjs/bin/canvas";
 
-import type { TextRun } from "./textRuns";
+import type { TextRun, TextRunLayout } from "./textRuns";
 
 const isPendingImageElement = (
   element: ExcalidrawElement,
@@ -226,6 +227,8 @@ export interface ExcalidrawElementWithCanvas {
   textStylerEpoch: number | null;
   /** Runs version when this raster was styled, null when it was not. */
   textRunsVersion: number | null;
+  /** Measured run segments, reused when only the zoom changed. */
+  textRunLayout: TextRunLayout | null;
 }
 
 const cappedElementCanvasSize = (
@@ -289,6 +292,7 @@ const generateElementCanvas = (
   zoom: Zoom,
   renderConfig: StaticCanvasRenderConfig,
   appState: StaticCanvasAppState | InteractiveCanvasAppState,
+  prevTextRunLayout: TextRunLayout | null = null,
 ): ExcalidrawElementWithCanvas | null => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d")!;
@@ -338,7 +342,18 @@ const generateElementCanvas = (
   const textRuns = isTextElement(element)
     ? getTextRuns(element, renderConfig.theme === THEME.DARK)
     : null;
-  drawElementOnCanvas(element, rc, context, renderConfig, textRuns);
+  const textRunLayout =
+    textRuns && isTextElement(element)
+      ? textRunLayoutFor(prevTextRunLayout, textRuns, getFontString(element))
+      : null;
+  drawElementOnCanvas(
+    element,
+    rc,
+    context,
+    renderConfig,
+    textRuns,
+    textRunLayout,
+  );
 
   context.restore();
 
@@ -356,6 +371,7 @@ const generateElementCanvas = (
     imageCrop: isImageElement(element) ? element.crop : null,
     textStylerEpoch: isTextElement(element) ? getTextRunStylerEpoch() : null,
     textRunsVersion: textRuns ? getTextRunsVersion() : null,
+    textRunLayout,
   };
 };
 
@@ -456,6 +472,7 @@ const drawElementOnCanvas = (
   renderConfig: StaticCanvasRenderConfig,
   /** Vaultdraw: styled runs for an on-screen text raster (never for exports). */
   textRuns: readonly TextRun[] | null = null,
+  textRunLayout: TextRunLayout | null = null,
 ) => {
   switch (element.type) {
     case "stickynote": {
@@ -695,6 +712,7 @@ const drawElementOnCanvas = (
               index * lineHeightPx + verticalOffset,
               element.fontSize,
               textRuns,
+              textRunLayout ?? undefined,
             );
             lineStart += lines[index].length + 1;
             continue;
@@ -765,6 +783,7 @@ const generateElementWithCanvas = (
       zoom,
       renderConfig,
       appState,
+      prevElementWithCanvas?.textRunLayout,
     );
 
     if (!elementWithCanvas) {
