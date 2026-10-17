@@ -4,6 +4,10 @@ import { createPortal } from "react-dom";
 import type { LoadedVersion } from "../preview/versionCache";
 import type { VersionPreviewProps } from "../preview/VersionPreview";
 
+const isEditable = (target: EventTarget | null) =>
+  target instanceof Element &&
+  !!target.closest("input, textarea, select, [contenteditable='true']");
+
 // Mounting a second editor is the heavy part, and only a selection needs it.
 const VersionPreview = lazy(() => import("../preview/VersionPreview"));
 
@@ -94,7 +98,14 @@ export const PreviewOverlay = ({
   return createPortal(
     <div
       ref={root}
-      onKeyDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        // Contained keys no longer reach the main editor, which used to
+        // swallow Backspace; WebKit would otherwise navigate back with it.
+        if (e.key === "Backspace" && !isEditable(e.target)) {
+          e.preventDefault();
+        }
+      }}
       onKeyUp={(e) => e.stopPropagation()}
       className={`vault-history-preview${
         fullscreen ? " vault-history-preview--fullscreen" : ""
