@@ -66,8 +66,8 @@ if (tier === "fast") {
     npx(desktop, "vitest related (desktop)", ["vitest", "related", "--run", "--passWithNoTests", ...rel([...desktopSrc, ...pkgSrc])]);
   }
   if (pkgSrc.length) npx(root, "vitest related (packages)", ["vitest", "related", "--run", "--passWithNoTests", ...rel(pkgSrc)]);
-  if (code.some((f) => f.startsWith("excalidraw-desktop/perf/"))) step("perf lib tests", root, "node", ["--test", "excalidraw-desktop/perf/lib/"]);
-  if (code.some((f) => f.startsWith("excalidraw-desktop/scripts/"))) step("script tests", root, "node", ["--test", "excalidraw-desktop/scripts/"]);
+  if (code.some((f) => f.startsWith("excalidraw-desktop/perf/"))) step("perf lib tests", root, "node", ["--test", "excalidraw-desktop/perf/lib/*.test.mjs"]);
+  if (code.some((f) => f.startsWith("excalidraw-desktop/scripts/"))) step("script tests", root, "node", ["--test", "excalidraw-desktop/scripts/*.test.mjs"]);
   if (files.some((f) => f.startsWith("excalidraw-desktop/src-tauri/"))) {
     step("cargo test", path.join(desktop, "src-tauri"), "cargo", ["test", "--quiet"]);
   }
@@ -80,7 +80,7 @@ if (tier === "fast") {
   npx(desktop, "tsc (desktop)", tscIncremental("tsconfig.json", "desktop.tsbuildinfo"));
   npx(root, "eslint (desktop)", eslint(["--ext", ".js,.ts,.tsx", "excalidraw-desktop"]));
   npx(desktop, "vitest (desktop)", ["vitest", "run"]);
-  step("perf lib tests", root, "node", ["--test", "excalidraw-desktop/perf/lib/", "excalidraw-desktop/scripts/"]);
+  step("perf lib tests", root, "node", ["--test", "excalidraw-desktop/perf/lib/*.test.mjs", "excalidraw-desktop/scripts/*.test.mjs"]);
   if (tier === "milestone") {
     npx(root, "tsc (root)", ["tsc"]);
     npx(root, "vitest (root)", ["vitest", "run"]);
