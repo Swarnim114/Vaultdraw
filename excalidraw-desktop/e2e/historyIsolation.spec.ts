@@ -253,7 +253,7 @@ test("keys, clipboard, drag and double-click in the preview change nothing", asy
   expect(await libraryState(page)).toEqual(libBefore);
   expect(await selectionToolChecked(page)).toBe(toolBefore);
   await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
-  await expect(page.locator(".excalidraw-textEditorContainer")).toHaveCount(0);
+  await expect(page.locator(".excalidraw-wysiwyg")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
