@@ -9,7 +9,7 @@ import { loadCatalogue, unitOf } from "./lib/catalogue.mjs";
 import { compare } from "./lib/compare.mjs";
 import { comparisonTable } from "./lib/report.mjs";
 import { waitQuiet, loadNote, loadSummary, DEFAULT_QUIET_LOAD, DEFAULT_QUIET_WAIT_S } from "./lib/load.mjs";
-import { interleaveOrder, mergeSide, buildAbResult, ensureBaseWorktree, runOnce } from "./lib/ab.mjs";
+import { interleaveOrder, mergeSide, buildAbResult, ensureBaseWorktree, runOnce, gateFailures, CONFIRM_PAIRS } from "./lib/ab.mjs";
 
 const HELP = `Usage: node excalidraw-desktop/perf/ab.mjs --base <git-ref> [options]
 
@@ -19,7 +19,11 @@ Two sides only; bisect across a batch only AFTER a confirmed regression.
 
   --base <ref>        base commit/branch (a detached worktree is created under <head>/.cache/perf/ab/base-<sha>)
   --head <path>       head worktree (default: this worktree)
-  --pairs N           base/head pairs (default 1 = quick perf; confirm a regression with --pairs 3)
+  --pairs N           base/head pairs (default 1 = quick perf). When anything is flagged, more pairs run
+                      automatically up to ${CONFIRM_PAIRS} (--no-confirm skips that)
+  Gate: browser.cpu.thread/process and browser.count.* (CPU time, counts) block from any run. Wall-clock
+  metrics block only when measured quiet (load < --quiet-load) with >= ${CONFIRM_PAIRS} pairs; otherwise
+  they are reported as UNCONFIRMED (the head of engineering's quiet combined check still gates them).
   --low-end           Chromium with CPU throttling x4
   --out <file>        head result JSON (run.mjs format + ab field; default <head>/.cache/perf/results/<ts>-ab-<mode>.json)
   --quiet-load X      quiet gate threshold, 1-min load (default ${DEFAULT_QUIET_LOAD}); runs once, before the first run
@@ -32,7 +36,7 @@ Wrap in the build lock: lockf -k /Users/kalon/Opensource/excalidraw/.cache/build
 const { values: o } = parseArgs({
   options: {
     base: { type: "string" }, head: { type: "string" }, pairs: { type: "string" }, "low-end": { type: "boolean" }, out: { type: "string" },
-    "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, "no-confirm": { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help || !o.base) { console.log(HELP); process.exit(o.help ? 0 : 1); }
@@ -63,37 +67,53 @@ const scratch = path.join(headWt, ".cache", "perf", "ab", `run-${Date.now()}`);
 mkdirSync(scratch, { recursive: true });
 
 const results = { base: [], head: [] };
-for (const step of interleaveOrder(pairs)) {
-  const out = path.join(scratch, `${step.side}-${step.index}.json`);
-  log(`${step.side} run ${step.index + 1}/${pairs}`);
-  results[step.side].push(await runOnce({
-    runMjs, wtRoot: step.side === "base" ? base.dir : headWt, fixturesDir, out, lowEnd: !!o["low-end"],
-    // The first run per side builds its own browser bundle; later ones reuse it.
-    build: step.index === 0, log,
-  }));
+const unit = unitOf(catalogue);
+const runPairs = async (from, to) => {
+  for (const step of interleaveOrder(to).slice(2 * from)) {
+    const out = path.join(scratch, `${step.side}-${step.index}.json`);
+    log(`${step.side} run ${step.index + 1}/${to}`);
+    results[step.side].push(await runOnce({
+      runMjs, wtRoot: step.side === "base" ? base.dir : headWt, fixturesDir, out, lowEnd: !!o["low-end"],
+      // The first run per side builds its own browser bundle; later ones reuse it.
+      build: step.index === 0, log,
+    }));
+  }
+};
+let pairsDone = pairs;
+await runPairs(0, pairs);
+const failingNow = () => compare({ metrics: mergeSide(results.head, unit).metrics }, { metrics: mergeSide(results.base, unit).metrics }, catalogue).failing;
+if (!o["no-confirm"] && pairs < CONFIRM_PAIRS && failingNow().length) {
+  log(`flagged after ${pairs} pair(s); confirming with ${CONFIRM_PAIRS} pairs`);
+  await runPairs(pairs, CONFIRM_PAIRS);
+  pairsDone = CONFIRM_PAIRS;
 }
 load.end = results.head.at(-1)?.load?.end ?? load.end;
 
-const unit = unitOf(catalogue);
 const head = mergeSide(results.head, unit);
 const baseSide = mergeSide(results.base, unit);
 const lnote = loadNote({ ...load, perRun: [...head.perRunLoad, ...baseSide.perRunLoad] });
 const result = buildAbResult({
-  template: results.head.at(-1), head, base: baseSide, baseSha: base.sha, pairs, load,
-  notes: [`A/B interleaved: base ${o.base} (${base.sha.slice(0, 10)}) vs head, ${pairs} pair(s)`, ...(lnote ? [lnote] : [])],
+  template: results.head.at(-1), head, base: baseSide, baseSha: base.sha, pairs: pairsDone, load,
+  notes: [`A/B interleaved: base ${o.base} (${base.sha.slice(0, 10)}) vs head, ${pairsDone} pair(s)`, ...(lnote ? [lnote] : [])],
 });
 
 const cmp = compare(result, { metrics: baseSide.metrics }, catalogue);
-console.log(`\nVaultdraw perf A/B - ${mode} - ${pairs} pair(s) - head ${String(result.git?.sha).slice(0, 10)} vs base ${base.sha.slice(0, 10)}`);
+const allLoads = [load.start, load.end, ...head.perRunLoad, ...baseSide.perRunLoad].filter(Number.isFinite);
+const quiet = allLoads.every((l) => l < load.threshold);
+const { blocking, unconfirmed } = gateFailures(cmp.failing, { quiet, pairs: pairsDone });
+console.log(`\nVaultdraw perf A/B - ${mode} - ${pairsDone} pair(s) - head ${String(result.git?.sha).slice(0, 10)} vs base ${base.sha.slice(0, 10)}`);
 console.log(comparisonTable(cmp.rows));
 console.log(loadSummary(result.load));
 for (const n of result.notes) console.log(`note: ${n}`);
-if (cmp.failing.length) console.log(`\nFAIL: ${cmp.failing.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ")}`);
-if (cmp.failing.length && pairs < 3) console.log(`hint: only ${pairs} pair(s); confirm with --pairs 3 before calling this a regression (prefer the browser.cpu.* / browser.count.* rows)`);
+const list = (rs) => rs.map((r) => `${r.metric}.${r.stat} (${r.status})`).join(", ");
+if (unconfirmed.length) console.log(`\nUNCONFIRMED (wall-clock, ${quiet ? "" : "under load, "}${pairsDone} pair(s); not blocking): ${list(unconfirmed)}`);
+if (blocking.length) console.log(`\nFAIL: ${list(blocking)}`);
+else console.log(`\nPASS: no regression in CPU time or counts${unconfirmed.length ? "" : " or wall-clock"}`);
 if (result.errors.length) console.log(`\nERRORS:\n${result.errors.map((e) => `  - ${e}`).join("\n")}`);
+result.ab.gate = { quiet, blocking: blocking.map((r) => `${r.metric}.${r.stat}`), unconfirmed: unconfirmed.map((r) => `${r.metric}.${r.stat}`) };
 
 const outFile = o.out ? path.resolve(o.out) : path.join(headWt, ".cache", "perf", "results", `${new Date().toISOString().replace(/[:.]/g, "-")}-ab-${mode}.json`);
 mkdirSync(path.dirname(outFile), { recursive: true });
 writeFileSync(outFile, JSON.stringify(result, null, 2) + "\n");
 console.log(`\nresult: ${outFile}\nelapsed: ${((Date.now() - t0) / 60000).toFixed(1)} min`);
-process.exit(cmp.exitCode || result.errors.length ? 1 : 0);
+process.exit(blocking.length || result.errors.length ? 1 : 0);

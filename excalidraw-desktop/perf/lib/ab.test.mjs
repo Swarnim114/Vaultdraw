@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { interleaveOrder, mergeSide, buildAbResult } from "./ab.mjs";
+import { interleaveOrder, mergeSide, buildAbResult, gateFailures } from "./ab.mjs";
 
 test("interleaveOrder alternates base/head", () => {
   assert.deepEqual(interleaveOrder(2).map((s) => `${s.side}${s.index}`), ["base0", "head0", "base1", "head1"]);
@@ -30,4 +30,12 @@ test("buildAbResult keeps run.mjs shape and adds ab", () => {
   assert.deepEqual(r.notes, ["x"]);
   assert.equal(r.ab.base.sha, "abc");
   assert.deepEqual(r.load.perRun, [4, 5, 6]);
+});
+
+test("gateFailures: wall-clock flags block only when quiet and confirmed; CPU time and counts always block", () => {
+  const f = [{ metric: "browser.open.small" }, { metric: "browser.cpu.thread" }, { metric: "browser.count.layout" }, { metric: "browser.cpu.task" }];
+  const names = (rs) => rs.map((r) => r.metric);
+  assert.deepEqual(names(gateFailures(f, { quiet: false, pairs: 3 }).blocking), ["browser.cpu.thread", "browser.count.layout"]);
+  assert.deepEqual(names(gateFailures(f, { quiet: true, pairs: 1 }).unconfirmed), ["browser.open.small", "browser.cpu.task"]);
+  assert.equal(gateFailures(f, { quiet: true, pairs: 3 }).blocking.length, 4);
 });

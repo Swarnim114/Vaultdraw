@@ -40,6 +40,20 @@ export function buildAbResult({ template, head, base, baseSha, pairs, load, note
   };
 }
 
+// CPU time (not wall) and event counts: these barely move with machine load, so they gate even from one pair.
+export const LOAD_INSENSITIVE = /^browser\.(cpu\.(thread|process)|count\.)/;
+export const CONFIRM_PAIRS = 3;
+
+/**
+ * Split compare() failures into blocking and unconfirmed. Wall-clock failures only block when they were
+ * measured on a quiet machine with at least CONFIRM_PAIRS pairs; load-insensitive ones always block.
+ */
+export function gateFailures(failing, { quiet, pairs }) {
+  const trusted = quiet && pairs >= CONFIRM_PAIRS;
+  const blocking = failing.filter((r) => trusted || LOAD_INSENSITIVE.test(r.metric));
+  return { blocking, unconfirmed: failing.filter((r) => !blocking.includes(r)) };
+}
+
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 
 /** Main checkout (owner of the shared node_modules) = parent of the repo's common git dir. */
