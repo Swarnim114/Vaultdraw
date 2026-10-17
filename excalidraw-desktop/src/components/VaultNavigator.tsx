@@ -35,6 +35,7 @@ import {
   IconExportVector,
   IconFolder,
   IconFolderPlus,
+  IconGraph,
   IconMore,
   IconMove,
   IconNewDrawing,
@@ -49,6 +50,7 @@ import {
   IconTemplate,
   IconTrash,
 } from "./Icons";
+import { GraphViewButton } from "./GraphViewButton";
 import { SearchResults } from "./search/SearchResults";
 import { TagChips } from "./tags/TagChips";
 import { TagsPanel, type TagsPanelHandle } from "./tags/TagsPanel";
@@ -93,7 +95,7 @@ interface VaultNavigatorProps {
   activePath: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  onOpenDrawing: (path: string) => void | Promise<void>;
+  onOpenDrawing: (path: string) => unknown;
   /** Vault-wide search backend; null = name-only search over the loaded tree. */
   search?: VaultSearch | null;
   onOpenSearchResult?: (
@@ -141,6 +143,12 @@ interface VaultNavigatorProps {
   onRenameTag?: (key: string, display: string) => void;
   /** Rendered between the tree and the footer (the Links dock). */
   dockSlot?: ReactNode;
+  /** Toolbar button: run graph.open (it toggles the graph view). */
+  onOpenGraph?: () => void;
+  /** The graph view is showing (the toolbar button is pressed). */
+  graphOpen?: boolean;
+  /** Drawing rows: "Open local graph", centred on that drawing. */
+  onOpenLocalGraph?: (path: string) => void | Promise<void>;
   ownerDocument?: Document | null;
 }
 
@@ -179,6 +187,9 @@ export const VaultNavigator = ({
   tagsDefaultSort,
   onRenameTag,
   dockSlot,
+  onOpenGraph,
+  graphOpen = false,
+  onOpenLocalGraph,
   ownerDocument,
 }: VaultNavigatorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -611,6 +622,13 @@ export const VaultNavigator = ({
         >
           <IconSort />
         </button>
+        {onOpenGraph && (
+          <GraphViewButton
+            onClick={onOpenGraph}
+            pressed={graphOpen}
+            win={ownerDocument?.defaultView ?? null}
+          />
+        )}
         <span className="vault-navigator__toolbar-spacer" />
         <button
           type="button"
@@ -844,6 +862,9 @@ export const VaultNavigator = ({
             ((entry, format) => void onExportDrawing(entry.path, format))
           }
           onTrash={requestTrash}
+          onOpenLocalGraph={
+            onOpenLocalGraph && ((entry) => void onOpenLocalGraph(entry.path))
+          }
         />
       )}
 
@@ -1190,6 +1211,7 @@ interface RowMenuProps {
   onReveal: (entry: VaultEntry) => void;
   onExport?: (entry: VaultEntry, format: ExplorerExportFormat) => void;
   onTrash: (entry: VaultEntry) => void;
+  onOpenLocalGraph?: (entry: VaultEntry) => void;
 }
 
 const MENU_WIDTH = 200;
@@ -1320,6 +1342,7 @@ const RowMenu = ({
   onReveal,
   onExport,
   onTrash,
+  onOpenLocalGraph,
 }: RowMenuProps) => {
   const { entry } = state;
   const isFolder = entry.kind === "folder";
@@ -1370,6 +1393,9 @@ const RowMenu = ({
       {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
       {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
       {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}
+      {!isFolder &&
+        onOpenLocalGraph &&
+        item("Open local graph", <IconGraph />, () => onOpenLocalGraph(entry))}
       {!isFolder && onExport && (
         <>
           <div className="vault-menu__separator" role="separator" />

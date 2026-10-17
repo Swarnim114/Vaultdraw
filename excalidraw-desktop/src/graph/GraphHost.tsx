@@ -41,7 +41,7 @@ export interface GraphHostProps {
   /** Changes when the app theme changes (colours are re-read). */
   themeKey: string;
   shortcutFor?: GraphViewProps["shortcutFor"];
-  onOpenDrawing: (path: string) => void | Promise<void>;
+  onOpenDrawing: (path: string) => unknown;
   /** The editor is hidden and frozen while this is true. */
   onOpenChange: (open: boolean) => void;
   /** Called after the graph closed: give focus back to the canvas. */

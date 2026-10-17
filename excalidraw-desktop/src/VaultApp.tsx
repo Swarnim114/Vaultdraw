@@ -83,6 +83,7 @@ import { createCommandsProvider } from "./palette/providers/commands";
 import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
 import { GraphHost, type GraphHostProps } from "./graph/GraphHost";
+import { useGraphEntry } from "./graph/useGraphEntry";
 import { HistoryHost } from "./history/HistoryHost";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
@@ -959,16 +960,19 @@ export const VaultApp = ({
   };
 
   // Open drawing with busy freeze and error catching
+  /** False when the open failed (an alert says why). */
   const handleOpenDrawing = async (drawingPath: string) => {
     setIsBusy(true);
     setGlobalAlert(null);
     try {
       await openDoc(drawingPath);
+      return true;
     } catch (err) {
       setGlobalAlert({
         message: `Failed to open drawing: ${errorMessage(err)}`,
         type: "error",
       });
+      return false;
     } finally {
       setIsBusy(false);
     }
@@ -1598,6 +1602,16 @@ export const VaultApp = ({
     },
   });
   runnerRef.current = commandRunner;
+  // UI entry points (navigator, main menu, row menu) dispatch the graph commands.
+  const runCommand = useCallback(
+    (id: string) => runnerRef.current?.run(id) ?? false,
+    [],
+  );
+  const { openGraph, openLocalGraph } = useGraphEntry(
+    activeDoc?.path ?? null,
+    handleOpenDrawing,
+    runCommand,
+  );
 
   // Palette providers read live state through this ref, so the provider
   // objects stay stable and nothing runs while the palette is closed.
@@ -1895,6 +1909,7 @@ export const VaultApp = ({
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
                 onOpenSettings={openSettings}
+                onOpenGraph={openGraph}
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
@@ -1991,6 +2006,9 @@ export const VaultApp = ({
           collapsed={navigatorCollapsed}
           onToggleCollapse={handleToggleNavigator}
           onOpenSettings={() => openSettings()}
+          onOpenGraph={openGraph}
+          graphOpen={graphOpen}
+          onOpenLocalGraph={openLocalGraph}
           onOpenDrawing={handleOpenDrawing}
           search={vaultSearch}
           onOpenSearchResult={handleOpenSearchResult}

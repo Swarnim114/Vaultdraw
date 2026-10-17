@@ -19,7 +19,8 @@ import type {
 } from "@excalidraw/excalidraw/types";
 
 import { CommandMenuItem } from "../commands/CommandMenuItem";
-import { IconLibrary } from "../components/Icons";
+import { GRAPH_COMMAND_IDS } from "../commands/graphCommands";
+import { IconGraph, IconLibrary } from "../components/Icons";
 import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
 import { PageMenuItem } from "../components/page/PageMenuItem";
@@ -69,6 +70,8 @@ type Props = {
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
   /** Opens Settings, on `page` when given (the pen bar opens "tools:pen"). */
   onOpenSettings?: (page?: SettingsTarget) => void;
+  /** Main menu "Graph view": runs graph.open. */
+  onOpenGraph?: () => void;
   /** Select + scroll to an element once the scene is loaded (search results). */
   focusRequest?: {
     elementId: string;
@@ -99,6 +102,7 @@ const VaultEditorComponent = ({
   theme,
   onThemeChange,
   onOpenSettings,
+  onOpenGraph,
   focusRequest = null,
   library,
   links,
@@ -114,6 +118,7 @@ const VaultEditorComponent = ({
   const exportRef = useRef(onExport);
   const nameRef = useRef(name);
   const openSettingsRef = useRef(onOpenSettings);
+  const openGraphRef = useRef(onOpenGraph);
   const ready = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,6 +188,8 @@ const VaultEditorComponent = ({
   exportRef.current = onExport;
   nameRef.current = name;
   openSettingsRef.current = onOpenSettings;
+  openGraphRef.current = onOpenGraph;
+  const canOpenGraph = !!onOpenGraph;
   const canExport = !!onExport;
   const canOpenSettings = !!onOpenSettings;
 
@@ -496,6 +503,15 @@ const VaultEditorComponent = ({
           <MainMenu.DefaultItems.Help />
           <MainMenu.DefaultItems.ClearCanvas />
           <MainMenu.Separator />
+          {canOpenGraph && (
+            <CommandMenuItem
+              commandId={GRAPH_COMMAND_IDS.open}
+              icon={<IconGraph strokeWidth="1.25" />}
+              onSelect={() => openGraphRef.current?.()}
+            >
+              Graph view
+            </CommandMenuItem>
+          )}
           {canOpenSettings && (
             <CommandMenuItem
               commandId="settings.open"
@@ -528,6 +544,7 @@ const VaultEditorComponent = ({
       exporting,
       canExport,
       canOpenSettings,
+      canOpenGraph,
       saveCopy,
       paperDialogOpen,
       pageSetupOpen,

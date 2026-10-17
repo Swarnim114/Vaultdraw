@@ -458,6 +458,8 @@ hint_chars = "asdfghjkl"           # letters used by Shift+F hints
 
 ⌘⌥G (**Graph: Open graph view**) shows every drawing as a dot and every link as a line, over the canvas. Esc, or ⌘⌥G again, returns to the drawing you left, at the same zoom and position. ⌘⌥L opens the **local graph**: the open drawing and the drawings within 1–3 links of it.
 
+You can also open it with the mouse: the **Graph view** button in the navigator toolbar (its tooltip shows the current key), **Graph view** in the canvas main menu, or **Open local graph** in a drawing's ⋯ menu in the navigator, which opens that drawing and shows its local graph. All three run the same commands as the keys, so they follow your rebinding.
+
 Drawings in the same top-level folder share a colour. Links to drawings that don't exist yet are hollow dots. Hover a dot to see its name, folder, link counts and the shortcut assigned to it.
 
 | Key | Action |
