@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import { defineConfig, devices } from "@playwright/test";
 
 // Drives the real VaultApp UI in a browser (see e2e.html). WebKit matches the
@@ -8,16 +10,33 @@ import { defineConfig, devices } from "@playwright/test";
 // screenshot gallery spec.
 const full = process.env.E2E_FULL === "1";
 
-// E2E_PORT lets two e2e runs (different worktrees) share one machine.
-const port = process.env.E2E_PORT ?? "1421";
+// Every run gets its own port, so e2e runs (any worktree) go in parallel and
+// take no lock. E2E_PORT pins one (heavy.sh gives its slots 1421/1431);
+// otherwise the OS picks a free one. It is written back to the env so the
+// workers (which re-read this config) and the web server use the same port.
+const freePort = () =>
+  execFileSync(
+    process.execPath,
+    [
+      "-e",
+      "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})",
+    ],
+    { encoding: "utf8" },
+  ).trim();
+if (!process.env.E2E_PORT) {
+  process.env.E2E_PORT = freePort();
+  process.env.E2E_PORT_AUTO = "1";
+}
+const port = process.env.E2E_PORT;
 
 const viewport = { width: 1280, height: 850 };
 
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: full ? [] : ["gallery.spec.ts"],
+  globalTeardown: "./e2e/teardown.ts",
   timeout: 60_000,
-  fullyParallel: false,
+  fullyParallel: process.env.E2E_FULLY_PARALLEL === "1",
   workers: Number(process.env.E2E_WORKERS) || 2,
   reporter: [["list"]],
   outputDir: `../.cache/e2e-results-${port}`,
