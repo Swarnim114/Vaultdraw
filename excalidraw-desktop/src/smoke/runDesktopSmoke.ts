@@ -19,6 +19,7 @@ import {
   perfExportMermaidStep,
 } from "./exportSmoke";
 import { explorerExportStep } from "./explorerExportSmoke";
+import { runHistorySmoke } from "./historySmoke";
 import { runLibrarySmoke } from "./librarySmoke";
 import { runLinksSmoke } from "./linksSmoke";
 import {
@@ -903,6 +904,13 @@ export async function runDesktopSmoke(): Promise<void> {
 
     await runLinksSmoke({
       win,
+      handle: activeVault.handle,
+      runId,
+      step,
+      invoke: invokeNative,
+    });
+
+    await runHistorySmoke({
       handle: activeVault.handle,
       runId,
       step,
