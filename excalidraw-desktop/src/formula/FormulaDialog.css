@@ -1,0 +1,48 @@
+.vault-formula {
+  max-width: 560px;
+}
+
+.vault-formula__source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  min-height: 84px;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vault-formula__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--vault-text-muted, var(--vault-text));
+}
+
+.vault-formula__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 10px;
+  background-color: var(--vault-bg);
+  border: 1px dashed var(--vault-border-strong);
+  border-radius: var(--vault-radius);
+}
+
+.vault-formula__preview img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Preview SVGs use the formula colour on a dark panel: same filter as the canvas. */
+html.dark .vault-formula__preview img {
+  filter: invert(93%) hue-rotate(180deg);
+}
+
+.vault-formula__placeholder {
+  font-size: 0.78rem;
+  color: var(--vault-text-faint);
+}

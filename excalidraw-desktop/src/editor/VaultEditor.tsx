@@ -49,6 +49,7 @@ import "../theme/excalidrawChrome.css";
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorApi } from "./editorApi";
 import { registerEditorFlush } from "./editorFlush";
+import { useFormulaCommands } from "../formula/useFormulaCommands";
 import { useEditorPalette } from "./useEditorPalette";
 import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
 import {
@@ -163,6 +164,12 @@ const VaultEditorComponent = ({
     selectPen: pens.selectPen,
     openPaperSettings: () => setPaperDialogOpen(true),
     libraryStore: library?.store ?? null,
+  });
+
+  const formula = useFormulaCommands({
+    apiRef,
+    readOnly: readOnly || disabled,
+    getOwnerDocument: () => host.current?.ownerDocument,
   });
 
   const pageMode = usePageMode({
@@ -558,6 +565,7 @@ const VaultEditorComponent = ({
           <PaperMenuItem onOpenSettings={() => setPaperDialogOpen(true)} />
           <PageMenuItem onOpenSetup={() => setPageSetupOpen(true)} />
         </MainMenu>
+        {formula.dialog}
         {pageSetupOpen && (
           <PageSetupDialog
             onClose={() => setPageSetupOpen(false)}
@@ -580,6 +588,7 @@ const VaultEditorComponent = ({
       saveCopy,
       paperDialogOpen,
       pageSetupOpen,
+      formula.dialog,
     ],
   );
 
@@ -601,6 +610,7 @@ const VaultEditorComponent = ({
         onChange={onEditorChange}
         onInitialize={onInitialize}
         onExcalidrawAPI={onExcalidrawAPI}
+        onImageEdit={formula.onImageEdit}
         validateEmbeddable={false}
         viewModeEnabled={readOnly}
         interaction={disabled ? false : undefined}

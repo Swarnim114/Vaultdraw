@@ -23,7 +23,8 @@ export type CommandCategory =
   | "Library"
   | "Links"
   | "History"
-  | "Graph";
+  | "Graph"
+  | "Formula";
 
 /**
  * Facts the dispatcher checks before claiming a key.

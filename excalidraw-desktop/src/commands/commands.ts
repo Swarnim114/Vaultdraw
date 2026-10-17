@@ -3,6 +3,7 @@
  * those). Order matters: it is the dispatcher's tie-break and the order the
  * Hotkeys page lists commands in.
  */
+import { FORMULA_COMMANDS } from "../formula/formulaCommands";
 import { HISTORY_COMMANDS } from "../history/historyCommands";
 import { SETTINGS_PAGES } from "../components/settings/schema";
 import { MAX_PEN_PRESETS } from "../pens/penPresets";
@@ -509,6 +510,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...TAGS_COMMANDS,
   ...HISTORY_COMMANDS,
   ...GRAPH_COMMANDS,
+  ...FORMULA_COMMANDS,
 ];
 
 const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(
