@@ -135,6 +135,11 @@ fn own_heads_missing(g: &Index, me: &str) -> bool {
     g.lineages.values().flat_map(|l| l.versions.values()).any(|e| e.name.dev == me && e.head.is_none())
 }
 
+/// Blobs referenced by any known header.
+fn all_refs(g: &Index) -> HashSet<String> {
+    g.lineages.values().flat_map(|l| l.versions.values()).filter_map(|e| e.head.as_ref()).flat_map(|h| h.blobs.iter().cloned()).collect()
+}
+
 /// Blobs referenced by this device's headers.
 fn own_refs(g: &Index, me: &str) -> HashSet<String> {
     g.lineages.values().flat_map(|l| l.versions.values()).filter(|e| e.name.dev == me).filter_map(|e| e.head.as_ref()).flat_map(|h| h.blobs.iter().cloned()).collect()
@@ -421,6 +426,8 @@ pub(super) struct Sweep {
     unref: HashMap<String, u64>,
     own_refs: HashSet<String>,
     all_refs: HashSet<String>,
+    /// `Index::refs_gen` when `own_refs` / `all_refs` were taken (writes land between steps).
+    refs_gen: u64,
     newest_epoch: HashMap<String, String>,
 }
 
@@ -439,6 +446,7 @@ impl Sweep {
             unref: HashMap::new(),
             own_refs: HashSet::new(),
             all_refs: HashSet::new(),
+            refs_gen: 0,
             newest_epoch: HashMap::new(),
         }
     }
@@ -604,6 +612,7 @@ impl Sweep {
         self.unref = std::mem::take(&mut super::lock(&ctx.vh.gc).unref_since);
         let g = rd(ctx.vh);
         self.own_refs = own_refs(&g, ctx.dev);
+        self.refs_gen = g.refs_gen;
         self.queue = g.blobs.iter().filter(|(_, c)| c.iter().any(|c| c.dev == ctx.dev)).map(|(k, _)| k.clone()).collect();
         self.phase = Phase::OwnBlobs;
     }
@@ -611,6 +620,15 @@ impl Sweep {
     fn own_blob(&mut self, ctx: &Ctx, ex: &mut Exec, key: &str) {
         if self.blocked {
             return;
+        }
+        {
+            // A version written between steps may reuse an own blob that was unreferenced at
+            // the snapshot: refresh before trusting it.
+            let g = rd(ctx.vh);
+            if g.refs_gen != self.refs_gen {
+                self.own_refs = own_refs(&g, ctx.dev);
+                self.refs_gen = g.refs_gen;
+            }
         }
         if self.own_refs.contains(key) {
             self.unref.remove(key);
@@ -648,7 +666,8 @@ impl Sweep {
             self.finish(ctx);
             return;
         }
-        self.all_refs = g.lineages.values().flat_map(|l| l.versions.values()).filter_map(|e| e.head.as_ref()).flat_map(|h| h.blobs.iter().cloned()).collect();
+        self.all_refs = all_refs(&g);
+        self.refs_gen = g.refs_gen;
         self.newest_epoch.clear();
         for c in g.blobs.values().flatten() {
             let e = self.newest_epoch.entry(c.dev.clone()).or_default();
@@ -664,8 +683,18 @@ impl Sweep {
         let (pick, ok): (Vec<(String, String)>, bool) = {
             let g = rd(ctx.vh);
             let Some(copies) = g.blobs.get(key) else { return };
-            let mine = copies.iter().any(|c| c.dev == ctx.dev);
-            let ok = mine || !self.all_refs.contains(key);
+            if g.refs_gen != self.refs_gen {
+                // Headers that arrived (or loaded) since the snapshot count too.
+                if g.lineages.values().flat_map(|l| l.versions.values()).any(|e| e.head.is_none()) {
+                    return;
+                }
+                self.all_refs = all_refs(&g);
+                self.refs_gen = g.refs_gen;
+            }
+            // Only copies no known header references go (stricter than PLAN-H3 4.3 (b), which
+            // also allowed it when this Mac has its own copy: own-blob GC only looks at own
+            // headers, so that copy could go later and leave the foreign version without one).
+            let ok = !self.all_refs.contains(key);
             let pick = copies
                 .iter()
                 .filter(|c| c.dev != ctx.dev)

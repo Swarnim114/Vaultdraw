@@ -306,7 +306,7 @@ fn foreign_blob_takeover_follows_epoch_and_reference_rules() {
 }
 
 #[test]
-fn foreign_blob_referenced_by_a_known_header_is_kept_unless_we_hold_a_copy() {
+fn foreign_blob_referenced_by_a_known_header_is_kept_even_when_we_hold_a_copy() {
     let g = G::new();
     let mut fw = g.writer(Some(OTHER));
     let json = scene(3, 5, 1, 2000).json();
@@ -319,15 +319,16 @@ fn foreign_blob_referenced_by_a_known_header_is_kept_unless_we_hold_a_copy() {
     }
     g.sweep(now);
     assert_eq!(g.blob_files().len(), 1, "the foreign header is the newest version and references the blob");
-    // we get our own copy of the same image: now the foreign copy may go
+    // We get our own copy of the same image. The foreign copy still stays (D-H3-8): our copy
+    // follows our own headers only and may go once they stop referencing the image.
     let mut mw = g.writer(None);
     g.put(&mut mw, "mine.excalidraw", &json, Reason::Auto, now - 1000);
     // (our blob has the same sha: own + foreign copies)
     assert_eq!(g.blob_files().len(), 2);
     g.sweep(now);
     let left = g.blob_files();
-    assert_eq!(left.len(), 1);
-    assert!(left[0].contains(&format!("-{}-", g.me)));
+    assert_eq!(left.len(), 2, "{left:?}");
+    assert!(left.iter().any(|f| f.contains(&format!("-{OTHER}-"))), "the referenced foreign copy stays");
 }
 
 #[test]

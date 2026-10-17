@@ -83,6 +83,9 @@ pub struct Index {
     /// Lineages hidden from path lookups (trashed in-app, N1). Owned by `lineage.rs`, which
     /// persists it; path queries skip these, direct `lineages` / `entry` access does not.
     pub hidden: HashSet<String>,
+    /// Bumped whenever a header becomes known (insert or loaded head), so a resumable GC sweep
+    /// can tell that its reference snapshot is stale.
+    pub refs_gen: u64,
 }
 
 impl Index {
@@ -118,6 +121,7 @@ impl Index {
         *seen = (*seen).max(now_ms);
         self.id_lineage.insert(id.clone(), lineage.to_string());
         let head = entry.head.clone();
+        self.refs_gen += 1;
         self.lineages.entry(lineage.to_string()).or_default().versions.insert(id.clone(), entry);
         if let Some(h) = head {
             self.by_rev.entry(h.rev).or_default().insert(lineage.to_string());
@@ -178,6 +182,7 @@ impl Index {
         if let Some(e) = self.lineages.get_mut(&lin).and_then(|l| l.versions.get_mut(id)) {
             self.by_rev.entry(head.rev.clone()).or_default().insert(lin.clone());
             e.head = Some(head);
+            self.refs_gen += 1;
         }
         self.refresh_path(&lin);
     }

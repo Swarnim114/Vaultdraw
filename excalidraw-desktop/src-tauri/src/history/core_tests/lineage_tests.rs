@@ -114,7 +114,8 @@ fn in_app_rename_keeps_the_lineage_and_later_versions_land_in_it() {
     assert!(fx.vh().snapshot(B, "before-restore", true).unwrap().id.is_some());
     assert_eq!(fx.versions(B).len(), 3);
     assert_eq!(fx.vh().list(B).unwrap().lineages, vec![lin]);
-    assert_eq!(path_records(&fx), 1, "no new path record for a plain version");
+    // A plain version adds no path record; retention may drop the one it supersedes (PLAN-H3 4.2).
+    assert!(path_records(&fx) <= 1, "no new path record for a plain version");
     // ... also after a restart (the path record is read back from disk)
     fx.svc.stop("h");
     fx.start_configured(5);
