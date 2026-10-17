@@ -263,9 +263,11 @@
  * `.excalidraw-modal-container` that is `position: absolute` with no offsets,
  * so it lands at the end of the document flow instead of over the app. While a
  * preview is open, pin that container to the whole window: the dialog is then
- * centred and its backdrop covers the panel and navigator.
+ * centred and its backdrop covers the panel and navigator. A body class set by
+ * PreviewOverlay, not `body:has(...)`: a :has() on <body> makes every DOM change
+ * anywhere re-check the selector (measured: palette/settings/switch slower).
  */
-body:has(.vault-history-preview) > .excalidraw-modal-container {
+body.vault-history-previewing > .excalidraw-modal-container {
   position: fixed;
   inset: 0;
   z-index: 1000;

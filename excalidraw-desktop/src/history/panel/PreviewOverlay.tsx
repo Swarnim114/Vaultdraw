@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import type { LoadedVersion } from "../preview/versionCache";
 import type { VersionPreviewProps } from "../preview/VersionPreview";
 
+const PREVIEWING_CLASS = "vault-history-previewing";
+
 const isEditable = (target: EventTarget | null) =>
   target instanceof Element &&
   !!target.closest("input, textarea, select, [contenteditable='true']");
@@ -89,7 +91,10 @@ export const PreviewOverlay = ({
       back.current();
     };
     doc.addEventListener("keydown", onDocEscape);
+    // Lets the preview's modals cover the window (see historyPanel.css).
+    doc.body.classList.add(PREVIEWING_CLASS);
     return () => {
+      doc.body.classList.remove(PREVIEWING_CLASS);
       el.removeEventListener("keydown", onEscape, true);
       doc.removeEventListener("keydown", onDocEscape);
     };
