@@ -53,11 +53,13 @@ const metrics = (page: Page) =>
     };
   });
 
-/** Page coordinates of the busiest visible node. */
+/** Page coordinates of the busiest visible drawing (tags are shown by default and don't open). */
 async function busiestNode(page: Page) {
   return page.evaluate(() => {
     const s = (window as unknown as W).__graph.session!;
-    const node = s.hintMap().labels.keys().next().value as number;
+    const node = [...s.hintMap().labels.keys()].find(
+      (i) => s.pathOf(i) !== null,
+    )!;
     const p = s.nodeScreen(node);
     const r = document
       .querySelector('[data-testid="graph-stage"]')!
@@ -102,9 +104,16 @@ test.describe("graph view", () => {
     await expect(page.getByTestId("graph-card")).toBeVisible();
     await page.keyboard.press("f");
     await expect(page.locator(".vd-graph__hint").first()).toBeVisible();
-    const label = (await page.locator(".vd-graph__hint").first().innerText())
-      .trim()
-      .toLowerCase();
+    // hint letters of the busiest on-screen drawing (tag nodes don't open)
+    const label = await page.evaluate(() => {
+      const s = (window as unknown as W).__graph.session!;
+      for (const [node, l] of s.hintMap().labels) {
+        if (s.pathOf(node) !== null) {
+          return l.toLowerCase();
+        }
+      }
+      return "";
+    });
     for (const ch of label) {
       await page.keyboard.press(ch);
     }
