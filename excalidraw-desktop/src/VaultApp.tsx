@@ -111,7 +111,6 @@ import { VaultHome } from "./components/VaultHome";
 
 import "./components/VaultShell.css";
 import "./components/shell.css";
-import "./components/navigator.css";
 
 import type { SettingsTarget } from "./components/settings/schema";
 import type { PaletteMode } from "./palette/rank";
@@ -1955,6 +1954,7 @@ export const VaultApp = ({
           vault={vault}
           activePath={activeDoc?.path ?? null}
           collapsed={navigatorCollapsed}
+          onToggleCollapse={handleToggleNavigator}
           onOpenSettings={() => openSettings()}
           onOpenGraph={openGraph}
           graphOpen={graphOpen}
@@ -1986,7 +1986,6 @@ export const VaultApp = ({
           onExpandFolder={handleExpandFolder}
           allIndexedEntries={allIndexedEntries}
           isIndexing={isIndexing}
-          onCollapseAll={handleCollapseAllFolders}
           ownerDocument={doc}
           dockSlot={
             vaultLinks && appLinks.dockVisible ? (

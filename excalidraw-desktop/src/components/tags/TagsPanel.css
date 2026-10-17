@@ -166,20 +166,13 @@
 .vault-tag-chip,
 .vault-tag-chips__more {
   flex-shrink: 0;
-  padding: 0 6px;
-  border-radius: var(--vd-radius-chip, 4px);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-  height: 18px;
-  color: var(--vault-text);
-  background-color: var(--vault-sel);
-  white-space: nowrap;
-}
-
-.vault-tag-chips__more {
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 15px;
   color: var(--vault-text-muted);
-  background-color: var(--vault-chip);
+  background-color: var(--vault-surface-hover);
+  white-space: nowrap;
 }
 
 .vault-tag-chip {
@@ -194,5 +187,6 @@
 }
 
 .vault-tag-chip:hover {
-  background-color: var(--vault-sel-strong);
+  color: var(--vault-primary);
+  background-color: var(--vault-primary-light);
 }
