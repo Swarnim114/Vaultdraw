@@ -12,6 +12,8 @@ use std::borrow::Cow;
 pub(crate) enum ItemKind {
     Text,
     Frame,
+    /// An image element carrying `customData.latex.source` (a LaTeX formula).
+    Formula,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +68,38 @@ struct El<'a> {
     link: Option<Cow<'a, str>>,
     #[serde(default)]
     is_deleted: Option<bool>,
+    /// Any JSON; only `latex.source` is read, other shapes are ignored.
+    #[serde(default)]
+    custom_data: Option<CustomData<'a>>,
+}
+
+/// Tolerant: a `customData` of any other shape deserialises to `Other`, never an error.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CustomData<'a> {
+    Latex {
+        #[serde(borrow)]
+        latex: LatexData<'a>,
+    },
+    Other(serde::de::IgnoredAny),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum LatexData<'a> {
+    Formula {
+        #[serde(borrow)]
+        source: Cow<'a, str>,
+    },
+    Other(serde::de::IgnoredAny),
+}
+
+/// The formula source of an image element, if it has a non-blank one.
+fn formula_source<'a>(el: &'a El<'a>) -> Option<&'a str> {
+    match &el.custom_data {
+        Some(CustomData::Latex { latex: LatexData::Formula { source } }) => Some(&**source).filter(|t| !t.trim().is_empty()),
+        _ => None,
+    }
 }
 
 fn non_empty<'a>(s: &'a Option<Cow<'a, str>>) -> Option<&'a str> {
@@ -120,6 +154,7 @@ fn parse_scene(json: &[u8]) -> Result<(Vec<TextItem>, Vec<ElementLink>)> {
         let (kind, text) = match el.ty.as_deref() {
             Some("text") => (ItemKind::Text, non_empty(&el.original_text).or_else(|| non_empty(&el.text))),
             Some("frame" | "magicframe") => (ItemKind::Frame, non_empty(&el.name)),
+            Some("image") => (ItemKind::Formula, formula_source(el)),
             _ => continue,
         };
         let (Some(text), Some(id)) = (text, el.id.as_deref().filter(|i| !i.is_empty())) else { continue };
@@ -173,6 +208,25 @@ mod unit_tests {
         );
         let got: Vec<_> = v.iter().map(|i| (&*i.element_id, i.kind)).collect();
         assert_eq!(got, vec![("f1", ItemKind::Frame), ("f2", ItemKind::Frame)]);
+    }
+
+    #[test]
+    fn formula_images_are_indexed_by_latex_source_and_junk_custom_data_is_ignored() {
+        let v = items(
+            r#"{"type":"excalidraw","elements":[
+            {"id":"m1","type":"image","customData":{"latex":{"v":1,"source":"E=mc^2","display":true}}},
+            {"id":"i0","type":"image"},
+            {"id":"i1","type":"image","customData":null},
+            {"id":"i2","type":"image","customData":"str"},
+            {"id":"i3","type":"image","customData":[1,2]},
+            {"id":"i4","type":"image","customData":{"latex":5}},
+            {"id":"i5","type":"image","customData":{"latex":{"source":42}}},
+            {"id":"i6","type":"image","customData":{"latex":{"source":"  "}}},
+            {"id":"i7","type":"image","isDeleted":true,"customData":{"latex":{"source":"gone"}}},
+            {"id":"r","type":"rectangle","customData":{"latex":{"source":"x"}}}]}"#,
+        );
+        let got: Vec<_> = v.iter().map(|i| (&*i.element_id, i.kind, &*i.text)).collect();
+        assert_eq!(got, vec![("m1", ItemKind::Formula, "E=mc^2")]);
     }
 
     #[test]

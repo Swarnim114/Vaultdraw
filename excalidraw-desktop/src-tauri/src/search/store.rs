@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 const MAGIC: &[u8; 4] = b"VDSI";
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
 const HEADER_LEN: usize = 16;
 const MAX_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -93,12 +93,12 @@ mod unit_tests {
         let (_, back) = load(&file).unwrap();
         let d = back.get("a.excalidraw").unwrap();
         assert_eq!((&*d.elinks[0].link, d.hash8), ("[[B]]", [9; 8]));
-        // a snapshot written by format 1 (no element links) is ignored, so every vault rebuilds once
+        // a snapshot written by an older format (v1: no element links, v2: no formulas) is ignored, so every vault rebuilds once
         let mut old = fs::read(&file).unwrap();
         old[4..8].copy_from_slice(&1u32.to_le_bytes());
         fs::write(&file, old).unwrap();
         assert!(load(&file).is_none());
-        assert_eq!(FORMAT_VERSION, 2);
+        assert_eq!(FORMAT_VERSION, 3);
     }
 
     #[test]

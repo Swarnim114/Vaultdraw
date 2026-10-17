@@ -107,7 +107,7 @@ function makeSnippet(
 type Item = {
   elementId: string;
   containerId: string | null;
-  kind: "text" | "frame";
+  kind: "text" | "frame" | "formula";
   text: string;
 };
 
@@ -142,6 +142,17 @@ function extractItems(json: string): Item[] {
         kind: "frame",
         text: el.name,
       });
+    } else if (el.type === "image") {
+      const latex = (el.customData as { latex?: { source?: unknown } } | null)
+        ?.latex;
+      if (typeof latex?.source === "string" && latex.source.trim()) {
+        items.push({
+          elementId: String(el.id),
+          containerId: null,
+          kind: "formula",
+          text: latex.source,
+        });
+      }
     }
   }
   return items;

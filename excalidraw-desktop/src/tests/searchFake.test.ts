@@ -125,6 +125,23 @@ describe("FakeVaultSearch parity: matching", () => {
     expect(first(await run("magic")).kind).toBe("frame");
   });
 
+  it("indexes formula images by LaTeX source and ignores bad customData", async () => {
+    const { run } = await setup({
+      "a.excalidraw": [
+        {
+          id: "m",
+          type: "image",
+          customData: { latex: { v: 1, source: "\\frac{a}{b}" } },
+        },
+        { id: "i1", type: "image" },
+        { id: "i2", type: "image", customData: "junk" },
+        { id: "i3", type: "image", customData: { latex: { source: 5 } } },
+      ],
+    });
+    const hit = first(await run("frac"));
+    expect([hit.elementId, hit.kind]).toEqual(["m", "formula"]);
+  });
+
   it("treats malformed JSON as name-only", async () => {
     const { paths } = await setup({
       "broken.excalidraw": "{ nope",

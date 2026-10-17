@@ -19,7 +19,7 @@ export type ElementMatch = {
   elementId: string;
   /** Bound text: the shape/arrow it labels. */
   containerId: string | null;
-  kind: "text" | "frame";
+  kind: "text" | "frame" | "formula";
   snippet: string;
   highlights: HighlightRange[];
 };
