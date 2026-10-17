@@ -15,6 +15,7 @@ import {
 } from "./vault/DesktopVaultRepository";
 import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
 import { DesktopVaultLinks } from "./links/DesktopVaultLinks";
+import { useLinkDisplayPrefs } from "./links/useLinkDisplayPrefs";
 import { useAppLinks } from "./links/useAppLinks";
 import { DesktopVaultTagRename } from "./tags/DesktopVaultTagRename";
 import { useAppTags } from "./tags/useAppTags";
@@ -1118,6 +1119,7 @@ export const VaultApp = ({
   const { openPicker: openTemplatePicker } = templates;
 
   // Links: history, dock, create, links-aware rename/move, commands.
+  useLinkDisplayPrefs(win); // palette toggles re-render with the new prefs
   const linksSettings = useMemo(
     () => getLinksSettings(prefsNow),
     // eslint-disable-next-line react-hooks/exhaustive-deps
