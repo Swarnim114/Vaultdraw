@@ -84,12 +84,26 @@ export const fillTextLineWithRuns = (
   }
   local.sort((a, b) => a.start - b.start);
 
-  const width = (n: number) =>
-    n <= 0 ? 0 : context.measureText(line.slice(0, n)).width;
+  // Prefix widths, each measured once (segment ends are the next starts).
+  const widths = new Map<number, number>();
+  const width = (n: number) => {
+    if (n <= 0) {
+      return 0;
+    }
+    let w = widths.get(n);
+    if (w === undefined) {
+      w = context.measureText(line.slice(0, n)).width;
+      widths.set(n, w);
+    }
+    return w;
+  };
   const align = context.textAlign;
-  const full = width(line.length);
   const left =
-    align === "center" ? x - full / 2 : align === "right" ? x - full : x;
+    align === "center"
+      ? x - width(line.length) / 2
+      : align === "right"
+      ? x - width(line.length)
+      : x;
   const baseFill = context.fillStyle;
   context.textAlign = "left";
 
