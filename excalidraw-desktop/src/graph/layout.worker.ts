@@ -3,9 +3,28 @@
 import { LayoutHost, type ToLayout } from "./layoutHost";
 
 const channel = new MessageChannel();
-const host = new LayoutHost(
+let timer: ReturnType<typeof setTimeout> | null = null;
+const host: LayoutHost = new LayoutHost(
   (msg, transfer) => self.postMessage(msg, transfer),
-  () => channel.port2.postMessage(0),
+  (delayMs) => {
+    if (delayMs > 0) {
+      timer = setTimeout(() => {
+        timer = null;
+        host.run();
+      }, delayMs);
+    } else {
+      channel.port2.postMessage(0);
+    }
+  },
+  undefined,
+  undefined,
+  undefined,
+  () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  },
 );
 // Ticks run on their own channel so incoming drag/settings messages interleave between slices.
 channel.port1.onmessage = () => host.run();

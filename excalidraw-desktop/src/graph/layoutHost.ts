@@ -3,7 +3,7 @@
  * (`layout.worker.ts`) and the in-thread fallback (`layoutClient.ts`) both drive one LayoutHost.
  *
  * Protocol (main -> worker):
- *   init     {n, edges, positions, settings?, params?, mask?, alpha?, focus?}  (edges, positions,
+ *   init     {n, edges, positions, settings?, params?, mask?, alpha?, focus?, tickMs?}  (edges, positions,
  *            mask, focus are transferred; positions becomes the worker's live array)
  *   settings {settings}          partial ForceSettings, reheats (alpha 0.3)
  *   drag     {node, x, y}        pin node, relax only its 2-hop neighbourhood
@@ -33,6 +33,8 @@ export type ToLayout =
       mask?: Uint8Array | null;
       alpha?: number;
       focus?: Uint32Array | null;
+      /** Minimum ms between ticks (live pacing); 0 = tick for SLICE_MS per turn. */
+      tickMs?: number;
     }
   | { type: "settings"; settings: Partial<ForceSettings> }
   | { type: "drag"; node: number; x: number; y: number }
@@ -48,6 +50,8 @@ export type FromLayout =
 
 /** Time spent ticking before yielding to the message loop and posting positions. */
 export const SLICE_MS = 8;
+/** Live pacing: one tick per display frame (60 Hz), so the layout visibly moves. */
+export const TICK_MS = 1000 / 60;
 /** Positions buffers in flight before the host stops posting (backpressure). */
 const MAX_IN_FLIGHT = 2;
 
@@ -60,13 +64,18 @@ export class LayoutHost {
 
   /**
    * @param post sends a message to the main side (transfer list given)
-   * @param schedule asks the environment to call `run()` on a later message-loop turn
+   * @param schedule asks the environment to call `run()` after `delayMs` (0 = next message-loop
+   *   turn). At most one request is pending at a time.
+   * @param tickMs minimum ms between ticks; 0 = tick for `sliceMs` per run (fast settling)
+   * @param cancel drops a pending `schedule` request (called on stop)
    */
   constructor(
     private readonly post: (msg: FromLayout, transfer: ArrayBuffer[]) => void,
-    private readonly schedule: () => void,
+    private readonly schedule: (delayMs: number) => void,
     private readonly now: () => number = () => performance.now(),
     private readonly sliceMs = SLICE_MS,
+    private tickMs = TICK_MS,
+    private readonly cancel: () => void = () => {},
   ) {}
 
   get active(): boolean {
@@ -76,6 +85,9 @@ export class LayoutHost {
   handle(m: ToLayout): void {
     switch (m.type) {
       case "init":
+        if (m.tickMs !== undefined) {
+          this.tickMs = m.tickMs;
+        }
         this.free = [];
         this.inFlight = 0;
         this.layout = new ForceLayout({
@@ -120,42 +132,52 @@ export class LayoutHost {
         this.running = false;
         this.layout = null;
         this.free = [];
+        this.cancel();
+        this.scheduled = false;
         break;
     }
   }
 
-  /** One scheduled turn: tick for about `sliceMs`, post positions, reschedule or settle. */
+  /**
+   * One scheduled turn, then post positions and reschedule or settle. Paced (`tickMs > 0`): one
+   * tick, next turn `tickMs` after this one started (immediately if the tick was slower).
+   * Unpaced: tick for about `sliceMs`.
+   */
   run(): void {
     this.scheduled = false;
     const layout = this.layout;
     if (!layout || !this.running) {
       return;
     }
-    const deadline = this.now() + this.sliceMs;
+    const start = this.now();
+    const paced = this.tickMs > 0;
+    const deadline = start + this.sliceMs;
     do {
       layout.tick();
-    } while (!layout.settled && this.now() < deadline);
+    } while (!paced && !layout.settled && this.now() < deadline);
     if (layout.settled) {
       this.running = false;
       this.postPositions(layout, true);
       this.post({ type: "settled", tick: layout.tickCount }, []);
     } else {
       this.postPositions(layout, false);
-      this.requestRun();
+      this.requestRun(
+        paced ? Math.max(0, this.tickMs - (this.now() - start)) : 0,
+      );
     }
   }
 
   private start(): void {
     if (this.layout && !this.layout.settled) {
       this.running = true;
-      this.requestRun();
+      this.requestRun(0);
     }
   }
 
-  private requestRun(): void {
+  private requestRun(delayMs: number): void {
     if (!this.scheduled) {
       this.scheduled = true;
-      this.schedule();
+      this.schedule(delayMs);
     }
   }
 

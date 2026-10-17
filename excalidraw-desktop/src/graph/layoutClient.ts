@@ -24,6 +24,8 @@ export interface LayoutStart {
   alpha?: number;
   /** Relax only the 2-hop neighbourhood of these nodes (warm start with new nodes). */
   focus?: Uint32Array | null;
+  /** Minimum ms between ticks (default TICK_MS, one per frame); 0 = settle as fast as possible. */
+  tickMs?: number;
 }
 
 export interface LayoutCallbacks {
@@ -55,23 +57,32 @@ function inThreadTransport(
   hostRef: { host: LayoutHost | null },
 ): Transport {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const host = new LayoutHost(
+  const clear = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  const host: LayoutHost = new LayoutHost(
     (msg) => onMessage(msg),
-    () => {
-      if (timer) {
-        clearTimeout(timer);
-      }
-      timer = setTimeout(() => host.run(), 0);
+    (delayMs) => {
+      clear();
+      timer = setTimeout(() => {
+        timer = null;
+        host.run();
+      }, delayMs);
     },
+    undefined,
+    undefined,
+    undefined,
+    clear,
   );
   hostRef.host = host;
   return {
     send: (msg) => host.handle(msg),
     close: () => {
       host.handle({ type: "stop" });
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clear();
     },
   };
 }

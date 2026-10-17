@@ -172,7 +172,7 @@ describe("barnesHut convergence", () => {
 });
 
 describe("barnesHut drag", () => {
-  it("moves only the 2-hop neighbourhood of the dragged node", () => {
+  function pathGraph() {
     // a path 0-1-2-3-4-5-6 plus a distant clique-ish blob
     const n = 40;
     const edgeList: number[] = [];
@@ -188,11 +188,17 @@ describe("barnesHut drag", () => {
     for (let i = 0; i < 2 * n; i++) {
       positions[i] = (r() - 0.5) * 200;
     }
+    return { n, g, positions };
+  }
+
+  it("moves only the 2-hop neighbourhood above globalDragMax", () => {
+    const { n, g, positions } = pathGraph();
     const l = new ForceLayout({
       nodeCount: n,
       edges: g.edges,
       positions,
       alpha: 0,
+      params: { globalDragMax: 10 },
     });
     const before = positions.slice();
     l.drag(3, 500, 500);
@@ -216,6 +222,37 @@ describe("barnesHut drag", () => {
         expect(positions[2 * i]).toBe(before[2 * i]);
       }
     }
+  });
+
+  it("keeps every visible node live up to globalDragMax and settles after release", () => {
+    const { n, g, positions } = pathGraph();
+    const l = new ForceLayout({
+      nodeCount: n,
+      edges: g.edges,
+      positions,
+      alpha: 0,
+    });
+    const before = positions.slice();
+    l.drag(3, 500, 500);
+    for (let t = 0; t < 30; t++) {
+      l.tick();
+    }
+    expect(l.settled).toBe(false);
+    expect(positions[6]).toBe(500);
+    const far = [20, 30].map(
+      (i) =>
+        positions[2 * i] !== before[2 * i] ||
+        positions[2 * i + 1] !== before[2 * i + 1],
+    );
+    expect(far).toEqual([true, true]);
+    // still hot while held
+    for (let t = 0; t < 1000; t++) {
+      l.tick();
+    }
+    expect(l.settled).toBe(false);
+    l.release();
+    settle(l);
+    expect(l.settled).toBe(true);
   });
 });
 

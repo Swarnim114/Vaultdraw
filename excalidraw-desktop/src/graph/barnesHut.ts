@@ -40,7 +40,12 @@ export interface LayoutParams {
   velocityDecay: number;
   /** Stop early when mean node speed stays below this fraction of the layout extent for 3 ticks. */
   settleSpeed: number;
+  /** Dragging keeps every visible node live up to this many visible nodes; above it, 2-hop hood. */
+  globalDragMax: number;
 }
+
+/** Visible-node limit for global (d3-style) drag reheat. */
+export const GLOBAL_DRAG_MAX = 10000;
 
 export const DEFAULT_LAYOUT_PARAMS: Readonly<LayoutParams> = {
   theta: 0.9,
@@ -48,6 +53,7 @@ export const DEFAULT_LAYOUT_PARAMS: Readonly<LayoutParams> = {
   alphaDecay: 1 - Math.pow(0.001, 1 / 300),
   velocityDecay: 0.6,
   settleSpeed: 0.0005,
+  globalDragMax: GLOBAL_DRAG_MAX,
 };
 
 /** Start alpha for a cold layout, a warm start from a saved layout, and a reheat. */
@@ -203,15 +209,22 @@ export class ForceLayout {
     this.wake(alpha);
   }
 
-  /** Pin `node` at (x, y) and relax only its 2-hop neighbourhood; everything else is fixed. */
+  /**
+   * Pin `node` at (x, y) and hold alphaTarget at ALPHA_REHEAT (d3 drag). Up to `globalDragMax`
+   * visible nodes every one stays live; above it only the 2-hop neighbourhood relaxes.
+   */
   drag(node: number, x: number, y: number): void {
     if (this.dragNode !== node) {
       if (this.dragNode >= 0) {
         this.fixed[this.dragNode] = 0;
       }
       this.dragNode = node;
-      this.setHood([node]);
-      this.rebuildActive();
+      if (this.visibleCount() <= this.p.globalDragMax) {
+        this.clearHood();
+      } else {
+        this.setHood([node]);
+        this.rebuildActive();
+      }
     }
     this.fixed[node] = 1;
     this.positions[2 * node] = x;
@@ -234,6 +247,18 @@ export class ForceLayout {
     this.setHood(seeds);
     this.rebuildActive();
     this.wake(alpha);
+  }
+
+  private visibleCount(): number {
+    const { hidden } = this;
+    if (!hidden) {
+      return this.n;
+    }
+    let c = 0;
+    for (let i = 0; i < this.n; i++) {
+      c += hidden[i] ? 0 : 1;
+    }
+    return c;
   }
 
   private wake(alpha: number): void {
