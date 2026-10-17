@@ -320,6 +320,13 @@ impl Writer {
             if !self.guard(self.store.write_blob(&name, &b.bytes, full))? {
                 return Ok(Outcome::DiskLow);
             }
+            // Own copies are known to GC and the cap right away (the watcher skips own files).
+            let copy = index::BlobCopy { dev: name.dev.clone(), epoch: name.epoch.clone(), size: b.bytes.len() as u64 };
+            let mut g = self.index.write().unwrap_or_else(|p| p.into_inner());
+            let copies = g.blobs.entry(name.sha_ext()).or_default();
+            if !copies.iter().any(|c| c.dev == copy.dev && c.epoch == copy.epoch) {
+                copies.push(copy);
+            }
         }
         // 2. keyframe or proven delta
         let lineage = existing.clone().unwrap_or_else(|| self.ulid.next(now));
