@@ -110,26 +110,27 @@ pub struct Delete {
 const KEEP: u8 = 1;
 const DEL: u8 = 2;
 
-/// Caches the UTC offset for a whole UTC hour when it doesn't change inside it (nearly always),
-/// so a 500-version plan doesn't call `localtime_r` 500 times. DST stays exact: an hour holding a
-/// transition falls back to one call per version.
+/// Caches the UTC offset for a whole UTC day when it is the same at both ends of it (nearly
+/// always), so a 500-version plan calls `localtime_r` about twice per day of history, not twice
+/// per hour. DST stays exact: a day holding a transition falls back to one call per version (no
+/// real zone changes its offset twice within 24 hours).
 struct OffsetMemo<'a> {
     f: &'a dyn Fn(u64) -> i32,
-    hour: u64,
+    span: u64,
     val: Option<i32>,
 }
 
 impl OffsetMemo<'_> {
     fn at(&mut self, t: u64) -> i32 {
-        let hour = t / HOUR_MS;
-        if hour == self.hour {
+        let span = t / DAY_MS;
+        if span == self.span {
             if let Some(v) = self.val {
                 return v;
             }
         }
-        let start = (self.f)(hour * HOUR_MS);
-        let end = (self.f)(hour * HOUR_MS + HOUR_MS - 1);
-        self.hour = hour;
+        let start = (self.f)(span * DAY_MS);
+        let end = (self.f)(span * DAY_MS + DAY_MS - 1);
+        self.span = span;
         if start == end {
             self.val = Some(start);
             start
@@ -161,7 +162,7 @@ pub fn plan_with(view: &[V], thin: Option<&Policy>, pin_newest: bool, env: &Env)
         }
     }
     if let Some(p) = thin {
-        let mut memo = OffsetMemo { f: env.offset_secs, hour: u64::MAX, val: None };
+        let mut memo = OffsetMemo { f: env.offset_secs, span: u64::MAX, val: None };
         let mut last = [i64::MIN; 3];
         for i in (0..n).rev() {
             let v = &view[i];
