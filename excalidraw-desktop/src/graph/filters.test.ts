@@ -85,8 +85,12 @@ describe("query grammar", () => {
 });
 
 describe("masks", () => {
-  it("hides tags by default, ghosts and orphans on request", () => {
-    const m = visibilityMask(g, DEFAULT_GRAPH_SETTINGS)!;
+  it("shows everything by default; hides tags, ghosts and orphans on request", () => {
+    expect(visibilityMask(g, DEFAULT_GRAPH_SETTINGS)).toBeNull();
+    const m = visibilityMask(g, {
+      ...DEFAULT_GRAPH_SETTINGS,
+      showTags: false,
+    })!;
     for (let i = 0; i < g.nodeCount; i++) {
       expect(m[i] === 1).toBe((g.flags[i] & FLAG_TAG) !== 0);
     }

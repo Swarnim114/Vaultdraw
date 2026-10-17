@@ -69,7 +69,7 @@ describe("parseGraphSettings", () => {
     expect(s.forces.centre).toBe(DEFAULT_GRAPH_SETTINGS.forces.centre);
     expect(s.colourBy).toBe("folder");
     expect(s.localDepth).toBe(2);
-    expect(s.showTags).toBe(false);
+    expect(s.showTags).toBe(DEFAULT_GRAPH_SETTINGS.showTags);
     expect(s.arrows).toBe(true);
     expect(s.groups).toEqual([{ query: "tag:#a", colour: "#f00" }]);
     expect("mystery" in s).toBe(false);
@@ -88,9 +88,9 @@ describe("graphSettingsChanges", () => {
   it("is empty when nothing changed and nulls values reset to default", () => {
     const base = freshGraphSettings();
     expect(graphSettingsChanges(base, freshGraphSettings())).toEqual([]);
-    const changed = { ...base, showTags: true };
+    const changed = { ...base, showTags: false };
     expect(graphSettingsChanges(base, changed)).toEqual([
-      { key: "graph.show_tags", value: true },
+      { key: "graph.show_tags", value: false },
     ]);
     expect(graphSettingsChanges(changed, base)).toEqual([
       { key: "graph.show_tags", value: null },

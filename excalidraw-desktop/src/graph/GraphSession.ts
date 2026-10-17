@@ -11,7 +11,7 @@
  */
 import { drawArrows } from "./arrows";
 import { Camera, computeBounds } from "./camera";
-import { ALPHA_WARM } from "./barnesHut";
+import { ALPHA_WARM, GLOBAL_DRAG_MAX } from "./barnesHut";
 import { FrameLoop } from "./frameLoop";
 import { HitGrid } from "./hitgrid";
 import { LabelLayer } from "./labels";
@@ -21,7 +21,7 @@ import {
   searchBright,
   visibilityMask,
 } from "./filters";
-import { describeNode, type NodeInfo } from "./nodeInfo";
+import { describeNode, displayName, type NodeInfo } from "./nodeInfo";
 import { selectInDirection, type Direction } from "./keyboard";
 import { localGraph } from "./localGraph";
 import {
@@ -53,6 +53,14 @@ export const SAVE_DEBOUNCE_MS = 1000;
 /** Start alpha of a local graph that begins from the global positions. */
 const LOCAL_ALPHA = 0.5;
 const FIT_FROM = 0.85;
+/**
+ * Warm "bloom" (graph-feel D-GF3): a saved layout opens contracted toward its centroid and
+ * relaxes back at this alpha, so every open moves like Obsidian. Only up to LIVE_MAX nodes
+ * (above it a tick costs more than a frame).
+ */
+export const BLOOM_SCALE = 0.6;
+export const BLOOM_ALPHA = 0.35;
+export const LIVE_MAX = GLOBAL_DRAG_MAX;
 
 export interface GraphSource {
   graph(handle: string): Promise<GraphData>;
@@ -112,6 +120,8 @@ export interface SessionDeps {
   loop?: FrameLoopDeps;
   now?: () => number;
   readColours?: (host: HTMLElement) => GraphColours;
+  /** Largest view that blooms on a warm open (default LIVE_MAX). */
+  liveMax?: number;
 }
 
 export interface SessionMetrics {
@@ -198,6 +208,8 @@ export class GraphSession {
   private dimming = false;
   private fitWasAnimating = false;
   private dragging = -1;
+  private dragX = 0;
+  private dragY = 0;
   private hintCache: { key: string; map: HintMap } | null = null;
   private viewVersion = 0;
 
@@ -205,7 +217,9 @@ export class GraphSession {
     this.now = d.now ?? (() => performance.now());
     this.t0 = this.now();
     this.ctx = d.overlay.getContext("2d");
-    this.labels = new LabelLayer({ label: (i) => this.g.label(this.gid(i)) });
+    this.labels = new LabelLayer({
+      label: (i) => displayName(this.g, this.gid(i)),
+    });
     this.loop = new FrameLoop((t) => this.render(t), d.loop);
   }
 
@@ -470,6 +484,11 @@ export class GraphSession {
         }
         this.metrics.layoutMessages++;
         this.pos.set(p);
+        if (this.dragging >= 0) {
+          // the worker is a message behind the pointer: keep the held node under it
+          this.pos[2 * this.dragging] = this.dragX;
+          this.pos[2 * this.dragging + 1] = this.dragY;
+        }
         this.posDirty = true;
         this.gridDirty = true;
         this.unsaved = false;
@@ -493,6 +512,14 @@ export class GraphSession {
     };
     if (this.local) {
       init.alpha = LOCAL_ALPHA;
+    } else if (
+      first &&
+      this.hadSaved &&
+      this.vn <= (this.d.liveMax ?? LIVE_MAX)
+    ) {
+      this.bloom();
+      init.positions = this.pos.slice();
+      init.alpha = BLOOM_ALPHA;
     } else if (this.hadSaved || !first) {
       init.alpha = ALPHA_WARM;
       if (first && this.isNew) {
@@ -502,6 +529,23 @@ export class GraphSession {
       }
     }
     layout.start(init);
+  }
+
+  /** Contracts the visible nodes toward their centroid (start of the warm bloom). */
+  private bloom(): void {
+    const b = computeBounds(this.pos, this.vn, this.mask);
+    if (!b) {
+      return;
+    }
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    const P = this.pos;
+    for (let i = 0; i < this.vn; i++) {
+      P[2 * i] = cx + (P[2 * i] - cx) * BLOOM_SCALE;
+      P[2 * i + 1] = cy + (P[2 * i + 1] - cy) * BLOOM_SCALE;
+    }
+    this.renderer!.setPositions(P);
+    this.gridDirty = true;
   }
 
   private onSettled(): void {
@@ -629,8 +673,33 @@ export class GraphSession {
     this.cameraMoved();
   }
 
+  /** Smooth (eased, cursor-anchored) zoom for wheel/pinch/keyboard; settles via render(). */
+  zoomSmooth(sx: number, sy: number, factor: number): void {
+    this.touched = true;
+    this.camera.zoomSmooth(sx, sy, factor);
+    this.cameraMoved();
+  }
+
   zoomCentre(factor: number): void {
-    this.zoomAt(this.width / 2, this.height / 2, factor);
+    this.zoomSmooth(this.width / 2, this.height / 2, factor);
+  }
+
+  /** Inertial pan glide after a background drag release (screen px/ms). */
+  fling(vx: number, vy: number): void {
+    this.touched = true;
+    this.camera.fling(vx, vy);
+    this.cameraMoved();
+  }
+
+  /** Stops any glide/ease (new pointerdown). */
+  stopMotion(): void {
+    this.camera.cancelMotion();
+  }
+
+  /** Called from render() while the camera moves by itself, so hint/hover caches follow. */
+  private cameraStepped(): void {
+    this.viewVersion++;
+    this.hintCache = null;
   }
 
   private cameraMoved(): void {
@@ -849,7 +918,12 @@ export class GraphSession {
       return;
     }
     const w = this.camera.screenToWorld(sx, sy);
-    this.layout?.drag(this.dragging, w.x, w.y);
+    const i = this.dragging;
+    this.dragX = this.pos[2 * i] = w.x;
+    this.dragY = this.pos[2 * i + 1] = w.y;
+    this.posDirty = true;
+    this.loop.invalidate();
+    this.layout?.drag(i, w.x, w.y);
   }
 
   endDrag(): void {
@@ -877,8 +951,10 @@ export class GraphSession {
     if (animating) {
       again = true;
       this.fitWasAnimating = true;
+      this.cameraStepped();
     } else if (this.fitWasAnimating) {
       this.fitWasAnimating = false;
+      this.cameraStepped();
       if (this.shownNode >= 0) {
         this.notifyShown();
       }

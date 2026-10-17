@@ -12,7 +12,7 @@ export type GraphSettings = {
   // Filters
   /** Filter box text (same grammar as groups); non-matching nodes are dimmed. */
   search: string;
-  /** Tag nodes and doc->tag edges (Obsidian: off). */
+  /** Tag nodes and doc->tag edges (Obsidian: off; on here, graph-feel D-GF1). */
   showTags: boolean;
   /** Unresolved targets as hollow ghost nodes (Obsidian "existing files only" = off, so shown). */
   showUnresolved: boolean;
@@ -37,7 +37,7 @@ export type GraphSettings = {
 
 export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   search: "",
-  showTags: false,
+  showTags: true,
   showUnresolved: true,
   showOrphans: true,
   colourBy: "folder",

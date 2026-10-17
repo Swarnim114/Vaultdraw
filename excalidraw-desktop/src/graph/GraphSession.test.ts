@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALPHA_WARM } from "./barnesHut";
+import { computeBounds } from "./camera";
 import { fakeGraph } from "./fakeGraph";
 import {
+  BLOOM_ALPHA,
+  BLOOM_SCALE,
   DIM_ALPHA,
   GraphSession,
   SAVE_DEBOUNCE_MS,
@@ -12,6 +15,7 @@ import {
   type ShownNode,
 } from "./GraphSession";
 import { encodeGraphLayout } from "./layoutStore";
+import { displayName } from "./nodeInfo";
 import { DEFAULT_GRAPH_SETTINGS } from "./settings";
 import { FLAG_UNRESOLVED } from "./types";
 import { deriveGraphColours, FALLBACK_TOKENS } from "./theme";
@@ -60,6 +64,7 @@ type FakeLayout = ReturnType<typeof fakeLayout>;
 function setup(
   saved: Uint8Array = new Uint8Array(0),
   inputs?: Partial<SessionInputs>,
+  liveMax?: number,
 ) {
   const renderer = fakeRenderer();
   const layouts: FakeLayout[] = [];
@@ -85,6 +90,7 @@ function setup(
       shown: (s) => shown.push(s),
       open: (p) => opened.push(p),
     },
+    liveMax,
     createRenderer: () => renderer,
     createLayout: (cb) => {
       const l = fakeLayout(cb);
@@ -146,15 +152,27 @@ describe("GraphSession open", () => {
     expect(init.nodeCount).toBe(N);
     expect(init.alpha).toBeUndefined();
     expect(init.focus).toBeUndefined();
-    // tags are hidden by default
-    expect(init.mask).not.toBeNull();
+    // tags, ghosts and orphans are all shown by default (D-GF1)
+    expect(init.mask).toBeNull();
     expect(t.session.metrics.warm).toBe(false);
   });
 
-  it("warm start: saved positions, ALPHA_WARM, focus on the new nodes", async () => {
+  it("warm start blooms: saved layout contracted toward its centre, BLOOM_ALPHA", async () => {
+    const pos = new Float32Array(2 * N).map((_, i) => i);
+    const t = setup(encodeGraphLayout(graph, pos));
+    await t.session.load();
+    const a = t.layouts[0].starts[0];
+    expect(a.alpha).toBe(BLOOM_ALPHA);
+    expect(a.focus).toBeUndefined();
+    const b = computeBounds(a.positions, N)!;
+    const span = (2 * N - 2) * BLOOM_SCALE; // saved x range is 0..2N-2
+    expect(b.maxX - b.minX).toBeCloseTo(span, 3);
+  });
+
+  it("warm start above the live limit: saved positions, ALPHA_WARM, focus on the new nodes", async () => {
     const pos = new Float32Array(2 * N).map((_, i) => i);
     const bytes = encodeGraphLayout(graph, pos);
-    const full = setup(bytes);
+    const full = setup(bytes, undefined, 0);
     await full.session.load();
     const a = full.layouts[0].starts[0];
     expect(a.alpha).toBe(ALPHA_WARM);
@@ -164,7 +182,7 @@ describe("GraphSession open", () => {
     // drop the last node from the saved file: it becomes the focus
     const partial = encodeGraphLayout(graph, pos).slice(0, 8 + 12 * (N - 1));
     new DataView(partial.buffer).setUint32(4, N - 1, true);
-    const part = setup(partial);
+    const part = setup(partial, undefined, 0);
     await part.session.load();
     expect(Array.from(part.layouts[0].starts[0].focus!)).toEqual([N - 1]);
   });
@@ -277,12 +295,14 @@ describe("GraphSession settings", () => {
     const setMaskCalls = t.renderer.setMask.mock.calls.length;
     t.session.apply({
       ...t.base,
-      settings: { ...t.base.settings, showTags: true },
+      settings: { ...t.base.settings, showTags: false },
     });
     expect(t.layouts).toHaveLength(1);
     expect(t.renderer.setMask.mock.calls.length).toBe(setMaskCalls + 1);
-    expect(t.renderer.setMask.mock.lastCall![0]).toBeNull();
-    expect(t.layouts[0].setMask).toHaveBeenCalledWith(null);
+    expect(t.renderer.setMask.mock.lastCall![0]).not.toBeNull();
+    expect(t.layouts[0].setMask).toHaveBeenCalledWith(
+      t.renderer.setMask.mock.lastCall![0],
+    );
   });
 
   it("force sliders go to the layout, theme change recolours without a layout restart", async () => {
@@ -334,7 +354,7 @@ describe("GraphSession interaction", () => {
     const p = t.session.nodeScreen(0);
     t.session.hoverAt(p.x, p.y);
     const s = t.shown.at(-1)!;
-    expect(s.info.name).toBe(graph.label(s.node));
+    expect(s.info.name).toBe(displayName(graph, s.node));
     expect(t.session.shown).toBe(s.node);
     t.flushRaf();
     t.flushRaf(200);
@@ -365,6 +385,28 @@ describe("GraphSession interaction", () => {
     expect(t.layouts[0].drag).toHaveBeenCalled();
     t.session.endDrag();
     expect(t.layouts[0].release).toHaveBeenCalled();
+  });
+
+  it("the held node follows the pointer at once, even when the worker is a message behind", async () => {
+    const t = setup();
+    await t.session.load();
+    t.session.beginDrag(2);
+    t.session.dragTo(400, 300);
+    const at = () => t.session.nodeScreen(2);
+    expect(at().x).toBeCloseTo(400, 3);
+    expect(at().y).toBeCloseTo(300, 3);
+    // stale worker positions (all zero) must not pull the held node back
+    t.layouts[0].cb.onPositions(new Float32Array(2 * N), {
+      tick: 1,
+      alpha: 0.3,
+    });
+    expect(at().x).toBeCloseTo(400, 3);
+    t.session.endDrag();
+    t.layouts[0].cb.onPositions(new Float32Array(2 * N), {
+      tick: 2,
+      alpha: 0.3,
+    });
+    expect(t.session.nodeScreen(2)).not.toEqual({ x: 400, y: 300 });
   });
 
   it("keyboard focus moves, shows the card and Enter-style activation opens it", async () => {

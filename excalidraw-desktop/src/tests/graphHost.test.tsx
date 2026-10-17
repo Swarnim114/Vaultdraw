@@ -93,12 +93,12 @@ describe("GraphHost", () => {
   it("passes loaded per-vault settings, the theme key and shortcut lookup", async () => {
     const shortcutFor = vi.fn(() => "Alt+1");
     await mount({
-      invoke: makeInvoke({ show_tags: true, node_size: 2 }).invoke,
+      invoke: makeInvoke({ show_tags: false, node_size: 2 }).invoke,
       shortcutFor,
     });
     await run("graph.open");
     await waitFor(() => screen.getByTestId("graph-view"));
-    expect(lastProps!.settings.showTags).toBe(true);
+    expect(lastProps!.settings.showTags).toBe(false);
     expect(lastProps!.settings.nodeSize).toBe(2);
     expect(lastProps!.themeKey).toBe("t1");
     expect(lastProps!.shortcutFor).toBe(shortcutFor);
@@ -111,7 +111,7 @@ describe("GraphHost", () => {
     await mount({ invoke });
     await run("graph.toggleTags");
     await waitFor(() => screen.getByTestId("graph-view"));
-    expect(lastProps!.settings.showTags).toBe(true);
+    expect(lastProps!.settings.showTags).toBe(!DEFAULT_GRAPH_SETTINGS.showTags);
     await run("graph.toggleOrphans");
     expect(lastProps!.settings.showOrphans).toBe(false);
     expect(writes).toHaveLength(0);
