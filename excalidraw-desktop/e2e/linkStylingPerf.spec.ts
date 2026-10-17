@@ -25,7 +25,10 @@ const COLS = 25;
 const ROWS = 20;
 const PAN_STEPS = 60;
 const ZOOM_STEPS = 40;
-const ROUNDS = ["on", "off", "on", "off"] as const;
+// The first ON/OFF pair warms the page up (GPU textures, JIT) and is not
+// recorded: without it the first round reads back ~2 ms slower whatever the mode.
+const ROUNDS = ["on", "off", "on", "off", "on", "off"] as const;
+const WARMUP_ROUNDS = 2;
 
 test.skip(!PERF, "set E2E_PERF=1 to run the link styling perf measurements");
 test.describe.configure({ timeout: 600_000 });
@@ -269,18 +272,27 @@ test("link styling: pan, zoom and hover per-step cost, on vs off", async ({
     const rasterExcess: Record<string, number[]> = { on: [], off: [] };
     // start plain, so every round (ON, OFF, ON, OFF) begins with a toggle
     await setStyling(page, false);
-    for (const mode of ROUNDS) {
+    for (const [round, mode] of ROUNDS.entries()) {
+      const keep = round >= WARMUP_ROUNDS;
       // (d) one-off raster: toggle and watch the frames that follow
       await throttle(page, browserName, rate);
       const r = await firstRender(page, () => setStyling(page, mode === "on"));
-      raster[mode].push(r.maxGap);
-      rasterExcess[mode].push(r.excess);
+      if (keep) {
+        raster[mode].push(r.maxGap);
+        rasterExcess[mode].push(r.excess);
+      }
       for (const kind of ["pan", "zoom"] as const) {
         await sweep(page, kind); // warm-up
-        samples[mode][kind].push(...(await sweep(page, kind)));
+        const times = await sweep(page, kind);
+        if (keep) {
+          samples[mode][kind].push(...times);
+        }
       }
       await hoverSweep(page, points); // warm-up
-      samples[mode].hover.push(...(await hoverSweep(page, points)));
+      const hover = await hoverSweep(page, points);
+      if (keep) {
+        samples[mode].hover.push(...hover);
+      }
       await throttle(page, browserName, 1);
     }
     const rows: Record<string, Row> = {};
