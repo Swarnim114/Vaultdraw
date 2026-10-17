@@ -49,6 +49,7 @@ import type {
 
 import { getElementAbsoluteCoords, getElementBounds } from "./bounds";
 import { getUncroppedImageElement } from "./cropElement";
+import { invertImageDataForDarkTheme } from "./darkThemePixels";
 import { LinearElementEditor } from "./linearElementEditor";
 import {
   getBoundTextElement,
@@ -620,11 +621,9 @@ const drawElementOnCanvas = (
 
             const data = imageData.data;
 
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = 255 - data[i];
-              data[i + 1] = 255 - data[i + 1];
-              data[i + 2] = 255 - data[i + 2];
-            }
+            // Vaultdraw: emulate DARK_THEME_FILTER (hue-preserving), not a
+            // plain RGB invert
+            invertImageDataForDarkTheme(data);
 
             tempContext.putImageData(imageData, 0, 0);
             context.drawImage(
