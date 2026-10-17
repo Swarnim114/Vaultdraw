@@ -5,7 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 // Drives the real VaultApp UI in a browser (see e2e.html). WebKit matches the
 // macOS Tauri WKWebView; Chromium guards against engine-specific fixes.
 //
-// `yarn test:e2e` runs WebKit only with 2 workers to keep laptops cool.
+// `yarn test:e2e` runs WebKit only with 4 workers (2: 273 s, 4: 150 s for the
+// functional suite on 2026-10-17; fullyParallel gave nothing on top).
 // `yarn test:e2e:full` (E2E_FULL=1) adds Chromium, screenshots and the
 // screenshot gallery spec.
 const full = process.env.E2E_FULL === "1";
@@ -37,7 +38,7 @@ export default defineConfig({
   globalTeardown: "./e2e/teardown.ts",
   timeout: 60_000,
   fullyParallel: process.env.E2E_FULLY_PARALLEL === "1",
-  workers: Number(process.env.E2E_WORKERS) || 2,
+  workers: Number(process.env.E2E_WORKERS) || 4,
   reporter: [["list"]],
   outputDir: `../.cache/e2e-results-${port}`,
   use: {
