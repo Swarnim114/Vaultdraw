@@ -1,5 +1,23 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
+
+import type { ExcalidrawElement } from "@excalidraw/element/types";
+
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+
+import { registerCommandHandlers } from "../../commands/handlerRegistry";
+import { diffScenes, isEmptyDiff } from "../diff";
+import { HISTORY_COMMAND_IDS } from "../historyCommands";
+import { ChangeOverlay } from "../preview/ChangeOverlay";
 
 import type { LoadedVersion } from "../preview/versionCache";
 import type { VersionPreviewProps } from "../preview/VersionPreview";
@@ -30,7 +48,46 @@ export interface PreviewOverlayProps
   onBack: () => void;
   /** Rendered at the bottom in full-screen mode. */
   timeline?: ReactNode;
+  /**
+   * The current drawing's elements including deleted ones (the diff
+   * reference). Without it there are no change highlights.
+   */
+  getCurrentElements?: () => readonly ExcalidrawElement[];
+  /** Initial highlight state (`history.highlight_changes`); default on. */
+  highlightChanges?: boolean;
 }
+
+const Legend = ({
+  added,
+  changed,
+  removed,
+}: {
+  added: number;
+  changed: number;
+  removed: number;
+}) => (
+  <span className="vault-change-legend" data-testid="history-legend">
+    {added > 0 && (
+      <span className="vault-change-legend__item vault-change-legend__item--added">
+        <i className="vault-change-legend__swatch" />
+        Only in this version {added}
+      </span>
+    )}
+    {changed > 0 && (
+      <span className="vault-change-legend__item vault-change-legend__item--changed">
+        <i className="vault-change-legend__swatch" />
+        Changed since {changed}
+      </span>
+    )}
+    {removed > 0 && (
+      <span className="vault-change-legend__item vault-change-legend__item--removed">
+        <i className="vault-change-legend__swatch" />
+        Not in this version {removed}
+      </span>
+    )}
+    {added + changed + removed === 0 && <span>No changes since</span>}
+  </span>
+);
 
 /** The read-only preview over the main canvas, with its slim banner. */
 export const PreviewOverlay = ({
@@ -44,9 +101,43 @@ export const PreviewOverlay = ({
   onCopy,
   onBack,
   timeline,
+  getCurrentElements,
+  highlightChanges = true,
   ...previewProps
 }: PreviewOverlayProps) => {
   const root = useRef<HTMLDivElement>(null);
+  const [previewApi, setPreviewApi] = useState<ExcalidrawImperativeAPI | null>(
+    null,
+  );
+  const { onApi } = previewProps;
+  const handleApi = useCallback(
+    (api: ExcalidrawImperativeAPI | null) => {
+      setPreviewApi(api);
+      onApi?.(api);
+    },
+    [onApi],
+  );
+
+  // Session state: the toggle never writes the setting.
+  const [highlights, setHighlights] = useState(highlightChanges);
+  const canHighlight = !!getCurrentElements;
+  useEffect(() => {
+    if (!canHighlight) {
+      return;
+    }
+    return registerCommandHandlers({
+      [HISTORY_COMMAND_IDS.toggleHighlights]: () => setHighlights((on) => !on),
+    });
+  }, [canHighlight]);
+  const diff = useMemo(
+    () =>
+      canHighlight && version
+        ? diffScenes(version.elements, getCurrentElements!())
+        : null,
+    // The current scene is read once per version (it rarely changes while previewing).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version, canHighlight],
+  );
   const back = useRef(onBack);
   back.current = onBack;
 
@@ -121,7 +212,30 @@ export const PreviewOverlay = ({
         <span className="vault-history-preview__title">
           Viewing {title} &middot; {time}
         </span>
+        {diff && highlights && (
+          <Legend
+            added={diff.added.length}
+            changed={diff.changed.length}
+            removed={diff.removed.length}
+          />
+        )}
         <span className="vault-history-preview__actions">
+          {diff && (
+            <button
+              type="button"
+              className="vault-btn vault-btn--sm"
+              data-testid="history-highlights"
+              aria-pressed={highlights}
+              title={
+                isEmptyDiff(diff)
+                  ? "Nothing differs from the current drawing"
+                  : undefined
+              }
+              onClick={() => setHighlights((on) => !on)}
+            >
+              Highlights
+            </button>
+          )}
           <button
             type="button"
             className="vault-btn vault-btn--sm vault-btn--primary"
@@ -154,8 +268,21 @@ export const PreviewOverlay = ({
         <Suspense fallback={null}>
           {/* Mount only with a version: the preview takes its initial
               scene at mount, so a null first render would stay blank. */}
-          {version && <VersionPreview version={version} {...previewProps} />}
+          {version && (
+            <VersionPreview
+              version={version}
+              {...previewProps}
+              onApi={handleApi}
+            />
+          )}
         </Suspense>
+        {diff && highlights && version && (
+          <ChangeOverlay
+            api={previewApi}
+            diff={diff}
+            versionElements={version.elements}
+          />
+        )}
       </div>
       {fullscreen && timeline}
     </div>,
