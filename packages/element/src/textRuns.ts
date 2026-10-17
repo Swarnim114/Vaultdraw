@@ -182,22 +182,24 @@ export const fillTextLineWithRuns = (
       : x;
   const baseFill = context.fillStyle;
   context.textAlign = "left";
-  for (const { text, x: sx, x2, run } of lineLayout.segments) {
+  for (const { text, x: sx, x2: rx2, run } of lineLayout.segments) {
     context.fillStyle = run?.color ?? baseFill;
     context.fillText(text, left + sx, y);
     if (run?.underline) {
-      const uy = y + fontSize * 0.12;
-      context.save();
-      context.strokeStyle = context.fillStyle;
-      context.lineWidth = Math.max(0.75, fontSize * 0.06);
-      context.setLineDash(
-        run.underline === "dashed" ? [fontSize * 0.25, fontSize * 0.18] : [],
-      );
-      context.beginPath();
-      context.moveTo(left + sx, uy);
-      context.lineTo(left + x2, uy);
-      context.stroke();
-      context.restore();
+      // fillRect, not a stroked path: no save/restore or dash state per run
+      const t = Math.max(0.75, fontSize * 0.06);
+      const uy = y + fontSize * 0.12 - t / 2;
+      const x1 = left + sx;
+      const x2 = left + rx2;
+      if (run.underline === "dashed") {
+        const on = fontSize * 0.25;
+        const step = on + fontSize * 0.18;
+        for (let dx = x1; dx < x2; dx += step) {
+          context.fillRect(dx, uy, Math.min(on, x2 - dx), t);
+        }
+      } else {
+        context.fillRect(x1, uy, x2 - x1, t);
+      }
     }
   }
   context.fillStyle = baseFill;

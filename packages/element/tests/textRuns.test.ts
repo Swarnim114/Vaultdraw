@@ -17,30 +17,20 @@ import {
 
 import type { TextRun, TextRunStyler } from "../src/textRuns";
 
-/** A context that records fillText / stroke calls; 10 px per character. */
+/** A context that records fillText / fillRect calls; 10 px per character. */
 const recordingContext = () => {
   const calls: { text: string; x: number; fill: string }[] = [];
-  const strokes: { dash: number[]; color: string }[] = [];
-  let dash: number[] = [];
+  const rects: { x: number; w: number; fill: string }[] = [];
   const ctx: any = {
     textAlign: "left",
     fillStyle: "#000",
-    strokeStyle: "#000",
-    lineWidth: 1,
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: (text: string, x: number) =>
       calls.push({ text, x, fill: ctx.fillStyle }),
-    save: () => {},
-    restore: () => {},
-    setLineDash: (d: number[]) => {
-      dash = d;
-    },
-    beginPath: () => {},
-    moveTo: () => {},
-    lineTo: () => {},
-    stroke: () => strokes.push({ dash, color: ctx.strokeStyle }),
+    fillRect: (x: number, _y: number, w: number) =>
+      rects.push({ x, w, fill: ctx.fillStyle }),
   };
-  return { ctx: ctx as CanvasRenderingContext2D, calls, strokes };
+  return { ctx: ctx as CanvasRenderingContext2D, calls, rects };
 };
 
 describe("fillTextLineWithRuns", () => {
@@ -51,7 +41,7 @@ describe("fillTextLineWithRuns", () => {
   ];
 
   it("splits a line into plain and styled segments at prefix widths", () => {
-    const { ctx, calls, strokes } = recordingContext();
+    const { ctx, calls, rects } = recordingContext();
     fillTextLineWithRuns(ctx, "go [[Map]] now", 0, 0, 20, 20, runs);
     expect(calls).toEqual([
       { text: "go ", x: 0, fill: "#000" },
@@ -60,13 +50,14 @@ describe("fillTextLineWithRuns", () => {
       { text: "]]", x: 80, fill: "dim" },
       { text: " now", x: 100, fill: "#000" },
     ]);
-    expect(strokes).toEqual([{ dash: [], color: "link" }]);
+    // one solid underline under "Map" only
+    expect(rects).toEqual([{ x: 50, w: 30, fill: "link" }]);
     expect(ctx.fillStyle).toBe("#000");
     expect(ctx.textAlign).toBe("left");
   });
 
   it("honours centre alignment and the line's offset in the text", () => {
-    const { ctx, calls } = recordingContext();
+    const { ctx, calls, rects } = recordingContext();
     ctx.textAlign = "center";
     // line "ab [[x]]" starts at offset 10 of the element text
     fillTextLineWithRuns(ctx, "ab [[x]]", 10, 100, 0, 20, [
@@ -76,6 +67,9 @@ describe("fillTextLineWithRuns", () => {
       ["ab ", 60],
       ["[[x]]", 90],
     ]);
+    // dashed: 5 px on, 3.6 px off over 50 px
+    expect(rects.length).toBe(6);
+    expect(rects[0]).toMatchObject({ x: 90, w: 5 });
     expect(ctx.textAlign).toBe("center");
   });
 
