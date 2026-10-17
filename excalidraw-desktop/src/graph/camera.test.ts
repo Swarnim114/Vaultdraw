@@ -112,3 +112,105 @@ describe("camera maths", () => {
     expect(c.isAnimating).toBe(false);
   });
 });
+
+describe("smooth zoom and glide", () => {
+  const mk = () => {
+    const c = new Camera();
+    c.setViewport(1000, 700);
+    c.set({ x: 10, y: 20, scale: 1 });
+    return c;
+  };
+  const run = (c: Camera, hz: number, ms: number, t0 = 1000) => {
+    const dt = 1000 / hz;
+    let t = t0;
+    for (let i = 0; i < Math.round(ms / dt); i++) {
+      t += dt;
+      c.step(t);
+    }
+  };
+
+  it("keeps the anchor fixed every step, converges and stops stepping", () => {
+    const c = mk();
+    const w = c.screenToWorld(250, 180);
+    c.zoomSmooth(250, 180, 3);
+    expect(c.isAnimating).toBe(true);
+    let t = 0;
+    let frames = 0;
+    while (c.step((t += 16.7))) {
+      const a = c.screenToWorld(250, 180);
+      expect(a.x).toBeCloseTo(w.x, 6);
+      expect(a.y).toBeCloseTo(w.y, 6);
+      expect(++frames).toBeLessThan(200);
+    }
+    expect(c.scale).toBe(3);
+    expect(c.isAnimating).toBe(false);
+    expect(c.step(t + 16)).toBe(false);
+  });
+
+  it("is frame-rate independent", () => {
+    const a = mk();
+    const b = mk();
+    a.zoomSmooth(100, 100, 4);
+    b.zoomSmooth(100, 100, 4);
+    run(a, 60, 150);
+    run(b, 120, 150);
+    expect(Math.abs(Math.log(a.scale / b.scale))).toBeLessThan(0.02);
+  });
+
+  it("retargets mid-ease and clamps", () => {
+    const c = mk();
+    c.zoomSmooth(0, 0, 2);
+    run(c, 60, 50);
+    c.zoomSmooth(500, 300, 2);
+    const w = c.screenToWorld(500, 300);
+    run(c, 60, 2000);
+    expect(c.scale).toBeCloseTo(4, 6);
+    expect(c.screenToWorld(500, 300).x).toBeCloseTo(w.x, 5);
+    c.zoomSmooth(0, 0, 1e9);
+    run(c, 60, 3000);
+    expect(c.scale).toBe(c.maxScale);
+  });
+
+  it("clamps huge dt and handles the first frame", () => {
+    const c = mk();
+    c.zoomSmooth(0, 0, 2);
+    c.step(1e9);
+    expect(c.scale).toBeGreaterThan(1);
+    expect(c.scale).toBeLessThan(2);
+    c.step(1e9 + 1e6);
+    expect(c.scale).toBeLessThan(2.0001);
+  });
+
+  it("glides, decays and stops; weak flings are ignored", () => {
+    const c = mk();
+    c.fling(0.1, 0);
+    expect(c.isAnimating).toBe(false);
+    c.fling(2, 0);
+    expect(c.isAnimating).toBe(true);
+    let t = 0;
+    let n = 0;
+    while (c.step((t += 16.7))) {
+      n++;
+    }
+    expect(n).toBeGreaterThan(30);
+    expect(c.x).toBeLessThan(10);
+    expect(c.y).toBe(20);
+    expect(c.isAnimating).toBe(false);
+  });
+
+  it("new input cancels the glide", () => {
+    const c = mk();
+    c.fling(2, 0);
+    c.step(16);
+    c.panBy(0, 0);
+    expect(c.isAnimating).toBe(false);
+    c.fling(2, 0);
+    c.zoomSmooth(0, 0, 1.0001);
+    c.cancelMotion();
+    expect(c.isAnimating).toBe(false);
+    c.fling(2, 0);
+    c.animateTo({ x: 0, y: 0, scale: 1 }, 0, 200);
+    run(c, 60, 400);
+    expect(c.x).toBe(0);
+  });
+});

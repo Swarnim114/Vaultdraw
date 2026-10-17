@@ -3,11 +3,45 @@
  * pan and wheel zoom. Listeners exist only while the graph is open (the returned function
  * removes them).
  */
-import { Camera } from "./camera";
+import { GLIDE_START, wheelZoomFactor } from "./camera";
 
 import type { GraphSession } from "./GraphSession";
 
 const CLICK_SLOP = 4;
+/** Velocity window (ms) and max age of the last move for a release to glide. */
+const VELOCITY_WINDOW_MS = 80;
+const STALE_MOVE_MS = 50;
+
+export interface Sample {
+  x: number;
+  y: number;
+  t: number;
+}
+
+/** Release velocity (px/ms) from samples in the last 80 ms; zero when stale or too slow. */
+export function releaseVelocity(
+  samples: Sample[],
+  releaseT: number,
+): { vx: number; vy: number } {
+  const last = samples[samples.length - 1];
+  if (!last || releaseT - last.t > STALE_MOVE_MS) {
+    return { vx: 0, vy: 0 };
+  }
+  let first = last;
+  for (let i = samples.length - 2; i >= 0; i--) {
+    if (last.t - samples[i].t > VELOCITY_WINDOW_MS) {
+      break;
+    }
+    first = samples[i];
+  }
+  const dt = last.t - first.t;
+  if (dt <= 0) {
+    return { vx: 0, vy: 0 };
+  }
+  const vx = (last.x - first.x) / dt;
+  const vy = (last.y - first.y) / dt;
+  return Math.hypot(vx, vy) < GLIDE_START ? { vx: 0, vy: 0 } : { vx, vy };
+}
 
 export function bindPointer(
   el: HTMLElement,
@@ -18,6 +52,7 @@ export function bindPointer(
   let moved = false;
   let lastX = 0;
   let lastY = 0;
+  let samples: Sample[] = [];
 
   const local = (e: PointerEvent | WheelEvent) => {
     const r = el.getBoundingClientRect();
@@ -30,6 +65,8 @@ export function bindPointer(
     }
     const p = local(e);
     onInteract();
+    session.stopMotion();
+    samples = [{ x: p.x, y: p.y, t: e.timeStamp }];
     down = {
       x: p.x,
       y: p.y,
@@ -62,6 +99,10 @@ export function bindPointer(
       session.dragTo(p.x, p.y);
     } else {
       session.panBy(p.x - lastX, p.y - lastY);
+      samples.push({ x: p.x, y: p.y, t: e.timeStamp });
+      if (samples.length > 32) {
+        samples.shift();
+      }
     }
     lastX = p.x;
     lastY = p.y;
@@ -76,6 +117,12 @@ export function bindPointer(
     el.releasePointerCapture?.(d.id);
     if (moved) {
       session.endDrag();
+      if (d.node < 0 && e.type === "pointerup") {
+        const v = releaseVelocity(samples, e.timeStamp);
+        if (v.vx || v.vy) {
+          session.fling(v.vx, v.vy);
+        }
+      }
     } else if (d.node >= 0) {
       session.activate(d.node);
     }
@@ -93,8 +140,11 @@ export function bindPointer(
     e.preventDefault();
     onInteract();
     const p = local(e);
-    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    session.zoomAt(p.x, p.y, Camera.wheelFactor(dy));
+    session.zoomSmooth(
+      p.x,
+      p.y,
+      wheelZoomFactor(e.deltaY, e.deltaMode, e.ctrlKey),
+    );
   };
 
   el.addEventListener("pointerdown", onDown);
