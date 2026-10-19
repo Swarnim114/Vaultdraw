@@ -417,23 +417,32 @@ test.describe("formula", () => {
     const errors = trackErrors(page);
     await openEmpty(page, "FormulaPlaceholder.excalidraw");
     await insertViaPalette(page, SRC);
-    await page.waitForTimeout(150);
+    // Wait on the condition, not a timer (a fixed 150 ms flaked under load): the image is cached
+    // and saved/inline right after insert, and the first paint shows ink, not the placeholder.
+    // The bound stays short (well under an async SVG decode + autosave round trip).
+    await expect.poll(async () => (await images(page)).length).toBe(1);
     const el = (await images(page))[0];
-    const state = await page.evaluate(
-      ([code, fileId]) => {
-        const app = (0, eval)(code as string);
-        const file = app.files[fileId as string];
-        return {
-          status: file?.status ?? null,
-          cached: app.imageCache.has(fileId),
-        };
-      },
-      [appHandle, el.fileId] as const,
-    );
-    expect(state.cached).toBe(true);
-    expect(state.status === "saved" || state.status === null).toBe(true);
-    const ink = await inkPixels(page, el);
-    expect(ink.length).toBeGreaterThan(30);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            ([code, fileId]) => {
+              const app = (0, eval)(code as string);
+              const file = app.files[fileId as string];
+              const status = file?.status ?? null;
+              return (
+                app.imageCache.has(fileId) &&
+                (status === "saved" || status === null)
+              );
+            },
+            [appHandle, el.fileId] as const,
+          ),
+        { timeout: 2000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(async () => (await inkPixels(page, el)).length, { timeout: 2000 })
+      .toBeGreaterThan(30);
     expect(errors).toEqual([]);
   });
 
