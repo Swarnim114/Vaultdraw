@@ -50,8 +50,9 @@ const round = (x) => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : x);
 
 /**
  * perRunSamples: Array<Record<metricId, number[]>> (measured runs only).
- * unitOf(id) -> unit string. Returns { [id]: { unit, n, runs, median, p95, min, max, mean, perRunMedians, cv, noisy } }.
- * median/p95/max are over ALL samples; cv is over the per-run medians.
+ * unitOf(id) -> unit string. Returns { [id]: { unit, n, runs, median, p95, min, max, mean, perRunMedians, cv, noisy, perRunP95s, cvP95 } }.
+ * median/p95/max are over ALL samples; cv is over the per-run medians (it drives noise widening); cvP95 is over the
+ * per-run p95s (reported only: a p95 of a few samples per run is often one cold or slow sample).
  */
 export function aggregate(perRunSamples, unitOf = () => "") {
   const ids = new Set();
@@ -60,11 +61,13 @@ export function aggregate(perRunSamples, unitOf = () => "") {
   for (const id of [...ids].sort()) {
     const all = [];
     const perRunMedians = [];
+    const perRunP95s = [];
     for (const run of perRunSamples) {
       const xs = (run?.[id] ?? []).filter((x) => Number.isFinite(x));
       if (!xs.length) continue;
       all.push(...xs);
       perRunMedians.push(median(xs));
+      perRunP95s.push(percentile(xs, 95));
     }
     if (!all.length) continue;
     const c = cv(perRunMedians);
@@ -80,6 +83,8 @@ export function aggregate(perRunSamples, unitOf = () => "") {
       perRunMedians: perRunMedians.map(round),
       cv: round(c),
       noisy: c > NOISY_CV,
+      perRunP95s: perRunP95s.map(round),
+      cvP95: round(cv(perRunP95s)),
     };
   }
   return out;

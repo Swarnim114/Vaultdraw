@@ -26,6 +26,10 @@ test("aggregate", () => {
   assert.deepEqual(m.a.perRunMedians, [10, 10, 10]);
   assert.equal(m.a.cv, 0);
   assert.equal(m.a.noisy, false);
+  // one slow sample moves that run's p95 but not its median: cv stays 0, cvP95 does not
+  assert.deepEqual(m.a.perRunP95s, [10, 19, 10]);
+  assert.ok(m.a.cvP95 > 0.3);
+  assert.equal(m.b.cvP95, 0);
   assert.equal(m.b.runs, 2);
   const n = aggregate([{ a: [100] }, { a: [120] }]);
   assert.equal(n.a.noisy, true);

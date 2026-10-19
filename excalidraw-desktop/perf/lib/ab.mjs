@@ -54,6 +54,19 @@ export function gateFailures(failing, { quiet, pairs }) {
   return { blocking, unconfirmed: failing.filter((r) => !blocking.includes(r)) };
 }
 
+/** Wall-clock p95 rows: one cold or slow sample per run moves them, so they block only when a second A/B reproduces them. */
+export const isWallP95 = (r) => r.stat === "p95" && !LOAD_INSENSITIVE.test(r.metric);
+
+/** A reproduction A/B is worth running only when every blocking flag is a wall-clock p95 (anything else blocks anyway). */
+export const needsReproduction = (blocking) => blocking.length > 0 && blocking.every(isWallP95);
+
+/** Split the first A/B's blocking flags by whether the independent second A/B flagged the same metric and stat. */
+export function reproduced(blocking, repeatFailing) {
+  const again = new Set(repeatFailing.map((r) => `${r.metric}.${r.stat}`));
+  const hit = (r) => again.has(`${r.metric}.${r.stat}`);
+  return { blocking: blocking.filter(hit), cleared: blocking.filter((r) => !hit(r)) };
+}
+
 const git = (cwd, ...a) => execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8" }).trim();
 
 /** Main checkout (owner of the shared node_modules) = parent of the repo's common git dir. */
