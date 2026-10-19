@@ -32,6 +32,7 @@ import {
   pagePdfExportStep,
 } from "./pageModeSmoke";
 import { runPensSmoke } from "./pensSmoke";
+import { runThumbnailsSmoke } from "./thumbnailsSmoke";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
 
@@ -1758,6 +1759,15 @@ export async function runDesktopSmoke(): Promise<void> {
       invoke: invokeNative,
     }).finally(() => {
       svgExportInFlight = false;
+    });
+
+    // ---- Thumbnail disk cache + vdthumb:// scheme (real Rust store, real scheme handler) ----
+    await runThumbnailsSmoke({
+      win,
+      doc,
+      handle: activeVault.handle,
+      drawingPath: filePath,
+      step,
     });
 
     // ---- Config folder (personal/planning/config.md) ----
