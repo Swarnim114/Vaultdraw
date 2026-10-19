@@ -8,6 +8,7 @@ import { rect, runCommand, seedAndOpen } from "./pageHelpers";
 //   wallMs        Import click -> all images in the scene
 //   longestTaskMs / longTasks50  main-thread long tasks during the import
 //   heapBeforeMb / heapAfterMb / heapDeltaMb  after GC + settle
+//   peakHeapMb    max used JS heap (CDP, every 25 ms) during the import
 //   imported / truncated / notice  result and the notice text
 //   autosaveMs / autosaveBytes     next drawing write after the import
 // The fake bridge encodes pages in the webview; the native app does that in Rust.
@@ -42,6 +43,7 @@ for (const pages of [20, 100]) {
     await seedAndOpen(page, DRAWING, { elements: [rect("a", 50, 50)] });
     await page.evaluate((n) => {
       const b = (window as any).__pdfBridge;
+      b.textLines = 70; // dense text pages: realistic encoded sizes
       b.nextPick = b.makeDoc(
         "perf.pdf",
         Array.from({ length: n }, () => ({ widthPt: 595, heightPt: 842 })),
@@ -80,6 +82,32 @@ for (const pages of [20, 100]) {
       };
     });
 
+    // sanity: the long-task observer sees a 120 ms busy loop
+    await page.evaluate(() =>
+      setTimeout(() => {
+        const end = performance.now() + 120;
+        while (performance.now() < end) {
+          // busy
+        }
+      }, 0),
+    );
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__lt.length))
+      .toBeGreaterThan(0);
+    await page.evaluate(() => ((window as any).__lt.length = 0));
+
+    // peak JS heap during the import: CDP samples every 25 ms (no forced GC)
+    const cdp = await page.context().newCDPSession(page);
+    let peakHeap = 0;
+    let sampling = true;
+    const sampler = (async () => {
+      while (sampling) {
+        const h = await cdp.send("Runtime.getHeapUsage");
+        peakHeap = Math.max(peakHeap, h.usedSize);
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    })();
+
     const t0 = Date.now();
     await dialog.getByRole("button", { name: "Import", exact: true }).click();
     await expect
@@ -94,6 +122,10 @@ for (const pages of [20, 100]) {
       n = m;
     }
     const wallMs = Date.now() - t0;
+    sampling = false;
+    await sampler;
+    await cdp.detach();
+    const peakHeapMb = peakHeap / 1048576;
 
     const notice =
       (await page.locator(".vd-toast").first().textContent()) ?? "";
@@ -125,6 +157,7 @@ for (const pages of [20, 100]) {
         heapBeforeMb: +heapBefore.toFixed(1),
         heapAfterMb: +heapAfter.toFixed(1),
         heapDeltaMb: +(heapAfter - heapBefore).toFixed(1),
+        peakHeapMb: +peakHeapMb.toFixed(1),
         imported: n,
         truncated,
         notice,

@@ -20,6 +20,8 @@ export type FakePdfBridgeOptions = {
   openError?: string;
   /** jsdom fallback: encoded bytes per pixel (default 0.01). */
   bytesPerPx?: number;
+  /** Lines of body text per page (perf: realistic encoded sizes). Default 0. */
+  textLines?: number;
 };
 
 export const A4_PT: PdfPageInfo = { widthPt: 595, heightPt: 842 };
@@ -47,6 +49,7 @@ export class FakePdfBridge implements PdfBridge {
   openError: string | null;
   defaultPages: PdfPageInfo[];
   bytesPerPx: number;
+  textLines: number;
 
   readonly renders: {
     token: number;
@@ -65,6 +68,7 @@ export class FakePdfBridge implements PdfBridge {
     this.failPages = new Set(options.failPages ?? []);
     this.openError = options.openError ?? null;
     this.bytesPerPx = options.bytesPerPx ?? 0.01;
+    this.textLines = options.textLines ?? 0;
   }
 
   /** Registers a doc and returns its info (usable as nextPick). */
@@ -123,7 +127,7 @@ export class FakePdfBridge implements PdfBridge {
     const w = Math.max(1, Math.round((page.widthPt / long) * opts.maxSide));
     const h = Math.max(1, Math.round((page.heightPt / long) * opts.maxSide));
     return hasCanvas()
-      ? drawPage(w, h, index + 1, opts.format, opts.quality)
+      ? drawPage(w, h, index + 1, opts.format, opts.quality, this.textLines)
       : fallbackBytes(w, h, index, opts.format, this.bytesPerPx);
   };
 
@@ -138,6 +142,7 @@ const drawPage = (
   label: number,
   format: PdfImageFormat,
   quality: number,
+  textLines: number,
 ): Promise<Uint8Array> => {
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -149,6 +154,17 @@ const drawPage = (
   ctx.font = `${Math.round(h / 4)}px sans-serif`;
   ctx.textAlign = "center";
   ctx.fillText(String(label), w / 2, h / 2);
+  // Dense body text like a real page (9 pt lines on A4, as the Rust bench).
+  const lineH = h / 76;
+  ctx.font = `${Math.round(lineH * 0.8)}px serif`;
+  ctx.textAlign = "left";
+  for (let i = 0; i < textLines; i++) {
+    ctx.fillText(
+      `Page ${label} line ${i}: the quick brown fox jumps over the lazy dog 0123456789`,
+      w * 0.08,
+      lineH * (3 + i),
+    );
+  }
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       async (blob) =>
