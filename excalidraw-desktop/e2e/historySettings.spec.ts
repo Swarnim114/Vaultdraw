@@ -26,7 +26,8 @@ const CP = {
 };
 const CURRENT = [anchor, shape];
 
-const toast = (page: Page) => page.locator(".vault-history-toast");
+// Newest shared toast (several can be visible at once).
+const toast = (page: Page) => page.locator(".vd-toast .vd-toast__text").last();
 const dialog = (page: Page) => page.getByRole("dialog");
 const settingRow = (page: Page, id: string) =>
   dialog(page).locator(`[data-setting-id="${id}"]`);
@@ -82,12 +83,25 @@ const versionCount = (page: Page) =>
     PATH,
   );
 
-const setNumber = async (page: Page, id: string, value: string) => {
+/** Moves a stepper to `target` with its keyboard (PageUp/Down x5, then arrows). */
+const setNumber = async (page: Page, id: string, target: number, step = 1) => {
   const input = settingRow(page, id).getByRole("spinbutton");
-  await input.fill(value);
-  await input.press("Enter");
+  await input.focus();
+  const now = Number(await input.getAttribute("aria-valuenow"));
+  const steps = Math.round((target - now) / step);
+  const key = steps > 0 ? "Up" : "Down";
+  const n = Math.abs(steps);
+  for (let i = 0; i < Math.floor(n / 5); i++) {
+    await input.press(`Page${key}`);
+  }
+  for (let i = 0; i < n % 5; i++) {
+    await input.press(`Arrow${key}`);
+  }
   return input;
 };
+
+const valueOf = (page: Page, id: string) =>
+  settingRow(page, id).getByRole("spinbutton");
 
 test.describe("history settings page", () => {
   test.beforeEach(async ({ page }) => {
@@ -114,11 +128,11 @@ test.describe("history settings page", () => {
       .poll(async () => (await prefs(page)).historyEnabled)
       .toBe(true);
 
-    await setNumber(page, "history-interval", "15");
-    await setNumber(page, "history-keep-all", "2");
-    await setNumber(page, "history-keep-hourly", "48");
-    await setNumber(page, "history-keep-daily", "60");
-    await setNumber(page, "history-keep-weekly", "8");
+    await setNumber(page, "history-interval", 15);
+    await setNumber(page, "history-keep-all", 2);
+    await setNumber(page, "history-keep-hourly", 48);
+    await setNumber(page, "history-keep-daily", 60);
+    await setNumber(page, "history-keep-weekly", 8);
     await expect
       .poll(async () => {
         const p = await prefs(page);
@@ -133,17 +147,24 @@ test.describe("history settings page", () => {
       .toEqual([15, 2, 48, 60, 8]);
 
     // Out-of-range input is clamped to the field's limits, not stored raw.
-    const interval = await setNumber(page, "history-interval", "-4");
-    await expect(interval).not.toHaveValue("-4");
-    const stored = (await prefs(page)).historyIntervalMinutes;
-    expect(stored).toBeGreaterThanOrEqual(0);
+    const interval = valueOf(page, "history-interval");
+    await interval.focus();
+    await interval.press("Home");
+    await expect(interval).toHaveAttribute("aria-valuenow", "0");
+    await interval.press("ArrowDown");
+    await expect(interval).toHaveAttribute("aria-valuenow", "0");
+    await expect
+      .poll(async () => (await prefs(page)).historyIntervalMinutes)
+      .toBe(0);
+    await interval.press("End");
+    await expect(interval).toHaveAttribute("aria-valuenow", "1440");
 
     // Persists across a reopen of the dialog.
     await closeSettings(page);
     await openSettings(page);
     await expect(
       settingRow(page, "history-keep-daily").getByRole("spinbutton"),
-    ).toHaveValue("60");
+    ).toHaveAttribute("aria-valuenow", "60");
     expect(errors).toEqual([]);
   });
 
@@ -158,23 +179,23 @@ test.describe("history settings page", () => {
     );
     await expect(preset).toBeDisabled();
 
-    await setNumber(page, "history-keep-all", "5");
-    await setNumber(page, "history-keep-daily", "7");
+    await setNumber(page, "history-keep-all", 5);
+    await setNumber(page, "history-keep-daily", 7);
     await expect(preset).toBeEnabled();
     await preset.click();
 
     await expect(
       settingRow(page, "history-keep-all").getByRole("spinbutton"),
-    ).toHaveValue("1");
+    ).toHaveAttribute("aria-valuenow", "1");
     await expect(
       settingRow(page, "history-keep-hourly").getByRole("spinbutton"),
-    ).toHaveValue("24");
+    ).toHaveAttribute("aria-valuenow", "24");
     await expect(
       settingRow(page, "history-keep-daily").getByRole("spinbutton"),
-    ).toHaveValue("30");
+    ).toHaveAttribute("aria-valuenow", "30");
     await expect(
       settingRow(page, "history-keep-weekly").getByRole("spinbutton"),
-    ).toHaveValue("0");
+    ).toHaveAttribute("aria-valuenow", "0");
     await expect(preset).toBeDisabled();
     await expect
       .poll(async () => {
@@ -209,13 +230,13 @@ test.describe("history settings page", () => {
     );
 
     // Lowering the cap re-scales the bar; 0 means no limit and no bar.
-    await setNumber(page, "history-size-cap", "300");
+    await setNumber(page, "history-size-cap", 300, 50);
     await expect(usage).toContainText("150.0 MB of 300.0 MB used");
     await expect(usage.getByRole("progressbar")).toHaveAttribute(
       "aria-valuenow",
       "50",
     );
-    await setNumber(page, "history-size-cap", "0");
+    await setNumber(page, "history-size-cap", 0, 50);
     await expect(usage).toContainText("150.0 MB used, no limit");
     await expect(usage.getByRole("progressbar")).toHaveCount(0);
     await expect.poll(async () => (await prefs(page)).historySizeCapMb).toBe(0);
@@ -340,7 +361,7 @@ test.describe("deleting history", () => {
     await button.click();
     await confirm.getByRole("button", { name: "Delete all history" }).click();
     await expect(confirm).toHaveCount(0);
-    await expect(settingRow(page, "history-delete-all")).toContainText(
+    await expect(toast(page)).toHaveText(
       "History of the open drawing deleted.",
     );
     expect(await versionCount(page)).toBe(0);

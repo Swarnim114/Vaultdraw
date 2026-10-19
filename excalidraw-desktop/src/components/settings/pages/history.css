@@ -34,7 +34,3 @@
   font-size: 0.78rem;
   color: var(--vault-text-muted);
 }
-
-.vault-history-note-line--error {
-  color: var(--vault-danger);
-}

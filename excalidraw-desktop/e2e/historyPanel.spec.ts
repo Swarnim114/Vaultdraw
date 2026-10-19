@@ -250,7 +250,7 @@ test("Restore > Replace puts the version in the drawing, saves a Before restore 
   await expect(dialog).toHaveCount(0);
   await expect(preview(page)).toHaveCount(0);
 
-  await expect(page.locator(".vault-history-toast")).toContainText(
+  await expect(page.locator(".vd-toast")).toContainText(
     "Restored version from",
   );
   await expectColor(page, MAIN, BLUE, true);
@@ -291,7 +291,7 @@ test("Restore as a copy toasts with Open, lists the new file and opens it", asyn
     .getByRole("button", { name: "Restore as a copy" })
     .click();
 
-  const toast = page.locator(".vault-history-toast");
+  const toast = page.locator(".vd-toast");
   await expect(toast).toContainText("Restored as Graphs (restored");
   expect((await callLog(page)).map((e) => e.method)).toEqual(["restoreCopy"]);
   expect((await callLog(page))[0].id).toBe(ids[1]); // V2 = second created
@@ -320,9 +320,7 @@ test("Copy to drawing brings a selected preview shape into the main scene", asyn
   await expect(copy).toBeEnabled();
   const w0 = await writeCount(page);
   await copy.click();
-  await expect(page.locator(".vault-history-toast")).toContainText(
-    "Copied 1 element",
-  );
+  await expect(page.locator(".vd-toast")).toContainText("Copied 1 element");
   await expectColor(page, MAIN, ORANGE, true);
   await waitSaved(page, w0);
   expect(await savedLive(page)).toContain("c");

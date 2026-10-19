@@ -572,7 +572,6 @@ const HistoryPanel = ({
           {...deleteCheckpointConfirm(versionLabel(checkpointDelete.pending))}
           onConfirm={() => void checkpointDelete.confirm()}
           onCancel={checkpointDelete.cancel}
-          ownerDocument={ownerDocument}
         />
       )}
       {dialog && selected && (

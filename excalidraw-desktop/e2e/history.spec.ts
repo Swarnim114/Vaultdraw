@@ -107,7 +107,7 @@ test("Cmd+Option+S asks for a name and lists the checkpoint in the panel", async
   await dialog.getByLabel("Note (optional)").fill("sketch is final");
   await dialog.getByLabel("Name").press("Enter");
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator(".vault-history-toast")).toContainText(
+  await expect(page.locator(".vd-toast")).toContainText(
     "Checkpoint saved: Before the big change",
   );
 

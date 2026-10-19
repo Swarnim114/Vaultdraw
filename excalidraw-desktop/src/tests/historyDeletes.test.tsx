@@ -11,6 +11,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getRegisteredHandler } from "../commands/handlerRegistry";
+import { toastStore } from "../toasts/toastStore";
+import { Toasts } from "../components/Toasts";
 import { HistoryHost } from "../history/HistoryHost";
 import HistoryPanel from "../history/panel/HistoryPanel";
 import {
@@ -54,6 +56,8 @@ const rowOf = (id: string) =>
 const confirmButton = (name: string) =>
   within(screen.getByRole("dialog")).getByRole("button", { name });
 
+beforeEach(() => toastStore.clear());
+
 describe("history.deleteAll (app level)", () => {
   const host = async (
     props: { readOnly?: boolean; path?: string | null } = {},
@@ -61,16 +65,19 @@ describe("history.deleteAll (app level)", () => {
     const path = props.path === undefined ? P : props.path;
     await act(async () => {
       render(
-        <HistoryHost
-          repository={repo}
-          vault={{ handle: H, readOnly: props.readOnly ?? false }}
-          settings={SETTINGS}
-          document={
-            path ? { id: `${H}:1:${path}`, path, revision: "r1" } : null
-          }
-          flush={async () => {}}
-          ownerDocument={document}
-        />,
+        <>
+          <HistoryHost
+            repository={repo}
+            vault={{ handle: H, readOnly: props.readOnly ?? false }}
+            settings={SETTINGS}
+            document={
+              path ? { id: `${H}:1:${path}`, path, revision: "r1" } : null
+            }
+            flush={async () => {}}
+            ownerDocument={document}
+          />
+          <Toasts />
+        </>,
       );
     });
   };

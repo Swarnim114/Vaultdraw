@@ -5,9 +5,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getRegisteredHandler } from "../commands/handlerRegistry";
+import { toastStore } from "../toasts/toastStore";
+import { Toasts } from "../components/Toasts";
 import { HistoryHost } from "../history/HistoryHost";
 import HistoryPanel, {
   relativeTime,
@@ -33,6 +35,8 @@ const ready = async () => {
   await history.configure(H, SETTINGS);
   return history;
 };
+
+beforeEach(() => toastStore.clear());
 
 describe("version labels", () => {
   it.each([
@@ -251,14 +255,17 @@ describe("HistoryHost", () => {
     const history = await ready();
     history.noteCommitted(H, P, '{"elements":[]}');
     const view = render(
-      <HistoryHost
-        repository={history}
-        vault={{ handle: H, readOnly: false }}
-        settings={SETTINGS}
-        document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
-        flush={flush}
-        ownerDocument={document}
-      />,
+      <>
+        <HistoryHost
+          repository={history}
+          vault={{ handle: H, readOnly: false }}
+          settings={SETTINGS}
+          document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
+          flush={flush}
+          ownerDocument={document}
+        />
+        <Toasts />
+      </>,
     );
     return { history, flush, ...view };
   };
@@ -330,14 +337,17 @@ describe("HistoryHost", () => {
   it("does not open the dialog in a read-only vault", async () => {
     const history = await ready();
     render(
-      <HistoryHost
-        repository={history}
-        vault={{ handle: H, readOnly: true }}
-        settings={SETTINGS}
-        document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
-        flush={async () => {}}
-        ownerDocument={document}
-      />,
+      <>
+        <HistoryHost
+          repository={history}
+          vault={{ handle: H, readOnly: true }}
+          settings={SETTINGS}
+          document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
+          flush={async () => {}}
+          ownerDocument={document}
+        />
+        <Toasts />
+      </>,
     );
     act(() => void getRegisteredHandler("history.checkpoint")!());
     expect(screen.queryByRole("dialog")).toBeNull();

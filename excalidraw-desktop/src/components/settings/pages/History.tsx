@@ -7,12 +7,13 @@ import {
   HISTORY_DEFAULTS,
   HISTORY_LIMITS,
 } from "../../../history/historySettings";
+import { toastStore } from "../../../toasts/toastStore";
 import { errorMessage } from "../../../vault/types";
 import { ConfirmModal } from "../../ConfirmModal";
 import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
-import { Switch } from "./controls";
+import { Stepper, Switch } from "./controls";
 import { PerVaultRow } from "./perVault";
 
 import "./history.css";
@@ -32,11 +33,6 @@ export const formatBytes = (bytes: number): string => {
     return `${(bytes / MB).toFixed(1)} MB`;
   }
   return `${Math.max(0, Math.round(bytes / 1024))} KB`;
-};
-
-export const clampToLimits = (field: NumericField, value: number): number => {
-  const { min, max } = HISTORY_LIMITS[field];
-  return Math.min(max, Math.max(min, Math.round(value)));
 };
 
 // ---- status: read while the page is open, refreshed after actions ----------
@@ -86,43 +82,26 @@ const NumberField = ({
   field,
   value,
   label,
+  unit,
+  step = 1,
   onCommit,
 }: {
   field: NumericField;
   value: number;
   label: string;
+  unit: string;
+  step?: number;
   onCommit: (next: number) => void;
-}) => {
-  const { min, max } = HISTORY_LIMITS[field];
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
-  const commit = () => {
-    const parsed = Number(draft);
-    if (draft.trim() === "" || !Number.isFinite(parsed)) {
-      setDraft(String(value));
-      return;
-    }
-    const next = clampToLimits(field, parsed);
-    setDraft(String(next));
-    if (next !== value) {
-      onCommit(next);
-    }
-  };
-  return (
-    <input
-      type="number"
-      className="vault-input vault-input--number"
-      aria-label={label}
-      min={min}
-      max={max}
-      step={1}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && commit()}
-    />
-  );
-};
+}) => (
+  <Stepper
+    label={label}
+    unit={unit}
+    {...HISTORY_LIMITS[field]}
+    step={step}
+    value={value}
+    onChange={onCommit}
+  />
+);
 
 const EnabledSetting = () => (
   <PerVaultRow id="history-enabled" field="historyEnabled">
@@ -136,7 +115,12 @@ const EnabledSetting = () => (
   </PerVaultRow>
 );
 
-const numberSetting = (id: string, field: NumericField, label: string) => {
+const numberSetting = (
+  id: string,
+  field: NumericField,
+  label: string,
+  unit: string,
+) => {
   const Component = () => {
     const { setPerVaultValue } = useSettings();
     return (
@@ -150,6 +134,7 @@ const numberSetting = (id: string, field: NumericField, label: string) => {
             field={field}
             value={value}
             label={label}
+            unit={unit}
             onCommit={onChange}
           />
         )}
@@ -163,26 +148,31 @@ const IntervalSetting = numberSetting(
   "history-interval",
   "historyIntervalMinutes",
   "Version interval in minutes",
+  "min",
 );
 const KeepAllSetting = numberSetting(
   "history-keep-all",
   "historyKeepAllHours",
   "Keep every version for hours",
+  "hours",
 );
 const KeepHourlySetting = numberSetting(
   "history-keep-hourly",
   "historyKeepHourlyHours",
   "Keep one per hour for hours",
+  "hours",
 );
 const KeepDailySetting = numberSetting(
   "history-keep-daily",
   "historyKeepDailyDays",
   "Keep one per day for days",
+  "days",
 );
 const KeepWeeklySetting = numberSetting(
   "history-keep-weekly",
   "historyKeepWeeklyWeeks",
   "Keep one per week for weeks",
+  "weeks",
 );
 
 const RETENTION_FIELDS = [
@@ -307,6 +297,8 @@ const SizeCapSetting = () => {
           field="historySizeCapMb"
           value={value}
           label="Size limit in megabytes"
+          unit="MB"
+          step={50}
           onCommit={onChange}
         />
       )}
@@ -330,34 +322,22 @@ const PrivacySetting = () => <SettingRow id="history-privacy" />;
 
 const GitSetting = () => {
   const { status, repository, handle, readOnly } = usePageStatus();
-  const [message, setMessage] = useState<string | null>(null);
   if (!status?.gitRepo || !handle) {
     return null;
   }
   const excluded = status.gitExcluded;
   return (
-    <SettingRow
-      id="history-git"
-      details={
-        message && (
-          <div className="vault-history-note-line" role="status">
-            {message}
-          </div>
-        )
-      }
-    >
+    <SettingRow id="history-git">
       <button
         type="button"
         className="vault-btn"
         disabled={excluded || readOnly}
         onClick={() => {
-          repository.excludeFromGit(handle).then(
-            () => {
-              setMessage(null);
-              refreshAll();
-            },
-            (cause) => setMessage(errorMessage(cause)),
-          );
+          repository
+            .excludeFromGit(handle)
+            .then(refreshAll, (cause) =>
+              toastStore.push({ message: errorMessage(cause), kind: "error" }),
+            );
         }}
       >
         {excluded ? "Excluded" : "Exclude history from git"}
@@ -367,10 +347,8 @@ const GitSetting = () => {
 };
 
 const DeleteAllSetting = () => {
-  const { win } = useSettings();
   const { repository, handle, path, readOnly } = usePageStatus();
   const [confirming, setConfirming] = useState(false);
-  const [message, setMessage] = useState<{ text: string; error: boolean }>();
   const run = () => {
     setConfirming(false);
     if (!handle || !path) {
@@ -378,36 +356,22 @@ const DeleteAllSetting = () => {
     }
     repository.deleteAll(handle, path).then(
       () => {
-        setMessage({
-          text: "History of the open drawing deleted.",
-          error: false,
-        });
+        toastStore.push({ message: "History of the open drawing deleted." });
         refreshAll();
       },
-      (cause) => setMessage({ text: errorMessage(cause), error: true }),
+      (cause) =>
+        toastStore.push({ message: errorMessage(cause), kind: "error" }),
     );
   };
   return (
     <SettingRow
       id="history-delete-all"
       details={
-        <>
-          {!path && (
-            <div className="vault-history-note-line">
-              Open a drawing to delete its history.
-            </div>
-          )}
-          {message && (
-            <div
-              className={`vault-history-note-line${
-                message.error ? " vault-history-note-line--error" : ""
-              }`}
-              role="status"
-            >
-              {message.text}
-            </div>
-          )}
-        </>
+        !path && (
+          <div className="vault-history-note-line">
+            Open a drawing to delete its history.
+          </div>
+        )
       }
     >
       <button
@@ -423,7 +387,6 @@ const DeleteAllSetting = () => {
           {...deleteAllConfirm(path)}
           onConfirm={run}
           onCancel={() => setConfirming(false)}
-          ownerDocument={win?.document}
         />
       )}
     </SettingRow>

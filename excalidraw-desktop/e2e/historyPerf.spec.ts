@@ -120,9 +120,7 @@ test("history main-thread cost: checkpoint and automatic versions", async ({
     await page.waitForTimeout(150);
     const before = await task();
     await dialog.getByLabel("Name").press("Enter");
-    await expect(page.locator(".vault-history-toast")).toContainText(
-      `perf ${i}`,
-    );
+    await expect(page.locator(".vd-toast")).toContainText(`perf ${i}`);
     samples.push((await task()) - before);
     await expect(dialog).toHaveCount(0);
     await page.waitForTimeout(100);

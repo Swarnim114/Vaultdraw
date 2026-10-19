@@ -1,6 +1,6 @@
 /**
  * The single mount point of file history inside the app shell. It owns the
- * panel state, the checkpoint dialog and a small confirmation toast, syncs the
+ * panel state, the checkpoint dialog and shared confirmation toasts, syncs the
  * native service (useHistorySync) and binds the app-level commands. The panel
  * (list, timeline, preview, restore) is one lazy chunk fetched on first open,
  * never prefetched: while history is closed nothing of it is loaded or running.
@@ -16,6 +16,7 @@ import {
 } from "react";
 
 import { ConfirmModal } from "../components/ConfirmModal";
+import { toastStore } from "../toasts/toastStore";
 import { errorMessage } from "../vault/types";
 
 import { CheckpointDialog } from "./CheckpointDialog";
@@ -56,14 +57,6 @@ export interface HistoryHostProps {
   onSaveFile?: (fileName: string, bytes: Uint8Array) => Promise<unknown>;
 }
 
-type Toast = {
-  message: string;
-  error: boolean;
-  action?: PanelNotice["action"];
-};
-const TOAST_MS = 3000;
-const TOAST_ACTION_MS = 8000;
-
 const HistoryHostImpl = ({
   repository,
   vault,
@@ -84,22 +77,12 @@ const HistoryHostImpl = ({
   const getSaveState = useCallback(() => saveRef.current, []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useHistorySync(repository, vault, settings, activeDoc);
 
   const showToast = useCallback(
-    (message: string, error = false, action?: Toast["action"]) => {
-      if (toastTimer.current) {
-        clearTimeout(toastTimer.current);
-      }
-      setToast({ message, error, action });
-      toastTimer.current = setTimeout(
-        () => setToast(null),
-        action ? TOAST_ACTION_MS : TOAST_MS,
-      );
-    },
+    (message: string, error = false, action?: PanelNotice["action"]) =>
+      toastStore.push({ message, kind: error ? "error" : "info", action }),
     [],
   );
   const notify = useCallback(
@@ -107,15 +90,6 @@ const HistoryHostImpl = ({
       showToast(message, notice?.error ?? false, notice?.action),
     [showToast],
   );
-  useEffect(
-    () => () => {
-      if (toastTimer.current) {
-        clearTimeout(toastTimer.current);
-      }
-    },
-    [],
-  );
-
   const handle = vault?.handle ?? null;
   const path = activeDoc?.path ?? null;
   const readOnly = vault?.readOnly ?? false;
@@ -251,30 +225,7 @@ const HistoryHostImpl = ({
           {...deleteAllConfirm(path)}
           onConfirm={() => void deleteAll()}
           onCancel={() => setConfirmDeleteAll(false)}
-          ownerDocument={ownerDocument}
         />
-      )}
-      {toast && (
-        <div
-          className={`vault-history-toast${
-            toast.error ? " vault-history-toast--error" : ""
-          }`}
-          role="status"
-        >
-          {toast.message}
-          {toast.action && (
-            <button
-              type="button"
-              className="vault-btn vault-btn--sm"
-              onClick={() => {
-                toast.action?.run();
-                setToast(null);
-              }}
-            >
-              {toast.action.label}
-            </button>
-          )}
-        </div>
       )}
     </>
   );

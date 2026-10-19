@@ -11,16 +11,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SettingsModal } from "../components/settings/SettingsModal";
-import {
-  clampToLimits,
-  formatBytes,
-} from "../components/settings/pages/History";
+import { formatBytes } from "../components/settings/pages/History";
+import { Toasts } from "../components/Toasts";
 import { SETTINGS_PAGES, settingsForPage } from "../components/settings/schema";
 import { publishHistoryBridge } from "../history/historyBridge";
 import {
   HISTORY_DEFAULTS,
   toHistorySettings,
 } from "../history/historySettings";
+import { toastStore } from "../toasts/toastStore";
 import { getPreferences, updatePreferences } from "../vault/preferences";
 import { disposeSettings } from "../vault/settingsSync";
 import {
@@ -41,6 +40,7 @@ const vault: VaultInfo = { handle: H, name: "V", path: "/v", readOnly: false };
 let repo: FakeHistoryRepository;
 
 beforeEach(async () => {
+  toastStore.clear();
   window.localStorage.clear();
   repo = new FakeHistoryRepository(H);
   await repo.configure(H, toHistorySettings(HISTORY_DEFAULTS));
@@ -63,20 +63,24 @@ const open = async (opts: { path?: string | null; vault?: VaultInfo } = {}) => {
   });
   await act(async () => {
     render(
-      <SettingsModal
-        vault={opts.vault ?? vault}
-        onClose={() => {}}
-        ownerDocument={document}
-        initialPage="history"
-      />,
+      <>
+        <SettingsModal
+          vault={opts.vault ?? vault}
+          onClose={() => {}}
+          ownerDocument={document}
+          initialPage="history"
+        />
+        <Toasts />
+      </>,
     );
   });
 };
 
-const input = (name: string) => screen.getByLabelText(name) as HTMLInputElement;
-const type = (name: string, value: string) => {
-  fireEvent.change(input(name), { target: { value } });
-  fireEvent.blur(input(name));
+const spin = (name: string) => screen.getByRole("spinbutton", { name });
+const press = (name: string, key: string, times = 1) => {
+  for (let i = 0; i < times; i++) {
+    fireEvent.keyDown(spin(name), { key });
+  }
 };
 
 describe("History settings page", () => {
@@ -129,27 +133,44 @@ describe("History settings page", () => {
     expect(getPreferences(window).historyHighlightChanges).toBe(false);
   });
 
-  it("clamps numbers to the documented ranges and rounds", async () => {
-    expect(clampToLimits("historyIntervalMinutes", 5000)).toBe(1440);
-    expect(clampToLimits("historyKeepWeeklyWeeks", -3)).toBe(0);
-    expect(clampToLimits("historySizeCapMb", 2_000_000)).toBe(1_000_000);
+  it("steppers move by their step with the keyboard and clamp at the limits", async () => {
     await open();
-    type("Version interval in minutes", "5000");
-    expect(getPreferences(window).historyIntervalMinutes).toBe(1440);
-    type("Version interval in minutes", "-4");
+    const interval = "Version interval in minutes";
+    expect(spin(interval)).toHaveAttribute("aria-valuenow", "5");
+    press(interval, "ArrowUp");
+    expect(getPreferences(window).historyIntervalMinutes).toBe(6);
+    press(interval, "ArrowDown", 2);
+    expect(getPreferences(window).historyIntervalMinutes).toBe(4);
+    press(interval, "PageUp");
+    expect(getPreferences(window).historyIntervalMinutes).toBe(9);
+    press(interval, "Home");
     expect(getPreferences(window).historyIntervalMinutes).toBe(0);
-    type("Keep every version for hours", "2.6");
-    expect(getPreferences(window).historyKeepAllHours).toBe(3);
-    type("Keep one per hour for hours", "99999");
+    press(interval, "ArrowDown");
+    expect(getPreferences(window).historyIntervalMinutes).toBe(0);
+    press(interval, "End");
+    expect(getPreferences(window).historyIntervalMinutes).toBe(1440);
+    press(interval, "ArrowUp");
+    expect(getPreferences(window).historyIntervalMinutes).toBe(1440);
+
+    press("Keep every version for hours", "End");
+    expect(getPreferences(window).historyKeepAllHours).toBe(720);
+    press("Keep one per hour for hours", "End");
     expect(getPreferences(window).historyKeepHourlyHours).toBe(8760);
-    type("Keep one per day for days", "4000");
+    press("Keep one per day for days", "End");
     expect(getPreferences(window).historyKeepDailyDays).toBe(3650);
-    type("Keep one per week for weeks", "6000");
+    press("Keep one per week for weeks", "End");
     expect(getPreferences(window).historyKeepWeeklyWeeks).toBe(5200);
-    type("Size limit in megabytes", "0");
-    expect(getPreferences(window).historySizeCapMb).toBe(0);
-    // Garbage keeps the old value.
-    type("Size limit in megabytes", "");
+  });
+
+  it("the size limit steps by 50 MB and Home means no limit", async () => {
+    await open();
+    const cap = "Size limit in megabytes";
+    expect(spin(cap)).toHaveAttribute("aria-valuetext", "500 MB");
+    press(cap, "ArrowUp");
+    expect(getPreferences(window).historySizeCapMb).toBe(550);
+    press(cap, "ArrowDown", 2);
+    expect(getPreferences(window).historySizeCapMb).toBe(450);
+    press(cap, "Home");
     expect(getPreferences(window).historySizeCapMb).toBe(0);
   });
 

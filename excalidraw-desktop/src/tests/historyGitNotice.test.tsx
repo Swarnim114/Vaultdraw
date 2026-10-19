@@ -10,6 +10,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getRegisteredHandler } from "../commands/handlerRegistry";
+import { toastStore } from "../toasts/toastStore";
+import { Toasts } from "../components/Toasts";
 import { HistoryHost } from "../history/HistoryHost";
 import HistoryPanel from "../history/panel/HistoryPanel";
 import {
@@ -67,6 +69,8 @@ const withStatus = (patch: Partial<HistoryStatus>) => {
   const original = repo.status.bind(repo);
   repo.status = async (h) => ({ ...(await original(h)), ...patch });
 };
+
+beforeEach(() => toastStore.clear());
 
 describe("git notice", () => {
   it("is hidden when the vault is not a git repository", async () => {
@@ -164,14 +168,17 @@ describe("history.excludeFromGit command", () => {
   const host = async (readOnly = false) => {
     await act(async () => {
       render(
-        <HistoryHost
-          repository={repo}
-          vault={{ handle: H, readOnly, path: "/vaults/one" }}
-          settings={SETTINGS}
-          document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
-          flush={async () => {}}
-          ownerDocument={document}
-        />,
+        <>
+          <HistoryHost
+            repository={repo}
+            vault={{ handle: H, readOnly, path: "/vaults/one" }}
+            settings={SETTINGS}
+            document={{ id: `${H}:1:${P}`, path: P, revision: "r1" }}
+            flush={async () => {}}
+            ownerDocument={document}
+          />
+          <Toasts />
+        </>,
       );
     });
   };
