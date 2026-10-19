@@ -44,7 +44,12 @@ const coldRun = async (page: Page, i: number, tag: string) => {
   ).toContainText("Formula: Insert formula");
   await page.evaluate(() => {
     const w = window as any;
-    w.__cold = { t0: null, t1: null };
+    w.__cold = { t0: null, t1: null, tDialog: null, tInput: null };
+    document.addEventListener(
+      "input",
+      () => (w.__cold.tInput ??= performance.now()),
+      true,
+    );
     window.addEventListener(
       "keydown",
       (e) => {
@@ -58,6 +63,12 @@ const coldRun = async (page: Page, i: number, tag: string) => {
       const img = document.querySelector<HTMLImageElement>(
         '[role="dialog"] img[alt="Formula preview"]',
       );
+      if (
+        w.__cold.tDialog === null &&
+        document.querySelector('[role="dialog"] textarea#formula-source')
+      ) {
+        w.__cold.tDialog = performance.now();
+      }
       if (img?.getAttribute("src") && w.__cold.t1 === null) {
         w.__cold.t1 = performance.now();
       }
@@ -75,8 +86,31 @@ const coldRun = async (page: Page, i: number, tag: string) => {
       timeout: 15000,
     })
     .not.toBeNull();
-  const c = await page.evaluate(
-    () => (window as any).__cold as { t0: number; t1: number },
+  const c = await page.evaluate(() => {
+    const res = performance
+      .getEntriesByType("resource")
+      .filter((e) => /FormulaDialog|formula\.worker/.test(e.name))
+      .map((e) => {
+        const r = e as PerformanceResourceTiming;
+        return `${r.name.split("/").pop()}@${r.startTime.toFixed(0)}+${(
+          r.responseEnd - r.startTime
+        ).toFixed(0)}`;
+      });
+    return { ...(window as any).__cold, res } as {
+      t0: number;
+      t1: number;
+      tDialog: number;
+      tInput: number;
+      res: string[];
+    };
+  });
+  // eslint-disable-next-line no-console
+  console.log(
+    `PERF formula.coldBreakdown enter->dialog ${(c.tDialog - c.t0).toFixed(
+      0,
+    )} dialog->input ${(c.tInput - c.tDialog).toFixed(0)} input->preview ${(
+      c.t1 - c.tInput
+    ).toFixed(0)} (t0 ${c.t0.toFixed(0)}; ${c.res.join(" ")})`,
   );
   return c.t1 - c.t0;
 };

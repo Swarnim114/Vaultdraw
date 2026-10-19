@@ -383,11 +383,15 @@ test.describe("formula", () => {
     await page.waitForTimeout(300);
     const el = (await images(page))[0];
     // deselect so no selection chrome overlaps (it lives on another canvas anyway)
-    const lightInk = await inkPixels(page, el);
-    expect(lightInk.length).toBeGreaterThan(30);
-    expect(
-      lightInk.filter((p) => p[0] > p[1] && p[0] > p[2]).length,
-    ).toBeGreaterThan(lightInk.length * 0.8);
+    expect(el.customData.latex.color).toBe("#e03131");
+    // The SVG decodes asynchronously: poll until the image (not its placeholder) is painted.
+    await expect
+      .poll(async () => {
+        const ink = await inkPixels(page, el);
+        const red = ink.filter((p) => p[0] > p[1] && p[0] > p[2]).length;
+        return ink.length > 30 && red > ink.length * 0.8;
+      })
+      .toBe(true);
 
     await runCommand(page, "Mode: Dark");
     await expect(page.locator(".excalidraw.theme--dark").first()).toBeVisible();
