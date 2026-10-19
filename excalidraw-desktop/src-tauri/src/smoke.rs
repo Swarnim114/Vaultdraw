@@ -227,3 +227,11 @@ pub fn harden_test_webview(window: &tauri::WebviewWindow) {
         });
     }
 }
+
+/// PDF the import command opens instead of a file dialog (env override, else `<test dir>/smoke.pdf`).
+pub fn pdf_import_path() -> Result<PathBuf, String> {
+    match env::var_os("VAULTDRAW_SMOKE_PDF") {
+        Some(p) if !p.is_empty() => Ok(PathBuf::from(p)),
+        _ => Ok(test_dir()?.join("smoke.pdf")),
+    }
+}

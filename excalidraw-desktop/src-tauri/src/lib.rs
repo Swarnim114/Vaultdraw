@@ -21,6 +21,7 @@ mod links;
 mod search;
 mod library;
 mod memory;
+mod pdf_import;
 mod refresh_rate;
 mod templates;
 mod themes;
@@ -1490,6 +1491,7 @@ pub fn run() {
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done, links::tags_plan_rename, links::rename_tag, links::vault_graph, links::graph_layout_load, links::graph_layout_save,
                 history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
                 library::read_library, library::write_library, library::pick_library_file,
+                pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
@@ -1509,6 +1511,7 @@ pub fn run() {
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done, links::tags_plan_rename, links::rename_tag, links::vault_graph, links::graph_layout_load, links::graph_layout_save,
                 history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
                 library::read_library, library::write_library, library::pick_library_file,
+                pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir
             ])
@@ -1525,6 +1528,7 @@ pub fn run() {
                 links::vault_links, links::vault_unlinked_mentions, links::resolve_link, links::links_plan_move, links::links_remeasure, links::links_remeasure_done, links::tags_plan_rename, links::rename_tag, links::vault_graph, links::graph_layout_load, links::graph_layout_save,
                 history::history_configure, history::history_status, history::history_opened, history::history_list, history::history_snapshot, history::history_checkpoint, history::history_read_version, history::history_read_blob, history::history_snapshot_bytes, history::history_restore_copy, history::history_export_file, history::history_delete_checkpoint, history::history_delete_all, history::history_exclude_from_git,
             library::read_library, library::write_library, library::pick_library_file,
+                pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir
         ]);

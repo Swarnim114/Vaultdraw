@@ -87,6 +87,20 @@ roughness = 1
 # normal | old_school | match (follow the current theme)
 # paper_theme = "normal"
 
+[pdf_import]
+# Import PDF pages as images (Cmd+P: Import PDF). Longest side of each page image in pixels (600 to 3000)
+# max_side = 1440
+# jpeg | png
+# format = "jpeg"
+# JPEG quality, 0.5 to 1
+# quality = 0.85
+# Lock imported pages so annotating does not drag them
+# lock_pages = true
+# Warn before importing more pages than this
+# warn_pages = 50
+# Decoded-pixel budget per import in megapixels; large PDFs get a lower resolution (10 to 400)
+# pixel_budget_mp = 60
+
 [saving]
 # Milliseconds of idle time before an edit is written to disk
 autosave_delay_ms = 500
@@ -1361,11 +1375,11 @@ mod tests {
 
     #[test]
     fn default_config_documents_upcoming_tables_without_values() {
-        for section in ["[interface]\n# Whole-app zoom", "# zoom = 100", "[navigator]\n", "# sort = \"name_asc\"", "[files]\n", "# new_drawing_folder = \"\"", "# templates_folder = \"Templates\"", "[paper]\n# Paper for new drawings", "# style = \"plain\"", "# major_every = 0", "[page]\n# Page mode for new drawings", "# mode = \"normal\"", "# paper_theme = \"normal\"", "[hotkeys]\n", "# \"vault.newDrawing\" = [\"Mod+N\"]"] {
+        for section in ["[interface]\n# Whole-app zoom", "# zoom = 100", "[navigator]\n", "# sort = \"name_asc\"", "[files]\n", "# new_drawing_folder = \"\"", "# templates_folder = \"Templates\"", "[paper]\n# Paper for new drawings", "# style = \"plain\"", "# major_every = 0", "[page]\n# Page mode for new drawings", "# mode = \"normal\"", "# paper_theme = \"normal\"", "[pdf_import]\n# Import PDF pages", "# max_side = 1440", "# pixel_budget_mp = 60", "[hotkeys]\n", "# \"vault.newDrawing\" = [\"Mod+N\"]"] {
             assert!(DEFAULT_CONFIG.contains(section), "{section}");
         }
         let v = parse_config(DEFAULT_CONFIG).unwrap();
-        for table in ["paper", "page", "interface", "navigator", "files", "hotkeys"] {
+        for table in ["paper", "page", "pdf_import", "interface", "navigator", "files", "hotkeys"] {
             assert_eq!(v[table], json!({}), "{table}");
         }
     }
@@ -1435,7 +1449,7 @@ mod tests {
     fn other_value(v: &Json) -> Json {
         match v {
             Json::String(s) => json!(format!("{s}x")),
-            Json::Number(n) => json!(n.as_i64().unwrap() + 1),
+            Json::Number(n) => n.as_i64().map_or_else(|| json!(n.as_f64().unwrap() - 0.05), |i| json!(i + 1)),
             Json::Bool(b) => json!(!b),
             Json::Array(_) => json!(["Mod+Shift+X"]),
             other => panic!("unexpected default {other}"),
@@ -1448,7 +1462,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 32, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 38, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
