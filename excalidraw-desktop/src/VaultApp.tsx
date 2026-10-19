@@ -1021,7 +1021,7 @@ export const VaultApp = ({
     () => flushDoc({ commitText: false }),
     [flushDoc],
   );
-  const openDrawingRef = useRef<(path: string) => Promise<void>>();
+  const openDrawingRef = useRef<((path: string) => Promise<void>) | null>(null);
   const openFromHistory = useCallback(
     (path: string) => void openDrawingRef.current?.(path),
     [],
