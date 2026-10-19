@@ -1,127 +1,40 @@
-import { expect, test, type Page } from "@playwright/test";
+/* eslint-disable no-eval -- evaluates appHandle (a string) in the page to reach the editor instance */
+import { expect, test } from "@playwright/test";
 
 import { AFTER_AUTOSAVE_MS } from "./constants";
-import { openVault, readScene, trackErrors } from "./helpers";
+import {
+  exportDialogButton,
+  exportedNames,
+  openExportDialogFromMenu,
+  readScene,
+  trackErrors,
+} from "./helpers";
 import {
   focusCanvas,
   pixelAtClient,
   runCommand,
   toClient,
 } from "./pageHelpers";
+import {
+  SRC,
+  appHandle,
+  centreOf,
+  confirmKey,
+  dblclickElement,
+  decodeSvg,
+  dialog,
+  images,
+  inkPixels,
+  insertViaPalette,
+  lastExport,
+  openEmpty,
+  preview,
+  previewSrc,
+  scene,
+  source,
+} from "./formulaHelpers";
 
 // LaTeX formulas: insert, edit, undo, persistence, dark theme, perf.
-
-const SRC = String.raw`\int_0^1 x^2\,dx`;
-
-/** The editor's App instance (found through React's fibers). */
-const appHandle = `(() => {
-  const el = document.querySelector(".vault-editor canvas.interactive");
-  const key = Object.keys(el).find((k) => k.startsWith("__reactFiber"));
-  let fiber = el[key];
-  while (fiber) {
-    const s = fiber.stateNode;
-    if (s && s.state && s.scene && typeof s.state.scrollX === "number" && "zoom" in s.state) return s;
-    fiber = fiber.return;
-  }
-  throw new Error("editor instance not found");
-})()`;
-
-type Img = {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  fileId: string;
-  customData: any;
-  crop: unknown;
-};
-
-const scene = (page: Page) =>
-  page.evaluate(
-    (code) => {
-      const app = (0, eval)(code);
-      const els = app.scene.getNonDeletedElements();
-      return {
-        elements: els.map((e: any) => ({
-          id: e.id,
-          type: e.type,
-          x: e.x,
-          y: e.y,
-          width: e.width,
-          height: e.height,
-          fileId: e.fileId,
-          customData: e.customData,
-          crop: e.crop ?? null,
-        })) as Img[],
-        files: JSON.parse(JSON.stringify(app.files)) as Record<string, any>,
-        selected: Object.keys(app.state.selectedElementIds).filter(
-          (k) => app.state.selectedElementIds[k],
-        ),
-        croppingElementId: app.state.croppingElementId ?? null,
-      };
-    },
-    appHandle,
-  );
-
-const images = async (page: Page) =>
-  (await scene(page)).elements.filter((e) => e.type === "image");
-
-const decodeSvg = (dataURL: string) =>
-  Buffer.from(dataURL.split(",")[1], "base64").toString("utf8");
-
-const dialog = (page: Page) => page.getByRole("dialog", { name: /formula/i });
-const preview = (page: Page) =>
-  dialog(page).getByRole("img", { name: "Formula preview" });
-const source = (page: Page) => dialog(page).getByLabel("LaTeX");
-
-const previewSrc = (page: Page) => preview(page).getAttribute("src");
-
-const confirmKey = (page: Page) => page.keyboard.press("ControlOrMeta+Enter");
-
-const insertViaPalette = async (page: Page, tex: string) => {
-  await runCommand(page, "Formula: Insert formula");
-  await expect(dialog(page)).toBeVisible();
-  await source(page).fill(tex);
-  await expect(preview(page)).toBeVisible();
-  await confirmKey(page);
-  await expect(dialog(page)).toHaveCount(0);
-  await expect.poll(async () => (await images(page)).length).toBeGreaterThan(0);
-};
-
-const centreOf = (e: Img) => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
-
-const openEmpty = async (page: Page, name = "Formula.excalidraw") => {
-  await openVault(page);
-  await page.evaluate((n) => {
-    const repo = (window as any).__vaultRepo;
-    repo.seedDrawing(
-      n,
-      JSON.stringify({
-        type: "excalidraw",
-        version: 2,
-        elements: [],
-        appState: { viewBackgroundColor: "#ffffff" },
-        files: {},
-      }),
-    );
-    repo.emit({ handle: repo.handle, paths: [], rescan: true });
-  }, name);
-  await page
-    .locator(".vault-tree-item__name", { hasText: name.replace(/\.excalidraw$/, "") })
-    .first()
-    .click();
-  await expect(page.locator(".vault-editor canvas.interactive")).toBeVisible();
-  await page.waitForTimeout(600);
-  await focusCanvas(page);
-};
-
-const dblclickElement = async (page: Page, e: Img) => {
-  const c = centreOf(e);
-  const p = await toClient(page, c.x, c.y);
-  await page.mouse.dblclick(p.x, p.y);
-};
 
 test.describe("formula", () => {
   test("palette insert, shortcut insert with $$, error, edit, undo", async ({
@@ -171,7 +84,9 @@ test.describe("formula", () => {
     await runCommand(page, "Formula: Insert formula");
     await source(page).fill(String.raw`\frac{`);
     await expect(dialog(page).getByRole("alert")).toBeVisible();
-    await expect(dialog(page).getByRole("button", { name: "Insert" })).toBeDisabled();
+    await expect(
+      dialog(page).getByRole("button", { name: "Insert" }),
+    ).toBeDisabled();
     await confirmKey(page);
     await expect(dialog(page)).toBeVisible();
     await page.keyboard.press("Escape");
@@ -215,7 +130,9 @@ test.describe("formula", () => {
     s = await scene(page);
     const after = s.elements.find((e) => e.type === "image")!;
     expect(after.id).toBe(before.id);
-    expect(after.customData.latex.source).toBe(String.raw`\sum_{n=1}^{\infty} \frac1{n^2}`);
+    expect(after.customData.latex.source).toBe(
+      String.raw`\sum_{n=1}^{\infty} \frac1{n^2}`,
+    );
     const c1 = centreOf(after);
     expect(Math.abs(c1.x - c0.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(c1.y - c0.y)).toBeLessThanOrEqual(1);
@@ -233,7 +150,9 @@ test.describe("formula", () => {
     // 6. persistence
     await page.waitForTimeout(AFTER_AUTOSAVE_MS + 300);
     const saved = await readScene(page, "Formula.excalidraw");
-    const savedImg = saved.elements.find((e: any) => e.type === "image" && !e.isDeleted);
+    const savedImg = saved.elements.find(
+      (e: any) => e.type === "image" && !e.isDeleted,
+    );
     expect(savedImg.customData.latex.source).toBe(SRC);
     expect(saved.files[savedImg.fileId].mimeType).toBe("image/svg+xml");
 
@@ -299,7 +218,7 @@ test.describe("formula", () => {
           {
             id: fileId,
             mimeType: "image/svg+xml",
-            dataURL: "data:image/svg+xml;base64," + btoa(svg),
+            dataURL: `data:image/svg+xml;base64,${btoa(svg)}`,
             created: Date.now(),
           },
         ]);
@@ -333,94 +252,232 @@ test.describe("formula", () => {
     await expect(dialog(page)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
-});
 
-const PERF = process.env.E2E_PERF === "1";
+  test("export: PNG has formula ink, SVG embeds the svg dataURL, PDF is valid", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openEmpty(page, "FormulaExport.excalidraw");
+    await insertViaPalette(page, SRC);
+    await page.waitForTimeout(300);
 
-const pct = (xs: number[], p: number) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)];
-};
-const print = (name: string, v: number) =>
-  // eslint-disable-next-line no-console
-  console.log(`PERF formula.${name} ${v.toFixed(1)}ms`);
-
-test.describe("formula perf", () => {
-  test.skip(!PERF, "set E2E_PERF=1");
-
-  test("first formula latency, warm render, insert cost", async ({ page }) => {
-    test.setTimeout(180_000);
-    // (a) cold worker, 5 reloads
-    const first: number[] = [];
-    for (let i = 0; i < 5; i++) {
-      await openEmpty(page, `Perf${i}.excalidraw`);
-      await page.keyboard.press("ControlOrMeta+Shift+KeyP");
-      await page.keyboard.type("Formula: Insert formula");
-      await expect(
-        page.getByRole("dialog", { name: "Command palette" }).getByRole("option").first(),
-      ).toContainText("Formula: Insert formula");
-      await page.evaluate(() => (window as any).__fmT0 = null);
-      const t0 = Date.now();
-      await page.keyboard.press("Enter");
-      const t0p = await page.evaluate(() => performance.now());
-      await source(page).fill(SRC);
-      await preview(page).waitFor({ state: "visible" });
-      const t1p = await page.evaluate(() => performance.now());
-      void t0;
-      first.push(t1p - t0p);
-    }
-    print("firstPreviewP50", pct(first, 50));
-    print("firstPreviewMax", Math.max(...first));
-
-    // (b) warm: typing -> preview changes (includes the 120 ms debounce)
-    await openEmpty(page, "PerfWarm.excalidraw");
-    await runCommand(page, "Formula: Insert formula");
-    await source(page).fill(SRC);
-    await preview(page).waitFor({ state: "visible" });
-    const warm: number[] = [];
-    for (let i = 0; i < 50; i++) {
-      const prev = await previewSrc(page);
-      const t0 = await page.evaluate(() => performance.now());
-      await source(page).fill(String.raw`\frac{${i + 2}}{x^{${i + 3}}} + \sqrt{${i + 5}}`);
-      await expect
-        .poll(() => previewSrc(page), { intervals: [5, 5, 5, 10], timeout: 5000 })
-        .not.toBe(prev);
-      const t1 = await page.evaluate(() => performance.now());
-      warm.push(t1 - t0);
-    }
-    print("warmTypingToPreviewP50", pct(warm, 50));
-    print("warmTypingToPreviewP95", pct(warm, 95));
-    print("warmMinusDebounceP50", pct(warm, 50) - 120);
-    print("warmMinusDebounceP95", pct(warm, 95) - 120);
-
-    // (c) insert cost: Cmd+Enter keydown -> element in scene
-    await page.evaluate((code) => {
-      const app = (0, eval)(code);
-      const w = window as any;
-      w.__ins = null;
-      window.addEventListener(
-        "keydown",
-        (e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) w.__t0 = performance.now();
-        },
-        true,
-      );
-      const n0 = app.scene.getNonDeletedElements().length;
-      const tick = () => {
-        if (app.scene.getNonDeletedElements().length > n0) {
-          w.__ins = performance.now() - w.__t0;
-        } else requestAnimationFrame(tick);
-      };
-      w.__armInsert = () => requestAnimationFrame(tick);
-    }, appHandle);
-    await page.evaluate(() => (window as any).__armInsert());
-    await confirmKey(page);
+    await openExportDialogFromMenu(page);
+    await exportDialogButton(page, "PNG").click();
     await expect
-      .poll(() => page.evaluate(() => (window as any).__ins))
-      .not.toBeNull();
-    print(
-      "insertCost",
-      await page.evaluate(() => (window as any).__ins as number),
+      .poll(() => exportedNames(page), { timeout: 15000 })
+      .toContain("FormulaExport.png");
+    await exportDialogButton(page, "SVG").click();
+    await expect
+      .poll(() => exportedNames(page), { timeout: 15000 })
+      .toContain("FormulaExport.svg");
+    await page.keyboard.press("Escape");
+
+    const exported = await page.evaluate(() =>
+      (window as any).__vaultRepo.exported.map((e: any) => ({
+        name: e.name as string,
+        bytes: Array.from(e.bytes as Uint8Array),
+      })),
     );
+    const pngBytes = exported.find((e: any) => e.name === "FormulaExport.png")
+      .bytes as number[];
+    expect(pngBytes.slice(0, 4)).toEqual([137, 80, 78, 71]);
+    const ink = await page.evaluate(async (bytes) => {
+      const bmp = await createImageBitmap(
+        new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+      );
+      const c = document.createElement("canvas");
+      c.width = bmp.width;
+      c.height = bmp.height;
+      const ctx = c.getContext("2d")!;
+      ctx.drawImage(bmp, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let dark = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < 300) {
+          dark++;
+        }
+      }
+      return { dark, w: c.width, h: c.height };
+    }, pngBytes);
+    // the formula's glyphs are dark ink on the white export background
+    expect(ink.dark).toBeGreaterThan(50);
+    expect(ink.dark).toBeLessThan(ink.w * ink.h * 0.6);
+
+    const svgText = Buffer.from(
+      exported.find((e: any) => e.name === "FormulaExport.svg")
+        .bytes as number[],
+    ).toString("utf8");
+    const m =
+      /<image[^>]*href="(data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+)"/.exec(
+        svgText,
+      );
+    expect(m, "exported svg has an <image> with an svg dataURL").not.toBeNull();
+    const inner = decodeSvg(m![1]);
+    expect(inner).toContain("<svg");
+    expect(inner).toContain("<path");
+
+    const before = await page.evaluate(
+      () => (window as any).__vaultRepo.exported.length as number,
+    );
+    await focusCanvas(page);
+    await runCommand(page, "Export: PDF");
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => (window as any).__vaultRepo.exported.length as number,
+          ),
+        { timeout: 30000 },
+      )
+      .toBe(before + 1);
+    const pdf = await lastExport(page);
+    const txt = Buffer.from(pdf.bytes).toString("latin1");
+    expect(txt.startsWith("%PDF-")).toBe(true);
+    expect(txt.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(pdf.bytes.length).toBeGreaterThan(1500);
+    // the page is one raster (JPEG) image
+    expect(txt).toContain("/DCTDecode");
+    expect(errors).toEqual([]);
+  });
+
+  test("search finds the drawing by the formula's LaTeX source", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openEmpty(page, "FormulaSearch.excalidraw");
+    await insertViaPalette(page, String.raw`\zeta_{quark} = mc^2`);
+    await page.waitForTimeout(AFTER_AUTOSAVE_MS + 500);
+    const box = page.getByPlaceholder("Search drawings and text…");
+    await box.fill("quark");
+    await expect(
+      page
+        .locator('.vault-search-row[data-kind="drawing"]')
+        .filter({ hasText: "FormulaSearch" }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.vault-search-row[data-kind="snippet"]').first(),
+    ).toContainText("quark");
+    await box.fill("mc^2");
+    await expect(
+      page
+        .locator('.vault-search-row[data-kind="drawing"]')
+        .filter({ hasText: "FormulaSearch" }),
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("dark theme keeps a red formula red (no cyan hue flip)", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openEmpty(page, "FormulaRed.excalidraw");
+    await page.evaluate(
+      ([code]) => {
+        (0, eval)(code as string).setState({
+          currentItemStrokeColor: "#e03131",
+        });
+      },
+      [appHandle] as const,
+    );
+    await insertViaPalette(page, String.raw`\int_0^1 x^2\,dx`);
+    await page.waitForTimeout(300);
+    const el = (await images(page))[0];
+    // deselect so no selection chrome overlaps (it lives on another canvas anyway)
+    const lightInk = await inkPixels(page, el);
+    expect(lightInk.length).toBeGreaterThan(30);
+    expect(
+      lightInk.filter((p) => p[0] > p[1] && p[0] > p[2]).length,
+    ).toBeGreaterThan(lightInk.length * 0.8);
+
+    await runCommand(page, "Mode: Dark");
+    await expect(page.locator(".excalidraw.theme--dark").first()).toBeVisible();
+    await page.waitForTimeout(600);
+    const ink = await inkPixels(page, el, 120);
+    expect(ink.length).toBeGreaterThan(30);
+    // the most visible (strongest) pixels stay red-dominant, not cyan
+    const strongest = [...ink]
+      .sort(
+        (a, b) =>
+          Math.abs(b[0] - b[1]) +
+          Math.abs(b[0] - b[2]) -
+          (Math.abs(a[0] - a[1]) + Math.abs(a[0] - a[2])),
+      )
+      .slice(0, Math.max(10, Math.floor(ink.length / 3)));
+    const redish = strongest.filter((p) => p[0] > p[1] && p[0] > p[2]).length;
+    expect(redish).toBeGreaterThan(strongest.length * 0.8);
+    await runCommand(page, "Mode: Light");
+    expect(errors).toEqual([]);
+  });
+
+  test("no loading placeholder shortly after insert", async ({ page }) => {
+    const errors = trackErrors(page);
+    await openEmpty(page, "FormulaPlaceholder.excalidraw");
+    await insertViaPalette(page, SRC);
+    await page.waitForTimeout(150);
+    const el = (await images(page))[0];
+    const state = await page.evaluate(
+      ([code, fileId]) => {
+        const app = (0, eval)(code as string);
+        const file = app.files[fileId as string];
+        return {
+          status: file?.status ?? null,
+          cached: app.imageCache.has(fileId),
+        };
+      },
+      [appHandle, el.fileId] as const,
+    );
+    expect(state.cached).toBe(true);
+    expect(state.status === "saved" || state.status === null).toBe(true);
+    const ink = await inkPixels(page, el);
+    expect(ink.length).toBeGreaterThan(30);
+    expect(errors).toEqual([]);
+  });
+
+  test("double-click does not open the dialog in view mode or on a locked formula", async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await openEmpty(page, "FormulaGuards.excalidraw");
+    await insertViaPalette(page, SRC);
+    await focusCanvas(page);
+    await page.waitForTimeout(200);
+    const el = (await images(page))[0];
+
+    // view mode
+    await page.evaluate(
+      ([code]) => {
+        (0, eval)(code as string).setState({ viewModeEnabled: true });
+      },
+      [appHandle] as const,
+    );
+    await dblclickElement(page, el);
+    await page.waitForTimeout(500);
+    await expect(dialog(page)).toHaveCount(0);
+    await page.evaluate(
+      ([code]) => {
+        (0, eval)(code as string).setState({ viewModeEnabled: false });
+      },
+      [appHandle] as const,
+    );
+
+    // locked
+    await page.evaluate(
+      ([code, id]) => {
+        const app = (0, eval)(code as string);
+        app.updateScene({
+          elements: app.scene
+            .getElementsIncludingDeleted()
+            .map((e: any) => (e.id === id ? { ...e, locked: true } : e)),
+        });
+      },
+      [appHandle, el.id] as const,
+    );
+    await expect
+      .poll(async () => (await images(page))[0].customData?.latex?.source)
+      .toBe(SRC);
+    await dblclickElement(page, el);
+    await page.waitForTimeout(500);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(errors).toEqual([]);
   });
 });
