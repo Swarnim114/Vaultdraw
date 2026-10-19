@@ -19,7 +19,9 @@ test.describe("thumbnail shots", () => {
       await page.screenshot({ path: `${SHOTS}/thumbs-${theme}-1-home.png` });
 
       await page.keyboard.press("ControlOrMeta+Alt+KeyE");
+      await expect(page.getByRole("grid", { name: /Gallery/ })).toBeFocused();
       await page.keyboard.press("Enter");
+      await expect(page.getByTestId("gallery-count")).toHaveText("3 items");
       await expect(
         page.getByTestId("gallery-view").locator("img.vault-thumb").first(),
       ).toBeVisible({ timeout: 15_000 });
