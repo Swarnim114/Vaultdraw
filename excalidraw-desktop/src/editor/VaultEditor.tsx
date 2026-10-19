@@ -169,7 +169,6 @@ const VaultEditorComponent = ({
   const formula = useFormulaCommands({
     apiRef,
     readOnly: readOnly || disabled,
-    getOwnerDocument: () => host.current?.ownerDocument,
   });
 
   const pageMode = usePageMode({

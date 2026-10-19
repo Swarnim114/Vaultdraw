@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { IconClose } from "../components/Icons";
-import { useModalKeys } from "../components/page/useModalKeys";
+import { Dialog } from "../components/Dialog";
 
 import { renderFormula, warmFormulaRenderer } from "./renderer";
 import { svgToDataURL } from "./svgPost";
@@ -22,7 +21,6 @@ export type FormulaDialogProps = {
   color: string;
   onConfirm: (formula: RenderedFormula) => void;
   onCancel: () => void;
-  ownerDocument?: Document | null;
 };
 
 type Settled = { key: string; render: FormulaRender };
@@ -34,17 +32,13 @@ const FormulaDialog = ({
   color,
   onConfirm,
   onCancel,
-  ownerDocument,
 }: FormulaDialogProps) => {
   const [text, setText] = useState(initialSource);
   const [displayChoice, setDisplayChoice] = useState(initialDisplay);
   const [settled, setSettled] = useState<Settled | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const seq = useRef(0);
 
-  useModalKeys(dialogRef, closeRef, onCancel, ownerDocument);
   useEffect(() => {
     warmFormulaRenderer();
     textRef.current?.focus();
@@ -112,98 +106,79 @@ const FormulaDialog = ({
   const title = mode === "insert" ? "Insert formula" : "Edit formula";
 
   return (
+    // Cmd/Ctrl+Enter confirms from anywhere in the dialog (the textarea keeps Enter).
     <div
-      className="vault-modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="formula-dialog-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onCancel();
+      style={{ display: "contents" }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          void confirm();
         }
       }}
     >
-      <div
-        className="vault-modal vault-formula"
-        ref={dialogRef}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void confirm();
-          }
-        }}
+      <Dialog
+        title={title}
+        titleId="formula-dialog-title"
+        onClose={onCancel}
+        className="vd-dialog--wide vault-formula"
+        footer={
+          <>
+            <button type="button" className="vault-btn" onClick={onCancel}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="vault-btn vault-btn--primary"
+              disabled={!canConfirm}
+              onClick={() => void confirm()}
+            >
+              {mode === "insert" ? "Insert" : "Save"}
+            </button>
+          </>
+        }
       >
-        <div className="vault-modal__header">
-          <h3 id="formula-dialog-title" className="vault-modal__title">
-            {title}
-          </h3>
-          <button
-            type="button"
-            ref={closeRef}
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onCancel}
-            aria-label="Close"
-          >
-            <IconClose />
-          </button>
+        <div className="vault-field">
+          <label htmlFor="formula-source">LaTeX</label>
+          <textarea
+            id="formula-source"
+            ref={textRef}
+            className="vault-input vault-formula__source"
+            value={text}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="e.g. \int_0^1 x^2\,dx = \frac13"
+            onChange={(e) => setText(e.target.value)}
+          />
         </div>
-        <div className="vault-modal__body">
-          <div className="vault-field">
-            <label htmlFor="formula-source">LaTeX</label>
-            <textarea
-              id="formula-source"
-              ref={textRef}
-              className="vault-input vault-formula__source"
-              value={text}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              placeholder="e.g. \int_0^1 x^2\,dx = \frac13"
-              onChange={(e) => setText(e.target.value)}
+        <label className="vault-formula__option">
+          <input
+            type="checkbox"
+            checked={display}
+            disabled={parsed.display !== undefined}
+            onChange={(e) => setDisplayChoice(e.target.checked)}
+          />
+          Display mode
+        </label>
+        <div className="vault-formula__preview" aria-label="Preview">
+          {previewSrc ? (
+            <img
+              src={previewSrc}
+              alt="Formula preview"
+              className={stale ? "is-stale" : undefined}
             />
-          </div>
-          <label className="vault-formula__option">
-            <input
-              type="checkbox"
-              checked={display}
-              disabled={parsed.display !== undefined}
-              onChange={(e) => setDisplayChoice(e.target.checked)}
-            />
-            Display mode
-          </label>
-          <div className="vault-formula__preview" aria-label="Preview">
-            {previewSrc ? (
-              <img
-                src={previewSrc}
-                alt="Formula preview"
-                className={stale ? "is-stale" : undefined}
-              />
-            ) : (
-              <span className="vault-formula__placeholder">
-                {source && !error ? "Rendering…" : "Preview"}
-              </span>
-            )}
-          </div>
-          {error && (
-            <div className="vault-error-text" role="alert">
-              {error}
-            </div>
+          ) : (
+            <span className="vault-formula__placeholder">
+              {source && !error ? "Rendering…" : "Preview"}
+            </span>
           )}
         </div>
-        <div className="vault-modal__footer">
-          <button type="button" className="vault-btn" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="vault-btn vault-btn--primary"
-            disabled={!canConfirm}
-            onClick={() => void confirm()}
-          >
-            {mode === "insert" ? "Insert" : "Save"}
-          </button>
-        </div>
-      </div>
+        {error && (
+          <div className="vault-error-text" role="alert">
+            {error}
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 };

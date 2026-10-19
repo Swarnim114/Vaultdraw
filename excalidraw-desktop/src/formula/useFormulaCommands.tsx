@@ -33,7 +33,6 @@ type DialogState =
 type Options = {
   apiRef: RefObject<ExcalidrawImperativeAPI | null>;
   readOnly?: boolean;
-  getOwnerDocument?: () => Document | null | undefined;
 };
 
 /** Exactly one selected, unlocked formula image, else null. */
@@ -55,17 +54,13 @@ function formulaTarget(el: ExcalidrawImageElement): Target | null {
   return data && !el.locked ? { element: el, data } : null;
 }
 
-export function useFormulaCommands({
-  apiRef,
-  readOnly = false,
-  getOwnerDocument,
-}: Options): {
+export function useFormulaCommands({ apiRef, readOnly = false }: Options): {
   onImageEdit: (el: ExcalidrawImageElement) => boolean;
   dialog: ReactNode;
 } {
   const [state, setState] = useState<DialogState | null>(null);
-  const live = useRef({ readOnly, getOwnerDocument });
-  live.current = { readOnly, getOwnerDocument };
+  const live = useRef({ readOnly });
+  live.current = { readOnly };
 
   const open = useCallback((next: DialogState) => {
     void loadDialog().then(() => setState(next));
@@ -155,7 +150,6 @@ export function useFormulaCommands({
           color={state.mode === "edit" ? state.data.color : state.color}
           onConfirm={confirm}
           onCancel={close}
-          ownerDocument={live.current.getOwnerDocument?.()}
         />
       ) : null,
     [state, confirm, close],
