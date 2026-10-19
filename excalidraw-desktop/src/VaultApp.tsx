@@ -89,7 +89,6 @@ import { GalleryHost } from "./thumbnails/gallery/GalleryHost";
 import { useGraphEntry } from "./graph/useGraphEntry";
 import { createDesktopThumbnailStore } from "./thumbnails/desktopStore";
 import { ThumbnailsRoot } from "./thumbnails/ThumbnailsRoot";
-import { useVaultThumbnails } from "./thumbnails/useVaultThumbnails";
 import { HistoryHost } from "./history/HistoryHost";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
@@ -127,6 +126,7 @@ import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
+import type { ThumbnailService } from "./thumbnails/service";
 import type { ThumbnailStore } from "./thumbnails/store";
 import type { VaultLinks } from "./links/types";
 import type { VaultTagRename } from "./tags/types";
@@ -314,15 +314,9 @@ export const VaultApp = ({
   const appearance = useAppearance(doc, win);
   const { refresh: refreshAppearance } = appearance;
   const appTheme = appearance.snapshot.mode;
-  const thumbs = useVaultThumbnails({
-    store: thumbStore,
-    repository,
-    handle: vault?.handle ?? null,
-    win,
-    appTheme,
-  });
-  const thumbsRef = useRef(thumbs);
-  thumbsRef.current = thumbs;
+  // The thumbnail service lives in ThumbnailsRoot (see there); save notices
+  // reach it through this ref.
+  const thumbServiceRef = useRef<ThumbnailService | null>(null);
   useInterfaceZoom(win);
   // Per-vault settings.toml overrides merged over config.toml (vault > global).
   const vaultSettings = useVaultSettings(win, vault);
@@ -443,7 +437,7 @@ export const VaultApp = ({
     autosaveDelayMs: prefsNow.autosaveDelayMs,
     history,
     onDrawingSaved: (path, revision) =>
-      thumbsRef.current.service?.noteSaved(path, revision),
+      thumbServiceRef.current?.noteSaved(path, revision),
   });
   const {
     document: activeDoc,
@@ -2231,7 +2225,18 @@ export const VaultApp = ({
       <Toasts />
     </div>
   );
-  return <ThumbnailsRoot thumbnails={thumbs}>{shell}</ThumbnailsRoot>;
+  return (
+    <ThumbnailsRoot
+      store={thumbStore}
+      repository={repository}
+      handle={vault?.handle ?? null}
+      win={win}
+      appTheme={appTheme}
+      serviceRef={thumbServiceRef}
+    >
+      {shell}
+    </ThumbnailsRoot>
+  );
 };
 
 export default VaultApp;
