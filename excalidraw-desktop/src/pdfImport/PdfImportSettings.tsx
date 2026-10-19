@@ -5,7 +5,11 @@ import {
   useSettings,
   type SettingControls,
 } from "../components/settings/SettingsContext";
-import { Segmented, Switch } from "../components/settings/pages/controls";
+import {
+  Segmented,
+  Stepper,
+  Switch,
+} from "../components/settings/pages/controls";
 import {
   DEFAULT_PREFERENCES,
   getPreferences,
@@ -32,40 +36,27 @@ type NumberFieldName =
   | "pdfWarnPages"
   | "pdfPixelBudgetMp";
 
-/** Number input that commits on blur/Enter, clamped; unparsable reverts. */
+/** Shared stepper row for one numeric preference. */
 const NumberSetting = ({
   id,
   field,
   label,
+  unit,
   limits,
   step,
 }: {
   id: string;
   field: NumberFieldName;
   label: string;
+  unit?: string;
   limits: { min: number; max: number };
   step: number;
 }) => {
   const { win } = useSettings();
   const value = usePrefs()[field];
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
-  const commit = () => {
-    const parsed = Number(draft);
-    if (draft.trim() === "" || !Number.isFinite(parsed)) {
-      setDraft(String(value));
-      return;
-    }
-    const next = Math.min(limits.max, Math.max(limits.min, parsed));
-    setDraft(String(next));
-    if (next !== value) {
-      updatePreferences({ [field]: next }, win);
-    }
-  };
   return (
     <SettingRow
       id={id}
-      htmlFor={`vault-${id}`}
       onReset={
         value === DEFAULT_PREFERENCES[field]
           ? undefined
@@ -73,18 +64,16 @@ const NumberSetting = ({
               updatePreferences({ [field]: DEFAULT_PREFERENCES[field] }, win)
       }
     >
-      <input
-        id={`vault-${id}`}
-        type="number"
-        className="vault-input vault-input--number"
-        aria-label={label}
-        min={limits.min}
-        max={limits.max}
+      <Stepper
+        label={label}
+        unit={unit}
+        {...limits}
         step={step}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && commit()}
+        value={value}
+        // Round away float drift from fractional steps (0.05).
+        onChange={(next) =>
+          updatePreferences({ [field]: Math.round(next * 1e4) / 1e4 }, win)
+        }
       />
     </SettingRow>
   );
@@ -131,6 +120,7 @@ export const pdfImportControls: SettingControls = {
         id="pdf-max-side"
         field="pdfMaxSide"
         label="PDF page resolution"
+        unit="px"
         limits={PDF_IMPORT_LIMITS.maxSide}
         step={100}
       />
@@ -155,6 +145,7 @@ export const pdfImportControls: SettingControls = {
         id="pdf-warn-pages"
         field="pdfWarnPages"
         label="PDF page count warning"
+        unit="pages"
         limits={PDF_IMPORT_LIMITS.warnPages}
         step={10}
       />
@@ -166,6 +157,7 @@ export const pdfImportControls: SettingControls = {
         id="pdf-pixel-budget"
         field="pdfPixelBudgetMp"
         label="PDF pixel budget"
+        unit="MP"
         limits={PDF_IMPORT_LIMITS.pixelBudgetMp}
         step={10}
       />
