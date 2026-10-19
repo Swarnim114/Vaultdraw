@@ -6,6 +6,7 @@
 import { PALETTE_COMMANDS_ID, PALETTE_FILES_ID } from "../commands/commands";
 import { formatChord } from "../commands/keys";
 import { useCommandShortcutLookup } from "../commands/useCommandShortcut";
+import { RecentDrawings } from "../thumbnails/surfaces/RecentDrawings";
 
 import {
   IconCommand,
@@ -108,24 +109,7 @@ export const VaultHome = ({
           );
         })}
       </div>
-      {recent.length > 0 && (
-        <section className="vault-recent" aria-label="Recent drawings">
-          <h3 className="vault-recent__title">Recent</h3>
-          {recent.map((entry) => (
-            <button
-              key={entry.path}
-              type="button"
-              className="vault-recent__item"
-              onClick={() => onOpenDrawing(entry.path)}
-              title={entry.path}
-            >
-              <IconDrawing />
-              <span className="vault-recent__name">{entry.name}</span>
-              <span className="vault-recent__folder">{entry.folder}</span>
-            </button>
-          ))}
-        </section>
-      )}
+      <RecentDrawings entries={recent} onOpen={onOpenDrawing} />
     </div>
   );
 };

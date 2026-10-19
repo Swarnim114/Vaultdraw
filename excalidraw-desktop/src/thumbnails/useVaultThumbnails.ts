@@ -1,0 +1,90 @@
+/**
+ * One thumbnail service per open vault. Creating it is free (no IPC until a
+ * surface watches); it is disposed when the vault changes or closes. Also
+ * binds the `thumbnails.toggle` / `thumbnails.clearCache` commands.
+ */
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { registerCommandHandlers } from "../commands/handlerRegistry";
+import { THUMBNAIL_COMMAND_IDS as ID } from "../commands/thumbnailCommands";
+import {
+  getPreferences,
+  subscribePreferences,
+  updatePreferences,
+} from "../vault/preferences";
+
+import { createThumbnailService } from "./service";
+
+import type { VaultRepository } from "../vault/types";
+import type { ThumbnailService } from "./service";
+import type { ThumbnailStore } from "./store";
+
+export interface VaultThumbnails {
+  /** null = off or unavailable: surfaces show their text UI. */
+  service: ThumbnailService | null;
+  /** The app theme is dark and the canvas is not theme-synced: invert images. */
+  darkInvert: boolean;
+}
+
+export const useVaultThumbnails = ({
+  store,
+  repository,
+  handle,
+  win,
+  appTheme,
+}: {
+  store: ThumbnailStore | null;
+  repository: VaultRepository;
+  handle: string | null;
+  win: Window | null;
+  appTheme: string;
+}): VaultThumbnails => {
+  const prefs = useSyncExternalStore(
+    subscribePreferences,
+    () => getPreferences(win).thumbnails,
+  );
+  const syncCanvas = useSyncExternalStore(
+    subscribePreferences,
+    () => getPreferences(win).syncCanvas,
+  );
+  const [service, setService] = useState<ThumbnailService | null>(null);
+  const repoRef = useRef(repository);
+  repoRef.current = repository;
+
+  useEffect(() => {
+    if (!store || !handle) {
+      setService(null);
+      return;
+    }
+    const next = createThumbnailService({
+      store,
+      handle,
+      readDrawing: (path) => repoRef.current.readDrawing(handle, path),
+      subscribe: (listener) => repoRef.current.subscribe(listener),
+    });
+    setService(next);
+    const unbind = registerCommandHandlers({
+      [ID.toggle]: () => {
+        updatePreferences({ thumbnails: !getPreferences(win).thumbnails }, win);
+      },
+      [ID.clearCache]: async () => {
+        await store.clear(handle);
+        next.invalidate([""]);
+      },
+    });
+    return () => {
+      unbind();
+      next.dispose();
+      setService(null);
+    };
+  }, [store, handle, win]);
+
+  useEffect(() => {
+    service?.setEnabled(prefs);
+  }, [service, prefs]);
+
+  return {
+    service: prefs ? service : null,
+    darkInvert: appTheme === "dark" && !syncCanvas,
+  };
+};

@@ -17,6 +17,7 @@ import {
 import { FakeVaultLinks } from "../src/tests/fakeVaultLinks";
 import { FakeVaultSearch } from "../src/tests/fakeVaultSearch";
 import { SAMPLE_SCENE, SEARCH_SCENE } from "../src/tests/fixtures";
+import { createFakeThumbnailStore } from "../src/thumbnails/fakeStore";
 import {
   setAutosaveDelayMs,
   updatePreferences,
@@ -507,6 +508,19 @@ const pdfBridge = new FakePdfBridge();
 pdfBridge.nextPick = pdfBridge.makeDoc("sample.pdf");
 (ownerWindow as any).__pdfBridge = pdfBridge;
 
+// ?thumbs=1: in-memory thumbnail store (revisions from the fake repository).
+const thumbnailStore =
+  params.get("thumbs") === "1"
+    ? createFakeThumbnailStore({
+        revisionOf: (handle, path) =>
+          repository.readDrawing(handle, path).then(
+            (f) => f.revision,
+            () => null,
+          ),
+      })
+    : undefined;
+(ownerWindow as any).__thumbStore = thumbnailStore;
+
 if (params.has("graph")) {
   // ?graph=N: the graph view over a fake N-node vault graph (see graphHarness.tsx).
   void import("./graphHarness").then(({ mountGraphHarness }) =>
@@ -534,6 +548,7 @@ function mountVaultApp() {
           libraryRepository={libraryRepository}
           history={historyRepository}
           pdf={pdfBridge}
+          thumbnails={thumbnailStore ?? null}
           graph={{
             graphSource,
             invoke: graphInvoke,

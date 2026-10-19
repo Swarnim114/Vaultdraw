@@ -24,7 +24,8 @@ export type CommandCategory =
   | "Links"
   | "History"
   | "Graph"
-  | "Formula";
+  | "Formula"
+  | "Thumbnails";
 
 /**
  * Facts the dispatcher checks before claiming a key.

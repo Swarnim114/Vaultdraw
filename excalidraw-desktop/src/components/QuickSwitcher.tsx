@@ -40,6 +40,7 @@ import {
 import { rowHeadings, withCreateRow } from "../palette/group";
 import { namesCache } from "../palette/namesCache";
 import { getRecent, recordRecent } from "../palette/recent";
+import { PalettePreview } from "../thumbnails/surfaces/PalettePreview";
 import { errorMessage } from "../vault/types";
 
 import { IconDrawing, IconPlus } from "./Icons";
@@ -656,6 +657,13 @@ export const QuickSwitcher = ({
           </span>
         </div>
       </div>
+      <PalettePreview
+        path={
+          mode === "files" && rows[selected]?.kind === "drawing"
+            ? rows[selected].drawing.path
+            : null
+        }
+      />
     </div>
   );
 };

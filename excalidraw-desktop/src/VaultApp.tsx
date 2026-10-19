@@ -86,6 +86,9 @@ import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
 import { GraphHost, type GraphHostProps } from "./graph/GraphHost";
 import { useGraphEntry } from "./graph/useGraphEntry";
+import { createDesktopThumbnailStore } from "./thumbnails/desktopStore";
+import { ThumbnailsRoot } from "./thumbnails/ThumbnailsRoot";
+import { useVaultThumbnails } from "./thumbnails/useVaultThumbnails";
 import { HistoryHost } from "./history/HistoryHost";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
@@ -123,6 +126,7 @@ import type { PaletteMode } from "./palette/rank";
 import type { PaletteItem } from "./palette/types";
 import type { SortOrder } from "./vault/sortOrder";
 import type { VaultSearch } from "./search/types";
+import type { ThumbnailStore } from "./thumbnails/store";
 import type { VaultLinks } from "./links/types";
 import type { VaultTagRename } from "./tags/types";
 
@@ -189,6 +193,8 @@ export interface VaultAppProps {
   graph?: Pick<GraphHostProps, "graphSource" | "invoke" | "onSession">;
   /** PDF import (native renderer); defaults to the desktop bridge. */
   pdf?: PdfBridge;
+  /** Thumbnail cache; defaults to the native one under Tauri, else none (text UI). */
+  thumbnails?: ThumbnailStore | null;
 }
 
 export const VaultApp = ({
@@ -203,6 +209,7 @@ export const VaultApp = ({
   history = desktopHistoryRepository,
   graph,
   pdf = desktopPdfBridge,
+  thumbnails,
 }: VaultAppProps) => {
   const libraryBundle = useMemo(
     () => ({
@@ -232,6 +239,11 @@ export const VaultApp = ({
     [win],
   );
   const vaultTagRename = tagRename === undefined ? defaultTagRename : tagRename;
+  const defaultThumbs = useMemo(
+    () => (isTauriAvailable(win) ? createDesktopThumbnailStore() : null),
+    [win],
+  );
+  const thumbStore = thumbnails === undefined ? defaultThumbs : thumbnails;
   const setRootNode = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       setMountedDocument(node.ownerDocument);
@@ -301,6 +313,15 @@ export const VaultApp = ({
   const appearance = useAppearance(doc, win);
   const { refresh: refreshAppearance } = appearance;
   const appTheme = appearance.snapshot.mode;
+  const thumbs = useVaultThumbnails({
+    store: thumbStore,
+    repository,
+    handle: vault?.handle ?? null,
+    win,
+    appTheme,
+  });
+  const thumbsRef = useRef(thumbs);
+  thumbsRef.current = thumbs;
   useInterfaceZoom(win);
   // Per-vault settings.toml overrides merged over config.toml (vault > global).
   const vaultSettings = useVaultSettings(win, vault);
@@ -420,6 +441,8 @@ export const VaultApp = ({
   const docHook = useVaultDocument(repository, vault, {
     autosaveDelayMs: prefsNow.autosaveDelayMs,
     history,
+    onDrawingSaved: (path, revision) =>
+      thumbsRef.current.service?.noteSaved(path, revision),
   });
   const {
     document: activeDoc,
@@ -1873,7 +1896,7 @@ export const VaultApp = ({
     }
   >;
 
-  return (
+  const shell = (
     <div
       ref={setRootNode}
       className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
@@ -2173,6 +2196,7 @@ export const VaultApp = ({
       <Toasts />
     </div>
   );
+  return <ThumbnailsRoot thumbnails={thumbs}>{shell}</ThumbnailsRoot>;
 };
 
 export default VaultApp;

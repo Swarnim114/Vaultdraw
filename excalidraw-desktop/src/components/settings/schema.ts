@@ -274,6 +274,15 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "interface.show_tag_chips",
   },
   {
+    id: "thumbnails",
+    page: "interface",
+    label: "Show drawing thumbnails",
+    description:
+      "Preview images of drawings on the home screen, in search results and in the palette.",
+    keywords: ["thumbnail", "preview", "image", "gallery", "grid", "cache"],
+    configKey: "interface.thumbnails",
+  },
+  {
     id: "sort-order",
     page: "interface",
     label: "Navigator Sort Order",

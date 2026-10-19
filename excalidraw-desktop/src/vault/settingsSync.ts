@@ -188,6 +188,7 @@ type ConfigField =
   | "zoom"
   | "confirmDelete"
   | "showTagChips"
+  | "thumbnails"
   | "navigatorSort"
   | "newDrawingFolder"
   | "templatesFolder"
@@ -284,6 +285,12 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
   {
     field: "showTagChips",
     key: "interface.show_tag_chips",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "thumbnails",
+    key: "interface.thumbnails",
     expected: "true or false",
     valid: (v) => typeof v === "boolean",
   },

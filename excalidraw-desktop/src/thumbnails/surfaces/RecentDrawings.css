@@ -1,0 +1,40 @@
+/* Home "Recent" as thumbnail tiles (text rows keep the shell's styles). */
+.vault-recent__list {
+  display: contents;
+}
+
+.vault-recent--tiles {
+  width: min(640px, 92%);
+}
+
+.vault-recent__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.vault-recent--tiles .vault-recent__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  height: auto;
+  align-items: start;
+  gap: 4px;
+  padding: 6px;
+}
+
+.vault-recent--tiles .vault-thumb--md {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+.vault-recent--tiles .vault-recent__name {
+  font-weight: 500;
+}
+
+.vault-recent--tiles .vault-recent__folder {
+  margin-left: 0;
+  padding-left: 0;
+  max-width: 100%;
+}

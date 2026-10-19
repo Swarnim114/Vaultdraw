@@ -62,7 +62,12 @@ const isNotFound = (error: unknown) =>
 export const useVaultDocument = (
   repository: VaultRepository,
   vault: VaultInfo | null,
-  options?: { autosaveDelayMs?: number; history?: HistoryRepository },
+  options?: {
+    autosaveDelayMs?: number;
+    history?: HistoryRepository;
+    /** A save produced `revision` for `path` (thumbnail staleness). */
+    onDrawingSaved?: (path: string, revision: string) => void;
+  },
 ): UseVaultDocumentResult => {
   const [document, setDocument] = useState<VaultDocument | null>(null);
   const [status, setStatus] = useState<SaveStatus>("saved");
@@ -80,6 +85,8 @@ export const useVaultDocument = (
   autosaveDelayMsRef.current = options?.autosaveDelayMs;
   const historyRef = useRef(options?.history);
   historyRef.current = options?.history;
+  const onDrawingSavedRef = useRef(options?.onDrawingSaved);
+  onDrawingSavedRef.current = options?.onDrawingSaved;
   const [fallback] = useState(() =>
     createOutsideFallback(() => historyRef.current),
   );
@@ -181,6 +188,7 @@ export const useVaultDocument = (
           }
           next.revision = revision;
           next.savedJson = json;
+          onDrawingSavedRef.current?.(next.path, revision);
           if (next.currentJson === json) {
             setCurrentStatus("saved", null);
           }

@@ -77,6 +77,8 @@ export interface SettingsContextValue {
   setConfirmDelete: (next: boolean) => void;
   showTagChips: boolean;
   setShowTagChips: (next: boolean) => void;
+  thumbnails: boolean;
+  setThumbnails: (next: boolean) => void;
 
   /** The `[links]` settings. */
   links: LinksSettings;
@@ -173,6 +175,9 @@ export const useSettingsController = ({
   const [showTagChips, setShowTagChipsState] = useState(
     () => getPreferences(win).showTagChips,
   );
+  const [thumbnails, setThumbnailsState] = useState(
+    () => getPreferences(win).thumbnails,
+  );
   const [links, setLinksState] = useState(() =>
     getLinksSettings(getPreferences(win)),
   );
@@ -204,6 +209,7 @@ export const useSettingsController = ({
       setZoomState(prefs.zoom);
       setConfirmDeleteState(prefs.confirmDelete);
       setShowTagChipsState(prefs.showTagChips);
+      setThumbnailsState(prefs.thumbnails);
       setLinksState(getLinksSettings(prefs));
       setTagsState(getTagsSettings(prefs));
     };
@@ -264,6 +270,11 @@ export const useSettingsController = ({
   const setShowTagChips = (next: boolean) => {
     setShowTagChipsState(next);
     updatePreferences({ showTagChips: next }, win);
+  };
+
+  const setThumbnails = (next: boolean) => {
+    setThumbnailsState(next);
+    updatePreferences({ thumbnails: next }, win);
   };
 
   const setLinks = (partial: Partial<LinksSettings>) => {
@@ -342,6 +353,8 @@ export const useSettingsController = ({
     setConfirmDelete,
     showTagChips,
     setShowTagChips,
+    thumbnails,
+    setThumbnails,
     links,
     setLinks,
     tags,

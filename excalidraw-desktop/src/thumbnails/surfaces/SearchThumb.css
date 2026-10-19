@@ -1,0 +1,4 @@
+.vault-search-row__thumb {
+  display: inline-flex;
+  flex-shrink: 0;
+}

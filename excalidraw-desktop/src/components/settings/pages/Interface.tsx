@@ -55,6 +55,19 @@ const ShowTagChipsSetting = () => {
   );
 };
 
+const ThumbnailsSetting = () => {
+  const { thumbnails, setThumbnails } = useSettings();
+  return (
+    <SettingRow id="thumbnails" htmlFor="vault-thumbnails">
+      <Switch
+        id="vault-thumbnails"
+        checked={thumbnails}
+        onChange={setThumbnails}
+      />
+    </SettingRow>
+  );
+};
+
 const SortOrderSetting = () => (
   <PerVaultRow id="sort-order" field="navigatorSort">
     {(value, onChange) => (
@@ -77,5 +90,6 @@ const SortOrderSetting = () => (
 export const interfaceControls: SettingControls = {
   "interface-zoom": { Component: ZoomSetting },
   "show-tag-chips": { Component: ShowTagChipsSetting },
+  thumbnails: { Component: ThumbnailsSetting },
   "sort-order": { Component: SortOrderSetting },
 };

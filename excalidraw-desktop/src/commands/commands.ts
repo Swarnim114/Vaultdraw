@@ -22,6 +22,7 @@ import {
 } from "./drawingCommands";
 import { EDITOR_COMMANDS } from "./editorCommands";
 import { GRAPH_COMMANDS } from "./graphCommands";
+import { THUMBNAIL_COMMANDS } from "./thumbnailCommands";
 
 import type {
   Chord,
@@ -525,6 +526,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...HISTORY_COMMANDS,
   ...GRAPH_COMMANDS,
   ...FORMULA_COMMANDS,
+  ...THUMBNAIL_COMMANDS,
 ];
 
 const BY_ID: ReadonlyMap<string, CommandDefinition> = new Map(

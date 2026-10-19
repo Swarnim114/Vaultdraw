@@ -12,7 +12,9 @@ import {
 import { Highlighted } from "../../search/highlight";
 import { useVaultSearch } from "../../search/useVaultSearch";
 import { getParentPath, searchEntries } from "../../vault/treeStore";
-import { IconDrawing, IconFolder } from "../Icons";
+import { useThumbDarkClass } from "../../thumbnails/surfaces/darkInvert";
+import { SearchThumb } from "../../thumbnails/surfaces/SearchThumb";
+import { IconFolder } from "../Icons";
 
 import "./SearchResults.css";
 
@@ -84,9 +86,7 @@ const DrawingRow = memo(
         } ${current ? "vault-search-row--current" : ""}`}
         onClick={() => onPick(index)}
       >
-        <span className="vault-search-row__icon">
-          <IconDrawing />
-        </span>
+        <SearchThumb path={hit.path} />
         <span className="vault-search-row__name" title={hit.path}>
           <Highlighted text={stripExt(hit.name)} ranges={hit.nameHighlights} />
         </span>
@@ -184,6 +184,7 @@ export const SearchResults = ({
   onOpenFolder,
 }: Props) => {
   const baseId = useId();
+  const thumbDark = useThumbDarkClass();
   const listId = `${baseId}-list`;
   const listRef = useRef<HTMLDivElement>(null);
   const { response, loading, error } = useVaultSearch(search, handle, query);
@@ -351,7 +352,7 @@ export const SearchResults = ({
         id={listId}
         role="listbox"
         aria-label="Search results"
-        className="vault-search-list"
+        className={`vault-search-list${thumbDark ? ` ${thumbDark}` : ""}`}
       >
         {rows.map((row, index) => {
           const id = rowId(index);
