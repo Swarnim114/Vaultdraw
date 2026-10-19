@@ -332,4 +332,63 @@ describe("thumbnail service", () => {
     expect(t.unsub).toHaveBeenCalled();
     a.off();
   });
+
+  it("unwatch + re-watch while the render runs: the joined job publishes to the new entry", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const render = vi.fn(async () => {
+      await gate;
+      return png();
+    });
+    const t = setup({ render });
+    const first = t.watch("a.excalidraw");
+    t.frames.run();
+    await settle(); // render started, blocked
+    first.off(); // entry dropped (nothing watched)
+    const second = t.watch("a.excalidraw");
+    t.frames.run();
+    await settle(); // lookup miss -> joins the started job
+    release();
+    await settle();
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(second.last().status).toBe("ready");
+  });
+
+  it("a hung render times out as a failure without a fail marker and frees the queue", async () => {
+    const render = vi.fn(() => new Promise<PngResult>(() => {}));
+    const store = createFakeThumbnailStore({ revisionOf: () => "r" });
+    let frame: (() => void) | null = null;
+    const service = createThumbnailService({
+      store,
+      handle: "h",
+      readDrawing: async () => ({ json: "{}", revision: "r" }),
+      render,
+      queue: createJobQueue({
+        input: { start() {}, stop() {}, remaining: () => 0 },
+        yieldFn: () => Promise.resolve(),
+        jobTimeoutMs: 30,
+      }),
+      schedule: (fn) => {
+        frame = fn;
+      },
+    });
+    const states: ThumbState[] = [];
+    service.watch("a.excalidraw", (s) => states.push(s));
+    (frame as any)?.();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(states[states.length - 1]).toBe(THUMB_NONE);
+    expect(store.calls.put).toBe(0);
+  });
+
+  it("refresh re-checks one watched path", async () => {
+    const t = setup();
+    const a = t.watch("a.excalidraw");
+    t.frames.run();
+    await settle();
+    t.service.refresh("a.excalidraw");
+    t.frames.run();
+    await settle();
+    expect(t.store.calls.lookup).toBe(2);
+    expect(a.last().status).toBe("ready");
+  });
 });

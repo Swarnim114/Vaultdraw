@@ -38,6 +38,8 @@ export interface ThumbnailService {
   noteSaved(path: string, revision: string): void;
   /** Watcher events: drops entries at/under these paths ("" = everything). */
   invalidate(paths: string[]): void;
+  /** Re-checks one path (e.g. its image failed to load). */
+  refresh(path: string): void;
   setEnabled(on: boolean): void;
   dispose(): void;
 }
@@ -198,17 +200,20 @@ export const createThumbnailService = (
     queuedKeys.add(key);
     const outcome = await queue.add(
       key,
-      async (): Promise<"done" | "skipped" | "failed"> => {
+      async (signal): Promise<"done" | "skipped" | "failed"> => {
         if (!live() || !isWatched(path)) {
           return "skipped";
         }
         try {
           const { json, revision } = await deps.readDrawing(path);
           const result = await render(json);
-          if (!live()) {
+          // The entry may have been dropped and recreated while this job ran
+          // (unwatch + re-watch joins the started job): publish to the current one.
+          const target = entries.get(path);
+          if (!live() || signal.aborted || !target) {
             return "skipped";
           }
-          e.rev = revision; // the revision actually read, not the looked-up one
+          target.rev = revision; // the revision actually read, not the looked-up one
           if (result.kind === "png") {
             const url = await store.put(
               handle,
@@ -219,14 +224,14 @@ export const createThumbnailService = (
             );
             publish(
               path,
-              e,
+              target,
               readyState(url ?? store.urlFor(vaultId, revision)),
             );
           } else {
             if (result.reason !== "error") {
               await store.put(handle, path, revision, null, RENDER_VERSION);
             }
-            publish(path, e, THUMB_NONE);
+            publish(path, target, THUMB_NONE);
           }
           return "done";
         } catch {
@@ -234,15 +239,17 @@ export const createThumbnailService = (
         }
       },
       priorityOf(path),
+      "failed", // a hung job counts as an error (no fail marker)
     );
     queuedKeys.delete(key);
     if (outcome === null) {
       return; // cancelled: unwatch / disable already reset the entry
     }
+    const current = entries.get(path) ?? e;
     if (outcome === "failed" && live() && isWatched(path)) {
-      publish(path, e, THUMB_NONE);
+      publish(path, current, THUMB_NONE);
     }
-    settle(path, e);
+    settle(path, current);
   };
 
   const handleItem = (
@@ -255,6 +262,9 @@ export const createThumbnailService = (
         e.busy = false;
       }
       return;
+    }
+    if (item.state !== "pending") {
+      e.attempts = 0;
     }
     switch (item.state) {
       case "hit":
@@ -455,6 +465,7 @@ export const createThumbnailService = (
       }
     },
     invalidate: (paths) => dropEntries(paths, false),
+    refresh: (path) => dropEntries([path], false),
     setEnabled(on) {
       if (on === enabled || disposed) {
         return;

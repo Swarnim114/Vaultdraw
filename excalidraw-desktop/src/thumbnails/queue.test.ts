@@ -126,6 +126,47 @@ describe("createJobQueue", () => {
   });
 });
 
+describe("job timeout", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("abandons a hung job, releases the slot and ignores its late result", async () => {
+    vi.useFakeTimers();
+    const q = createJobQueue({
+      input: idle,
+      yieldFn: () => Promise.resolve(),
+      jobTimeoutMs: 100,
+    });
+    let finish!: (v: string) => void;
+    let signal!: AbortSignal;
+    const hung = q.add(
+      "hung",
+      (s) => {
+        signal = s;
+        return new Promise<string>((r) => (finish = r));
+      },
+      "visible",
+      "timeout",
+    );
+    const next = q.add("next", async () => "ok");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await hung).toBe("timeout");
+    expect(signal.aborted).toBe(true);
+    expect(await next).toBe("ok");
+    finish("late"); // ignored
+    expect(q.has("hung")).toBe(false);
+  });
+
+  it("defaults the timeout result to null and does not fire for fast jobs", async () => {
+    vi.useFakeTimers();
+    const q = createJobQueue({ input: idle, yieldFn: () => Promise.resolve(), jobTimeoutMs: 100 });
+    const hung = q.add("h", () => new Promise<string>(() => {}));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await hung).toBeNull();
+    expect(await q.add("f", async () => "fast")).toBe("fast");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe("createInputGate", () => {
   it("listens only between start and stop and reports the quiet time", () => {
     const target = new EventTarget();

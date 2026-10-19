@@ -6,7 +6,10 @@
  */
 import { withStandardColors } from "./standardColors";
 
-/** Bump when the renderer's output changes (retries fail markers, replaces PNGs). */
+/**
+ * Bump to retry scenes whose render failed (only fail markers are versioned).
+ * Existing PNGs are replaced only when the drawing changes or the cache is cleared.
+ */
 export const RENDER_VERSION = 1;
 
 // SVG data URLs (history rows, link cards, templates).

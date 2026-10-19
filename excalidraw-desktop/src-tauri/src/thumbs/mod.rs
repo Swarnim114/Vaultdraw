@@ -200,7 +200,14 @@ impl VaultThumbs {
             inner.dirty = false;
             self.manifest(&mut inner).to_bytes()
         };
-        Manifest::save_bytes(&self.cache, &bytes)
+        let saved = Manifest::save_bytes(&self.cache, &bytes);
+        if saved.is_err() {
+            // Keep the changes pending so a later flush retries the write.
+            if let Ok(mut inner) = self.lock() {
+                inner.dirty = true;
+            }
+        }
+        saved
     }
 
     pub(crate) fn lookup(self: &Arc<Self>, paths: &[String], render_version: u32) -> Result<LookupResult> {

@@ -183,6 +183,24 @@ fn put_returns_url_and_manifest_only_when_current() {
 }
 
 #[test]
+fn failed_flush_stays_dirty_and_retries() {
+    let f = fixture();
+    f.draw("a.excalidraw", "1");
+    let rev = f.rev("a.excalidraw");
+    f.put_png("a.excalidraw", &rev).unwrap();
+    // A directory where the manifest file goes makes the atomic rename fail.
+    let manifest = f.vt.cache.join("manifest.json");
+    let _ = fs::remove_file(&manifest);
+    fs::create_dir_all(&manifest).unwrap();
+    assert!(f.vt.flush().is_err());
+    assert!(f.vt.lock().unwrap().dirty);
+    fs::remove_dir_all(&manifest).unwrap();
+    f.vt.flush().unwrap();
+    assert!(manifest.is_file());
+    assert!(!f.vt.lock().unwrap().dirty);
+}
+
+#[test]
 fn atomic_writes_leave_no_temp_files() {
     let f = fixture();
     f.draw("a.excalidraw", "1");

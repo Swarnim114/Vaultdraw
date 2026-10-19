@@ -11,8 +11,10 @@ export interface JobQueue {
   /** Resolves with the job's result, or null when cancelled or failed. */
   add<T>(
     key: string,
-    run: () => Promise<T>,
+    run: (signal: AbortSignal) => Promise<T>,
     priority?: Priority,
+    /** Result for waiters when the job exceeds the timeout (default null). */
+    onTimeout?: T,
   ): Promise<T | null>;
   /** Drops a queued job (a started one finishes). */
   cancel(key: string): void;
@@ -91,12 +93,15 @@ export interface JobQueueOptions {
   input?: InputGate;
   /** A job waits at most this long (total) for input to stop. */
   maxDeferMs?: number;
+  /** A started job is abandoned (slot released, late result ignored) after this. */
+  jobTimeoutMs?: number;
 }
 
 type Job = {
   key: string;
-  run: () => Promise<unknown>;
+  run: (signal: AbortSignal) => Promise<unknown>;
   priority: Priority;
+  onTimeout: unknown;
   waiters: Array<(v: any) => void>;
 };
 
@@ -104,6 +109,7 @@ export const createJobQueue = (opts: JobQueueOptions = {}): JobQueue => {
   const yieldFn = opts.yieldFn ?? yieldToEventLoop;
   const input = opts.input ?? createInputGate();
   const maxDeferMs = opts.maxDeferMs ?? 1000;
+  const jobTimeoutMs = opts.jobTimeoutMs ?? 10_000;
   const lanes: Record<Priority, Job[]> = { visible: [], near: [] };
   const queued = new Map<string, Job>();
   const started = new Map<string, Job>();
@@ -119,6 +125,26 @@ export const createJobQueue = (opts: JobQueueOptions = {}): JobQueue => {
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /** Runs a job; a hang past the timeout settles it and aborts its signal. */
+  const runWithTimeout = (job: Job): Promise<unknown> =>
+    new Promise((resolve) => {
+      const abort = new AbortController();
+      const timer = setTimeout(() => {
+        abort.abort();
+        resolve(job.onTimeout);
+      }, jobTimeoutMs);
+      job.run(abort.signal).then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        () => {
+          clearTimeout(timer);
+          resolve(null);
+        },
+      );
+    });
 
   const pump = async () => {
     if (running) {
@@ -151,12 +177,7 @@ export const createJobQueue = (opts: JobQueueOptions = {}): JobQueue => {
           break;
         }
         started.set(job.key, job);
-        let result: unknown = null;
-        try {
-          result = await job.run();
-        } catch {
-          result = null;
-        }
+        const result = await runWithTimeout(job);
         started.delete(job.key);
         job.waiters.forEach((w) => w(result));
         if (queued.size > 0) {
@@ -171,7 +192,12 @@ export const createJobQueue = (opts: JobQueueOptions = {}): JobQueue => {
   };
 
   return {
-    add<T>(key: string, run: () => Promise<T>, priority: Priority = "visible") {
+    add<T>(
+      key: string,
+      run: (signal: AbortSignal) => Promise<T>,
+      priority: Priority = "visible",
+      onTimeout?: T,
+    ) {
       const existing = queued.get(key) ?? started.get(key);
       if (existing) {
         if (
@@ -188,7 +214,13 @@ export const createJobQueue = (opts: JobQueueOptions = {}): JobQueue => {
         );
       }
       return new Promise<T | null>((resolve) => {
-        const job: Job = { key, run, priority, waiters: [resolve] };
+        const job: Job = {
+          key,
+          run,
+          priority,
+          onTimeout: onTimeout ?? null,
+          waiters: [resolve],
+        };
         queued.set(key, job);
         lanes[priority].push(job);
         void pump();
