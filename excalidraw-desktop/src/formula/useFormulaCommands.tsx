@@ -1,12 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ExcalidrawImageElement } from "@excalidraw/element/types";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -16,12 +8,19 @@ import { registerCommandHandlers } from "../commands/handlerRegistry";
 import { FORMULA_COMMAND_IDS } from "./formulaCommands";
 import { getFormulaData } from "./types";
 
-import type { ReactNode, RefObject } from "react";
+import type { ComponentType, ReactNode, RefObject } from "react";
 
+import type { FormulaDialogProps } from "./FormulaDialog";
 import type { RenderedFormula } from "./insertFormula";
 import type { FormulaData } from "./types";
 
-const FormulaDialog = lazy(() => import("./FormulaDialog"));
+// Loaded on first use, then the dialog is mounted directly. Not React.lazy:
+// React 19 holds a resolved Suspense boundary back for ~300 ms (fallback
+// throttle), which was most of the first-formula latency.
+let FormulaDialog: ComponentType<FormulaDialogProps> | null = null;
+const loadDialog = async () => {
+  FormulaDialog ??= (await import("./FormulaDialog")).default;
+};
 // Insert/replace (hash, base64, element building) loads with the dialog's
 // chunk, not at startup.
 const loadInsert = () => import("./insertFormula");
@@ -68,9 +67,14 @@ export function useFormulaCommands({
   const live = useRef({ readOnly, getOwnerDocument });
   live.current = { readOnly, getOwnerDocument };
 
-  const openEdit = useCallback((target: Target) => {
-    setState({ mode: "edit", ...target });
+  const open = useCallback((next: DialogState) => {
+    void loadDialog().then(() => setState(next));
   }, []);
+
+  const openEdit = useCallback(
+    (target: Target) => open({ mode: "edit", ...target }),
+    [open],
+  );
 
   const onImageEdit = useCallback(
     (el: ExcalidrawImageElement) => {
@@ -96,7 +100,7 @@ export function useFormulaCommands({
           if (!api || live.current.readOnly) {
             return;
           }
-          setState({
+          open({
             mode: "insert",
             color: api.getAppState().currentItemStrokeColor,
           });
@@ -110,7 +114,7 @@ export function useFormulaCommands({
           }
         },
       }),
-    [apiRef, openEdit],
+    [apiRef, open, openEdit],
   );
 
   const close = useCallback(() => setState(null), []);
@@ -143,18 +147,16 @@ export function useFormulaCommands({
 
   const dialog = useMemo(
     () =>
-      state ? (
-        <Suspense fallback={null}>
-          <FormulaDialog
-            mode={state.mode}
-            initialSource={state.mode === "edit" ? state.data.source : ""}
-            initialDisplay={state.mode === "edit" ? state.data.display : true}
-            color={state.mode === "edit" ? state.data.color : state.color}
-            onConfirm={confirm}
-            onCancel={close}
-            ownerDocument={live.current.getOwnerDocument?.()}
-          />
-        </Suspense>
+      state && FormulaDialog ? (
+        <FormulaDialog
+          mode={state.mode}
+          initialSource={state.mode === "edit" ? state.data.source : ""}
+          initialDisplay={state.mode === "edit" ? state.data.display : true}
+          color={state.mode === "edit" ? state.data.color : state.color}
+          onConfirm={confirm}
+          onCancel={close}
+          ownerDocument={live.current.getOwnerDocument?.()}
+        />
       ) : null,
     [state, confirm, close],
   );

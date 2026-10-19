@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { getRegisteredHandler } from "../commands/handlerRegistry";
@@ -38,7 +38,7 @@ const makeRef = (appState: object = {}, scene: any[] = [formulaEl()]) => ({
 });
 
 describe("useFormulaCommands.onImageEdit", () => {
-  it("opens the dialog for an unlocked formula", () => {
+  it("opens the dialog for an unlocked formula", async () => {
     const { result } = renderHook(() =>
       useFormulaCommands({ apiRef: makeRef() }),
     );
@@ -47,7 +47,7 @@ describe("useFormulaCommands.onImageEdit", () => {
       handled = result.current.onImageEdit(formulaEl());
     });
     expect(handled).toBe(true);
-    expect(result.current.dialog).not.toBeNull();
+    await waitFor(() => expect(result.current.dialog).not.toBeNull());
   });
 
   it("falls through in view mode, when locked, or for plain images", () => {
