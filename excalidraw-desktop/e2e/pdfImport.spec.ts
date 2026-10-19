@@ -15,7 +15,6 @@ import {
 // ranges, cancel, page mode placement, errors, settings, read-only vault.
 
 const DRAWING = "Pdf.excalidraw";
-const NAME = "Pdf";
 const COMMAND = "Import: PDF…";
 
 type SceneEl = {

@@ -12,6 +12,7 @@ You pick a folder on your computer as your vault. Folders are real directories a
 - Export image dialog (Shift+Cmd+E): PNG or SVG at 1x, 2x or 3x, with or without background, dark mode, embedded scene and selection only. The last-used scale, background and embed setting are remembered. Exports always use the drawing's own colours, even with "Sync canvas with theme" on
 - Copy PNG or SVG to the clipboard, from the export dialog or the right-click menu. On macOS the image goes to the native clipboard
 - Page mode: draw on simulated pages (A4, Letter, tablet, custom, ...) with vertical scrolling, separate sheets or one continuous page, and export them as a PDF with one page per page
+- Import PDF pages as images to annotate them (offline, native rendering), from the palette, the main menu or by dropping a PDF
 - Insert Mermaid diagrams from the main menu or More tools. Conversion runs fully offline, with no AI
 - Works fully offline (fonts and assets are bundled)
 - Keyboard first: Cmd/Ctrl+P opens any drawing by name, Cmd/Ctrl+Shift+P runs any command (every editor action and every Vaultdraw feature), with customisable hotkeys (Settings → Hotkeys)
@@ -501,6 +502,16 @@ local_depth = 3
 ```
 
 The layout runs in the background, off the main thread, and is saved, so the graph reopens in the same shape. It blooms out of its saved shape each time. Once the layout settles, the graph uses no CPU. The saved layout lives in Vaultdraw's own state folder, never inside your vault, and the graph costs nothing until you first open it.
+
+## PDF import
+
+**Import: PDF…** (command palette, or **Import PDF…** in the canvas main menu) turns PDF pages into image elements in the open drawing, so you can annotate them. Dropping a `.pdf` on the canvas opens the same dialog.
+
+- **Dialog.** Shows the file name, page count and a page range (`all`, `1-5, 8, 10-`), and warns when a large import won't fully fit. Enter imports, Escape cancels. Progress reads "Rendering page n of N"; cancelling leaves the drawing untouched.
+- **Result.** One undo step. Pages are locked so annotating doesn't drag them (unlock with **Unlock all**). In a normal drawing they go in a column below the existing content; in page mode each PDF page goes on its own drawing page after the last page with content.
+- **Offline and plain.** Pages are rendered natively by macOS (CoreGraphics), one at a time, and stored as ordinary image files in the drawing, so it still opens on excalidraw.com. The PDF itself isn't copied into the vault.
+- **Size limits.** Drawings are capped at 32 MiB. Large PDFs get a lower resolution (a decoded-pixel budget keeps memory low), and when a drawing would get too big the import stops and says how many pages it imported. Password-protected PDFs are refused with a message.
+- **Settings.** **Settings → Files** (PDF Import rows), or the `[pdf_import]` table in `config.toml`: `max_side` (longest side in pixels, default 1440), `format` (`jpeg` or `png`), `quality` (JPEG, default 0.85), `lock_pages` (default true), `warn_pages` (default 50) and `pixel_budget_mp` (default 60).
 
 ## Templates
 
