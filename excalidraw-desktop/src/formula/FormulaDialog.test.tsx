@@ -118,6 +118,36 @@ describe("FormulaDialog", () => {
     });
   });
 
+  it("keeps the last preview (dimmed) while the next one renders", async () => {
+    let second!: (v: ReturnType<typeof ok>) => void;
+    mocked.mockResolvedValueOnce(ok(40));
+    mocked.mockImplementationOnce(() => new Promise((r) => (second = r)));
+    const { box } = setup();
+    await type(box, "a");
+    const img = screen.getByAltText("Formula preview") as HTMLImageElement;
+    const first = img.src;
+    await type(box, "ab");
+    const stale = screen.getByAltText("Formula preview") as HTMLImageElement;
+    expect(stale).toBe(img);
+    expect(stale.src).toBe(first);
+    expect(stale.className).toBe("is-stale");
+    await act(async () => second(ok(80)));
+    expect(img.src).not.toBe(first);
+    expect(img.className).toBe("");
+  });
+
+  it("Cmd+Enter before the preview settles renders and inserts the latest text", async () => {
+    mocked.mockResolvedValue(ok(30));
+    const { box, onConfirm } = setup();
+    fireEvent.change(box, { target: { value: "y^3" } });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0][0]).toMatchObject({ source: "y^3" });
+  });
+
   it("cancels on Escape", () => {
     const { onCancel } = setup();
     fireEvent.keyDown(document, { key: "Escape" });

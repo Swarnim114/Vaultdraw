@@ -37,6 +37,10 @@
   height: auto;
 }
 
+.vault-formula__preview img.is-stale {
+  opacity: 0.55;
+}
+
 /* Preview SVGs use the formula colour on a dark panel: same filter as the canvas. */
 html.dark .vault-formula__preview img {
   filter: invert(93%) hue-rotate(180deg);

@@ -75,21 +75,39 @@ const FormulaDialog = ({
   const current = settled && settled.key === key && source ? settled : null;
   const render = current?.render ?? null;
   const error = render && !render.ok ? render.error : null;
-  const canConfirm = !!render && render.ok;
-  const previewSrc = render && render.ok ? svgToDataURL(render.svg) : null;
+  // Keep showing the last good preview while the next one renders (no flicker).
+  const okSrc = useMemo(
+    () => (render && render.ok ? svgToDataURL(render.svg) : null),
+    [render],
+  );
+  const lastOk = useRef<string | null>(null);
+  lastOk.current = okSrc ?? lastOk.current;
+  const stale = !render && !!source;
+  const previewSrc = okSrc ?? (stale ? lastOk.current : null);
+  const canConfirm = !!source && !error;
 
-  const confirm = useCallback(() => {
-    if (render && render.ok) {
+  const confirm = useCallback(async () => {
+    let r = render;
+    if (!r && source) {
+      // Confirmed before the debounced preview settled: render the latest text now.
+      const mine = seq.current;
+      r = await renderFormula({ source, display, color });
+      if (mine !== seq.current) {
+        return;
+      }
+      setSettled({ key, render: r });
+    }
+    if (r && r.ok) {
       onConfirm({
-        svg: render.svg,
-        width: render.width,
-        height: render.height,
+        svg: r.svg,
+        width: r.width,
+        height: r.height,
         source,
         display,
         color,
       });
     }
-  }, [render, onConfirm, source, display, color]);
+  }, [render, onConfirm, source, display, color, key]);
 
   const title = mode === "insert" ? "Insert formula" : "Edit formula";
 
@@ -111,7 +129,7 @@ const FormulaDialog = ({
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            confirm();
+            void confirm();
           }
         }}
       >
@@ -155,7 +173,11 @@ const FormulaDialog = ({
           </label>
           <div className="vault-formula__preview" aria-label="Preview">
             {previewSrc ? (
-              <img src={previewSrc} alt="Formula preview" />
+              <img
+                src={previewSrc}
+                alt="Formula preview"
+                className={stale ? "is-stale" : undefined}
+              />
             ) : (
               <span className="vault-formula__placeholder">
                 {source && !error ? "Rendering…" : "Preview"}
@@ -176,7 +198,7 @@ const FormulaDialog = ({
             type="button"
             className="vault-btn vault-btn--primary"
             disabled={!canConfirm}
-            onClick={confirm}
+            onClick={() => void confirm()}
           >
             {mode === "insert" ? "Insert" : "Save"}
           </button>
