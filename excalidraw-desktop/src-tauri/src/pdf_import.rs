@@ -762,6 +762,17 @@ mod tests {
         assert_eq!(code(s.open_bytes("big.pdf", &big)), "PDF_TOO_LARGE");
     }
 
+    /// Peak resident set size of this process in MiB (macOS `ru_maxrss` is in bytes).
+    fn peak_rss_mib() -> f64 {
+        // struct rusage: two timevals (4 x i64) then 14 longs; ru_maxrss is the first long.
+        extern "C" {
+            fn getrusage(who: i32, usage: *mut [i64; 18]) -> i32;
+        }
+        let mut u = [0i64; 18];
+        assert_eq!(unsafe { getrusage(0, &mut u) }, 0);
+        u[4] as f64 / 1_048_576.0
+    }
+
     #[test]
     #[ignore]
     fn bench_100_pages() {
@@ -770,6 +781,7 @@ mod tests {
         make_pdf(&pdf, &vec![A4; 100], 70);
         let s = svc(dir.path());
         let info = s.open_path(&pdf, "book.pdf").unwrap();
+        let rss_before = peak_rss_mib();
         let total = std::time::Instant::now();
         let mut times = vec![];
         let mut sizes = vec![];
@@ -783,8 +795,8 @@ mod tests {
         times.sort_by(|a, b| a.partial_cmp(b).unwrap());
         sizes.sort();
         println!(
-            "BENCH 100 pages @1440 jpeg 0.85: p50 {:.1} ms, p95 {:.1} ms, total {:.0} ms, bytes/page p50 {}",
-            times[49], times[94], total_ms, sizes[49]
+            "BENCH 100 pages @1440 jpeg 0.85: p50 {:.1} ms, p95 {:.1} ms, total {:.0} ms, bytes/page p50 {}, peak RSS {:.1} MiB (before {:.1})",
+            times[49], times[94], total_ms, sizes[49], peak_rss_mib(), rss_before
         );
     }
 }
