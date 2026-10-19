@@ -78,3 +78,34 @@ test("vault home actions show live shortcuts and run their commands", async ({
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette.getByRole("combobox")).toHaveValue(">");
 });
+
+// Perf guard (D16, D17, perf-redesign-fix P1): the first monospace text on the
+// vault-open path costs a cold font-fallback layout (+15-20 ms at 4x throttle).
+// <kbd>/<code> get `font-family: monospace` from the UA stylesheet, so every
+// chip must set its font explicitly.
+const monoTextIn = (page: import("@playwright/test").Page, selector: string) =>
+  page.evaluate((sel) => {
+    const mono = /monospace|menlo|monaco|consolas|sfmono|courier/i;
+    const hits: string[] = [];
+    for (const el of Array.from(document.querySelectorAll(`${sel} *`))) {
+      const hasText = Array.from(el.childNodes).some(
+        (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
+      );
+      if (hasText && mono.test(getComputedStyle(el).fontFamily)) {
+        hits.push(`${el.tagName.toLowerCase()}.${el.className}`);
+      }
+    }
+    return hits;
+  }, selector);
+
+test("vault open and the palette render no monospace text", async ({
+  page,
+}) => {
+  await openVault(page);
+  await expect(page.locator(".vault-home .vault-kbd").first()).toBeVisible();
+  expect(await monoTextIn(page, "#root")).toEqual([]);
+  await page.keyboard.press("ControlOrMeta+KeyP");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(palette.locator(".vault-kbd").first()).toBeVisible();
+  expect(await monoTextIn(page, "body")).toEqual([]);
+});
