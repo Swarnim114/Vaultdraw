@@ -21,6 +21,8 @@ import { tagStore } from "../tags/tagStore";
 import { registerPaletteProvider } from "../palette/registry";
 import { createTagsProvider } from "../palette/providers/tags";
 
+import { requestGallery } from "../thumbnails/gallery/openRequest";
+
 import {
   IconChevronDown,
   IconChevronRight,
@@ -1395,6 +1397,8 @@ const RowMenu = ({
       {!readOnly && item("Rename", <IconEdit />, () => onRename(entry))}
       {!readOnly && item("Move to…", <IconMove />, () => onMove(entry))}
       {item("Reveal in file manager", <IconReveal />, () => onReveal(entry))}
+      {isFolder &&
+        item("Show as grid", <IconDrawing />, () => requestGallery(entry.path))}
       {!isFolder &&
         onOpenLocalGraph &&
         item("Open local graph", <IconGraph />, () => onOpenLocalGraph(entry))}

@@ -74,7 +74,8 @@ if (params.get("seed") !== "empty") {
   }
   if (params.get("seed") === "bigfolder") {
     // Opt-in (?seed=bigfolder): one folder of 500 drawings (tree windowing).
-    for (let i = 0; i < 500; i++) {
+    // ?n=N overrides the count (gallery grid perf).
+    for (let i = 0; i < (Number(params.get("n")) || 500); i++) {
       repository.seedDrawing(
         `Zbig/note ${String(i).padStart(3, "0")}.excalidraw`,
         JSON.stringify({

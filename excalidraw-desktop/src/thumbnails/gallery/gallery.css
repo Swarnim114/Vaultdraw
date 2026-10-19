@@ -1,0 +1,110 @@
+/* Folder gallery. Colours and scales come from the design tokens. */
+.vd-gallery {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--vault-bg);
+  color: var(--vault-text);
+  font-family: var(--vd-font);
+  font-size: var(--vd-fs-body);
+  line-height: var(--vd-line);
+}
+
+.vd-gallery__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vd-space-3);
+  flex: none;
+  height: var(--vd-bar);
+  padding: 0 var(--vd-space-4);
+  border-bottom: 1px solid var(--vault-border);
+  background: var(--vault-surface);
+}
+
+.vd-gallery__crumbs {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--vd-fs-emph);
+  font-weight: 500;
+}
+
+.vd-gallery__sep,
+.vd-gallery__count {
+  color: var(--vault-text-faint);
+}
+
+.vd-gallery__count {
+  flex: none;
+  font-size: var(--vd-fs-caption);
+}
+
+.vd-gallery__scroller {
+  position: relative;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--vd-space-4);
+  outline: none;
+}
+
+.vd-gallery__space {
+  position: relative;
+}
+
+.vd-gallery__window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: grid;
+  align-content: start;
+}
+
+.vd-gallery__row {
+  display: contents;
+}
+
+.vd-gallery__tile {
+  box-sizing: border-box;
+  width: 192px;
+  height: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vd-space-1);
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--vd-radius-pop);
+  overflow: hidden;
+}
+
+.vd-gallery__tile:hover {
+  background: var(--vault-hover);
+}
+
+.vd-gallery__tile[aria-selected="true"] {
+  background: var(--vault-sel);
+}
+
+.vd-gallery__scroller:focus-visible .vd-gallery__tile[aria-selected="true"] {
+  box-shadow: var(--vault-ring);
+}
+
+.vd-gallery__tile[data-kind="folder"] .vault-thumb--placeholder > svg {
+  max-width: 48px;
+}
+
+.vd-gallery__name {
+  padding: 0 var(--vd-space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--vd-fs-small);
+}
+
+.vd-gallery__empty {
+  padding: var(--vd-space-8);
+  text-align: center;
+  color: var(--vault-text-faint);
+}

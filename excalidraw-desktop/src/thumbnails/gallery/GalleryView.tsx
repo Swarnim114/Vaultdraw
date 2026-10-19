@@ -1,0 +1,338 @@
+/**
+ * Folder gallery: a windowed, keyboard-driven grid of thumbnail tiles (subfolders
+ * first). Lazy chunk; the always-loaded part is GalleryHost.
+ */
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+
+import { IconDrawing, IconFolder } from "../../components/Icons";
+import { getBaseName } from "../../vault/treeStore";
+import { useThumbnail, useThumbnailService } from "../context";
+import { useThumbDarkClass } from "../surfaces/darkInvert";
+
+import {
+  computeGridWindow,
+  pageRows,
+  sameWindow,
+  scrollTopToReveal,
+  type GridMetrics,
+  type GridWindow,
+} from "./gridWindow";
+import { actionForKey } from "./keyboard";
+
+import "../thumbnails.css";
+
+import "./gallery.css";
+
+import type { VaultEntry } from "../../vault/types";
+
+export const TILE_WIDTH = 192;
+export const TILE_HEIGHT = 190; // 144 thumbnail + name
+export const GAP = 16;
+const PADDING = 16;
+// jsdom has no layout: fall back to a plausible viewport.
+const FALLBACK = { width: 1000, height: 600 };
+
+export interface GalleryViewProps {
+  /** Folder path ("" = vault root). */
+  folder: string;
+  vaultName: string;
+  /** Already sorted and filtered: subfolders first, then drawings. */
+  items: readonly VaultEntry[];
+  /** Item to select first (the folder we came from), if present. */
+  initialPath?: string | null;
+  onOpenDrawing: (path: string) => void;
+  onOpenFolder: (path: string) => void;
+  onParent: () => void;
+  onClose: () => void;
+}
+
+const displayName = (e: VaultEntry) =>
+  e.kind === "folder"
+    ? e.name
+    : getBaseName(e.path).replace(/\.excalidraw$/i, "");
+
+const Tile = memo(
+  ({
+    entry,
+    index,
+    active,
+    onActivate,
+  }: {
+    entry: VaultEntry;
+    index: number;
+    active: boolean;
+    onActivate: (index: number) => void;
+  }) => {
+    const service = useThumbnailService();
+    const isDrawing = entry.kind === "drawing";
+    const state = useThumbnail(
+      service && isDrawing ? entry.path : null,
+      "visible",
+    );
+    let media;
+    if (isDrawing && state.status === "ready" && state.url) {
+      media = (
+        <img
+          className="vault-thumb vault-thumb--md"
+          src={state.url}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          alt=""
+        />
+      );
+    } else {
+      media = (
+        <span
+          className="vault-thumb vault-thumb--md vault-thumb--placeholder"
+          data-state={isDrawing ? state.status : "folder"}
+          aria-hidden="true"
+        >
+          {isDrawing ? <IconDrawing /> : <IconFolder />}
+        </span>
+      );
+    }
+    return (
+      <div
+        role="gridcell"
+        id={`vd-gallery-tile-${index}`}
+        className="vd-gallery__tile"
+        data-kind={entry.kind}
+        aria-selected={active}
+        title={entry.path}
+        onClick={() => onActivate(index)}
+      >
+        {media}
+        <span className="vd-gallery__name">{displayName(entry)}</span>
+      </div>
+    );
+  },
+);
+Tile.displayName = "GalleryTile";
+
+export default function GalleryView({
+  folder,
+  vaultName,
+  items,
+  initialPath,
+  onOpenDrawing,
+  onOpenFolder,
+  onParent,
+  onClose,
+}: GalleryViewProps) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const dark = useThumbDarkClass();
+  const [size, setSize] = useState(FALLBACK);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [active, setActive] = useState(() => {
+    const i = initialPath ? items.findIndex((e) => e.path === initialPath) : -1;
+    return Math.max(0, i);
+  });
+
+  const metrics: GridMetrics = {
+    viewportWidth: size.width,
+    viewportHeight: size.height,
+    tileWidth: TILE_WIDTH,
+    tileHeight: TILE_HEIGHT,
+    gap: GAP,
+    count: items.length,
+    overscanRows: 1,
+  };
+  // The window is recomputed per render but its identity only changes when it
+  // changes by value, so memoised tiles and children stay put while scrolling
+  // within a row.
+  const windowRef = useRef<GridWindow | null>(null);
+  const next = computeGridWindow(scrollTop, metrics);
+  if (!windowRef.current || !sameWindow(windowRef.current, next)) {
+    windowRef.current = next;
+  }
+  const win = windowRef.current;
+  const current = Math.min(active, Math.max(0, items.length - 1));
+
+  const measure = useCallback(() => {
+    const el = scroller.current;
+    if (!el || !el.clientWidth) {
+      return;
+    }
+    const width = Math.max(1, el.clientWidth - PADDING * 2);
+    const height = el.clientHeight;
+    setSize((s) =>
+      s.width === width && s.height === height ? s : { width, height },
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  useEffect(() => scroller.current?.focus({ preventScroll: true }), []);
+
+  // Keep the active tile in view (also on the first open).
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || items.length === 0) {
+      return;
+    }
+    // The grid starts PADDING below the scroller's content top.
+    const top =
+      scrollTopToReveal(current, el.scrollTop - PADDING, metrics) + PADDING;
+    if (top !== el.scrollTop) {
+      el.scrollTop = top;
+      setScrollTop(top);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, win.columns, size.height]);
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (el) {
+      setScrollTop(el.scrollTop);
+    }
+  };
+
+  const activate = useCallback(
+    (index: number) => {
+      const entry = items[index];
+      if (!entry) {
+        return;
+      }
+      if (entry.kind === "folder") {
+        onOpenFolder(entry.path);
+      } else {
+        onOpenDrawing(entry.path);
+      }
+    },
+    [items, onOpenDrawing, onOpenFolder],
+  );
+
+  // Mouse: select + open in one click, like the tree.
+  const onTileClick = useCallback(
+    (index: number) => {
+      setActive(index);
+      activate(index);
+    },
+    [activate],
+  );
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const action = actionForKey(e, {
+      index: current,
+      count: items.length,
+      columns: win.columns,
+      pageRows: pageRows(size.height, win.rowHeight),
+    });
+    if (!action) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    switch (action.type) {
+      case "move":
+        setActive(action.index);
+        break;
+      case "open":
+        activate(current);
+        break;
+      case "parent":
+        onParent();
+        break;
+      case "close":
+        onClose();
+        break;
+    }
+  };
+
+  const mounted: VaultEntry[] = items.slice(win.first, win.last + 1);
+  const rows: { row: number; start: number }[] = [];
+  for (let r = win.firstRow; r <= win.lastRow; r++) {
+    rows.push({ row: r, start: r * win.columns });
+  }
+  const activeMounted = current >= win.first && current <= win.last;
+  const crumbs = folder ? folder.split("/") : [];
+
+  return (
+    <div className="vd-gallery" data-testid="gallery-view">
+      <div className="vd-gallery__header">
+        <span className="vd-gallery__crumbs">
+          <span>{vaultName}</span>
+          {crumbs.map((c, i) => (
+            <span key={i}>
+              <span className="vd-gallery__sep"> / </span>
+              {c}
+            </span>
+          ))}
+        </span>
+        <span className="vd-gallery__count" data-testid="gallery-count">
+          {items.length} {items.length === 1 ? "item" : "items"}
+        </span>
+      </div>
+      <div
+        ref={scroller}
+        className={`vd-gallery__scroller ${dark}`}
+        role="grid"
+        tabIndex={0}
+        aria-label={`Gallery: ${folder || vaultName}`}
+        aria-rowcount={win.rowCount}
+        aria-colcount={win.columns}
+        aria-activedescendant={
+          activeMounted ? `vd-gallery-tile-${current}` : undefined
+        }
+        onScroll={onScroll}
+        onKeyDown={onKeyDown}
+      >
+        {items.length === 0 ? (
+          <div className="vd-gallery__empty">This folder is empty</div>
+        ) : (
+          <div
+            className="vd-gallery__space"
+            style={{ height: win.totalHeight }}
+          >
+            <div
+              className="vd-gallery__window"
+              style={{
+                top: win.firstRow * win.rowHeight,
+                gridTemplateColumns: `repeat(${win.columns}, ${TILE_WIDTH}px)`,
+                gap: GAP,
+              }}
+            >
+              {rows.map(({ row, start }) => (
+                <div
+                  key={row}
+                  role="row"
+                  aria-rowindex={row + 1}
+                  className="vd-gallery__row"
+                >
+                  {mounted
+                    .slice(start - win.first, start - win.first + win.columns)
+                    .map((entry, i) => (
+                      <Tile
+                        key={entry.path}
+                        entry={entry}
+                        index={start + i}
+                        active={start + i === current}
+                        onActivate={onTileClick}
+                      />
+                    ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -85,6 +85,7 @@ import { createCommandsProvider } from "./palette/providers/commands";
 import { createThemesProvider } from "./palette/providers/themes";
 import { resolveSelectedTheme } from "./theme/registry";
 import { GraphHost, type GraphHostProps } from "./graph/GraphHost";
+import { GalleryHost } from "./thumbnails/gallery/GalleryHost";
 import { useGraphEntry } from "./graph/useGraphEntry";
 import { createDesktopThumbnailStore } from "./thumbnails/desktopStore";
 import { ThumbnailsRoot } from "./thumbnails/ThumbnailsRoot";
@@ -1562,6 +1563,8 @@ export const VaultApp = ({
   // Graph view (D14): it takes over the canvas area; the editor stays mounted
   // but frozen (no key or pointer handling) and hidden, so closing is instant.
   const [graphOpen, setGraphOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const mainCovered = graphOpen || galleryOpen;
   const shortcutLabel = useCommandShortcutLookup(win);
   const graphShortcutFor = useCallback(
     (path: string) => shortcutLabel(drawingOpenCommandId(path)) || null,
@@ -1917,7 +1920,7 @@ export const VaultApp = ({
       <div className="vault-main">
         <div
           className={`vault-editor-pane ${
-            graphOpen ? "vault-editor-pane--graph" : ""
+            mainCovered ? "vault-editor-pane--graph" : ""
           }`}
         >
           {visibleProblem && (
@@ -1940,7 +1943,7 @@ export const VaultApp = ({
           )}
           {activeDoc ? (
             <div
-              inert={graphOpen}
+              inert={mainCovered}
               className={`vault-editor-container ${
                 vault.readOnly ? "vault-editor-container--readonly" : ""
               } ${
@@ -1961,9 +1964,9 @@ export const VaultApp = ({
                   isBusy ||
                   isClosing ||
                   docHook.loading ||
-                  graphOpen
+                  mainCovered
                 }
-                disabled={isBusy || isClosing || docHook.loading || graphOpen}
+                disabled={isBusy || isClosing || docHook.loading || mainCovered}
                 theme={appTheme}
                 onThemeChange={handleCanvasThemeChange}
                 onOpenSettings={openSettings}
@@ -1987,9 +1990,21 @@ export const VaultApp = ({
               onRun={(id) => commandRunner.run(id)}
               onOpenDrawing={(path) => void handleOpenDrawing(path)}
               ownerWindow={win}
-              inert={graphOpen}
+              inert={mainCovered}
             />
           )}
+          <GalleryHost
+            handle={vault.handle}
+            vaultName={vault.name}
+            directoryMap={directoryMap}
+            loadDirectory={loadDirectory}
+            sort={navigatorSort}
+            templatesFolder={templatesFolder}
+            activePath={activeDoc?.path ?? null}
+            onOpenDrawing={handleOpenDrawing}
+            onOpenChange={setGalleryOpen}
+            onClosed={focusCanvas}
+          />
           <GraphHost
             handle={vault.handle}
             currentPath={activeDoc?.path ?? null}
