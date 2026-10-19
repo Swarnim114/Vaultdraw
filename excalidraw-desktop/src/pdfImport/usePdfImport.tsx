@@ -30,7 +30,6 @@ export interface UsePdfImportOptions {
   getApi: () => ExcalidrawImperativeAPI | undefined;
   getSettings: () => PdfImportSettings;
   notify: PdfImportNotify;
-  ownerDocument?: Document | null;
 }
 
 export interface PdfImportControls {
@@ -91,7 +90,6 @@ export const usePdfImport = ({
   getApi,
   getSettings,
   notify,
-  ownerDocument,
 }: UsePdfImportOptions): PdfImportControls => {
   const [session, setSession] = useState<Session | null>(null);
   const [progress, setProgress] = useState<PdfImportProgress | null>(null);
@@ -226,7 +224,6 @@ export const usePdfImport = ({
         progress={progress}
         onImport={(indices) => void runImport(indices)}
         onCancel={cancel}
-        ownerDocument={ownerDocument}
       />
     </Suspense>
   ) : null;

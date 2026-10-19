@@ -56,9 +56,9 @@ describe("PdfImportDialog", () => {
     expect(screen.getByText("Pages stay white in dark mode.")).toBeTruthy();
   });
 
-  it("imports all pages on Enter and the Import button", () => {
+  it("imports all pages on submit (Enter) and the Import button", () => {
     const { onImport } = setup();
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.submit(screen.getByRole("textbox"));
     expect(onImport).toHaveBeenCalledWith([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
     expect(onImport).toHaveBeenCalledTimes(2);
@@ -73,11 +73,11 @@ describe("PdfImportDialog", () => {
       (screen.getByRole("button", { name: "Import" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.submit(field);
     expect(onImport).not.toHaveBeenCalled();
     fireEvent.change(field, { target: { value: "2-4, 8" } });
     expect(screen.queryByRole("alert")).toBeNull();
-    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.submit(field);
     expect(onImport).toHaveBeenCalledWith([1, 2, 3, 7]);
   });
 
@@ -134,7 +134,7 @@ describe("PdfImportDialog", () => {
     const bar = screen.getByRole("progressbar");
     expect(bar.getAttribute("aria-valuenow")).toBe("2");
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    fireEvent.submit(screen.getByRole("textbox"));
     expect(onImport).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledOnce();

@@ -1557,15 +1557,13 @@ export const VaultApp = ({
     getApi: () => (activeDoc ? getEditorApi(activeDoc.id) : undefined),
     getSettings: () => getPdfImportSettings(getPreferences(win)),
     notify: (message, type) => {
-      setGlobalAlert({ message, type });
+      // Confirmations are toasts; failures stay a banner until dismissed.
       if (type === "info") {
-        (win ?? window).setTimeout(
-          () => setGlobalAlert((a) => (a?.message === message ? null : a)),
-          6000,
-        );
+        toastStore.push({ message });
+      } else {
+        setGlobalAlert({ message, type });
       }
     },
-    ownerDocument: doc,
   });
 
   const { start: startPdfImport, openFile: openPdfFile } = pdfImport;

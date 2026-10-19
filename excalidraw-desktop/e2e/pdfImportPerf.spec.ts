@@ -95,7 +95,8 @@ for (const pages of [20, 100]) {
     }
     const wallMs = Date.now() - t0;
 
-    const notice = (await page.getByRole("alert").first().textContent()) ?? "";
+    const notice =
+      (await page.locator(".vd-toast").first().textContent()) ?? "";
     await expect
       .poll(() => page.evaluate(() => (window as any).__writes.length), {
         timeout: 30_000,

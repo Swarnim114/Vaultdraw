@@ -1,9 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
-import { IconClose } from "../components/Icons";
-import { useModalKeys } from "../components/page/useModalKeys";
+import { Dialog } from "../components/Dialog";
 
 import { currentDrawingBytes, estimateImport } from "./budget";
 import { planPdfPlacement } from "./layout";
@@ -24,7 +23,6 @@ type Props = {
   onImport: (indices: number[]) => void;
   /** Closes the dialog; while importing it aborts the import. */
   onCancel: () => void;
-  ownerDocument?: Document | null;
 };
 
 const MB = 1024 * 1024;
@@ -42,13 +40,9 @@ export const PdfImportDialog = ({
   progress,
   onImport,
   onCancel,
-  ownerDocument,
 }: Props) => {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const rangeRef = useRef<HTMLInputElement>(null);
   const [range, setRange] = useState("all");
   const running = progress !== null;
-  useModalKeys(dialogRef, rangeRef, onCancel, ownerDocument);
 
   // What the drawing looks like right now (the dialog is modal: it can't change).
   const scene = useMemo(() => {
@@ -138,127 +132,105 @@ export const PdfImportDialog = ({
   };
 
   return (
-    <div
-      className="vault-modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Import PDF"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !running) {
-          onCancel();
-        }
+    <Dialog
+      title="Import PDF"
+      titleId="pdf-dialog-title"
+      className="pdf-dialog"
+      testId="pdf-dialog"
+      // Not `busy`: Escape must still abort a running import.
+      onClose={onCancel}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
       }}
-      onKeyDown={(event) => {
-        if (
-          event.key === "Enter" &&
-          !(event.target as HTMLElement).closest("button")
-        ) {
-          event.preventDefault();
-          submit();
-        }
-      }}
-    >
-      <div ref={dialogRef} className="vault-modal pdf-dialog">
-        <div className="vault-modal__header">
-          <h3 className="vault-modal__title">Import PDF</h3>
-          <button
-            type="button"
-            className="vault-btn vault-btn--ghost vault-btn--icon"
-            onClick={onCancel}
-            aria-label="Close"
-          >
-            <IconClose />
-          </button>
-        </div>
-        <div className="vault-modal__body pdf-dialog__body">
-          <div className="pdf-dialog__file">
-            <strong className="pdf-dialog__name" title={info.name}>
-              {info.name}
-            </strong>
-            <span className="pdf-dialog__muted">
-              {plural(info.pageCount, "page")}
-            </span>
-          </div>
-          <label className="pdf-dialog__row">
-            <span className="pdf-dialog__label">Pages</span>
-            <input
-              ref={rangeRef}
-              type="text"
-              className="vault-input"
-              value={range}
-              disabled={running}
-              spellCheck={false}
-              placeholder="all, or e.g. 1-5, 8, 10-"
-              aria-invalid={error !== null}
-              aria-describedby="pdf-dialog-status"
-              onChange={(event) => setRange(event.target.value)}
-            />
-          </label>
-          <div id="pdf-dialog-status" className="pdf-dialog__status">
-            {error ? (
-              <div className="pdf-dialog__error" role="alert">
-                {error}
-              </div>
-            ) : (
-              <div>
-                {plural(indices.length, "page")} {placement}. ≈{" "}
-                {formatMb(estimate.totalBytes)}, rendered at {estimate.side} px
-              </div>
-            )}
-            {warnings.map((warning) => (
-              <div key={warning} className="pdf-dialog__warning" role="status">
-                {warning}
-              </div>
-            ))}
-            <div className="pdf-dialog__muted">
-              Pages stay white in dark mode.
-            </div>
-          </div>
-          {progress && (
-            <div className="pdf-dialog__progress">
-              <div>
-                Rendering page {Math.min(progress.done + 1, progress.total)} of{" "}
-                {progress.total}
-              </div>
-              <div
-                className="pdf-dialog__bar"
-                role="progressbar"
-                aria-label="Import progress"
-                aria-valuemin={0}
-                aria-valuemax={progress.total}
-                aria-valuenow={progress.done}
-              >
-                <div
-                  className="pdf-dialog__bar-fill"
-                  style={{
-                    width: `${
-                      progress.total
-                        ? (progress.done / progress.total) * 100
-                        : 0
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="vault-modal__footer">
+      footer={
+        <>
           <button type="button" className="vault-btn" onClick={onCancel}>
             Cancel
           </button>
           {!running && (
             <button
-              type="button"
+              type="submit"
               className="vault-btn vault-btn--primary"
               disabled={error !== null}
-              onClick={submit}
             >
               Import
             </button>
           )}
+        </>
+      }
+    >
+      <div className="pdf-dialog__body">
+        <div className="pdf-dialog__file">
+          <strong className="pdf-dialog__name" title={info.name}>
+            {info.name}
+          </strong>
+          <span className="pdf-dialog__muted">
+            {plural(info.pageCount, "page")}
+          </span>
         </div>
+        <label className="pdf-dialog__row">
+          <span className="pdf-dialog__label">Pages</span>
+          <input
+            autoFocus
+            type="text"
+            className="vault-input"
+            value={range}
+            disabled={running}
+            spellCheck={false}
+            placeholder="all, or e.g. 1-5, 8, 10-"
+            aria-invalid={error !== null}
+            aria-describedby="pdf-dialog-status"
+            onChange={(event) => setRange(event.target.value)}
+          />
+        </label>
+        <div id="pdf-dialog-status" className="pdf-dialog__status">
+          {error ? (
+            <div className="pdf-dialog__error" role="alert">
+              {error}
+            </div>
+          ) : (
+            <div>
+              {plural(indices.length, "page")} {placement}. ≈{" "}
+              {formatMb(estimate.totalBytes)}, rendered at {estimate.side} px
+            </div>
+          )}
+          {warnings.map((warning) => (
+            <div key={warning} className="pdf-dialog__warning" role="status">
+              {warning}
+            </div>
+          ))}
+          <div className="pdf-dialog__muted">
+            Pages stay white in dark mode.
+          </div>
+        </div>
+        {progress && (
+          <div className="pdf-dialog__progress">
+            <div>
+              Rendering page {Math.min(progress.done + 1, progress.total)} of{" "}
+              {progress.total}
+            </div>
+            <div
+              className="pdf-dialog__bar"
+              role="progressbar"
+              aria-label="Import progress"
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+              aria-valuenow={progress.done}
+            >
+              <div
+                className="pdf-dialog__bar-fill"
+                style={{
+                  width: `${
+                    progress.total ? (progress.done / progress.total) * 100 : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 };
 

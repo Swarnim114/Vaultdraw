@@ -120,7 +120,7 @@ test("palette command: dialog shows name and pages, Import adds 3 locked images 
   await expect(d).toContainText("3 pages");
   await d.getByRole("button", { name: "Import", exact: true }).click();
   await expect(d).toHaveCount(0);
-  await expect(page.getByRole("alert")).toContainText("Imported 3 pages");
+  await expect(page.locator(".vd-toast")).toContainText("Imported 3 pages");
 
   const images = await waitForImages(page, 3);
   const { json } = await scene(page);
@@ -241,7 +241,7 @@ test("page mode: pages land exactly inside pages 2..4 and the runtime auto-exten
     elements: [rect("a", 50, 50)],
   });
   await openAndImport(page);
-  await expect(page.getByRole("alert")).toContainText("Imported 3 pages");
+  await expect(page.locator(".vd-toast")).toContainText("Imported 3 pages");
   const images = await waitForImages(page, 3);
   images.sort((a, b) => a.y - b.y);
   const pitch = setup.height + 40;
@@ -282,7 +282,7 @@ test("a page that fails to render is skipped and reported", async ({
   await seedAndOpen(page, DRAWING);
   await prepare(page, { pages: 3, failPages: [1] });
   await openAndImport(page);
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".vd-toast")).toContainText(
     /Imported 2 pages.*1 page could not be rendered \(2\)/,
   );
   const images = await waitForImages(page, 2);
@@ -342,7 +342,7 @@ test("settings: Files page lists the PDF section", async ({ page }) => {
 test("Unlock all makes imported (locked) pages editable", async ({ page }) => {
   await seedAndOpen(page, DRAWING);
   await openAndImport(page);
-  await expect(page.getByRole("alert")).toContainText(/Unlock all/);
+  await expect(page.locator(".vd-toast")).toContainText(/Unlock all/);
   const images = await waitForImages(page, 3);
   expect(images.every((e) => e.locked)).toBe(true);
   await focusCanvas(page);
@@ -381,8 +381,8 @@ test.describe("lock_pages off", () => {
     await openAndImport(page);
     const images = await waitForImages(page, 3);
     expect(images.every((e) => !e.locked)).toBe(true);
-    await expect(page.getByRole("alert")).toContainText("Imported 3 pages");
-    await expect(page.getByRole("alert")).not.toContainText(/locked/);
+    await expect(page.locator(".vd-toast")).toContainText("Imported 3 pages");
+    await expect(page.locator(".vd-toast")).not.toContainText(/locked/);
   });
 });
 
