@@ -103,12 +103,10 @@ test.describe("gallery grid", () => {
     await expect(page.getByTestId("gallery-count")).toHaveText("3000 items");
     await expect(cells(page).first()).toBeVisible();
     const mounted = await cells(page).count();
-    test
-      .info()
-      .annotations.push({
-        type: "mounted-tiles",
-        description: String(mounted),
-      });
+    test.info().annotations.push({
+      type: "mounted-tiles",
+      description: String(mounted),
+    });
     expect(mounted).toBeGreaterThan(0);
     expect(mounted).toBeLessThanOrEqual(150);
     await page.keyboard.press("End");

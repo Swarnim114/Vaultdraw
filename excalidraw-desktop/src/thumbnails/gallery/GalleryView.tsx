@@ -16,6 +16,8 @@ import { getBaseName } from "../../vault/treeStore";
 import { useThumbnail, useThumbnailService } from "../context";
 import { useThumbDarkClass } from "../surfaces/darkInvert";
 
+import "../thumbnails.css";
+
 import {
   computeGridWindow,
   pageRows,
@@ -26,8 +28,6 @@ import {
 } from "./gridWindow";
 import { actionForKey } from "./keyboard";
 import { createScrollSettle, type ScrollSettle } from "./scrollSettle";
-
-import "../thumbnails.css";
 
 import "./gallery.css";
 

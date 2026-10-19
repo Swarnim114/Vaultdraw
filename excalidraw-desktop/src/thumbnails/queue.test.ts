@@ -158,7 +158,11 @@ describe("job timeout", () => {
 
   it("defaults the timeout result to null and does not fire for fast jobs", async () => {
     vi.useFakeTimers();
-    const q = createJobQueue({ input: idle, yieldFn: () => Promise.resolve(), jobTimeoutMs: 100 });
+    const q = createJobQueue({
+      input: idle,
+      yieldFn: () => Promise.resolve(),
+      jobTimeoutMs: 100,
+    });
     const hung = q.add("h", () => new Promise<string>(() => {}));
     await vi.advanceTimersByTimeAsync(100);
     expect(await hung).toBeNull();
