@@ -28,7 +28,10 @@ const SIZES = [100, 500, 1500];
 test.skip(!PERF, "set E2E_PERF=1 to run the thumbnail render measurements");
 test.describe.configure({ timeout: 600_000 });
 
-const desktopDir = path.resolve(__dirname, "..");
+const desktopDir = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "..",
+);
 const outDir = path.join(os.tmpdir(), `vaultdraw-step0-${process.pid}`);
 const MIME: Record<string, string> = {
   ".html": "text/html",

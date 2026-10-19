@@ -15,7 +15,12 @@ export const THUMBNAIL_MAX_ELEMENTS = 2000;
 
 // PNG disk cache.
 export const THUMB_PNG_EDGE = 384;
-export const THUMB_MAX_ELEMENTS = 1500;
+/**
+ * Step 0 (2026-10-19, e2e/thumbnailsPerf.spec.ts): renderScenePng p95 at 4x CPU
+ * throttle is 13 ms at 100, 42 ms at 500 and 95-106 ms at 1500 elements, so
+ * the 50 ms long-task budget holds up to about 600 elements.
+ */
+export const THUMB_MAX_ELEMENTS = 600;
 /** Above this the scene is not parsed at all (long task); fail marker. */
 export const THUMB_MAX_JSON_BYTES = 8 * 1024 * 1024;
 /** Above this the embedded images are dropped (placeholders): bounds decode cost. */
