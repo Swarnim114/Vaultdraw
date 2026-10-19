@@ -27,6 +27,7 @@ mod templates;
 mod themes;
 mod vault_settings;
 mod history;
+mod thumbs;
 #[cfg(test)]
 mod test_alloc;
 #[cfg(feature = "smoke-test")]
@@ -703,6 +704,7 @@ async fn release_vault(handle: String, app: AppHandle, state: State<'_, Service>
     if let Some(history) = app.try_state::<history::HistoryService>() {
         history.stop(&handle);
     }
+    thumbs::release(&app, &handle);
     Ok(())
 }
 #[tauri::command]
@@ -1429,6 +1431,7 @@ pub fn run() {
             .manage(search::SearchService::default())
             .manage(links::LinksState::default())
             .manage(history::HistoryService::default())
+            .manage(thumbs::ThumbsService::default())
             .setup(|app| {
                 startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
@@ -1475,6 +1478,7 @@ pub fn run() {
                 }
                 Ok(())
             });
+        let builder = thumbs::register_scheme(builder);
         // Test runs must not take focus at launch (a window manager would follow it).
         #[cfg(all(feature = "smoke-test", target_os = "macos"))]
         let builder = builder.activate_ignoring_other_apps(!smoke::test_run());
@@ -1494,6 +1498,7 @@ pub fn run() {
                 pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
+                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 refresh_rate::probes::perf_display_info, refresh_rate::probes::perf_native_input,
                 refresh_rate::probes::perf_window_maximize, refresh_rate::probes::perf_process_cpu,
@@ -1513,7 +1518,8 @@ pub fn run() {
                 library::read_library, library::write_library, library::pick_library_file,
                 pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
                 templates::list_global_templates, templates::read_global_template,
-                templates::write_global_template, templates::open_global_templates_dir
+                templates::write_global_template, templates::open_global_templates_dir,
+                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1530,7 +1536,8 @@ pub fn run() {
             library::read_library, library::write_library, library::pick_library_file,
                 pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_close,
             templates::list_global_templates, templates::read_global_template,
-            templates::write_global_template, templates::open_global_templates_dir
+            templates::write_global_template, templates::open_global_templates_dir,
+                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear
         ]);
         startup_trace("builder configured");
         let app = builder
