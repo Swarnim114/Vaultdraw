@@ -57,6 +57,34 @@ if (params.get("theme") === "dark") {
   ownerDocument.documentElement.classList.add("dark");
 }
 
+const thumbRect = (id: string, k: number) => ({
+  id,
+  type: "rectangle",
+  x: (k % 20) * 30,
+  y: Math.floor(k / 20) * 30,
+  width: 24,
+  height: 24,
+  angle: 0,
+  strokeColor: "#1e1e1e",
+  backgroundColor: "transparent",
+  fillStyle: "solid",
+  strokeWidth: 1,
+  strokeStyle: "solid",
+  roughness: 0,
+  opacity: 100,
+  groupIds: [],
+  frameId: null,
+  roundness: null,
+  seed: k + 1,
+  version: 1,
+  versionNonce: k + 1,
+  isDeleted: false,
+  boundElements: null,
+  updated: 1,
+  link: null,
+  locked: false,
+});
+
 const repository = new FakeVaultRepository({
   vaultName: "E2E Vault",
   readOnly: params.get("readonly") === "1",
@@ -81,12 +109,29 @@ if (params.get("seed") !== "empty") {
         JSON.stringify({
           type: "excalidraw",
           version: 2,
-          elements: [],
+          // ?el=K: K rectangles per drawing (thumbnail specs; empty renders no image).
+          elements: Array.from(
+            { length: Number(params.get("el")) || 0 },
+            (_, k) => thumbRect(`r${i}-${k}`, k + i),
+          ),
           appState: {},
           files: {},
         }),
       );
     }
+  }
+  if (params.get("scene") === "huge") {
+    // Opt-in (?scene=huge): Huge/Huge.excalidraw with 700 elements (> thumbnail cap 600).
+    repository.seedDrawing(
+      "Huge/Huge.excalidraw",
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        elements: Array.from({ length: 700 }, (_, k) => thumbRect(`h${k}`, k)),
+        appState: {},
+        files: {},
+      }),
+    );
   }
   if (params.get("seed") === "searchheavy") {
     // Opt-in (?seed=searchheavy): 300 drawings with 6 text elements each that
