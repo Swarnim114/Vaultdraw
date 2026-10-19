@@ -97,10 +97,17 @@ export const setup = async (
     },
     { path: PATH, json: sceneJson(current) },
   );
-  await page
+  const folder = page
     .locator(".vault-tree-item__name", { hasText: "DSA" })
-    .first()
-    .click();
+    .first();
+  await expect(folder).toBeVisible();
+  // After a page reload the folder may still be expanded (persisted tree state).
+  const drawing = page
+    .locator(".vault-tree-item__name", { hasText: "Graphs" })
+    .first();
+  if (!(await drawing.isVisible())) {
+    await folder.click();
+  }
   await openDrawing(page, "Graphs");
   if (versions.length) {
     await seedVersions(page, versions);
