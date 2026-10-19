@@ -39,6 +39,8 @@ export interface RankDrawing {
 export interface DrawingIndex {
   list: RankDrawing[];
   byPath: Map<string, RankDrawing>;
+  /** The paths it was built from (lets an unchanged re-listing reuse it). */
+  paths?: readonly string[];
 }
 export interface RankItem {
   item: PaletteItem;
@@ -79,12 +81,30 @@ export function prepareDrawings(
   paths: readonly string[],
   previous?: DrawingIndex | null,
 ): DrawingIndex {
+  if (previous?.paths && samePaths(previous.paths, paths)) {
+    return previous;
+  }
   const old = previous?.byPath;
   const list: RankDrawing[] = paths.map(
     (path) => old?.get(path) ?? new LazyDrawing(path),
   );
-  return { list, byPath: new Map(list.map((d) => [d.path, d])) };
+  return { list, byPath: new Map(list.map((d) => [d.path, d])), paths };
 }
+
+const samePaths = (a: readonly string[], b: readonly string[]): boolean => {
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+};
 
 /**
  * Prepare every drawing in small slices between tasks, so the first ranked

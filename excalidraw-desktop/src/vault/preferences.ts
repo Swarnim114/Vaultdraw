@@ -750,15 +750,44 @@ export function readLocalStoragePreferences(
   }
 }
 
+// localStorage mode: the last stored string and its normalised preferences.
+// getPreferences runs on many renders; re-parsing and re-normalising an
+// unchanged string each time cost ~1 ms per call at 4x CPU throttling.
+let parsedCache: { raw: string; prefs: VaultPreferences } | null = null;
+
+function readStoredRaw(win?: Window | null): string | null {
+  const storage = getStorage(win);
+  if (!storage) {
+    return null;
+  }
+  try {
+    return storage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function getPreferences(win?: Window | null): VaultPreferences {
   if (memoryStore) {
     return clonePreferences(memoryStore.prefs);
   }
-  const parsed = readLocalStoragePreferences(win);
-  if (!parsed) {
+  const raw = readStoredRaw(win);
+  if (!raw) {
     return clonePreferences(DEFAULT_PREFERENCES);
   }
-  return normalizePreferences(parsed);
+  if (parsedCache?.raw !== raw) {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // unreadable: defaults, as for a missing value
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return clonePreferences(DEFAULT_PREFERENCES);
+    }
+    parsedCache = { raw, prefs: normalizePreferences(parsed) };
+  }
+  return clonePreferences(parsedCache.prefs);
 }
 
 export function updatePreferences(

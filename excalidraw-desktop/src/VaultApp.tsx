@@ -1817,6 +1817,39 @@ export const VaultApp = ({
     return buildTree(directoryMap, "", navigatorSort);
   }, [directoryMap, navigatorSort]);
 
+  // Derived from the index only: not recomputed (5000+ entries) on every
+  // render, e.g. when the palette or Settings opens.
+  const recentDrawings = useMemo(
+    () =>
+      allIndexedEntries
+        .filter(
+          (entry) =>
+            entry.kind === "drawing" &&
+            !isInTemplatesFolder(entry.path, templatesFolder),
+        )
+        .sort((a, b) => b.modifiedAt - a.modifiedAt)
+        .slice(0, 6),
+    [allIndexedEntries, templatesFolder],
+  );
+  // The palette's fallback list: built when the palette first renders after
+  // an index change (never on vault open), then reused on every open.
+  const drawingPathsRef = useRef<{
+    entries: VaultEntry[];
+    paths: string[];
+  } | null>(null);
+  const drawingPaths = () => {
+    if (drawingPathsRef.current?.entries !== allIndexedEntries) {
+      drawingPathsRef.current = {
+        entries: allIndexedEntries,
+        paths: allIndexedEntries
+          .filter((e) => e.kind === "drawing")
+          .map((e) => e.path)
+          .sort(),
+      };
+    }
+    return drawingPathsRef.current.paths;
+  };
+
   const recentVaults = getRecentVaults(win);
   const lastVaultPath = getLastVaultPath(win);
 
@@ -1892,15 +1925,6 @@ export const VaultApp = ({
       </div>
     );
   }
-
-  const recentDrawings = allIndexedEntries
-    .filter(
-      (entry) =>
-        entry.kind === "drawing" &&
-        !isInTemplatesFolder(entry.path, templatesFolder),
-    )
-    .sort((a, b) => b.modifiedAt - a.modifiedAt)
-    .slice(0, 6);
 
   const EditorComponent = VaultEditor as React.ComponentType<
     React.ComponentProps<typeof VaultEditor> & {
@@ -2150,10 +2174,7 @@ export const VaultApp = ({
           key={palettePick.pick ? "pick" : "palette"}
           search={vaultSearch}
           handle={vault.handle}
-          fallbackPaths={allIndexedEntries
-            .filter((e) => e.kind === "drawing")
-            .map((e) => e.path)
-            .sort()}
+          fallbackPaths={drawingPaths()}
           initialMode={palettePick.pick ? "files" : switcher ?? "files"}
           pickLabel={palettePick.pick?.label}
           collectItems={collectPaletteItems}

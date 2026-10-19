@@ -55,7 +55,34 @@ export interface ResolvedAccent {
   ratio: number;
 }
 
+// resolveAccent derives a full token set (contrast search included): cache it
+// per variant object, so Settings' Appearance page doesn't redo it on every
+// render. Variants are immutable theme registry data.
+const resolvedCache = new WeakMap<ThemeVariant, Map<string, ResolvedAccent>>();
+
 export const resolveAccent = (
+  variant: ThemeVariant,
+  accent: string,
+  mode: ThemeMode,
+): ResolvedAccent => {
+  let byKey = resolvedCache.get(variant);
+  if (!byKey) {
+    byKey = new Map();
+    resolvedCache.set(variant, byKey);
+  }
+  const key = `${mode}\n${accent}`;
+  let resolved = byKey.get(key);
+  if (!resolved) {
+    resolved = computeAccent(variant, accent, mode);
+    if (byKey.size >= 32) {
+      byKey.clear(); // a colour-picker drag passes many accents
+    }
+    byKey.set(key, resolved);
+  }
+  return resolved;
+};
+
+const computeAccent = (
   variant: ThemeVariant,
   accent: string,
   mode: ThemeMode,
