@@ -488,6 +488,11 @@ for (const rate of [1, 4]) {
       },
       { cycles: CYCLES },
     );
+    // Renders started by tiles that only flashed by (the fast-scroll deferral
+    // should keep this at about the visible tiles per settle point).
+    const putsScroll = await page.evaluate(
+      () => (window as any).__thumbStore.calls.put as number,
+    );
     // Let the queue drain, then measure the heap after everything settled.
     await page.waitForTimeout(1500);
     await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -508,6 +513,7 @@ for (const rate of [1, 4]) {
       firstTileMs: r1(t.first - t.enter),
       allVisibleReadyMs: r1(t.ready - t.enter),
       putsAfterOpen,
+      putsDuringScroll: putsScroll - putsAfterOpen,
       putsTotal,
       ...(heap0 !== null && heap1 !== null
         ? {

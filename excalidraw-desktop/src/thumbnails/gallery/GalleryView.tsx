@@ -25,6 +25,7 @@ import {
   type GridWindow,
 } from "./gridWindow";
 import { actionForKey } from "./keyboard";
+import { createScrollSettle, type ScrollSettle } from "./scrollSettle";
 
 import "../thumbnails.css";
 
@@ -63,19 +64,27 @@ const Tile = memo(
     entry,
     index,
     active,
+    deferred,
     onActivate,
   }: {
     entry: VaultEntry;
     index: number;
     active: boolean;
+    /** Fast scroll: do not start watching yet (a latch: stays on once started). */
+    deferred: boolean;
     onActivate: (index: number) => void;
   }) => {
     const service = useThumbnailService();
     const isDrawing = entry.kind === "drawing";
+    const [started, setStarted] = useState(!deferred);
+    if (!started && !deferred) {
+      setStarted(true);
+    }
     const state = useThumbnail(
-      service && isDrawing ? entry.path : null,
+      service && isDrawing && started ? entry.path : null,
       "visible",
     );
+    const status = started ? state.status : "loading";
     let media;
     if (isDrawing && state.status === "ready" && state.url) {
       media = (
@@ -92,7 +101,7 @@ const Tile = memo(
       media = (
         <span
           className="vault-thumb vault-thumb--md vault-thumb--placeholder"
-          data-state={isDrawing ? state.status : "folder"}
+          data-state={isDrawing ? status : "folder"}
           aria-hidden="true"
         >
           {isDrawing ? <IconDrawing /> : <IconFolder />}
@@ -131,6 +140,13 @@ export default function GalleryView({
   const dark = useThumbDarkClass();
   const [size, setSize] = useState(FALLBACK);
   const [scrollTop, setScrollTop] = useState(0);
+  const [flying, setFlying] = useState(false);
+  const settle = useRef<ScrollSettle | null>(null);
+  useEffect(() => {
+    const s = createScrollSettle(setFlying);
+    settle.current = s;
+    return () => s.dispose();
+  }, []);
   const [active, setActive] = useState(() => {
     const i = initialPath ? items.findIndex((e) => e.path === initialPath) : -1;
     return Math.max(0, i);
@@ -200,6 +216,7 @@ export default function GalleryView({
   const onScroll = () => {
     const el = scroller.current;
     if (el) {
+      settle.current?.note(el.scrollTop, size.height, performance.now());
       setScrollTop(el.scrollTop);
     }
   };
@@ -324,6 +341,7 @@ export default function GalleryView({
                         entry={entry}
                         index={start + i}
                         active={start + i === current}
+                        deferred={flying}
                         onActivate={onTileClick}
                       />
                     ))}

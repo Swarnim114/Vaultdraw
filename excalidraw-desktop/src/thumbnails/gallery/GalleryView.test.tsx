@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+
+import { ThumbnailProvider } from "../context";
 
 import GalleryView from "./GalleryView";
+import { SETTLE_MS } from "./scrollSettle";
+
+import type { ThumbnailService } from "../service";
 
 import type { VaultEntry } from "../../vault/types";
 
@@ -83,5 +88,59 @@ describe("<GalleryView>", () => {
     expect(document.querySelectorAll(".vault-thumb--placeholder").length).toBe(
       4,
     );
+  });
+
+  describe("fast scroll", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it("tiles mounted during a fast scroll watch only once it settles", () => {
+      vi.useFakeTimers();
+      let now = 1000;
+      vi.spyOn(performance, "now").mockImplementation(() => now);
+      const watch = vi.fn(() => () => {});
+      const service = { watch } as unknown as ThumbnailService;
+      const h = {
+        onOpenDrawing: vi.fn(),
+        onOpenFolder: vi.fn(),
+        onParent: vi.fn(),
+        onClose: vi.fn(),
+      };
+      render(
+        <ThumbnailProvider service={service}>
+          <GalleryView
+            folder=""
+            vaultName="V"
+            items={entries(0, 5000)}
+            {...h}
+          />
+        </ThumbnailProvider>,
+      );
+      const grid = screen.getByRole("grid");
+      const scrollTo = (top: number) => {
+        now += 16;
+        grid.scrollTop = top;
+        fireEvent.scroll(grid);
+      };
+      const initial = watch.mock.calls.length;
+      expect(initial).toBeGreaterThan(0); // the first window watches at once
+      scrollTo(1); // the detector needs a first sample
+
+      scrollTo(20_000);
+      scrollTo(40_000);
+      scrollTo(60_000);
+      expect(watch.mock.calls.length).toBe(initial); // flew by: no watches
+
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_MS);
+      });
+      const watched = new Set(watch.mock.calls.map((c) => (c as any)[0]));
+      expect(watch.mock.calls.length).toBeGreaterThan(initial);
+      // Only the tiles around the settle point, not the ones passed on the way.
+      expect(watch.mock.calls.length - initial).toBeLessThan(100);
+      expect(watched.size).toBe(watch.mock.calls.length);
+    });
   });
 });

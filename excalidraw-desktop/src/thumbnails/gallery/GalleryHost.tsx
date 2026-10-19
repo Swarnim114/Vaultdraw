@@ -28,7 +28,7 @@ const LOADING_STYLE = {
   position: "absolute",
   inset: 0,
   background: "var(--vault-bg, #fff)",
-  zIndex: 5,
+  zIndex: 1,
 } as const;
 
 export interface GalleryHostProps {

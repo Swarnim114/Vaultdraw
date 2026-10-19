@@ -182,10 +182,7 @@ test.describe("tree changes", () => {
     await (await rowAction(page, "Graphs", "Move to Trash")).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    // Synthetic click: the dialog's buttons are not clickable under the gallery (see below).
-    await dialog
-      .getByRole("button", { name: "Move to Trash" })
-      .dispatchEvent("click");
+    await dialog.getByRole("button", { name: "Move to Trash" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(cells(page).filter({ hasText: "Graphs" })).toHaveCount(0);
     await expect(cells(page)).toHaveCount(2);
@@ -193,15 +190,27 @@ test.describe("tree changes", () => {
     expect(errors).toEqual([]);
   });
 
-  // BUG (found by QA E): with the gallery open, the tree's confirm dialog is
-  // painted under the gallery pane, so its buttons can't be clicked with the
-  // mouse (the grid intercepts pointer events). Remove test.fail when fixed.
+  // Regression (QA E): the gallery pane (z 5) once painted over the navigator's
+  // (z 4) confirm dialog. The graph view had the same layering.
   test("the delete confirmation is clickable while the gallery is open", async ({
     page,
   }) => {
-    test.fail(true, "gallery pane intercepts clicks on the confirm dialog");
     await openGalleryInDsa(page);
     await (await rowAction(page, "Graphs", "Move to Trash")).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Move to Trash" })
+      .click({ timeout: 3000 });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("the delete confirmation is clickable while the graph view is open", async ({
+    page,
+  }) => {
+    await openVault(page, "?seed=links");
+    await page.keyboard.press("Meta+Alt+g");
+    await expect(page.getByTestId("graph-view")).toBeVisible();
+    await (await rowAction(page, "Hub", "Move to Trash")).click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Move to Trash" })

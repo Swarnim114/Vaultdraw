@@ -2,7 +2,7 @@
 .vd-gallery {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: 1; /* below the navigator (z 4): its dialogs stay clickable */
   display: flex;
   flex-direction: column;
   background: var(--vault-bg);

@@ -9,7 +9,7 @@
   font-family: var(--vault-font, system-ui, sans-serif);
   font-size: 13px;
   outline: none;
-  z-index: 5;
+  z-index: 1; /* below the navigator (z 4): its dialogs stay clickable */
 }
 
 .vd-graph__toolbar {
