@@ -43,13 +43,13 @@ import { PenBar } from "../pens/PenBar";
 
 import { usePens } from "../pens/usePens";
 import { useToolDefaults } from "../toolDefaults/useToolDefaults";
+import { useFormulaCommands } from "../formula/useFormulaCommands";
 
 import "../theme/excalidrawChrome.css";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
 import { registerEditorApi } from "./editorApi";
 import { registerEditorFlush } from "./editorFlush";
-import { useFormulaCommands } from "../formula/useFormulaCommands";
 import { useEditorPalette } from "./useEditorPalette";
 import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
 import {
