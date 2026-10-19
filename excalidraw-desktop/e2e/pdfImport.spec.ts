@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { openDrawing, openVault, readScene, trackErrors } from "./helpers";
+import {
+  canvasBox,
+  openDrawing,
+  openVault,
+  readScene,
+  trackErrors,
+} from "./helpers";
 import {
   focusCanvas,
   live,
@@ -131,8 +137,8 @@ test("palette command: dialog shows name and pages, Import adds 3 locked images 
   // one column below the existing rect (bottom y = 130), A4 at 96 dpi
   for (const e of images) {
     expect(e.x).toBe(50);
-    expect(e.width).toBeCloseTo(794, 0);
-    expect(e.height).toBeCloseTo(1123, 0);
+    expect(e.width).toBeCloseTo((595 * 96) / 72, 0);
+    expect(e.height).toBeCloseTo((842 * 96) / 72, 0);
   }
   expect(images[0].y).toBeGreaterThan(130);
   expect(images[1].y).toBeGreaterThan(images[0].y + images[0].height);
@@ -225,7 +231,7 @@ test("cancel during a slow import commits nothing and closes the token", async (
   expect((await bridgeState(page)).renders).toBe(renders);
 });
 
-test("page mode: pages land exactly inside pages 2..4 and the runtime adds no blank trailing page", async ({
+test("page mode: pages land exactly inside pages 2..4 and the runtime auto-extends one blank trailing page", async ({
   page,
 }) => {
   const errors = trackErrors(page);
@@ -250,12 +256,9 @@ test("page mode: pages land exactly inside pages 2..4 and the runtime adds no bl
   await page.waitForTimeout(1500);
   const { json } = await scene(page);
   const pageCount = json.appState.pageSetup.pageCount;
-  expect(pageCount).toBeGreaterThanOrEqual(4);
-  // AUDIT S3: a contain-fitted portrait page fills ~100% of its page, so the
-  // auto-extend (75% rule) could add one blank page. Record what it did.
-  // eslint-disable-next-line no-console
-  console.log(`PDF-S3 pageCount after import: ${pageCount} (expected 4)`);
-  expect(pageCount).toBe(4);
+  // AUDIT S3 (accepted): content filling the last page makes the page runtime
+  // auto-extend by one blank page, as for any content: start + n + 1.
+  expect(pageCount).toBe(5);
   // the locked images were not nudged by the enforcement
   const after = (await scene(page)).images.sort((a, b) => a.y - b.y);
   expect(after.map((e) => [e.x, e.y])).toEqual(images.map((e) => [e.x, e.y]));
@@ -343,7 +346,13 @@ test("Unlock all makes imported (locked) pages editable", async ({ page }) => {
   const images = await waitForImages(page, 3);
   expect(images.every((e) => e.locked)).toBe(true);
   await focusCanvas(page);
-  await page.keyboard.press("ControlOrMeta+Shift+KeyL");
+  // "Unlock all" has no shortcut (Cmd+Shift+L only toggles a selection); it is
+  // offered in the canvas context menu when nothing is selected.
+  const box = await canvasBox(page);
+  await page.mouse.click(box.x + box.width - 6, box.y + box.height - 6, {
+    button: "right",
+  });
+  await page.getByRole("button", { name: "Unlock all", exact: true }).click();
   await expect
     .poll(async () => (await scene(page)).images.every((e) => !e.locked))
     .toBe(true);

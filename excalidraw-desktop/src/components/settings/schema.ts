@@ -525,7 +525,7 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     page: "files",
     label: "Lock Imported PDF Pages",
     description:
-      "Lock pages so annotating does not drag them. Use Unlock all (Cmd+Shift+L) to edit them.",
+      "Lock pages so annotating does not drag them. Right-click the canvas and choose Unlock all to edit them.",
     keywords: ["pdf", "import", "lock", "pages", "annotate"],
     configKey: "pdf_import.lock_pages",
   },
