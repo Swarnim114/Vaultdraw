@@ -57,8 +57,30 @@ export function gateFailures(failing, { quiet, pairs }) {
 /** Wall-clock p95 rows: one cold or slow sample per run moves them, so they block only when a second A/B reproduces them. */
 export const isWallP95 = (r) => r.stat === "p95" && !LOAD_INSENSITIVE.test(r.metric);
 
-/** A reproduction A/B is worth running only when every blocking flag is a wall-clock p95 (anything else blocks anyway). */
-export const needsReproduction = (blocking) => blocking.length > 0 && blocking.every(isWallP95);
+/**
+ * Wall-clock medians that noise widening let through ("noisy-ok": worse than the 5% rule, inside the widened threshold)
+ * but that moved the same way in every interleaved pair (per-run medians, pair i = base run i vs head run i).
+ * Widening to 20-90% hid a consistent +20% vault.openToTree shift (2026-10-19); this catches it. Returned as
+ * regressed rows with `consistent: true`; like p95 flags they must reproduce in a second A/B.
+ */
+export function consistentShifts(rows, headMetrics, baseMetrics, minPairs = CONFIRM_PAIRS) {
+  return rows
+    .filter((r) => r.status === "noisy-ok" && r.stat === "median" && !LOAD_INSENSITIVE.test(r.metric))
+    .filter((r) => {
+      const h = headMetrics[r.metric]?.perRunMedians ?? [];
+      const b = baseMetrics[r.metric]?.perRunMedians ?? [];
+      const n = Math.min(h.length, b.length);
+      const dir = Math.sign(r.cur - r.base);
+      return n >= minPairs && dir !== 0 && h.slice(0, n).every((x, i) => Math.sign(x - b[i]) === dir);
+    })
+    .map((r) => ({ ...r, status: "regressed", consistent: true, note: `${r.note}; same direction in every pair` }));
+}
+
+/** Flags a second A/B can clear: wall-clock p95s and sign-consistent medians. */
+const needsRepeat = (r) => isWallP95(r) || !!r.consistent;
+
+/** A reproduction A/B is worth running only when every blocking flag is one it can clear (anything else blocks anyway). */
+export const needsReproduction = (blocking) => blocking.length > 0 && blocking.every(needsRepeat);
 
 /** Split the first A/B's blocking flags by whether the independent second A/B flagged the same metric and stat. */
 export function reproduced(blocking, repeatFailing) {

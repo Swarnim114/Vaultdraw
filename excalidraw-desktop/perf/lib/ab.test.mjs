@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { interleaveOrder, mergeSide, buildAbResult, gateFailures, isWallP95, needsReproduction, reproduced } from "./ab.mjs";
+import { interleaveOrder, mergeSide, buildAbResult, gateFailures, isWallP95, needsReproduction, reproduced, consistentShifts } from "./ab.mjs";
 
 test("interleaveOrder alternates base/head", () => {
   assert.deepEqual(interleaveOrder(2).map((s) => `${s.side}${s.index}`), ["base0", "head0", "base1", "head1"]);
@@ -59,4 +59,36 @@ test("reproduced keeps only flags the second A/B shows again (same metric and st
   assert.deepEqual(r.blocking.map((x) => x.metric), ["browser.palette.openFiles"]);
   assert.deepEqual(r.cleared.map((x) => x.metric), ["browser.open.large"]);
   assert.deepEqual(reproduced(first, []).blocking, []);
+});
+
+test("consistentShifts flags noisy-ok medians that moved the same way in every pair", () => {
+  const row = (metric, cur, base, status = "noisy-ok", stat = "median") => ({ metric, stat, cur, base, status, note: "noisy" });
+  const rows = [
+    row("browser.vault.openToTree", 20, 17),
+    row("browser.open.small", 50, 46),
+    row("browser.settings.open", 18, 17, "ok"),
+    row("browser.palette.openFiles", 16, 13, "noisy-ok", "p95"),
+    row("browser.cpu.thread", 130, 120),
+  ];
+  const head = {
+    "browser.vault.openToTree": { perRunMedians: [20, 19.5, 21] },
+    "browser.open.small": { perRunMedians: [50, 44, 52] },
+    "browser.settings.open": { perRunMedians: [18, 18, 18] },
+    "browser.cpu.thread": { perRunMedians: [130, 131, 132] },
+  };
+  const base = {
+    "browser.vault.openToTree": { perRunMedians: [17, 17.5, 16] },
+    "browser.open.small": { perRunMedians: [46, 45, 47] },
+    "browser.settings.open": { perRunMedians: [17, 17, 17] },
+    "browser.cpu.thread": { perRunMedians: [120, 121, 122] },
+  };
+  const out = consistentShifts(rows, head, base);
+  assert.deepEqual(out.map((r) => r.metric), ["browser.vault.openToTree"]);
+  assert.equal(out[0].status, "regressed");
+  assert.equal(out[0].consistent, true);
+  // fewer pairs than CONFIRM_PAIRS: not enough evidence
+  assert.deepEqual(consistentShifts(rows, { "browser.vault.openToTree": { perRunMedians: [20, 20] } }, { "browser.vault.openToTree": { perRunMedians: [17, 17] } }), []);
+  // a consistent median shift is clearable by a reproduction A/B, like a p95 flag
+  assert.equal(needsReproduction(out), true);
+  assert.equal(needsReproduction([...out, { metric: "browser.cpu.thread", stat: "median" }]), false);
 });

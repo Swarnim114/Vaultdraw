@@ -10,7 +10,7 @@ import { compare } from "./lib/compare.mjs";
 import { comparisonTable } from "./lib/report.mjs";
 import { waitQuiet, loadNote, loadSummary, DEFAULT_QUIET_LOAD, DEFAULT_QUIET_WAIT_S } from "./lib/load.mjs";
 import {
-  interleaveOrder, mergeSide, buildAbResult, ensureBaseWorktree, runOnce, gateFailures, needsReproduction, reproduced, CONFIRM_PAIRS,
+  interleaveOrder, mergeSide, buildAbResult, ensureBaseWorktree, runOnce, gateFailures, needsReproduction, reproduced, consistentShifts, CONFIRM_PAIRS,
 } from "./lib/ab.mjs";
 
 const HELP = `Usage: node excalidraw-desktop/perf/ab.mjs --base <git-ref> [options]
@@ -26,7 +26,8 @@ Two sides only; bisect across a batch only AFTER a confirmed regression.
   Gate: browser.cpu.thread/process and browser.count.* (CPU time, counts) block from any run. Wall-clock
   metrics block only when measured quiet (load < --quiet-load) with >= ${CONFIRM_PAIRS} pairs; otherwise
   they are reported as UNCONFIRMED (the head of engineering's quiet combined check still gates them).
-  A wall-clock p95 flag blocks only if it reproduces: when every blocking flag is a wall-clock p95, a second,
+  A wall-clock median that noise widening let through but that moved the same way in every pair is flagged too
+  ("same direction in every pair"). These and wall-clock p95 flags block only if they reproduce: when every blocking flag is a wall-clock p95, a second,
   independent A/B (${CONFIRM_PAIRS} fresh pairs, after its own quiet wait) runs, and only the flags it shows again block.
   --no-reproduce      skip that second A/B (the p95 flags then block as measured)
   --low-end           Chromium with CPU throttling x4
@@ -106,7 +107,8 @@ const result = buildAbResult({
 const cmp = compare(result, { metrics: baseSide.metrics }, catalogue);
 const allLoads = [load.start, load.end, ...head.perRunLoad, ...baseSide.perRunLoad].filter(Number.isFinite);
 const quiet = allLoads.every((l) => l < load.threshold);
-let { blocking, unconfirmed } = gateFailures(cmp.failing, { quiet, pairs: pairsDone });
+const failingAll = (c, h, b) => [...c.failing, ...consistentShifts(c.rows, h.metrics, b.metrics)];
+let { blocking, unconfirmed } = gateFailures(failingAll(cmp, head, baseSide), { quiet, pairs: pairsDone });
 
 // p95 flags must reproduce (handbook): a second, independent A/B decides which wall-clock p95 flags stand.
 let repro;
@@ -117,7 +119,7 @@ if (!o["no-reproduce"] && needsReproduction(blocking)) {
   await runPairs(0, CONFIRM_PAIRS, again, "repro-");
   const h2 = mergeSide(again.head, unit);
   const b2 = mergeSide(again.base, unit);
-  const failing2 = compare({ metrics: h2.metrics }, { metrics: b2.metrics }, catalogue).failing;
+  const failing2 = failingAll(compare({ metrics: h2.metrics }, { metrics: b2.metrics }, catalogue), h2, b2);
   const loads2 = [load2.start, ...h2.perRunLoad, ...b2.perRunLoad].filter(Number.isFinite);
   repro = { ...reproduced(blocking, failing2), pairs: CONFIRM_PAIRS, failing: failing2, loads: loads2, h2, b2 };
   blocking = repro.blocking;
@@ -128,7 +130,8 @@ console.log(loadSummary(result.load));
 for (const n of result.notes) console.log(`note: ${n}`);
 const pct = (x) => (Number.isFinite(x) ? `${(x * 100).toFixed(0)}%` : "?");
 const cvP95 = (r, h, b) => (r.stat === "p95" ? `, per-run p95 CV head ${pct(h.metrics[r.metric]?.cvP95)} base ${pct(b.metrics[r.metric]?.cvP95)}` : "");
-const list = (rs, h = head, b = baseSide) => rs.map((r) => `${r.metric}.${r.stat} (${r.status}${cvP95(r, h, b)})`).join(", ");
+const list = (rs, h = head, b = baseSide) =>
+  rs.map((r) => `${r.metric}.${r.stat} (${r.status}${r.consistent ? ", same direction in every pair" : ""}${cvP95(r, h, b)})`).join(", ");
 if (unconfirmed.length) console.log(`\nUNCONFIRMED (wall-clock, ${quiet ? "" : "under load, "}${pairsDone} pair(s); not blocking): ${list(unconfirmed)}`);
 if (repro) {
   const row = (r) => repro.failing.find((x) => x.metric === r.metric && x.stat === r.stat);
