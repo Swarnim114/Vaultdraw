@@ -373,3 +373,17 @@
   font-weight: 500;
   line-height: 18px;
 }
+
+/* SVG key glyphs (arrows, return) sized like the text in a chip. */
+.vault-kbd--glyphs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.vault-kbd--glyphs svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+}

@@ -631,3 +631,18 @@ export const IconCommand = strokeIcon(
   14,
   <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />,
 );
+
+/*
+ * Key-cap glyphs as SVG (Lucide "arrow-up", "arrow-down", "corner-down-left"):
+ * the UI font (Assistant) has no arrows, and the text glyphs' first use
+ * triggers a system font-fallback lookup that cost ~25 ms of layout on the
+ * first palette open at 4x throttle (perf-redesign-fix P2).
+ */
+export const IconKeyUp = strokeIcon(10, <path d="m5 12 7-7 7 7M12 19V5" />);
+
+export const IconKeyDown = strokeIcon(10, <path d="M12 5v14M19 12l-7 7-7-7" />);
+
+export const IconKeyReturn = strokeIcon(
+  10,
+  <path d="m9 10-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4" />,
+);

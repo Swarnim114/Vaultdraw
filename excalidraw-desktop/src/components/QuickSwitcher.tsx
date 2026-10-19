@@ -43,7 +43,13 @@ import { getRecent, recordRecent } from "../palette/recent";
 import { PalettePreview } from "../thumbnails/surfaces/PalettePreview";
 import { errorMessage } from "../vault/types";
 
-import { IconDrawing, IconPlus } from "./Icons";
+import {
+  IconDrawing,
+  IconKeyDown,
+  IconKeyReturn,
+  IconKeyUp,
+  IconPlus,
+} from "./Icons";
 
 import "./home.css";
 import "./QuickSwitcher.css";
@@ -641,10 +647,16 @@ export const QuickSwitcher = ({
         )}
         <div className="vault-quick__footer" aria-hidden="true">
           <span>
-            <kbd className="vault-kbd">↑↓</kbd> navigate
+            <kbd className="vault-kbd vault-kbd--glyphs">
+              <IconKeyUp />
+              <IconKeyDown />
+            </kbd>{" "}
+            navigate
           </span>
           <span>
-            <kbd className="vault-kbd">↵</kbd>{" "}
+            <kbd className="vault-kbd vault-kbd--glyphs">
+              <IconKeyReturn />
+            </kbd>{" "}
             {mode === "commands" ? "run" : "open"}
           </span>
           {mode === "commands" && (
