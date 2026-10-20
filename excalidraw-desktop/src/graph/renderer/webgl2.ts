@@ -427,6 +427,9 @@ export class WebGL2Renderer implements GraphRenderer {
     gl.deleteProgram(this.pe.p);
     gl.deleteProgram(this.pn.p);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
+    // Free the drawing buffer now; a removed canvas can otherwise linger until GC.
+    this.canvas.width = 0;
+    this.canvas.height = 0;
     this.canvas.remove();
   }
 }

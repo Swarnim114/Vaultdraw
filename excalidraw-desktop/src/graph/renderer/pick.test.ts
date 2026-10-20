@@ -10,10 +10,14 @@ function host() {
 describe("createRenderer", () => {
   it("picks webgl2 on a real GPU string", () => {
     const f = fakeGl("ANGLE (Apple, ANGLE Metal Renderer: Apple M5 Pro)");
-    const r = createRenderer(host(), {
-      createCanvas: () => fakeCanvas((t) => (t === "webgl2" ? f.gl : null)),
-    });
+    const canvas = fakeCanvas((t) => (t === "webgl2" ? f.gl : null));
+    const r = createRenderer(host(), { createCanvas: () => canvas });
     expect(r.kind).toBe("webgl2");
+    // default GPU: no high-performance request (keeps the discrete GPU asleep)
+    expect(canvas.getContext).toHaveBeenCalledWith(
+      "webgl2",
+      expect.not.objectContaining({ powerPreference: expect.anything() }),
+    );
   });
 
   it("falls back to canvas2d on SwiftShader, on a fresh canvas, and releases the GL context", () => {

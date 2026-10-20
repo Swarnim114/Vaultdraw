@@ -65,7 +65,6 @@ export function createRenderer(
     gl = canvas.getContext("webgl2", {
       antialias: false,
       alpha: false,
-      powerPreference: "high-performance",
     }) as WebGL2RenderingContext | null;
   } catch {
     gl = null;

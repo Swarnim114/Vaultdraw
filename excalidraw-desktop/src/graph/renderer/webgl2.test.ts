@@ -96,8 +96,12 @@ describe("WebGL2Renderer (fake gl)", () => {
 
   it("dispose frees GL resources, loses the context and ignores later draws", () => {
     const { r, calls, lose, reset, canvas } = make();
+    canvas.width = 640;
+    canvas.height = 480;
     r.dispose();
     expect(lose.loseContext).toHaveBeenCalledTimes(1);
+    expect(canvas.width).toBe(0);
+    expect(canvas.height).toBe(0);
     expect(calls.deleteProgram).toHaveLength(2);
     expect(calls.deleteTexture.length).toBeGreaterThanOrEqual(2);
     expect(canvas.remove).toHaveBeenCalled();
