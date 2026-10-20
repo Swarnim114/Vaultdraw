@@ -2,6 +2,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { ColorSwatches, Segmented } from "./controls";
+import { useCanvasTheme } from "./useCanvasTheme";
 
 // Excalidraw's real FONT_FAMILY ids (packages/common/src/constants.ts).
 export const FONT_OPTIONS = [
@@ -102,10 +103,12 @@ const FontSizeSetting = () => {
 
 const StrokeColorSetting = () => {
   const { defaults, updateDefaults } = useSettings();
+  const canvasTheme = useCanvasTheme();
   const value = defaults.defaultStrokeColor;
   return (
     <SettingRow id="stroke-color">
       <ColorSwatches
+        canvasTheme={canvasTheme}
         colors={STROKE_COLORS}
         value={value}
         onChange={(color) => updateDefaults({ defaultStrokeColor: color })}
@@ -120,10 +123,12 @@ const StrokeColorSetting = () => {
 
 const BackgroundFillSetting = () => {
   const { defaults, updateDefaults } = useSettings();
+  const canvasTheme = useCanvasTheme();
   const value = defaults.defaultBackgroundColor;
   return (
     <SettingRow id="background-fill">
       <ColorSwatches
+        canvasTheme={canvasTheme}
         colors={BG_COLORS}
         value={value}
         onChange={(color) => updateDefaults({ defaultBackgroundColor: color })}

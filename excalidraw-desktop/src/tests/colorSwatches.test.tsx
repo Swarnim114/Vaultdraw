@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { applyDarkModeFilter } from "@excalidraw/common";
+
 import { ColorSwatches } from "../components/settings/pages/ColorSwatches";
 
 const COLORS = ["#1e1e1e", "#e03131", "transparent"] as const;
@@ -100,5 +102,47 @@ describe("ColorSwatches", () => {
       .getAllByRole("radio")
       .map((r) => r.getAttribute("tabindex"));
     expect(tabs).toEqual(["-1", "0", "-1"]);
+  });
+
+  describe("canvas display mode", () => {
+    const fill = (name: string) =>
+      screen.getByLabelText(name).style.getPropertyValue("--vault-swatch");
+
+    it("dark shows the colour as the dark canvas draws it", () => {
+      const onChange = setup("#1e1e1e", { canvasTheme: "dark" });
+      const shown = applyDarkModeFilter("#1e1e1e", true);
+      expect(shown).not.toBe("#1e1e1e");
+      expect(fill("Stroke #1e1e1e")).toBe(shown);
+      expect(fill("Stroke #e03131")).toBe(applyDarkModeFilter("#e03131", true));
+      // value, label and title stay the real colour
+      expect(checked()[0]).toHaveAccessibleName("Stroke #1e1e1e");
+      expect(screen.getByLabelText("Stroke #1e1e1e").title).toContain(
+        "#1e1e1e",
+      );
+      expect(screen.getByLabelText("Stroke #1e1e1e").title).toContain(
+        "dark canvas",
+      );
+      fireEvent.click(screen.getByLabelText("Stroke #e03131"));
+      expect(onChange).toHaveBeenCalledWith("#e03131");
+    });
+
+    it("the check mark contrasts with the displayed colour", () => {
+      setup("#1e1e1e", { canvasTheme: "dark" });
+      // light swatch on the dark canvas -> dark check
+      expect(checked()[0]).toHaveClass("vault-cp__swatch--dark");
+    });
+
+    it("light and unset modes show the raw colour", () => {
+      setup("#1e1e1e", { canvasTheme: "light" });
+      expect(fill("Stroke #1e1e1e")).toBe("#1e1e1e");
+    });
+
+    it("the custom chip is filtered too", () => {
+      setup("#123456", { canvasTheme: "dark" });
+      const chip = document.querySelector<HTMLElement>(".vault-cp__custom")!;
+      expect(chip.style.getPropertyValue("--vault-swatch")).toBe(
+        applyDarkModeFilter("#123456", true),
+      );
+    });
   });
 });

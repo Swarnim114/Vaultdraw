@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { applyDarkModeFilter } from "@excalidraw/common";
+
 import {
+  CANVAS_COLOUR_NOTE,
   ToolStylePreview,
   type PreviewFallback,
 } from "../components/settings/pages/ToolPreview";
@@ -50,5 +53,32 @@ describe("text preview Assistant", () => {
     render(<ToolStylePreview tool="text" style={{}} fallback={fallback(10)} />);
     expect(fontOf()).toContain("Assistant");
     expect(load).toHaveBeenCalledWith("16px Assistant");
+  });
+});
+
+describe("preview colours follow the canvas theme", () => {
+  const black = { ...fallback(5), strokeColor: "#1e1e1e" };
+
+  it("dark: text uses the filtered colour, no CSS filter, dark canvas box", () => {
+    render(
+      <ToolStylePreview tool="text" style={{}} fallback={black} theme="dark" />,
+    );
+    const text = screen.getByText("Sample text");
+    expect(text.getAttribute("fill")).toBe(
+      applyDarkModeFilter("#1e1e1e", true),
+    );
+    const box = screen.getByTestId("tool-preview-text");
+    expect(box.style.filter).toBe("");
+    expect(box.style.backgroundColor).not.toBe("");
+    expect(box.style.backgroundColor).not.toBe("rgb(255, 255, 255)");
+    expect(screen.getByText(CANVAS_COLOUR_NOTE)).toBeTruthy();
+  });
+
+  it("light: raw colour, white box, no note", () => {
+    render(<ToolStylePreview tool="text" style={{}} fallback={black} />);
+    expect(screen.getByText("Sample text").getAttribute("fill")).toBe(
+      "#1e1e1e",
+    );
+    expect(screen.queryByText(CANVAS_COLOUR_NOTE)).toBeNull();
   });
 });

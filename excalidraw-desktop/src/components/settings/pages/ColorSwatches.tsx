@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 
+import {
+  applyCanvasBackgroundFilter,
+  applyDarkModeFilter,
+} from "@excalidraw/common";
+
 import type { CSSProperties, KeyboardEvent } from "react";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
+const HEX_PREFIX_RE = /^#[0-9a-f]{6}/i;
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** Dark or light check mark, whichever contrasts with the swatch. */
 const checkTone = (color: string) => {
-  if (!HEX_RE.test(color)) {
+  if (!HEX_PREFIX_RE.test(color)) {
     return "dark";
   }
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
@@ -47,6 +53,8 @@ export const ColorSwatches = ({
   onChange,
   swatchLabel,
   swatchTitle = (color) => color,
+  canvasTheme,
+  isCanvasBackground = false,
   customValue,
   customTitle,
   disabled = false,
@@ -59,6 +67,14 @@ export const ColorSwatches = ({
   onChange: (color: string) => void;
   swatchLabel: (color: string) => string;
   swatchTitle?: (color: string) => string;
+  /**
+   * Set for colours drawn on the canvas (strokes, fills, pen, pattern):
+   * swatches then show the colour as that canvas shows it, like Excalidraw's
+   * own picker. Display only; values, labels and titles stay the real colour.
+   */
+  canvasTheme?: "light" | "dark";
+  /** The colours are the canvas background (drawn by the background filter). */
+  isCanvasBackground?: boolean;
   /** Value of the custom <input type=color> (must be #rrggbb). */
   customValue: string;
   customTitle: string;
@@ -70,6 +86,16 @@ export const ColorSwatches = ({
   showHex?: boolean;
 }) => {
   const groupRef = useRef<HTMLFieldSetElement>(null);
+  const dark = canvasTheme === "dark";
+  /** The colour as drawn on screen (real colour when not a canvas colour). */
+  const shown = (color: string) =>
+    canvasTheme && color !== "transparent"
+      ? (isCanvasBackground
+          ? applyCanvasBackgroundFilter
+          : applyDarkModeFilter)(color, dark)
+      : color;
+  const withNote = (title: string) =>
+    dark ? `${title} (shown as on the dark canvas)` : title;
   const isPreset = colors.some((c) => same(c, value));
   const hasDefault = onClear !== undefined;
   const isDefault = hasDefault && value === "";
@@ -175,11 +201,13 @@ export const ColorSwatches = ({
           color,
           same(color, value),
           swatchLabel(color),
-          swatchTitle(color),
+          color === "transparent"
+            ? swatchTitle(color)
+            : withNote(swatchTitle(color)),
           () => onChange(color),
           color === "transparent" ? "vault-cp__swatch--transparent" : "",
-          color === "transparent" ? undefined : swatchStyle(color),
-          color === "transparent" ? "dark" : checkTone(color),
+          color === "transparent" ? undefined : swatchStyle(shown(color)),
+          color === "transparent" ? "dark" : checkTone(shown(color)),
         ),
       )}
       <label
@@ -187,11 +215,11 @@ export const ColorSwatches = ({
           "vault-cp__swatch",
           "vault-cp__custom",
           isCustom && "vault-cp__swatch--selected",
-          isCustom && `vault-cp__swatch--${checkTone(customShown)}`,
+          isCustom && `vault-cp__swatch--${checkTone(shown(customShown))}`,
         ]
           .filter(Boolean)
           .join(" ")}
-        style={isCustom ? swatchStyle(customShown) : undefined}
+        style={isCustom ? swatchStyle(shown(customShown)) : undefined}
         title={customTitle}
       >
         {isCustom ? <Check /> : <span aria-hidden="true">+</span>}

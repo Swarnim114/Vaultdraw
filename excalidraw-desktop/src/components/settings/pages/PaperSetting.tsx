@@ -75,7 +75,12 @@ export const PaperSetting = () => {
                 Fine-tuning is global. Switch to Global to change it.
               </p>
             ) : (
-              <PaperControls value={pattern} onChange={tune} hideStyle />
+              <PaperControls
+                value={pattern}
+                onChange={tune}
+                hideStyle
+                canvasTheme={resolveTheme(mode, win)}
+              />
             )}
             <PaperPreview pattern={pattern} theme={resolveTheme(mode, win)} />
           </div>

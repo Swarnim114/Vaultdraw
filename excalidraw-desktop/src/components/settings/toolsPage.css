@@ -138,7 +138,7 @@
   flex-shrink: 0;
 }
 
-/* Live preview, drawn on a white canvas */
+/* Live preview, drawn on a canvas box (background set inline per theme) */
 .vault-tools-preview {
   margin: 12px 0 4px;
   background-color: #ffffff;
@@ -151,10 +151,10 @@
   display: block;
 }
 
-/* Dark mode: the same filter Excalidraw puts on its canvas */
-:root.dark .vault-tools-preview {
-  filter: invert(93%) hue-rotate(180deg);
-  border-color: #d9d9d9;
+.vault-tools-preview-note {
+  margin: 0 0 4px;
+  font-size: 0.74rem;
+  color: var(--vault-text-faint);
 }
 
 /* Rows: label left, control right, equal height */

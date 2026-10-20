@@ -21,6 +21,7 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { ColorSwatches, Switch } from "./controls";
 import { LaserPreview, PenPreview } from "./ToolPreview";
+import { useCanvasTheme } from "./useCanvasTheme";
 import {
   ResetButton,
   ToolsPanel,
@@ -138,6 +139,7 @@ const PenRows = ({
   onChange: (patch: Partial<PenPreset>) => void;
   onRemove: () => void;
 }) => {
+  const canvasTheme = useCanvasTheme();
   const n = index + 1;
   const [name, setName] = useState(pen.name);
   useEffect(() => setName(pen.name), [pen.name]);
@@ -160,6 +162,7 @@ const PenRows = ({
       </ToolsRow>
       <ToolsRow label="Colour">
         <ColorSwatches
+          canvasTheme={canvasTheme}
           colors={PEN_COLORS}
           value={pen.color}
           onChange={(color) => onChange({ color })}
@@ -272,6 +275,7 @@ const PenPicker = ({
 export const PenPanel = () => {
   const { win } = useSettings();
   const { penPresets } = usePrefs();
+  const theme = useCanvasTheme();
   const [selected, setSelected] = useState(0);
   const index = Math.min(selected, penPresets.length - 1);
   const pen = penPresets[index];
@@ -313,6 +317,7 @@ export const PenPanel = () => {
         opacity={pen.opacity}
         pressure={pen.pressure}
         highlighter={pen.highlighter}
+        theme={theme}
       />
       <PenRows
         key={index}
@@ -406,6 +411,7 @@ const LaserNumber = ({ spec }: { spec: typeof LASER_NUMBERS[number] }) => {
 export const LaserPanel = () => {
   const { win } = useSettings();
   const prefs = usePrefs();
+  const theme = useCanvasTheme();
   const customised = useLaserCustomised();
   return (
     <ToolsPanel section="laser" settingId="laser-color" testId="tools-laser">
@@ -421,6 +427,7 @@ export const LaserPanel = () => {
         color={prefs.laserColor}
         size={prefs.laserSize}
         length={prefs.laserLength}
+        theme={theme}
       />
       <div className="vault-tools-rows">
         <ToolsRow label="Colour">

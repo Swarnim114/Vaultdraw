@@ -1,0 +1,23 @@
+import { useSyncExternalStore } from "react";
+
+import {
+  getDisplayColorTransformVersion,
+  subscribeDisplayColorTransform,
+} from "@excalidraw/common";
+
+import { resolveTheme } from "../../../vault/preferences";
+import { useSettings } from "../SettingsContext";
+
+/**
+ * The theme the canvas is drawn in ("light" | "dark"), following the Settings
+ * mode. Also re-renders when the canvas colour transform changes (a theme
+ * with "Sync canvas with theme"), so previews and swatches stay current.
+ */
+export const useCanvasTheme = (): "light" | "dark" => {
+  const { win, mode } = useSettings();
+  useSyncExternalStore(
+    subscribeDisplayColorTransform,
+    getDisplayColorTransformVersion,
+  );
+  return resolveTheme(mode, win);
+};

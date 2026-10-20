@@ -10,6 +10,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { ColorSwatches, Segmented, Switch } from "./controls";
+import { useCanvasTheme } from "./useCanvasTheme";
 import { PaperSetting } from "./PaperSetting";
 
 import type { CSSProperties } from "react";
@@ -97,6 +98,7 @@ const SyncCanvasSetting = () => {
 
 const CanvasBackgroundSetting = () => {
   const { syncCanvas, defaults, updateDefaults } = useSettings();
+  const canvasTheme = useCanvasTheme();
   const value = defaults.defaultCanvasBackground ?? "#ffffff";
   return (
     <SettingRow
@@ -111,6 +113,8 @@ const CanvasBackgroundSetting = () => {
       }
     >
       <ColorSwatches
+        canvasTheme={canvasTheme}
+        isCanvasBackground
         colors={CANVAS_BG_COLORS}
         value={value}
         onChange={(color) => updateDefaults({ defaultCanvasBackground: color })}

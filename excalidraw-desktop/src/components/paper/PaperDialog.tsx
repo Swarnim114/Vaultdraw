@@ -92,7 +92,11 @@ export const PaperDialog = ({ onClose, ownerDocument }: Props) => {
         </div>
         <div className="vault-modal__body paper-dialog__body">
           <PaperPreview pattern={pattern} theme={theme} />
-          <PaperControls value={pattern} onChange={setPattern} />
+          <PaperControls
+            value={pattern}
+            onChange={setPattern}
+            canvasTheme={theme}
+          />
         </div>
         <div className="vault-modal__footer">
           <button

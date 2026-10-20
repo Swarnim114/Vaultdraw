@@ -3,12 +3,19 @@
  * style (shape, line, arrow, text, pen stroke, laser trail). Purely visual,
  * so it is hidden from assistive tech; the rows carry the values.
  *
- * Drawn on a white "canvas"; in dark mode the box gets the same invert
- * filter Excalidraw uses for its canvas, so colours read as they will there.
+ * Drawn on a "canvas" box. In dark mode every colour goes through
+ * applyDarkModeFilter and the box takes the canvas background, exactly as the
+ * editor draws them (including a synced theme's colours), so the preview
+ * agrees with the swatches and with the real canvas.
  */
 import { useEffect, useId, type ReactNode } from "react";
 
-import { FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
+import {
+  applyCanvasBackgroundFilter,
+  applyDarkModeFilter,
+  FONT_FAMILY,
+  getFontFamilyString,
+} from "@excalidraw/common";
 import { Fonts } from "@excalidraw/excalidraw";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
@@ -30,6 +37,10 @@ export interface PreviewFallback {
 }
 
 const SAMPLE_TEXT = "Sample text";
+
+/** Shown once under a preview in dark mode. */
+export const CANVAS_COLOUR_NOTE =
+  "Dark mode: colours are shown as they appear on the dark canvas.";
 
 /**
  * Excalidraw registers its fonts lazily and loads a face only when a scene
@@ -67,23 +78,48 @@ const dash = (style: string | undefined, width: number) =>
     ? `1.5 ${6 + width}`
     : undefined;
 
+export type CanvasTheme = "light" | "dark";
+
+/** A colour as the canvas draws it in this theme. */
+const onCanvas = (color: string, theme: CanvasTheme) =>
+  color === "transparent" || color === "none"
+    ? color
+    : applyDarkModeFilter(color, theme === "dark");
+
 const PreviewBox = ({
   children,
   testId,
+  theme,
 }: {
   children: ReactNode;
   testId?: string;
+  theme: CanvasTheme;
 }) => (
-  <div className="vault-tools-preview" data-testid={testId} aria-hidden="true">
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      height={H}
-      preserveAspectRatio="xMidYMid meet"
+  <>
+    <div
+      className="vault-tools-preview"
+      data-testid={testId}
+      aria-hidden="true"
+      style={{
+        backgroundColor: applyCanvasBackgroundFilter(
+          "#ffffff",
+          theme === "dark",
+        ),
+      }}
     >
-      {children}
-    </svg>
-  </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {children}
+      </svg>
+    </div>
+    {theme === "dark" && (
+      <p className="vault-tools-preview-note">{CANVAS_COLOUR_NOTE}</p>
+    )}
+  </>
 );
 
 /** Hand-drawn wobble for sloppiness 1 and 2 (0 = clean lines). */
@@ -127,9 +163,14 @@ const FillPattern = ({
 type Head = string;
 
 /** An arrowhead with its tip at (0,0), pointing along +x, size s. */
-const headShape = (head: Head, s: number, color: string): ReactNode => {
+const headShape = (
+  head: Head,
+  s: number,
+  color: string,
+  paper: string,
+): ReactNode => {
   const outline = head.endsWith("_outline");
-  const fill = outline ? "#ffffff" : color;
+  const fill = outline ? paper : color;
   const bar = (x: number) => <line x1={x} y1={-s * 0.6} x2={x} y2={s * 0.6} />;
   const crow = (
     <path d={`M${-s} 0L0 ${-s * 0.6}M${-s} 0L0 0M${-s} 0L0 ${s * 0.6}`} />
@@ -179,14 +220,14 @@ const headShape = (head: Head, s: number, color: string): ReactNode => {
       return (
         <>
           {bar(-s * 0.4)}
-          <circle cx={-s * 1.1} cy="0" r={s * 0.35} fill="#ffffff" />
+          <circle cx={-s * 1.1} cy="0" r={s * 0.35} fill={paper} />
         </>
       );
     case "cardinality_zero_or_many":
       return (
         <>
           {crow}
-          <circle cx={-s * 1.4} cy="0" r={s * 0.35} fill="#ffffff" />
+          <circle cx={-s * 1.4} cy="0" r={s * 0.35} fill={paper} />
         </>
       );
     default:
@@ -201,6 +242,7 @@ const ArrowHead = ({
   angle,
   size,
   color,
+  paper,
 }: {
   head: Head;
   x: number;
@@ -208,13 +250,14 @@ const ArrowHead = ({
   angle: number;
   size: number;
   color: string;
+  paper: string;
 }) =>
   head === "none" ? null : (
     <g
       transform={`translate(${x} ${y}) rotate(${(angle * 180) / Math.PI})`}
       strokeDasharray="none"
     >
-      {headShape(head, size, color)}
+      {headShape(head, size, color, paper)}
     </g>
   );
 
@@ -270,13 +313,16 @@ export const ToolStylePreview = ({
   tool,
   style,
   fallback,
+  theme = "light",
 }: {
   tool: StyledTool;
   style: ToolStyle;
   fallback: PreviewFallback;
+  theme?: CanvasTheme;
 }) => {
   const uid = useId().replace(/:/g, "");
-  const stroke = style.stroke_color ?? fallback.strokeColor;
+  const stroke = onCanvas(style.stroke_color ?? fallback.strokeColor, theme);
+  const paper = applyCanvasBackgroundFilter("#ffffff", theme === "dark");
   const opacity = (style.opacity ?? 100) / 100;
   const testId = `tool-preview-${tool}`;
   const fontFamily = style.font_family ?? fallback.fontFamily;
@@ -287,7 +333,7 @@ export const ToolStylePreview = ({
     const x = align === "center" ? W / 2 : align === "right" ? W - 14 : 14;
     const size = clamp(style.font_size ?? fallback.fontSize, 10, 40);
     return (
-      <PreviewBox testId={testId}>
+      <PreviewBox testId={testId} theme={theme}>
         <text
           x={x}
           y={H / 2}
@@ -324,7 +370,7 @@ export const ToolStylePreview = ({
     const geo = arrowGeometry(style.arrow_type);
     const size = 9 + width * 1.5;
     return (
-      <PreviewBox testId={testId}>
+      <PreviewBox testId={testId} theme={theme}>
         <defs>
           <RoughFilter id={filterId} roughness={roughness} />
         </defs>
@@ -335,19 +381,24 @@ export const ToolStylePreview = ({
             {...geo.start}
             size={size}
             color={stroke}
+            paper={paper}
           />
           <ArrowHead
             head={style.end_arrowhead ?? "arrow"}
             {...geo.end}
             size={size}
             color={stroke}
+            paper={paper}
           />
         </g>
       </PreviewBox>
     );
   }
 
-  const background = style.background_color ?? fallback.backgroundColor;
+  const background = onCanvas(
+    style.background_color ?? fallback.backgroundColor,
+    theme,
+  );
   const fillStyle = style.fill_style ?? fallback.fillStyle;
   const patternId = `fill-${uid}`;
   const hasFill = tool !== "line" && background !== "transparent";
@@ -357,7 +408,7 @@ export const ToolStylePreview = ({
     ? background
     : `url(#${patternId})`;
   return (
-    <PreviewBox testId={testId}>
+    <PreviewBox testId={testId} theme={theme}>
       <defs>
         <RoughFilter id={filterId} roughness={roughness} />
         {hasFill && fillStyle !== "solid" && (
@@ -387,12 +438,14 @@ export const PenPreview = ({
   opacity,
   pressure,
   highlighter,
+  theme = "light",
 }: {
   color: string;
   width: number;
   opacity: number;
   pressure: boolean;
   highlighter: boolean;
+  theme?: CanvasTheme;
 }) => {
   const steps = 48;
   const w = clamp(width * 2, 1, highlighter ? 24 : 16);
@@ -414,21 +467,21 @@ export const PenPreview = ({
     );
   });
   return (
-    <PreviewBox testId="tool-preview-pen">
+    <PreviewBox testId="tool-preview-pen" theme={theme}>
       {highlighter && (
         <text
           x={W / 2}
           y={H / 2}
           dominantBaseline="central"
           textAnchor="middle"
-          fill="#868e96"
+          fill={onCanvas("#868e96", theme)}
           style={{ fontSize: 15 }}
         >
           Highlighted notes go behind
         </text>
       )}
       <g
-        stroke={color}
+        stroke={onCanvas(color, theme)}
         strokeLinecap="round"
         opacity={opacity / 100}
         style={highlighter ? { mixBlendMode: "multiply" } : undefined}
@@ -444,10 +497,13 @@ export const LaserPreview = ({
   color,
   size,
   length,
+  theme = "light",
 }: {
   color: string;
   size: number;
   length: number;
+  /** The laser is not theme-filtered on the canvas; only the box changes. */
+  theme?: CanvasTheme;
 }) => {
   const steps = 40;
   // Longer tails cover more of the sample path (5..200 -> 25%..100%).
@@ -477,7 +533,7 @@ export const LaserPreview = ({
   });
   const tip = point(1);
   return (
-    <PreviewBox testId="tool-preview-laser">
+    <PreviewBox testId="tool-preview-laser" theme={theme}>
       <g stroke={color} strokeLinecap="round">
         {segments}
       </g>

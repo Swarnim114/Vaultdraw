@@ -24,6 +24,7 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { BG_COLORS, FONT_OPTIONS, STROKE_COLORS } from "./Drawing";
 import { ColorSwatches } from "./controls";
+import { useCanvasTheme } from "./useCanvasTheme";
 import { ScopeBadge, ScopeErrors, useScopeAttrs } from "./scopedRow";
 import { ToolStylePreview, type PreviewFallback } from "./ToolPreview";
 import {
@@ -98,23 +99,27 @@ const ColorControl = ({
   presets: readonly string[];
   value: string | undefined;
   onChange: (value: string | undefined) => void;
-}) => (
-  <div className="vault-tools-colour">
-    <ColorSwatches
-      colors={presets}
-      value={value ?? ""}
-      onChange={onChange}
-      onClear={() => onChange(undefined)}
-      swatchLabel={(c) => `${label} ${c}`}
-      customValue={hexOr(
-        value,
-        presets[0] === "transparent" ? "#ffffff" : "#1e1e1e",
-      )}
-      customTitle={`Custom ${label.toLowerCase()}`}
-      inputTestId={testId}
-    />
-  </div>
-);
+}) => {
+  const canvasTheme = useCanvasTheme();
+  return (
+    <div className="vault-tools-colour">
+      <ColorSwatches
+        canvasTheme={canvasTheme}
+        colors={presets}
+        value={value ?? ""}
+        onChange={onChange}
+        onClear={() => onChange(undefined)}
+        swatchLabel={(c) => `${label} ${c}`}
+        customValue={hexOr(
+          value,
+          presets[0] === "transparent" ? "#ffffff" : "#1e1e1e",
+        )}
+        customTitle={`Custom ${label.toLowerCase()}`}
+        inputTestId={testId}
+      />
+    </div>
+  );
+};
 
 /** Number field: empty = Default (unset); out of range clamps, junk reverts. */
 const NumberControl = ({
@@ -302,6 +307,7 @@ export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
   const field = toolField(tool);
   const style = useToolStyle(tool);
   const fallback = usePreviewFallback();
+  const theme = useCanvasTheme();
   const scopeAttrs = useScopeAttrs(field);
   const setKey: SetKey = (key, value) => {
     const next: Record<string, unknown> = { ...style };
@@ -332,7 +338,12 @@ export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
         />
       </ToolsPanelHeader>
       <ScopeErrors />
-      <ToolStylePreview tool={tool} style={style} fallback={fallback} />
+      <ToolStylePreview
+        tool={tool}
+        style={style}
+        fallback={fallback}
+        theme={theme}
+      />
       <div className="vault-tools-rows">
         {TOOL_STYLE_KEYS[tool].map((key) => (
           <StyleField

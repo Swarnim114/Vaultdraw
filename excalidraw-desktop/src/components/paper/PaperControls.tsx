@@ -22,6 +22,8 @@ type Props = {
   value: BackgroundPattern | null;
   onChange: (next: BackgroundPattern | null) => void;
   hideStyle?: boolean;
+  /** Theme the canvas draws the pattern in (swatches show it that way). */
+  canvasTheme?: "light" | "dark";
 };
 
 type RangeProps = {
@@ -116,6 +118,7 @@ export const PaperControls = ({
   value,
   onChange,
   hideStyle = false,
+  canvasTheme,
 }: Props) => {
   const emit = (patch: Partial<BackgroundPattern>) => {
     if (value) {
@@ -145,6 +148,7 @@ export const PaperControls = ({
           <div className="paper-row">
             <span className="paper-row__label">Colour</span>
             <ColorSwatches
+              canvasTheme={canvasTheme}
               colors={PATTERN_COLORS}
               value={value.color ?? ""}
               onChange={(color) => emit({ color })}
