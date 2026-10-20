@@ -3,17 +3,12 @@
  * drawing's row menu). They only dispatch the existing graph commands, so
  * this module stays tiny and never pulls in the lazy graph chunk.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import { GRAPH_COMMAND_IDS } from "../commands/graphCommands";
+import { useRunOnDrawing } from "../commands/useRunOnDrawing";
 
 type Run = (id: string) => boolean;
-
-interface Pending {
-  path: string;
-  /** The active drawing when the request was made. */
-  from: string | null;
-}
 
 export interface GraphEntry {
   /** graph.open (toggles the graph view). */
@@ -32,37 +27,19 @@ export function useGraphEntry(
   openDrawing: (path: string) => Promise<boolean>,
   run: Run,
 ): GraphEntry {
-  const [pending, setPending] = useState<Pending | null>(null);
-  const live = useRef({ activePath, openDrawing, run });
-  live.current = { activePath, openDrawing, run };
-
-  useEffect(() => {
-    if (!pending) {
-      return;
-    }
-    if (activePath === pending.path) {
-      setPending(null);
-      live.current.run(GRAPH_COMMAND_IDS.openLocal);
-    } else if (activePath !== pending.from) {
-      setPending(null);
-    }
-  }, [pending, activePath]);
+  const live = useRef(run);
+  live.current = run;
+  const runOnDrawing = useRunOnDrawing(activePath, openDrawing);
 
   const openGraph = useCallback(() => {
-    live.current.run(GRAPH_COMMAND_IDS.open);
+    live.current(GRAPH_COMMAND_IDS.open);
   }, []);
 
-  const openLocalGraph = useCallback(async (path: string) => {
-    const { activePath: from, openDrawing: open, run: runNow } = live.current;
-    if (path === from) {
-      runNow(GRAPH_COMMAND_IDS.openLocal);
-      return;
-    }
-    setPending({ path, from });
-    if (!(await open(path))) {
-      setPending(null);
-    }
-  }, []);
+  const openLocalGraph = useCallback(
+    (path: string) =>
+      runOnDrawing(path, () => live.current(GRAPH_COMMAND_IDS.openLocal)),
+    [runOnDrawing],
+  );
 
   return useMemo(
     () => ({ openGraph, openLocalGraph }),

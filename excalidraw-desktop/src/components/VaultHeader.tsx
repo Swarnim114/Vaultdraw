@@ -1,5 +1,6 @@
 import { useCommandShortcut } from "../commands/useCommandShortcut";
 
+import { HistoryButton } from "./HistoryButton";
 import { IconAlert, IconHistory, IconLock, IconSidebar } from "./Icons";
 
 import type { SaveStatus, VaultInfo } from "../vault/types";
@@ -15,6 +16,8 @@ interface VaultHeaderProps {
   onOpenConflict: () => void;
   onOpenRecovery: () => void;
   onSave?: () => void;
+  /** Header "History" button (shown while a drawing is open): history.toggle. */
+  onToggleHistory?: () => void;
 }
 
 export const VaultHeader = ({
@@ -28,6 +31,7 @@ export const VaultHeader = ({
   onOpenConflict,
   onOpenRecovery,
   onSave,
+  onToggleHistory,
 }: VaultHeaderProps) => {
   const toggleKeys = useCommandShortcut("view.toggleNavigator");
   if (!vault) {
@@ -180,6 +184,9 @@ export const VaultHeader = ({
       </div>
 
       <div className="vault-header__right">
+        {activePath && onToggleHistory && (
+          <HistoryButton onClick={onToggleHistory} />
+        )}
         <button
           type="button"
           className="vault-ibtn"

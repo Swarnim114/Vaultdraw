@@ -90,6 +90,7 @@ import { useGraphEntry } from "./graph/useGraphEntry";
 import { createDesktopThumbnailStore } from "./thumbnails/desktopStore";
 import { ThumbnailsRoot } from "./thumbnails/ThumbnailsRoot";
 import { HistoryHost } from "./history/HistoryHost";
+import { useHistoryEntry } from "./history/useHistoryEntry";
 import { desktopHistoryRepository } from "./history/DesktopHistoryRepository";
 import { toHistorySettings } from "./history/historySettings";
 import { LibraryStore } from "./library/libraryStore";
@@ -1724,6 +1725,11 @@ export const VaultApp = ({
     handleOpenDrawing,
     runCommand,
   );
+  const { toggleHistory, showHistory } = useHistoryEntry(
+    activeDoc?.path ?? null,
+    handleOpenDrawing,
+    runCommand,
+  );
 
   // Palette providers read live state through this ref, so the provider
   // objects stay stable and nothing runs while the palette is closed.
@@ -1953,6 +1959,7 @@ export const VaultApp = ({
         onOpenConflict={() => setShowConflictDialog(true)}
         onOpenRecovery={() => setShowRecoveryDialog(true)}
         onSave={handleExplicitSave}
+        onToggleHistory={toggleHistory}
       />
 
       <div className="vault-main">
@@ -2009,6 +2016,7 @@ export const VaultApp = ({
                 onThemeChange={handleCanvasThemeChange}
                 onOpenSettings={openSettings}
                 onOpenGraph={openGraph}
+                onToggleHistory={toggleHistory}
                 focusRequest={
                   focusRequest?.path === activeDoc.path ? focusRequest : null
                 }
@@ -2081,6 +2089,7 @@ export const VaultApp = ({
           onOpenGraph={openGraph}
           graphOpen={graphOpen}
           onOpenLocalGraph={openLocalGraph}
+          onShowHistory={showHistory}
           onOpenDrawing={handleOpenDrawing}
           search={vaultSearch}
           onOpenSearchResult={handleOpenSearchResult}

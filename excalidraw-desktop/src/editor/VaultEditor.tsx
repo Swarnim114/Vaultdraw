@@ -32,7 +32,8 @@ import type {
 
 import { CommandMenuItem } from "../commands/CommandMenuItem";
 import { GRAPH_COMMAND_IDS } from "../commands/graphCommands";
-import { IconGraph, IconLibrary } from "../components/Icons";
+import { IconGraph, IconHistory, IconLibrary } from "../components/Icons";
+import { HISTORY_COMMAND_IDS } from "../history/historyCommands";
 import { PaperDialog } from "../components/paper/PaperDialog";
 import { PaperMenuItem } from "../components/paper/PaperMenuItem";
 import { PageMenuItem } from "../components/page/PageMenuItem";
@@ -89,6 +90,8 @@ type Props = {
   onOpenSettings?: (page?: SettingsTarget) => void;
   /** Main menu "Graph view": runs graph.open. */
   onOpenGraph?: () => void;
+  /** Main menu "History": runs history.toggle. */
+  onToggleHistory?: () => void;
   /** Select + scroll to an element once the scene is loaded (search results). */
   focusRequest?: {
     elementId: string;
@@ -122,6 +125,7 @@ const VaultEditorComponent = ({
   onThemeChange,
   onOpenSettings,
   onOpenGraph,
+  onToggleHistory,
   focusRequest = null,
   library,
   links,
@@ -139,6 +143,7 @@ const VaultEditorComponent = ({
   const nameRef = useRef(name);
   const openSettingsRef = useRef(onOpenSettings);
   const openGraphRef = useRef(onOpenGraph);
+  const toggleHistoryRef = useRef(onToggleHistory);
   const ready = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -254,6 +259,8 @@ const VaultEditorComponent = ({
   openSettingsRef.current = onOpenSettings;
   openGraphRef.current = onOpenGraph;
   const canOpenGraph = !!onOpenGraph;
+  toggleHistoryRef.current = onToggleHistory;
+  const canToggleHistory = !!onToggleHistory;
   const canExport = !!onExport;
   const canOpenSettings = !!onOpenSettings;
 
@@ -586,6 +593,15 @@ const VaultEditorComponent = ({
               Graph view
             </CommandMenuItem>
           )}
+          {canToggleHistory && (
+            <CommandMenuItem
+              commandId={HISTORY_COMMAND_IDS.toggle}
+              icon={<IconHistory strokeWidth="1.25" />}
+              onSelect={() => toggleHistoryRef.current?.()}
+            >
+              History
+            </CommandMenuItem>
+          )}
           {canOpenSettings && (
             <CommandMenuItem
               commandId="settings.open"
@@ -620,6 +636,7 @@ const VaultEditorComponent = ({
       canExport,
       canOpenSettings,
       canOpenGraph,
+      canToggleHistory,
       canImportPdf,
       hasPdfImport,
       saveCopy,

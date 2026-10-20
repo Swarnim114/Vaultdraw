@@ -38,6 +38,7 @@ import {
   IconFolder,
   IconFolderPlus,
   IconGraph,
+  IconHistory,
   IconMore,
   IconMove,
   IconNewDrawing,
@@ -153,6 +154,8 @@ interface VaultNavigatorProps {
   graphOpen?: boolean;
   /** Drawing rows: "Open local graph", centred on that drawing. */
   onOpenLocalGraph?: (path: string) => void | Promise<void>;
+  /** Drawing rows: "History", the History panel of that drawing. */
+  onShowHistory?: (path: string) => void | Promise<void>;
   ownerDocument?: Document | null;
 }
 
@@ -194,6 +197,7 @@ export const VaultNavigator = ({
   onOpenGraph,
   graphOpen = false,
   onOpenLocalGraph,
+  onShowHistory,
   ownerDocument,
 }: VaultNavigatorProps) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -896,6 +900,9 @@ export const VaultNavigator = ({
           onOpenLocalGraph={
             onOpenLocalGraph && ((entry) => void onOpenLocalGraph(entry.path))
           }
+          onShowHistory={
+            onShowHistory && ((entry) => void onShowHistory(entry.path))
+          }
         />
       )}
 
@@ -1216,6 +1223,7 @@ interface RowMenuProps {
   onExport?: (entry: VaultEntry, format: ExplorerExportFormat) => void;
   onTrash: (entry: VaultEntry) => void;
   onOpenLocalGraph?: (entry: VaultEntry) => void;
+  onShowHistory?: (entry: VaultEntry) => void;
 }
 
 const MENU_WIDTH = 200;
@@ -1347,6 +1355,7 @@ const RowMenu = ({
   onExport,
   onTrash,
   onOpenLocalGraph,
+  onShowHistory,
 }: RowMenuProps) => {
   const { entry } = state;
   const isFolder = entry.kind === "folder";
@@ -1402,6 +1411,9 @@ const RowMenu = ({
       {!isFolder &&
         onOpenLocalGraph &&
         item("Open local graph", <IconGraph />, () => onOpenLocalGraph(entry))}
+      {!isFolder &&
+        onShowHistory &&
+        item("History", <IconHistory />, () => onShowHistory(entry))}
       {!isFolder && onExport && (
         <>
           <div className="vault-menu__separator" role="separator" />

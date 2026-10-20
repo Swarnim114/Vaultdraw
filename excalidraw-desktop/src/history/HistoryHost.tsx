@@ -21,6 +21,7 @@ import { errorMessage } from "../vault/types";
 
 import { CheckpointDialog } from "./CheckpointDialog";
 import { publishHistoryBridge } from "./historyBridge";
+import { publishHistoryPanelOpen } from "./historyPanelState";
 import {
   deleteAllConfirm,
   drawingName,
@@ -181,6 +182,12 @@ const HistoryHostImpl = ({
     [flush, handle, path, repository, showToast],
   );
 
+  const showing = panelOpen && !!handle && !!path;
+  useEffect(() => {
+    publishHistoryPanelOpen(showing);
+  }, [showing]);
+  useEffect(() => () => publishHistoryPanelOpen(false), []);
+
   const closePanel = useCallback(() => {
     setPanelOpen(false);
     ownerDocument
@@ -190,7 +197,7 @@ const HistoryHostImpl = ({
 
   return (
     <>
-      {panelOpen && handle && path && (
+      {showing && handle && path && (
         <Suspense fallback={null}>
           <HistoryPanel
             repository={repository}
