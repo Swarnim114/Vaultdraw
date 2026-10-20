@@ -15,6 +15,8 @@ export type PerfModes = {
   leak?: boolean;
   leakOnly?: boolean;
   typical?: boolean;
+  /** Memory ablation probe after the typical open (implies typical). */
+  ablate?: boolean;
 };
 
 export type PerfKit = {

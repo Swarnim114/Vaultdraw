@@ -15,7 +15,7 @@ const BUNDLE_REL = "excalidraw-desktop/src-tauri/target/release/bundle/macos/Vau
  * The default gate run keeps the plain name `vault`.
  */
 export const vaultDirName = (modes = {}) =>
-  ["vault", modes.leakOnly ? "leakonly" : modes.leak && "leak", modes.typical && "typical"].filter(Boolean).join("+");
+  ["vault", modes.leakOnly ? "leakonly" : modes.leak && "leak", modes.typical && "typical", modes.ablate && "ablate"].filter(Boolean).join("+");
 
 export const BINARY_REL = "Contents/MacOS/excalidraw-vault";
 const MARK_PREFIX = "VAULTDRAW_SMOKE_LOG ";
@@ -108,7 +108,7 @@ export async function runAppOnce({
 }) {
   const bin = binary ?? path.join(appPath, BINARY_REL);
   runsDir ??= path.join(path.dirname(path.dirname(appPath)), "runs");
-  timeoutMs ??= (lowEnd ? 360_000 : 180_000) + (modes.leak ? 180_000 : 0);
+  timeoutMs ??= (lowEnd ? 360_000 : 180_000) + (modes.leak ? 180_000 : 0) + (modes.ablate ? 240_000 : 0);
   const runDir = path.join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${runIndex}`);
   const vault = path.join(runDir, vaultDirName(modes));
   const vaultAlt = path.join(runDir, "vault-alt");

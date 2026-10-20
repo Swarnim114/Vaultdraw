@@ -7,6 +7,7 @@
  */
 import typicalConfig from "../../perf/typical.config.json";
 
+import { runAblation } from "./ablateScenarios";
 import { expandFolder, openVaultFolder } from "./perfKit";
 import { countLong } from "./perfStats";
 
@@ -53,6 +54,12 @@ export async function runTypicalScenarios(
     push("typical.open.300", await openByRow(target.path));
     await sleep(500);
   });
+
+  if (kit.modes.ablate) {
+    // Memory probe replaces save/pan to keep the run short.
+    await runAblation(kit);
+    return;
+  }
 
   await scenario("typical-save", async () => {
     kit.wrapWrites();

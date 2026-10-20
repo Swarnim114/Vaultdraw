@@ -42,6 +42,9 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
                          Also runs in Chromium mode (JS heap after forced GC). Opt-in: default run time is unchanged.
   --leak-only            (or PERF_LEAK_ONLY=1) leak scenario right after vault-open, skipping the stress phases: a clean baseline
                          (after the stress phases WebKit still holds ~300 MB that it releases only later, which hides growth)
+  --ablate               (or PERF_ABLATE=1) memory ablation probe (implies --typical, sets PERF_MEM_TIMELINE=1): after the typical open,
+                         hides one UI part at a time (canvases, navigator, chrome, header, bitmap cache, ...), waits 5 s and samples
+                         per-process footprint at each phase:abl-* mark (memory timeline + abl.* in-app counters). ~3 min per run.
   --typical              (or PERF_TYPICAL=1) typical-vault mode, packaged app only (implies --app): 50 drawings in a few
                          folders + one 300-element drawing with 2 images; cold start, open, save, pan, idle footprint per
                          process (memory.typical.*) for comparison with other note apps. Replaces the stress scenarios.
@@ -60,7 +63,7 @@ const { values: o } = parseArgs({
     "low-end": { type: "boolean" }, runs: { type: "string" }, warmup: { type: "string" }, compare: { type: "string" },
     out: { type: "string" }, "update-baseline": { type: "string" }, "no-build": { type: "boolean" },
     "skip-browser": { type: "boolean" }, "skip-app": { type: "boolean" }, "memory-pressure": { type: "boolean" },
-    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, leak: { type: "boolean" }, "leak-only": { type: "boolean" }, typical: { type: "boolean" }, foreground: { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
+    "keep-runs": { type: "boolean" }, "quiet-load": { type: "string" }, "quiet-wait": { type: "string" }, "require-quiet": { type: "boolean" }, leak: { type: "boolean" }, "leak-only": { type: "boolean" }, typical: { type: "boolean" }, ablate: { type: "boolean" }, foreground: { type: "boolean" }, quick: { type: "boolean" }, app: { type: "boolean" }, milestone: { type: "boolean" }, help: { type: "boolean", short: "h" },
   },
 });
 if (o.help) { console.log(HELP); process.exit(0); }
@@ -72,8 +75,9 @@ const fixturesDir = process.env.PERF_FIXTURES_DIR ? path.resolve(process.env.PER
 if (o.foreground || process.env.PERF_FOREGROUND === "1") process.env.VAULTDRAW_PERF_FOREGROUND = "1";
 const mode = o["low-end"] ? "low-end" : "normal";
 const leakOnly = !!(o["leak-only"] || process.env.PERF_LEAK_ONLY === "1");
-const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || process.env.PERF_TYPICAL === "1") };
-const variant = [modes.leakOnly ? "leak-only" : modes.leak && "leak", modes.typical && "typical"].filter(Boolean).join("+");
+const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || o.ablate || process.env.PERF_TYPICAL === "1" || process.env.PERF_ABLATE === "1"), ablate: !!(o.ablate || process.env.PERF_ABLATE === "1") };
+if (modes.ablate) process.env.PERF_MEM_TIMELINE = "1";
+const variant = [modes.leakOnly ? "leak-only" : modes.leak && "leak", modes.typical && "typical", modes.ablate && "ablate"].filter(Boolean).join("+");
 const runs = o.quick ? 1 : Number(o.runs ?? (o.milestone ? 4 : 2));
 const warmup = o.quick ? 0 : Number(o.warmup ?? (o.milestone ? 1 : 0));
 // Packaged-app runs open windows on the user's screen: only on request or at milestones.

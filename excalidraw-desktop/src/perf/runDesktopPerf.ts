@@ -107,6 +107,7 @@ export function modesFromVaultPath(vaultPath: string): PerfModes {
     leak: leakOnly || tokens.includes("leak"),
     leakOnly,
     typical: tokens.includes("typical"),
+    ablate: tokens.includes("ablate"),
   };
 }
 

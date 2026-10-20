@@ -49,6 +49,7 @@ test("vaultDirName encodes the opt-in modes; the default stays 'vault'", () => {
   assert.equal(vaultDirName({ typical: true }), "vault+typical");
   assert.equal(vaultDirName({ leak: true, leakOnly: true }), "vault+leakonly");
   assert.equal(vaultDirName({ leak: true, typical: true }), "vault+leak+typical");
+  assert.equal(vaultDirName({ typical: true, ablate: true }), "vault+typical+ablate");
 });
 
 test("runAppOnce in leak mode: marks become checkpoints; mode travels in the vault folder name", async () => {
