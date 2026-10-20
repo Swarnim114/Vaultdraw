@@ -596,7 +596,9 @@ const drawElementOnCanvas = (
           const tempCanvas = document.createElement("canvas");
           tempCanvas.width = element.width * devicePixelRatio;
           tempCanvas.height = element.height * devicePixelRatio;
-          const tempContext = tempCanvas.getContext("2d");
+          const tempContext = tempCanvas.getContext("2d", {
+            willReadFrequently: true,
+          });
 
           if (tempContext) {
             tempContext.scale(devicePixelRatio, devicePixelRatio);
@@ -638,6 +640,9 @@ const drawElementOnCanvas = (
               element.height,
             );
           }
+          // Release the scratch bitmap now rather than at the next GC.
+          tempCanvas.width = 0;
+          tempCanvas.height = 0;
         } else {
           if (shouldInvertImage) {
             context.filter = DARK_THEME_FILTER;
