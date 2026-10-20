@@ -46,6 +46,47 @@ const isInsideTransformHandle = (
   y >= transformHandle[1] &&
   y <= transformHandle[1] + transformHandle[3];
 
+/**
+ * Vaultdraw: screen px outside an image's edge that still resize it. Image
+ * handles sit centred on the corners with no margin (4px outside), while the
+ * image body is hit up to ~6px outside its edge, so aiming just outside a
+ * corner used to move the image instead of resizing it. The band is wider than
+ * the body's hit tolerance, so the ring around a selected image always resizes.
+ */
+export const IMAGE_RESIZE_OUTER_BAND = 10;
+
+const imageOuterBandHandle = (
+  element: NonDeletedExcalidrawElement,
+  elementsMap: ElementsMap,
+  x: number,
+  y: number,
+  zoom: Zoom,
+  sides: boolean,
+): MaybeTransformHandleType => {
+  const [x1, y1, x2, y2, cx, cy] = getElementAbsoluteCoords(
+    element,
+    elementsMap,
+  );
+  const [px, py] = pointRotateRads(
+    pointFrom(x, y),
+    pointFrom(cx, cy),
+    -element.angle as Radians,
+  );
+  const band = IMAGE_RESIZE_OUTER_BAND / zoom.value;
+  if (px < x1 - band || px > x2 + band || py < y1 - band || py > y2 + band) {
+    return false;
+  }
+  const v = py < y1 ? "n" : py > y2 ? "s" : "";
+  const h = px < x1 ? "w" : px > x2 ? "e" : "";
+  if (!v && !h) {
+    return false;
+  }
+  if (!sides && !(v && h)) {
+    return false;
+  }
+  return (v + h) as TransformHandleType;
+};
+
 export const resizeTest = <Point extends GlobalPoint | LocalPoint>(
   element: NonDeletedExcalidrawElement,
   elementsMap: ElementsMap,
@@ -87,6 +128,20 @@ export const resizeTest = <Point extends GlobalPoint | LocalPoint>(
 
   if (filter.length > 0) {
     return filter[0] as TransformHandleType;
+  }
+
+  if (isImageElement(element) && !element.locked) {
+    const outer = imageOuterBandHandle(
+      element,
+      elementsMap,
+      x,
+      y,
+      zoom,
+      canResizeFromSides(editorInterface),
+    );
+    if (outer) {
+      return outer;
+    }
   }
 
   if (canResizeFromSides(editorInterface)) {
