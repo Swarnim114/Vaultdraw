@@ -1868,8 +1868,23 @@ export const VaultApp = ({
   const lastVaultPath = getLastVaultPath(win);
 
   // If no vault open, render onboarding
+  // One wrapper for onboarding and the vault view: the root element type must
+  // not change when a vault opens, or React remounts the whole app.
+  const withThumbnails = (children: React.ReactNode) => (
+    <ThumbnailsRoot
+      store={thumbStore}
+      repository={repository}
+      handle={vault?.handle ?? null}
+      win={win}
+      appTheme={appTheme}
+      serviceRef={thumbServiceRef}
+    >
+      {children}
+    </ThumbnailsRoot>
+  );
+
   if (!vault) {
-    return (
+    return withThumbnails(
       <div
         ref={setRootNode}
         className={`vault-app ${isClosing ? "vault-app--closing" : ""}`}
@@ -1936,7 +1951,7 @@ export const VaultApp = ({
           loading={loadingVault}
           ownerWindow={win}
         />
-      </div>
+      </div>,
     );
   }
 
@@ -2264,18 +2279,7 @@ export const VaultApp = ({
       <Toasts />
     </div>
   );
-  return (
-    <ThumbnailsRoot
-      store={thumbStore}
-      repository={repository}
-      handle={vault?.handle ?? null}
-      win={win}
-      appTheme={appTheme}
-      serviceRef={thumbServiceRef}
-    >
-      {shell}
-    </ThumbnailsRoot>
-  );
+  return withThumbnails(shell);
 };
 
 export default VaultApp;

@@ -59,6 +59,31 @@ describe("VaultApp Onboarding (no vault chosen)", () => {
     expect(chooseSpy).toHaveBeenCalledWith(false);
   });
 
+  it("keeps the same root element when a vault opens from onboarding", async () => {
+    const repo = new FakeVaultRepository();
+    repo.reopenVault = vi.fn().mockResolvedValue(null);
+    const vault = await repo.chooseVault();
+    repo.chooseVault = vi.fn().mockResolvedValue(vault);
+
+    const { container } = render(
+      <VaultApp repository={repo} initialVault={null} />,
+    );
+    const root = container.querySelector(".vault-app");
+    expect(root).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Open Vault Folder/i }),
+      );
+    });
+    await waitFor(() =>
+      expect(container.querySelector("[data-vault-path]")).not.toBeNull(),
+    );
+
+    expect(root!.isConnected).toBe(true);
+    expect(root!.querySelector("[data-vault-path]")).not.toBeNull();
+  });
+
   it("clicking 'Create New Vault' calls repository.chooseVault(true)", async () => {
     const repo = new FakeVaultRepository();
     repo.reopenVault = vi.fn().mockResolvedValue(null);
