@@ -81,6 +81,8 @@ import type {
   NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
 
+import { renderWithIdleBackingStore } from "../components/canvases/idleBackingStore";
+
 import { renderSnaps } from "../renderer/renderSnaps";
 import { roundRect } from "../renderer/roundRect";
 import {
@@ -2160,7 +2162,9 @@ export const renderInteractiveScene = <
 >(
   renderConfig: InteractiveSceneRenderConfig,
 ): ReturnType<U> => {
-  const ret = _renderInteractiveScene(renderConfig);
+  const ret = renderWithIdleBackingStore(renderConfig.canvas, () =>
+    _renderInteractiveScene(renderConfig),
+  );
   renderConfig.callback(ret);
   return ret as ReturnType<U>;
 };
