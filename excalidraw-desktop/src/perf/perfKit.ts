@@ -3,6 +3,8 @@
  * scenarios in perfScenarios.ts: DOM helpers, open/save/pan primitives and the
  * run-wide sample/info/error sinks. No environment-specific imports.
  */
+import { desktopRepository } from "../vault/DesktopVaultRepository";
+
 import type fixturesConfig from "../../perf/fixtures.config.json";
 
 export type PerfConfig = typeof fixturesConfig;
@@ -62,14 +64,109 @@ export async function openVaultFolder(
     throw new Error("Onboarding is not visible");
   }
   const button = Array.from(root.querySelectorAll("button")).find(
-    (item) => item.textContent?.trim() === "Open Vault Folder",
+    (item) =>
+      item.getAttribute("aria-label") === "Open Vault Folder" ||
+      item.textContent?.trim() === "Open Vault Folder",
   );
   if (!button) {
     throw new Error('"Open Vault Folder" button not found');
   }
+  // Diagnostics: track the choose_vault IPC so a hang can be placed (IPC vs UI).
+  let choose = "not called";
+  const originalChoose = desktopRepository.chooseVault;
+  desktopRepository.chooseVault = (create?: boolean) => {
+    choose = "pending";
+    const started = now();
+    const promise = originalChoose.call(desktopRepository, create);
+    promise.then(
+      (info) => {
+        choose = `resolved ${Math.round(now() - started)} ms: ${info?.path}`;
+      },
+      (error) => {
+        choose = `rejected: ${String(error?.message ?? error)}`;
+      },
+    );
+    return promise;
+  };
+  const errors: string[] = [];
+  const onError = (event: ErrorEvent) =>
+    errors.push(`error: ${event.message} @${event.filename}:${event.lineno}`);
+  const onRejection = (event: PromiseRejectionEvent) =>
+    errors.push(`rejection: ${String(event.reason?.stack ?? event.reason)}`);
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(
+      `console: ${args
+        .map((arg) => (arg instanceof Error ? arg.stack : String(arg)))
+        .join(" ")
+        .slice(0, 600)}`,
+    );
+    originalConsoleError(...args);
+  };
+  window.addEventListener("error", onError);
+  window.addEventListener("unhandledrejection", onRejection);
+  // Every repository call made while the vault opens, so a never-settling call shows by name.
+  const ipc: { cmd: string; state: string; at: number }[] = [];
+  const repo = desktopRepository as unknown as Record<string, unknown>;
+  const originals = new Map<string, (...args: unknown[]) => unknown>();
+  for (const name of Object.keys(repo)) {
+    const fn = repo[name];
+    if (typeof fn !== "function" || name === "chooseVault") {
+      continue;
+    }
+    originals.set(name, fn as (...args: unknown[]) => unknown);
+    repo[name] = (...args: unknown[]) => {
+      const result = (fn as (...a: unknown[]) => unknown)(...args);
+      if (result instanceof Promise) {
+        const call = { cmd: name, state: "pending", at: Math.round(now()) };
+        ipc.push(call);
+        result.then(
+          () => {
+            call.state = "ok";
+          },
+          (error) => {
+            call.state = `err ${String(error?.message ?? error).slice(0, 80)}`;
+          },
+        );
+      }
+      return result;
+    };
+  }
   const t0 = now();
   button.click();
-  await waitUntil("root tree rows", ready, 60_000);
+  await waitUntil("root tree rows", ready, 60_000)
+    .finally(() => {
+      desktopRepository.chooseVault = originalChoose;
+      for (const [name, fn] of originals) {
+        repo[name] = fn;
+      }
+      console.error = originalConsoleError;
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    })
+    .catch((error) => {
+      // Say what the window shows instead, so a UI change is quick to diagnose.
+      const rows = kit.treeRows().map((item) => item.dataset.treePath);
+      const state = {
+        onboarding: Boolean(root.querySelector(".vault-onboarding")),
+        navigator: Boolean(root.querySelector("[data-vault-path]")),
+        choose,
+        buttonDisabled: button.disabled,
+        errors: errors.slice(0, 5),
+        ipc: ipc.filter((call) => call.state !== "ok").slice(0, 10),
+        ipcCount: ipc.length,
+        ipcCmds: [...new Set(ipc.map((call) => call.cmd))].slice(0, 30),
+        alerts: Array.from(
+          root.querySelectorAll(".vault-onboarding__alert, [role=alert]"),
+        ).map((item) => item.textContent?.trim()),
+        rows: rows.length,
+        firstRows: rows.slice(0, 5),
+        dialogs: Array.from(root.querySelectorAll("[role=dialog]")).map(
+          (item) => item.getAttribute("aria-label") ?? item.className,
+        ),
+      };
+      throw new Error(`${(error as Error).message}; ${JSON.stringify(state)}`);
+    });
   await afterPaint();
   return now() - t0;
 }
