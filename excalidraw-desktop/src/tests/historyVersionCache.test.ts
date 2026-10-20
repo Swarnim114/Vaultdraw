@@ -234,4 +234,17 @@ describe("version cache", () => {
       code: "VERSION_CORRUPT",
     });
   });
+
+  it("purge drops every parsed version except the one on screen", async () => {
+    const { repo, cache } = setup();
+    const a = repo.inject("a.excalidraw", scene(["r1"]));
+    const b = repo.inject("a.excalidraw", scene(["r2"]));
+    await cache.load(a.id, { images: false });
+    await cache.load(b.id, { images: false });
+    cache.purge(b.id);
+    expect(cache.peek(a.id)).toBeUndefined();
+    expect(cache.peek(b.id)).toBeDefined();
+    cache.purge();
+    expect(cache.peek(b.id)).toBeUndefined();
+  });
 });

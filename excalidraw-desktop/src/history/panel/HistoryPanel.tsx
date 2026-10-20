@@ -22,6 +22,7 @@ import {
   restoreReplace,
   type ReplaceRefusal,
 } from "../restore";
+import { registerPurge } from "../../memory/purgeRegistry";
 import { openImageExport } from "../preview/exportImage";
 import { createVersionCache } from "../preview/versionCache";
 
@@ -148,13 +149,21 @@ const HistoryPanel = ({
     () => createPanelThumbnails((id) => cache.json(id)),
     [cache],
   );
-  useEffect(
-    () => () => {
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
+  useEffect(() => {
+    const unregister = [
+      registerPurge("historyThumbnails", () => thumbs.clear()),
+      registerPurge("historyVersions", () =>
+        cache.purge(selectedIdRef.current),
+      ),
+    ];
+    return () => {
+      unregister.forEach((u) => u());
       thumbs.clear();
       cache.clear();
-    },
-    [cache, thumbs],
-  );
+    };
+  }, [cache, thumbs]);
 
   const { status, refresh: refreshStatus } = useHistoryStatus(
     repository,

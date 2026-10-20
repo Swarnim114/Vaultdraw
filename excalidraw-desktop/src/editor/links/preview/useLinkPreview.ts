@@ -9,6 +9,8 @@ import {
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
+import { registerPurge } from "../../../memory/purgeRegistry";
+
 import { LinkPreviewController } from "./LinkPreviewController";
 import { cardPosition, folderLabel, modifierLabel, nameOfPath } from "./format";
 
@@ -45,6 +47,7 @@ export function useLinkPreview(opts: UseLinkPreviewOptions): ReactNode {
     }
     let token = 0;
     let thumbs: PreviewThumbnails | null = null;
+    let unregisterPurge: (() => void) | null = null;
 
     const loadThumbnail = async (path: string, t: number) => {
       const read = live.current.readDrawing;
@@ -53,7 +56,13 @@ export function useLinkPreview(opts: UseLinkPreviewOptions): ReactNode {
       }
       if (!thumbs) {
         const mod = await import("./previewThumbnails");
-        thumbs ??= mod.createPreviewThumbnails();
+        if (!thumbs) {
+          const created = mod.createPreviewThumbnails();
+          thumbs = created;
+          unregisterPurge = registerPurge("linkPreviewThumbnails", () =>
+            created.clear(),
+          );
+        }
       }
       const url = await thumbs.get(path, read);
       if (t === token) {
@@ -100,6 +109,7 @@ export function useLinkPreview(opts: UseLinkPreviewOptions): ReactNode {
       controller.stop();
       token++;
       thumbs?.clear();
+      unregisterPurge?.();
       setCard(null);
     };
   }, [containerEl, mode]);

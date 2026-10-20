@@ -35,6 +35,8 @@ export interface VersionCache {
   ): Promise<LoadedVersion>;
   peek(id: string): LoadedVersion | undefined;
   json(id: string): Promise<string>;
+  /** Drops every parsed version except `keepId` (the one on screen). */
+  purge(keepId?: string | null): void;
   clear(): void;
 }
 
@@ -209,6 +211,13 @@ export const createVersionCache = (deps: VersionCacheDeps): VersionCache => {
           ),
     peek: (id) => entries.get(id)?.version,
     json: async (id) => (await fetchRaw(id)).json,
+    purge: (keepId) => {
+      for (const id of [...entries.keys()]) {
+        if (id !== keepId) {
+          entries.delete(id);
+        }
+      }
+    },
     clear: () => {
       epoch += 1;
       entries.clear();

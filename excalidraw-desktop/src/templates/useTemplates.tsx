@@ -3,13 +3,22 @@
  * template". Keeps state and dialogs out of VaultApp; the app supplies the
  * few things only it can do (create a document, flush, report errors).
  */
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   errorMessage,
   type VaultInfo,
   type VaultRepository,
 } from "../vault/types";
+
+import { registerPurge } from "../memory/purgeRegistry";
 
 import { createGlobalTemplateStore } from "./globalTemplates";
 import { instantiateTemplate } from "./instantiate";
@@ -47,6 +56,10 @@ export function useTemplates(o: Options) {
     null,
   );
   renderer.current ??= createThumbnailRenderer();
+  useEffect(
+    () => registerPurge("templateThumbnails", () => renderer.current?.clear()),
+    [],
+  );
 
   const pickerRef = useRef<TemplatePickerHandle>(null);
   const [saveTarget, setSaveTarget] = useState<string | null>(null);
