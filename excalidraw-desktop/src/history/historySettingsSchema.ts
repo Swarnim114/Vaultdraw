@@ -13,8 +13,7 @@ export const HISTORY_SETTINGS_PAGES: readonly SettingsPage[] = [
     id: "history",
     label: "History",
     group: "Options",
-    intro:
-      "Earlier versions of each drawing, kept inside the vault. Every value can be stored per vault.",
+    intro: "Earlier versions of each drawing, kept inside the vault.",
     testId: "history-settings-page",
   },
 ];

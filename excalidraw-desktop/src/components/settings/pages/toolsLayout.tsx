@@ -125,12 +125,15 @@ export const ToolsPanel = ({
   section,
   settingId,
   testId,
+  data,
   children,
 }: {
   section: ToolsSection;
   /** Schema id of the row this panel shows (search, tests). */
   settingId?: string;
   testId?: string;
+  /** Extra data-* attributes (scope state). */
+  data?: Record<`data-${string}`, string | undefined>;
   children: ReactNode;
 }) => (
   <div
@@ -138,6 +141,7 @@ export const ToolsPanel = ({
     data-section={section}
     data-setting-id={settingId}
     data-testid={testId}
+    {...data}
   >
     {children}
   </div>

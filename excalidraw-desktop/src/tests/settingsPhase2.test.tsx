@@ -4,6 +4,7 @@
  */
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -14,12 +15,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VaultNavigator } from "../components/VaultNavigator";
 import { searchSettings } from "../components/settings/schema";
 import { SettingsModal } from "../components/settings/SettingsModal";
+import {
+  getSettingsScope,
+  setSettingsScope,
+} from "../components/settings/settingsScope";
 import { getPreferences } from "../vault/preferences";
 import { disposeSettings } from "../vault/settingsSync";
 import {
   attachVaultSettings,
   detachVaultSettings,
   getVaultSettingsSnapshot,
+  setVaultOverride,
 } from "../vault/vaultSettings";
 
 import type { ComponentProps } from "react";
@@ -40,7 +46,10 @@ const renderModal = (v: VaultInfo | null = vault) => {
   return screen.getByRole("searchbox", { name: "Search settings" });
 };
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  setSettingsScope("global");
+});
 afterEach(() => {
   detachVaultSettings();
   disposeSettings();
@@ -118,20 +127,24 @@ describe("accent, zoom and confirm-delete controls", () => {
 });
 
 describe("per-vault rows", () => {
-  it("the This vault switch stores and removes the override", async () => {
+  const scopeRadio = (name: "Global" | "This vault") =>
+    screen.getByRole("radio", { name });
+
+  it("an edit in vault scope stores the override; Reset to global removes it", async () => {
     await attachVaultSettings(window, vault.handle);
     renderModal();
+    fireEvent.click(scopeRadio("This vault"));
     fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
-    const toggle = screen.getByRole("switch", { name: "This vault" });
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(getVaultSettingsSnapshot().overrides.navigatorSort).toBe(
-        "name_asc",
-      ),
-    );
-    expect(screen.getByRole("switch", { name: "This vault" })).toBeChecked();
+    const row = () =>
+      document.querySelector<HTMLElement>('[data-setting-id="sort-order"]')!;
+    expect(row()).toHaveAttribute("data-scope-state", "inherited");
+    expect(screen.getByText("Inherited from global")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "Reset Navigator Sort Order to global",
+      }),
+    ).toBeNull();
 
-    // Edits go to the override while it is on.
     fireEvent.change(screen.getByLabelText("Navigator sort order"), {
       target: { value: "modified_desc" },
     });
@@ -141,29 +154,131 @@ describe("per-vault rows", () => {
       ),
     );
     expect(getPreferences(window).navigatorSort).toBe("name_asc");
+    expect(row()).toHaveAttribute("data-scope-state", "overridden");
+    expect(screen.getByText("Overridden")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("switch", { name: "This vault" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Reset Navigator Sort Order to global",
+      }),
+    );
     await waitFor(() =>
       expect(
         getVaultSettingsSnapshot().overrides.navigatorSort,
       ).toBeUndefined(),
     );
+    expect(row()).toHaveAttribute("data-scope-state", "inherited");
   });
 
-  it("edits the global value when not stored per vault", async () => {
+  it("global scope edits config, leaves the override alone and notes it", async () => {
     await attachVaultSettings(window, vault.handle);
+    await setVaultOverride("navigatorSort", "modified_desc");
     renderModal();
     fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
+    const row = document.querySelector<HTMLElement>(
+      '[data-setting-id="sort-order"]',
+    )!;
+    expect(row).toHaveAttribute("data-vault-override", "true");
+    expect(screen.getByText("This vault overrides this")).toBeInTheDocument();
+    // The control shows the global value, not the vault's.
+    expect(screen.getByLabelText("Navigator sort order")).toHaveValue(
+      "name_asc",
+    );
     fireEvent.change(screen.getByLabelText("Navigator sort order"), {
       target: { value: "name_desc" },
     });
     expect(getPreferences(window).navigatorSort).toBe("name_desc");
+    expect(getVaultSettingsSnapshot().overrides.navigatorSort).toBe(
+      "modified_desc",
+    );
   });
 
-  it("disables the switch without a vault", () => {
+  it("restore-default is a global-scope control only", async () => {
+    await attachVaultSettings(window, vault.handle);
+    renderModal();
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
+    expect(
+      screen.getAllByRole("button", { name: /^Reset Version interval/ })[0],
+    ).toHaveAttribute("title", "Restore default");
+    fireEvent.click(scopeRadio("This vault"));
+    expect(screen.queryByTitle("Restore default")).toBeNull();
+  });
+
+  it("hides the scope switch without a vault", () => {
     renderModal(null);
-    fireEvent.click(screen.getByRole("tab", { name: "Interface" }));
-    expect(screen.getByRole("switch", { name: "This vault" })).toBeDisabled();
+    expect(screen.queryByTestId("settings-scope")).toBeNull();
+  });
+
+  it("disables the This vault radio for a read-only vault", () => {
+    renderModal({ ...vault, readOnly: true });
+    const radio = scopeRadio("This vault");
+    expect(radio).toHaveAttribute("aria-disabled", "true");
+    expect(radio).toHaveAttribute("title", "This vault is read-only");
+    fireEvent.click(radio);
+    expect(scopeRadio("Global")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("the scope switch is a roving radiogroup", () => {
+    renderModal();
+    const group = screen.getByRole("radiogroup", { name: "Settings scope" });
+    expect(scopeRadio("Global")).toHaveAttribute("tabindex", "0");
+    expect(scopeRadio("This vault")).toHaveAttribute("tabindex", "-1");
+    fireEvent.keyDown(scopeRadio("Global"), { key: "ArrowRight" });
+    expect(scopeRadio("This vault")).toHaveAttribute("aria-checked", "true");
+    expect(group.ownerDocument.activeElement).toBe(scopeRadio("This vault"));
+    fireEvent.keyDown(scopeRadio("This vault"), { key: "Home" });
+    expect(scopeRadio("Global")).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(scopeRadio("Global"), { key: "End" });
+    expect(scopeRadio("This vault")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("vault scope lists only per-vault pages and filters search", () => {
+    const search = renderModal();
+    expect(screen.getByRole("tab", { name: "Hotkeys" })).toBeInTheDocument();
+    fireEvent.click(scopeRadio("This vault"));
+    expect(screen.queryByRole("tab", { name: "Hotkeys" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "General" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "History" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/apply to this vault only and override the global/),
+    ).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "zoom" } });
+    expect(screen.getByText(/No settings match/)).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "sort" } });
+    expect(
+      document.querySelector('[data-setting-id="sort-order"]'),
+    ).not.toBeNull();
+  });
+
+  it("vault scope shows only styled tools on the Tools page", () => {
+    renderModal();
+    fireEvent.click(scopeRadio("This vault"));
+    fireEvent.click(screen.getByRole("tab", { name: "Tools" }));
+    expect(screen.queryByRole("tab", { name: "Pen" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Laser" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Arrow" })).toBeInTheDocument();
+  });
+
+  it("opening at a global-only target switches to Global", () => {
+    setSettingsScope("vault");
+    render(
+      <SettingsModal
+        vault={vault}
+        onClose={vi.fn()}
+        ownerDocument={document}
+        initialPage="hotkeys"
+      />,
+    );
+    expect(scopeRadio("Global")).toHaveAttribute("aria-checked", "true");
+    expect(getSettingsScope()).toBe("global");
+  });
+
+  it("the scope is remembered between openings", () => {
+    renderModal();
+    fireEvent.click(scopeRadio("This vault"));
+    cleanup();
+    renderModal();
+    expect(scopeRadio("This vault")).toHaveAttribute("aria-checked", "true");
   });
 
   it("validates the default folder and normalises slashes", async () => {

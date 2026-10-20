@@ -31,6 +31,8 @@ export interface SettingRowProps {
   onReset?: () => void;
   testId?: string;
   className?: string;
+  /** Extra data-* attributes on the row (scope state). */
+  data?: Record<`data-${string}`, string | undefined>;
 }
 
 export const SettingRow = ({
@@ -46,6 +48,7 @@ export const SettingRow = ({
   onReset,
   testId,
   className,
+  data,
 }: SettingRowProps) => {
   const schema = getSettingSchema(id);
   const classes = [
@@ -65,7 +68,12 @@ export const SettingRow = ({
   );
   if (layout === "stacked") {
     return (
-      <div className={classes} data-setting-id={id} data-testid={testId}>
+      <div
+        className={classes}
+        data-setting-id={id}
+        data-testid={testId}
+        {...data}
+      >
         <div className="vault-setting-stacked-head">
           <div className="vault-setting-label-line">{labelNode}</div>
           {aside}
@@ -79,7 +87,12 @@ export const SettingRow = ({
     );
   }
   return (
-    <div className={classes} data-setting-id={id} data-testid={testId}>
+    <div
+      className={classes}
+      data-setting-id={id}
+      data-testid={testId}
+      {...data}
+    >
       <div className="vault-setting-info">
         <div className="vault-setting-label-line">{labelNode}</div>
         <div className="vault-setting-desc">

@@ -23,7 +23,9 @@ import {
 } from "./schema";
 import "./settings.css";
 
+import { ScopeSwitch } from "./ScopeSwitch";
 import { SettingsProvider, useSettingsController } from "./SettingsContext";
+import { setSettingsScope, targetHasVaultRows } from "./settingsScope";
 import { SETTINGS_PANEL_ID, settingsTabId, Sidebar } from "./Sidebar";
 
 import type { ThemeRegistry } from "../../theme/registry";
@@ -89,13 +91,22 @@ export const SettingsModal = ({
   onRevealRecovery,
   pickDrawing,
   ownerDocument,
-  initialPage = DEFAULT_SETTINGS_PAGE,
+  initialPage,
 }: SettingsModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const doc = ownerDocument ?? modalRef.current?.ownerDocument ?? null;
   const win =
     doc?.defaultView ?? (typeof window !== "undefined" ? window : null);
+
+  // An explicit target without per-vault rows (Hotkeys, Pens) opens in the
+  // global scope. Runs once, before the first read of the scope.
+  const [initial] = useState(() => {
+    if (initialPage && !targetHasVaultRows(initialPage)) {
+      setSettingsScope("global");
+    }
+    return parseSettingsTarget(initialPage ?? DEFAULT_SETTINGS_PAGE);
+  });
 
   const settings = useSettingsController({
     win,
@@ -109,7 +120,6 @@ export const SettingsModal = ({
     pickDrawing,
   });
 
-  const [initial] = useState(() => parseSettingsTarget(initialPage));
   const [page, setPage] = useState<SettingsPageId>(initial.page);
   const [toolsSection, setToolsSection] = useState<ToolsSection | undefined>(
     initial.section,
@@ -118,9 +128,14 @@ export const SettingsModal = ({
   const queryRef = useRef(query);
   queryRef.current = query;
 
+  const inVaultScope = settings.scope === "vault";
   const available = SETTINGS_SCHEMA.filter((s) => {
     const control = SETTING_CONTROLS[s.id];
-    return !!control && (control.available?.(settings) ?? true);
+    return (
+      !!control &&
+      (!inVaultScope || !!s.perVault) &&
+      (control.available?.(settings) ?? true)
+    );
   });
   const pages = SETTINGS_PAGES.filter((p) =>
     available.some((s) => s.page === p.id),
@@ -242,22 +257,30 @@ export const SettingsModal = ({
         />
 
         <section className="vault-settings-content">
-          <div className="vault-settings-header">
-            <h2 id="settings-title" className="vault-settings-title">
-              {searching ? "Search results" : getPage(activePage).label}
-            </h2>
-            <span className="vault-settings-live">Changes apply live</span>
-            <button
-              type="button"
-              className="vault-btn vault-btn--ghost vault-btn--icon"
-              onClick={onClose}
-              aria-label="Close Settings"
-            >
-              <IconClose />
-            </button>
-          </div>
-
           <SettingsProvider value={settings}>
+            <div className="vault-settings-header">
+              <h2 id="settings-title" className="vault-settings-title">
+                {searching ? "Search results" : getPage(activePage).label}
+              </h2>
+              <ScopeSwitch />
+              <span className="vault-settings-live">Changes apply live</span>
+              <button
+                type="button"
+                className="vault-btn vault-btn--ghost vault-btn--icon"
+                onClick={onClose}
+                aria-label="Close Settings"
+              >
+                <IconClose />
+              </button>
+            </div>
+
+            {inVaultScope && (
+              <p className="vault-settings-scope-note">
+                Values set here apply to this vault only and override the global
+                value.
+              </p>
+            )}
+
             {searching ? (
               <div
                 className="vault-settings-body vault-settings-results"

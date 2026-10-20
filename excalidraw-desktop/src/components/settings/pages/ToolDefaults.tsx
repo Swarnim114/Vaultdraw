@@ -24,7 +24,7 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { BG_COLORS, FONT_OPTIONS, STROKE_COLORS } from "./Drawing";
 import { ColorSwatches } from "./controls";
-import { PerVaultErrors, PerVaultSwitch } from "./perVault";
+import { ScopeBadge, ScopeErrors, useScopeAttrs } from "./scopedRow";
 import { ToolStylePreview, type PreviewFallback } from "./ToolPreview";
 import {
   ResetButton,
@@ -289,19 +289,20 @@ const usePreviewFallback = (): PreviewFallback => {
 
 /** A styled tool's default style (empty = the tool has no default). */
 export const useToolStyle = (tool: StyledTool): ToolStyle => {
-  const { vaultSettings } = useSettings();
-  return vaultSettings.effective[toolField(tool)];
+  const { scopedValue } = useSettings();
+  return scopedValue(toolField(tool));
 };
 
 /**
- * One tool's section: header (name, This vault, Reset), a live preview and
- * a row per style key. Edits go to the vault when This vault is on.
+ * One tool's section: header (name, scope badge, Reset), a live preview and
+ * a row per style key. Edits go to the current scope (global or this vault).
  */
 export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
-  const { setPerVaultValue } = useSettings();
+  const { setScopedValue } = useSettings();
   const field = toolField(tool);
   const style = useToolStyle(tool);
   const fallback = usePreviewFallback();
+  const scopeAttrs = useScopeAttrs(field);
   const setKey: SetKey = (key, value) => {
     const next: Record<string, unknown> = { ...style };
     if (value === undefined) {
@@ -309,27 +310,28 @@ export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
     } else {
       next[key] = value;
     }
-    setPerVaultValue(field, next as ToolStyle);
+    setScopedValue(field, next as ToolStyle);
   };
   return (
     <ToolsPanel
       section={tool}
       settingId={`tool-${tool}`}
       testId={`tool-default-${tool}`}
+      data={scopeAttrs}
     >
       <ToolsPanelHeader section={tool}>
-        <PerVaultSwitch
+        <ScopeBadge
           field={field}
-          label={`${TOOL_LABELS[tool]}: This vault`}
+          resetLabel={`Reset ${TOOL_LABELS[tool]} to global`}
         />
         <ResetButton
           label={`Reset ${TOOL_LABELS[tool]}`}
           title="Remove this tool's default style"
           disabled={Object.keys(style).length === 0}
-          onClick={() => setPerVaultValue(field, {})}
+          onClick={() => setScopedValue(field, {})}
         />
       </ToolsPanelHeader>
-      <PerVaultErrors />
+      <ScopeErrors />
       <ToolStylePreview tool={tool} style={style} fallback={fallback} />
       <div className="vault-tools-rows">
         {TOOL_STYLE_KEYS[tool].map((key) => (

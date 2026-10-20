@@ -157,7 +157,7 @@
   margin-top: auto;
   padding: 0 var(--vd-space-2);
   font-size: var(--vd-fs-caption);
-  color: var(--vault-text-faint);
+  color: var(--vault-text-muted);
 }
 
 .vault-settings-foot__link {
@@ -379,14 +379,69 @@
   accent-color: var(--vault-primary);
 }
 
-/* "This vault" switch: 30 px toggle with its label. */
-.vault-setting-pervault {
+/* ---- Scope: Global | This vault ---------------------------------------- */
+
+.vault-scope-switch {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--vault-border);
+  border-radius: var(--vd-radius-control);
+  background-color: var(--vault-bg);
+}
+
+.vault-scope-switch__option {
+  padding: 2px 10px;
+  border: 0;
+  border-radius: var(--vd-radius-chip);
+  background: transparent;
+  font: inherit;
+  font-size: var(--vd-fs-small);
+  color: var(--vault-text-muted);
+  cursor: pointer;
+}
+
+.vault-scope-switch__option--active {
+  background-color: var(--vault-surface);
+  color: var(--vault-text);
+  box-shadow: 0 0 0 1px var(--vault-border);
+}
+
+.vault-scope-switch__option:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: 1px;
+}
+
+.vault-scope-switch__option[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vault-settings-scope-note {
+  margin: 0;
+  padding: var(--vd-space-2) var(--vd-space-5);
+  font-size: var(--vd-fs-small);
+  color: var(--vault-text-muted);
+  border-bottom: 1px solid var(--vault-border);
+}
+
+.vault-scope-badge,
+.vault-scope-note {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--vault-text-muted);
-  white-space: nowrap;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: var(--vd-fs-caption);
+  color: var(--vault-text-faint);
+}
+
+.vault-scope-badge[data-overridden="true"] {
+  color: var(--vault-primary);
+}
+
+.vault-setting-row--inherited .vault-setting-control,
+.vault-tools-panel[data-scope-state="inherited"] .vault-tools-rows {
+  opacity: 0.8;
 }
 
 .vault-setting-reset {

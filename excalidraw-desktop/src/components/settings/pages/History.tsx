@@ -14,7 +14,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { Stepper, Switch } from "./controls";
-import { PerVaultRow } from "./perVault";
+import { ScopedRow } from "./scopedRow";
 
 import "./history.css";
 
@@ -104,7 +104,7 @@ const NumberField = ({
 );
 
 const EnabledSetting = () => (
-  <PerVaultRow id="history-enabled" field="historyEnabled">
+  <ScopedRow id="history-enabled" field="historyEnabled">
     {(value, onChange) => (
       <Switch
         checked={value}
@@ -112,7 +112,7 @@ const EnabledSetting = () => (
         onChange={(next) => onChange(next)}
       />
     )}
-  </PerVaultRow>
+  </ScopedRow>
 );
 
 const numberSetting = (
@@ -122,12 +122,12 @@ const numberSetting = (
   unit: string,
 ) => {
   const Component = () => {
-    const { setPerVaultValue } = useSettings();
+    const { setScopedValue } = useSettings();
     return (
-      <PerVaultRow
+      <ScopedRow
         id={id}
         field={field}
-        onReset={() => setPerVaultValue(field, HISTORY_DEFAULTS[field])}
+        onReset={() => setScopedValue(field, HISTORY_DEFAULTS[field])}
       >
         {(value, onChange) => (
           <NumberField
@@ -138,7 +138,7 @@ const numberSetting = (
             onCommit={onChange}
           />
         )}
-      </PerVaultRow>
+      </ScopedRow>
     );
   };
   return Component;
@@ -183,9 +183,9 @@ const RETENTION_FIELDS = [
 ] as const;
 
 const PresetSetting = () => {
-  const { setPerVaultValue, vaultSettings } = useSettings();
+  const { setScopedValue, scopedValue } = useSettings();
   const isDefault = RETENTION_FIELDS.every(
-    (f) => vaultSettings.effective[f] === HISTORY_DEFAULTS[f],
+    (f) => scopedValue(f) === HISTORY_DEFAULTS[f],
   );
   return (
     <SettingRow id="history-retention-preset">
@@ -195,7 +195,7 @@ const PresetSetting = () => {
         disabled={isDefault}
         onClick={() =>
           RETENTION_FIELDS.forEach((f) =>
-            setPerVaultValue(f, HISTORY_DEFAULTS[f]),
+            setScopedValue(f, HISTORY_DEFAULTS[f]),
           )
         }
       >
@@ -273,10 +273,10 @@ const capNotes = (status: HistoryStatus): string[] => {
 
 const SizeCapSetting = () => {
   const { status } = usePageStatus();
-  const { vaultSettings } = useSettings();
-  const capMb = vaultSettings.effective.historySizeCapMb;
+  const { scopedValue } = useSettings();
+  const capMb = scopedValue("historySizeCapMb");
   return (
-    <PerVaultRow
+    <ScopedRow
       id="history-size-cap"
       field="historySizeCapMb"
       details={
@@ -302,12 +302,12 @@ const SizeCapSetting = () => {
           onCommit={onChange}
         />
       )}
-    </PerVaultRow>
+    </ScopedRow>
   );
 };
 
 const HighlightSetting = () => (
-  <PerVaultRow id="history-highlight" field="historyHighlightChanges">
+  <ScopedRow id="history-highlight" field="historyHighlightChanges">
     {(value, onChange) => (
       <Switch
         checked={value}
@@ -315,7 +315,7 @@ const HighlightSetting = () => (
         onChange={(next) => onChange(next)}
       />
     )}
-  </PerVaultRow>
+  </ScopedRow>
 );
 
 const PrivacySetting = () => <SettingRow id="history-privacy" />;

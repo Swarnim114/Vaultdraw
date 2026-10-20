@@ -36,9 +36,10 @@ const typeAndCommit = async (page: Page, text: string) => {
   return textWith(page, text);
 };
 
-/** Settings > Tools > Text: This vault on, stroke colour orange. */
+/** Settings (This vault scope) > Tools > Text: stroke colour orange. */
 const setVaultTextColour = async (page: Page) => {
   await page.keyboard.press("ControlOrMeta+Comma");
+  await page.getByRole("radio", { name: "This vault" }).click();
   await page.getByRole("tab", { name: "Tools", exact: true }).click();
   await page
     .getByRole("tablist", { name: "Tools" })
@@ -46,10 +47,9 @@ const setVaultTextColour = async (page: Page) => {
     .click();
   const section = page.getByTestId("tool-default-text");
   await expect(section).toBeVisible();
-  const vaultSwitch = section.getByRole("switch", { name: "Text: This vault" });
-  await vaultSwitch.click();
-  await expect(vaultSwitch).toBeChecked();
+  await expect(section).toHaveAttribute("data-scope-state", "inherited");
   await page.getByTestId("tool-default-text-stroke_color").fill(ORANGE);
+  await expect(section).toHaveAttribute("data-scope-state", "overridden");
   await expect(page.getByTestId("tool-preview-text")).toBeVisible();
   await section.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${SHOTS}/settings-text-preview.png` });

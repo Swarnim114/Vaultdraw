@@ -33,13 +33,16 @@ export function useVaultSettingsView(
     globalsKey(win),
   );
 
-  const effective = useMemo(() => {
+  const global = useMemo(() => {
     const values = JSON.parse(globals) as unknown[];
-    const global = Object.fromEntries(
+    return Object.fromEntries(
       PER_VAULT_FIELDS.map((field, i) => [field, values[i]]),
     ) as Parameters<typeof resolveSettings>[1];
-    return resolveSettings(overrides, global);
-  }, [overrides, globals]);
+  }, [globals]);
+  const effective = useMemo(
+    () => resolveSettings(overrides, global),
+    [overrides, global],
+  );
 
   const isOverridden = useCallback(
     (field: VaultField) => overrides[field] !== undefined,
@@ -49,6 +52,7 @@ export function useVaultSettingsView(
   return {
     overrides,
     problems,
+    global,
     effective,
     isOverridden,
     setOverride: setVaultOverride,

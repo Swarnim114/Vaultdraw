@@ -13,6 +13,7 @@ import {
 } from "../commands/useAppCommands";
 import { searchSettings } from "../components/settings/schema";
 import { SettingsModal } from "../components/settings/SettingsModal";
+import { setSettingsScope } from "../components/settings/settingsScope";
 import { getPreferences } from "../vault/preferences";
 import { disposeSettings } from "../vault/settingsSync";
 import {
@@ -29,7 +30,10 @@ const vault: VaultInfo = {
   readOnly: false,
 };
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  setSettingsScope("global");
+});
 afterEach(() => {
   detachVaultSettings();
   disposeSettings();
@@ -111,7 +115,7 @@ describe("Tools page tabs", () => {
   });
 });
 
-describe("customised dots, Reset and This vault", () => {
+describe("customised dots, Reset and the vault scope", () => {
   it("marks a tool tab once its style is set; Reset clears it", async () => {
     await open("tools:arrow");
     const reset = screen.getByRole("button", { name: "Reset Arrow" });
@@ -149,14 +153,24 @@ describe("customised dots, Reset and This vault", () => {
     expect(reset).toBeDisabled();
   });
 
-  it("the header This vault switch stores a vault override", async () => {
+  it("vault scope: the header badge and Reset to global follow the override", async () => {
     await open("tools:arrow");
-    const toggle = screen.getByLabelText("Arrow: This vault");
-    expect(toggle).not.toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "This vault" }));
+    expect(screen.getByText("Inherited from global")).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(toggle);
+      fireEvent.change(screen.getByTestId("tool-default-arrow-stroke_style"), {
+        target: { value: "dotted" },
+      });
     });
-    expect(toggle).toBeChecked();
+    expect(screen.getByText("Overridden")).toBeInTheDocument();
+    expect(tab("Arrow")).toHaveAttribute("data-customised", "true");
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Reset Arrow to global" }),
+      );
+    });
+    expect(screen.getByText("Inherited from global")).toBeInTheDocument();
+    expect(tab("Arrow")).not.toHaveAttribute("data-customised");
   });
 });
 

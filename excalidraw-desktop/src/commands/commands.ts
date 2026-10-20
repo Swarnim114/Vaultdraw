@@ -360,6 +360,20 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: { default: [] },
     when: ["vaultOpen", "!modalOpen"],
   },
+  {
+    id: "settings.scope.global",
+    title: "Settings: Edit global settings",
+    category: "Settings",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
+    id: "settings.scope.vault",
+    title: "Settings: Edit this vault's settings",
+    category: "Settings",
+    keys: { default: [] },
+    when: ["vaultOpen", "writable", "!modalOpen"],
+  },
   ...SETTINGS_PAGE_COMMANDS,
   {
     id: "appearance.mode.light",

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { searchSettings, SETTINGS_PAGES } from "../components/settings/schema";
 import { SettingsModal } from "../components/settings/SettingsModal";
+import { setSettingsScope } from "../components/settings/settingsScope";
 import {
   TOOL_DEFAULT_TOOLS,
   toolField,
@@ -46,7 +47,10 @@ const vault: VaultInfo = {
   readOnly: false,
 };
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  setSettingsScope("global");
+});
 afterEach(() => {
   detachVaultSettings();
   disposeSettings();
@@ -316,18 +320,16 @@ describe("Tools page: tool defaults", () => {
     expect(getPreferences(window).toolLine.stroke_color).toBe("#f08c00");
   });
 
-  it("This vault copies the global style into the vault, then edits go there", async () => {
+  const scopeVault = () =>
+    fireEvent.click(screen.getByRole("radio", { name: "This vault" }));
+
+  it("vault scope: edits create the override from the global style; Reset to global removes it", async () => {
     updatePreferences({ [toolField("arrow")]: { stroke_width: 3 } });
     await open();
+    scopeVault();
     tab("Arrow");
-    const row = screen.getByTestId("tool-default-arrow");
-    const toggle = row.querySelector<HTMLInputElement>('input[role="switch"]')!;
-    await act(async () => {
-      fireEvent.click(toggle);
-    });
-    expect(getVaultSettingsSnapshot().overrides.toolArrow).toEqual({
-      stroke_width: 3,
-    });
+    const panel = screen.getByTestId("tool-default-arrow");
+    expect(panel).toHaveAttribute("data-scope-state", "inherited");
     await act(async () => {
       fireEvent.change(screen.getByTestId("tool-default-arrow-stroke_style"), {
         target: { value: "dashed" },
@@ -337,28 +339,25 @@ describe("Tools page: tool defaults", () => {
       stroke_width: 3,
       stroke_style: "dashed",
     });
+    expect(panel).toHaveAttribute("data-scope-state", "overridden");
     expect(getPreferences(window).toolArrow).toEqual({ stroke_width: 3 });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Reset Arrow" }));
     });
     expect(getVaultSettingsSnapshot().overrides.toolArrow).toEqual({});
-    // Turning This vault off inherits the global style again.
     await act(async () => {
-      fireEvent.click(toggle);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Reset Arrow to global" }),
+      );
     });
     expect(getVaultSettingsSnapshot().overrides.toolArrow).toBeUndefined();
+    expect(panel).toHaveAttribute("data-scope-state", "inherited");
   });
 
-  it("This vault on with an empty global style stores {} and edits go to the vault", async () => {
+  it("vault scope with an empty global style: an edit stores only that key", async () => {
     await open();
+    scopeVault();
     tab("Line");
-    const toggle = screen
-      .getByTestId("tool-default-line")
-      .querySelector<HTMLInputElement>('input[role="switch"]')!;
-    await act(async () => {
-      fireEvent.click(toggle);
-    });
-    expect(getVaultSettingsSnapshot().overrides.toolLine).toEqual({});
     await act(async () => {
       fireEvent.change(screen.getByTestId("tool-default-line-opacity"), {
         target: { value: "40" },
@@ -369,5 +368,17 @@ describe("Tools page: tool defaults", () => {
       opacity: 40,
     });
     expect(getPreferences(window).toolLine).toEqual({});
+  });
+
+  it("global scope shows the global style and notes a vault override", async () => {
+    updatePreferences({ [toolField("arrow")]: { stroke_width: 3 } });
+    await open();
+    await setVaultOverride(toolField("arrow"), { stroke_width: 9 });
+    tab("Arrow");
+    const panel = screen.getByTestId("tool-default-arrow");
+    expect(panel).toHaveAttribute("data-vault-override", "true");
+    expect(screen.getByTestId("tool-default-arrow-stroke_width")).toHaveValue(
+      3,
+    );
   });
 });

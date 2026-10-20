@@ -29,6 +29,8 @@ const globalsKey = (win: Window | null | undefined): string => {
 export interface UseVaultSettings {
   overrides: VaultOverrides;
   problems: SettingsProblem[];
+  /** The global (config.toml) values, whatever the vault overrides. */
+  global: EffectiveVaultSettings;
   effective: EffectiveVaultSettings;
   isOverridden: (field: VaultField) => boolean;
   setOverride: <F extends VaultField>(
@@ -64,13 +66,16 @@ export function useVaultSettings(
   const overrides = current ? snapshot.overrides : NO_OVERRIDES;
   const problems = current ? snapshot.problems : NO_PROBLEMS;
 
-  const effective = useMemo(() => {
+  const global = useMemo(() => {
     const values = JSON.parse(globals) as unknown[];
-    const global = Object.fromEntries(
+    return Object.fromEntries(
       PER_VAULT_FIELDS.map((field, i) => [field, values[i]]),
     ) as EffectiveVaultSettings;
-    return resolveSettings(overrides, global);
-  }, [overrides, globals]);
+  }, [globals]);
+  const effective = useMemo(
+    () => resolveSettings(overrides, global),
+    [overrides, global],
+  );
 
   const isOverridden = useCallback(
     (field: VaultField) => overrides[field] !== undefined,
@@ -80,6 +85,7 @@ export function useVaultSettings(
   return {
     overrides,
     problems,
+    global,
     effective,
     isOverridden,
     setOverride: setVaultOverride,

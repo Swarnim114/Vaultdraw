@@ -9,7 +9,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { Switch } from "./controls";
-import { PerVaultRow } from "./perVault";
+import { ScopedRow } from "./scopedRow";
 
 const isMac = () =>
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
@@ -69,7 +69,7 @@ const ThumbnailsSetting = () => {
 };
 
 const SortOrderSetting = () => (
-  <PerVaultRow id="sort-order" field="navigatorSort">
+  <ScopedRow id="sort-order" field="navigatorSort">
     {(value, onChange) => (
       <select
         className="vault-input"
@@ -84,7 +84,7 @@ const SortOrderSetting = () => (
         ))}
       </select>
     )}
-  </PerVaultRow>
+  </ScopedRow>
 );
 
 export const interfaceControls: SettingControls = {

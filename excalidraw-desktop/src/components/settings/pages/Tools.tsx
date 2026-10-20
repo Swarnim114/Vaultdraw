@@ -37,20 +37,22 @@ const TOOLS_PANEL_ID = "vault-tools-panel";
 
 /** Every section's "differs from default" flag. */
 const useCustomised = (): Record<ToolsSection, boolean> => {
-  const { vaultSettings } = useSettings();
+  const { scopedValue } = useSettings();
   const styled = Object.fromEntries(
     TOOL_DEFAULT_TOOLS.map((tool) => [
       tool,
-      Object.keys(vaultSettings.effective[toolField(tool)]).length > 0,
+      Object.keys(scopedValue(toolField(tool))).length > 0,
     ]),
   ) as Record<StyledTool, boolean>;
   return { ...styled, pen: usePensCustomised(), laser: useLaserCustomised() };
 };
 
 const ToolTabs = ({
+  sections,
   section,
   onSelect,
 }: {
+  sections: readonly ToolsSection[];
   section: ToolsSection;
   onSelect: (section: ToolsSection) => void;
 }) => {
@@ -63,13 +65,13 @@ const ToolTabs = ({
       ?.focus();
   };
   const handleKeyDown = (e: KeyboardEvent) => {
-    const i = TOOLS_SECTIONS.indexOf(section);
-    const last = TOOLS_SECTIONS.length - 1;
+    const i = sections.indexOf(section);
+    const last = sections.length - 1;
     const next =
       e.key === "ArrowRight"
-        ? (i + 1) % TOOLS_SECTIONS.length
+        ? (i + 1) % sections.length
         : e.key === "ArrowLeft"
-        ? (i + last) % TOOLS_SECTIONS.length
+        ? (i + last) % sections.length
         : e.key === "Home"
         ? 0
         : e.key === "End"
@@ -77,7 +79,7 @@ const ToolTabs = ({
         : null;
     if (next !== null) {
       e.preventDefault();
-      focusTab(TOOLS_SECTIONS[next]);
+      focusTab(sections[next]);
     }
   };
   return (
@@ -88,7 +90,7 @@ const ToolTabs = ({
       aria-label="Tools"
       onKeyDown={handleKeyDown}
     >
-      {TOOLS_SECTIONS.map((s) => {
+      {sections.map((s) => {
         const active = s === section;
         const label = TOOLS_SECTION_LABELS[s];
         return (
@@ -136,21 +138,32 @@ export interface ToolsPageProps {
 }
 
 export const ToolsPage = ({
-  section = DEFAULT_TOOLS_SECTION,
+  section: requested = DEFAULT_TOOLS_SECTION,
   onSectionChange,
-}: ToolsPageProps) => (
-  <div className="vault-tools-page">
-    <ToolTabs section={section} onSelect={onSectionChange} />
-    <p className="vault-tools-legend">
-      customised · unset values keep Excalidraw&apos;s current style
-    </p>
-    <div
-      id={TOOLS_PANEL_ID}
-      role="tabpanel"
-      aria-labelledby={toolsTabId(section)}
-      className="vault-tools-body"
-    >
-      <Section section={section} />
+}: ToolsPageProps) => {
+  // Vault scope: only the styled tools (pens and laser are global-only).
+  const { scope } = useSettings();
+  const sections: readonly ToolsSection[] =
+    scope === "vault" ? TOOL_DEFAULT_TOOLS : TOOLS_SECTIONS;
+  const section = sections.includes(requested) ? requested : sections[0];
+  return (
+    <div className="vault-tools-page">
+      <ToolTabs
+        sections={sections}
+        section={section}
+        onSelect={onSectionChange}
+      />
+      <p className="vault-tools-legend">
+        customised · unset values keep Excalidraw&apos;s current style
+      </p>
+      <div
+        id={TOOLS_PANEL_ID}
+        role="tabpanel"
+        aria-labelledby={toolsTabId(section)}
+        className="vault-tools-body"
+      >
+        <Section section={section} />
+      </div>
     </div>
-  </div>
-);
+  );
+};

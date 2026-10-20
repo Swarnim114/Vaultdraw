@@ -10,7 +10,7 @@ import { useSettings, type SettingControls } from "../SettingsContext";
 import { SettingRow } from "../SettingRow";
 
 import { RevealPath, Stepper, Switch } from "./controls";
-import { PerVaultRow } from "./perVault";
+import { ScopedRow } from "./scopedRow";
 
 /** Where the vault keeps crash-recovery copies (see `checked_recovery_dir`). */
 const RECOVERY_SUBPATH = ".excalidraw-vault/recovery";
@@ -129,13 +129,13 @@ const FolderInput = ({
 };
 
 const NewDrawingFolderSetting = () => (
-  <PerVaultRow id="new-drawing-folder" field="newDrawingFolder">
+  <ScopedRow id="new-drawing-folder" field="newDrawingFolder">
     {(value, onChange) => <FolderInput value={value} onCommit={onChange} />}
-  </PerVaultRow>
+  </ScopedRow>
 );
 
 const TemplatesFolderSetting = () => (
-  <PerVaultRow id="templates-folder" field="templatesFolder">
+  <ScopedRow id="templates-folder" field="templatesFolder">
     {(value, onChange) => (
       <FolderInput
         value={value}
@@ -145,7 +145,7 @@ const TemplatesFolderSetting = () => (
         allowEmpty={false}
       />
     )}
-  </PerVaultRow>
+  </ScopedRow>
 );
 
 const RecoveryStoreSetting = () => {

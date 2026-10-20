@@ -6,6 +6,7 @@ import {
   SETTINGS_PAGES,
   type SettingsTarget,
 } from "../components/settings/schema";
+import { setSettingsScope } from "../components/settings/settingsScope";
 import { PEN_COMMAND_HANDLERS } from "../pens/penCommands";
 import { SORT_ORDERS, type SortOrder } from "../vault/sortOrder";
 
@@ -65,6 +66,14 @@ export function appCommandHandlers(
     "file.save": actions.save,
     "settings.open": actions.openSettings,
     "settings.openHotkeys": actions.openHotkeySettings,
+    "settings.scope.global": () => {
+      setSettingsScope("global");
+      actions.openSettings();
+    },
+    "settings.scope.vault": () => {
+      setSettingsScope("vault");
+      actions.openSettings();
+    },
     "navigator.focusSearch": actions.focusSearch,
     "view.zoomIn": () => actions.zoom("in"),
     "view.zoomOut": () => actions.zoom("out"),

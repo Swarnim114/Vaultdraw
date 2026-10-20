@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactElement,
 } from "react";
 
@@ -37,12 +38,22 @@ import {
 import { clampZoom } from "../../vault/zoom";
 import { useVaultSettingsView } from "../../vault/useVaultSettingsView";
 
+import {
+  getSettingsScope,
+  setSettingsScope,
+  subscribeSettingsScope,
+  type SettingsScope,
+} from "./settingsScope";
+
 import type { LinksSettings } from "../../links/types";
 import type { TagsSettings } from "../../tags/types";
 import type { UseVaultSettings } from "../../vault/useVaultSettings";
 import type { VaultPreferences } from "../../vault/preferences";
 import type { VaultInfo } from "../../vault/types";
-import type { VaultField } from "../../vault/vaultSettings";
+import type {
+  EffectiveVaultSettings,
+  VaultField,
+} from "../../vault/vaultSettings";
 
 export type EditorDefaults = ReturnType<typeof getEditorDefaults>;
 
@@ -94,13 +105,21 @@ export interface SettingsContextValue {
 
   /** Read-only view of the per-vault store (overrides, effective values). */
   vaultSettings: UseVaultSettings;
-  /** Edit a per-vault field in whichever layer is active. */
-  setPerVaultValue: <F extends VaultField>(
+  /**
+   * Which layer Settings edits. "vault" only while a writable vault is open;
+   * otherwise "global" whatever was chosen.
+   */
+  scope: SettingsScope;
+  setScope: (scope: SettingsScope) => void;
+  /** Edit a per-vault field in the current scope. */
+  setScopedValue: <F extends VaultField>(
     field: F,
     value: VaultPreferences[F],
   ) => void;
-  /** On: store the effective value in the vault; off: use the global one. */
-  setPerVaultStored: (field: VaultField, stored: boolean) => void;
+  /** The value shown in the current scope (global value, or effective one). */
+  scopedValue: <F extends VaultField>(field: F) => EffectiveVaultSettings[F];
+  /** Remove the vault's override of `field` (the global value applies). */
+  resetToGlobal: (field: VaultField) => void;
 
   defaults: EditorDefaults;
   updateDefaults: (partial: Parameters<typeof setEditorDefaults>[0]) => void;
@@ -305,22 +324,31 @@ export const useSettingsController = ({
     );
   };
 
-  const setPerVaultValue = <F extends VaultField>(
+  const chosenScope = useSyncExternalStore(
+    subscribeSettingsScope,
+    getSettingsScope,
+  );
+  const scope: SettingsScope =
+    vault && !vault.readOnly ? chosenScope : "global";
+
+  const setScopedValue = <F extends VaultField>(
     field: F,
     value: VaultPreferences[F],
   ) => {
-    if (vaultSettings.isOverridden(field)) {
+    if (scope === "vault") {
       void vaultSettings.setOverride(field, value);
     } else {
       updatePreferences({ [field]: value }, win);
     }
   };
 
-  const setPerVaultStored = (field: VaultField, stored: boolean) => {
-    void vaultSettings.setOverride(
-      field,
-      stored ? vaultSettings.effective[field] : null,
-    );
+  const scopedValue = <F extends VaultField>(
+    field: F,
+  ): EffectiveVaultSettings[F] =>
+    (scope === "vault" ? vaultSettings.effective : vaultSettings.global)[field];
+
+  const resetToGlobal = (field: VaultField) => {
+    void vaultSettings.setOverride(field, null);
   };
 
   const updateDefaults = (partial: Parameters<typeof setEditorDefaults>[0]) => {
@@ -361,8 +389,11 @@ export const useSettingsController = ({
     setTags,
     pickDrawing,
     vaultSettings,
-    setPerVaultValue,
-    setPerVaultStored,
+    scope,
+    setScope: setSettingsScope,
+    setScopedValue,
+    scopedValue,
+    resetToGlobal,
     defaults,
     updateDefaults,
     autosaveDelay,
