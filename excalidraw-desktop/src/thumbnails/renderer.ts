@@ -13,19 +13,32 @@ export interface ThumbnailRenderer {
   clear(): void;
 }
 
+/** Per renderer: SVG data URLs can be large, so the count cap alone is not enough. */
+export const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
+
 export const createThumbnailRenderer = (
-  opts: { renderSvg?: RenderSvg; maxCache?: number } = {},
+  opts: { renderSvg?: RenderSvg; maxCache?: number; maxBytes?: number } = {},
 ): ThumbnailRenderer => {
   const renderSvg = opts.renderSvg ?? renderSceneToSvgDataUrl;
   const maxCache = opts.maxCache ?? 300;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
   const cache = new Map<string, string | null>();
+  let bytes = 0; // sum of cached string lengths
   const queue = createJobQueue();
 
-  const remember = (key: string, value: string | null) => {
+  const forget = (key: string) => {
+    bytes -= cache.get(key)?.length ?? 0;
     cache.delete(key);
+  };
+
+  /** Evicts least-recently-used entries past the count cap or the byte budget. */
+  const remember = (key: string, value: string | null) => {
+    forget(key);
     cache.set(key, value);
-    while (cache.size > maxCache) {
-      cache.delete(cache.keys().next().value as string);
+    bytes += value?.length ?? 0;
+    // The newest entry always stays, even if it alone exceeds the byte budget.
+    while (cache.size > 1 && (cache.size > maxCache || bytes > maxBytes)) {
+      forget(cache.keys().next().value as string);
     }
   };
 
@@ -49,6 +62,9 @@ export const createThumbnailRenderer = (
       });
     },
     cancel: (key) => queue.cancel(key),
-    clear: () => cache.clear(),
+    clear: () => {
+      cache.clear();
+      bytes = 0;
+    },
   };
 };
