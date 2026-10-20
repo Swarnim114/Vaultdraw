@@ -511,14 +511,41 @@ export async function runDesktopSmoke(): Promise<void> {
         let chosen: VaultInfo | null = null;
         try {
           button("Open Vault Folder").click();
-          vaultForReport = await waitFor("native test vault", () => {
-            const path =
+          try {
+            vaultForReport = await waitFor("native test vault", () => {
+              const path =
+                root.querySelector<HTMLElement>("[data-vault-path]")?.dataset
+                  .vaultPath;
+              return path === env.vaultPath
+                ? { handle: "", path, name: "", readOnly: false }
+                : null;
+            });
+          } catch (error) {
+            // Say what the screen showed instead of only that it timed out.
+            const seen =
               root.querySelector<HTMLElement>("[data-vault-path]")?.dataset
                 .vaultPath;
-            return path === env.vaultPath
-              ? { handle: "", path, name: "", readOnly: false }
-              : null;
-          });
+            const settled = chosenPromise
+              ? await Promise.race([
+                  (chosenPromise as Promise<VaultInfo | null>).then(
+                    (info) => `chooseVault -> ${JSON.stringify(info)}`,
+                    (e) => `chooseVault rejected: ${String(e)}`,
+                  ),
+                  new Promise<string>((r) =>
+                    win.setTimeout(() => r("chooseVault pending"), 500),
+                  ),
+                ])
+              : "chooseVault never called";
+            throw new Error(
+              `${String(error)}; expected ${env.vaultPath}, saw ${
+                seen ?? "none"
+              }; ${settled}; onboarding: ${
+                root
+                  .querySelector(".vault-onboarding")
+                  ?.textContent?.slice(0, 300) ?? "gone"
+              }`,
+            );
+          }
           const interceptedPromise = await waitFor(
             "UI choose_vault IPC result",
             () => chosenPromise,
