@@ -420,6 +420,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["drawingOpen", "writable"],
   },
   {
+    id: "file.importFile",
+    title: "Import: File…",
+    category: "File",
+    keys: { default: [] },
+    when: ["drawingOpen", "writable"],
+  },
+  {
     id: "file.saveCopy",
     title: "Save a copy",
     category: "Export",

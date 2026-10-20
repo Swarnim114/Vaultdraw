@@ -859,6 +859,22 @@ class App extends React.Component<AppProps, AppState> {
           this.onInsertElements(distributeLibraryItemsOnSquareGrid(items));
         }
       },
+      insertImages: async (files, scenePoint) => {
+        const images = files.filter((file) => isSupportedImageFile(file));
+        if (!images.length || !this.isToolSupported("image")) {
+          return;
+        }
+        const at =
+          scenePoint ??
+          viewportCoordsToSceneCoords(
+            {
+              clientX: this.state.width / 2 + this.state.offsetLeft,
+              clientY: this.state.height / 2 + this.state.offsetTop,
+            },
+            this.state,
+          );
+        await this.insertImages(images, at.x, at.y);
+      },
       getFiles: () => this.files,
       getName: this.getName,
       registerAction: (action: Action) => {
@@ -2668,20 +2684,21 @@ class App extends React.Component<AppProps, AppState> {
                               </ElementCanvasButtons>
                             )}
 
-                          {this.isDefaultUIEnabled() && this.state.contextMenu && (
-                            <ContextMenu
-                              items={this.state.contextMenu.items}
-                              top={this.state.contextMenu.top}
-                              left={this.state.contextMenu.left}
-                              actionManager={this.actionManager}
-                              onClose={(callback) => {
-                                this.setState({ contextMenu: null }, () => {
-                                  this.focusContainer();
-                                  callback?.();
-                                });
-                              }}
-                            />
-                          )}
+                          {this.isDefaultUIEnabled() &&
+                            this.state.contextMenu && (
+                              <ContextMenu
+                                items={this.state.contextMenu.items}
+                                top={this.state.contextMenu.top}
+                                left={this.state.contextMenu.left}
+                                actionManager={this.actionManager}
+                                onClose={(callback) => {
+                                  this.setState({ contextMenu: null }, () => {
+                                    this.focusContainer();
+                                    callback?.();
+                                  });
+                                }}
+                              />
+                            )}
                           <StaticCanvas
                             canvas={this.canvas}
                             rc={this.rc}
@@ -11854,7 +11871,11 @@ class App extends React.Component<AppProps, AppState> {
       },
       () => {
         this.setState({
-          contextMenu: { top, left, items: this.getContextMenuItems(type) },
+          contextMenu: {
+            top,
+            left,
+            items: this.getContextMenuItems(type, { x, y }),
+          },
         });
       },
     );
@@ -11986,6 +12007,7 @@ class App extends React.Component<AppProps, AppState> {
 
   private getContextMenuItems = (
     type: "canvas" | "element",
+    scenePoint: { x: number; y: number },
   ): ContextMenuItems => {
     const options: ContextMenuItems = [];
 
@@ -12007,6 +12029,7 @@ class App extends React.Component<AppProps, AppState> {
 
       return [
         actionPaste,
+        ...(this.props.canvasContextMenuItems?.(scenePoint) ?? []),
         CONTEXT_MENU_SEPARATOR,
         actionCopyAsPng,
         actionCopyAsSvg,

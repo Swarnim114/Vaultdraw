@@ -30,6 +30,8 @@ import type {
   ImageExportRequest,
 } from "@excalidraw/excalidraw/types";
 
+import { isPdfFile } from "../canvasImport/importFiles";
+import { useCanvasImportMenu } from "../canvasImport/useCanvasImportMenu";
 import { CommandMenuItem } from "../commands/CommandMenuItem";
 import { GRAPH_COMMAND_IDS } from "../commands/graphCommands";
 import { IconGraph, IconHistory, IconLibrary } from "../components/Icons";
@@ -68,6 +70,7 @@ import { renderImageExport } from "./imageExport";
 import { getSaveSignature } from "./saveSignature";
 
 import type { EditorLinksWiring } from "./links/useVaultEditorLinks";
+import type { ScenePoint } from "../canvasImport/useCanvasImport";
 import type { SettingsTarget } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
 import type { LibraryRepository } from "../library/types";
@@ -104,6 +107,8 @@ type Props = {
   links?: EditorLinksWiring;
   /** PDF import (menu item, dropped PDFs); omit for none. */
   pdfImport?: { start: () => void; openFile: (file: File) => void };
+  /** Canvas right-click "Import file…" (PDF or images at that point). */
+  onImportFile?: (at?: ScenePoint) => unknown;
 };
 
 type Snapshot = Parameters<
@@ -130,6 +135,7 @@ const VaultEditorComponent = ({
   library,
   links,
   pdfImport,
+  onImportFile,
 }: Props) => {
   const host = useRef<HTMLDivElement | null>(null);
   const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
@@ -212,6 +218,10 @@ const VaultEditorComponent = ({
     );
   }, []);
 
+  const canvasContextMenuItems = useCanvasImportMenu(
+    onImportFile,
+    !readOnly && !disabled,
+  );
   const pdfImportRef = useRef(pdfImport);
   pdfImportRef.current = pdfImport;
   const hasPdfImport = !!pdfImport;
@@ -221,9 +231,7 @@ const VaultEditorComponent = ({
 
   const guardSceneDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     // A dropped PDF opens the import dialog instead of Excalidraw's handling.
-    const pdf = Array.from(event.dataTransfer.files).find(
-      (file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name),
-    );
+    const pdf = Array.from(event.dataTransfer.files).find(isPdfFile);
     if (pdf && pdfImportRef.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -665,6 +673,7 @@ const VaultEditorComponent = ({
         onInitialize={onInitialize}
         onExcalidrawAPI={onExcalidrawAPI}
         onImageEdit={formula.onImageEdit}
+        canvasContextMenuItems={canvasContextMenuItems}
         validateEmbeddable={false}
         viewModeEnabled={readOnly}
         interaction={disabled ? false : undefined}

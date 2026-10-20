@@ -99,6 +99,7 @@ import VaultEditor from "./editor/VaultEditor";
 import { getEditorApi } from "./editor/editorApi";
 import { desktopPdfBridge } from "./pdfImport/DesktopPdfBridge";
 import { usePdfImport } from "./pdfImport/usePdfImport";
+import { useCanvasImport } from "./canvasImport/useCanvasImport";
 
 import { VaultHeader } from "./components/VaultHeader";
 import {
@@ -1610,6 +1611,12 @@ export const VaultApp = ({
     () => ({ start: startPdfImport, openFile: openPdfFile }),
     [startPdfImport, openPdfFile],
   );
+  const importFile = useCanvasImport({
+    getApi: () => (activeDoc ? getEditorApi(activeDoc.id) : undefined),
+    getDocument: () => doc ?? document,
+    openPdf: openPdfFile,
+    notify: (message) => setGlobalAlert({ message, type: "error" }),
+  });
 
   const runnerRef = useRef<CommandRunner | null>(null);
   const idle = !isBusy && !isClosing;
@@ -1670,6 +1677,7 @@ export const VaultApp = ({
       }
     },
     importPdf: startPdfImport,
+    importFile: () => importFile(),
     saveActiveAsTemplate: () => {
       if (activeDoc) {
         templates.requestSave(activeDoc.path);
@@ -2023,6 +2031,7 @@ export const VaultApp = ({
                 library={libraryBundle}
                 links={editorLinks}
                 pdfImport={pdfControls}
+                onImportFile={importFile}
               />
             </div>
           ) : (

@@ -16,7 +16,24 @@ import type { Action } from "../actions/types";
 
 import type { TranslationKeys } from "../i18n";
 
-export type ContextMenuItem = typeof CONTEXT_MENU_SEPARATOR | Action;
+/**
+ * Vaultdraw: an item the host adds to the context menu (plain label, its own
+ * shortcut text, runs `onSelect` once the menu has closed).
+ */
+export type HostContextMenuItem = {
+  name: string;
+  label: string;
+  shortcut?: string;
+  onSelect: () => void;
+};
+
+export type ContextMenuItem =
+  | typeof CONTEXT_MENU_SEPARATOR
+  | Action
+  | HostContextMenuItem;
+
+const isHostItem = (item: ContextMenuItem): item is HostContextMenuItem =>
+  typeof item === "object" && "onSelect" in item;
 
 export type ContextMenuItems = (ContextMenuItem | false | null | undefined)[];
 
@@ -39,6 +56,7 @@ export const ContextMenu = React.memo(
       if (
         item &&
         (item === CONTEXT_MENU_SEPARATOR ||
+          isHostItem(item) ||
           !item.predicate ||
           item.predicate(
             elements,
@@ -77,6 +95,23 @@ export const ContextMenu = React.memo(
                 return null;
               }
               return <hr key={idx} className="context-menu-item-separator" />;
+            }
+
+            if (isHostItem(item)) {
+              return (
+                <li
+                  key={idx}
+                  data-testid={item.name}
+                  onClick={() => onClose(item.onSelect)}
+                >
+                  <button type="button" className="context-menu-item">
+                    <div className="context-menu-item__label">{item.label}</div>
+                    <kbd className="context-menu-item__shortcut">
+                      {item.shortcut ?? ""}
+                    </kbd>
+                  </button>
+                </li>
+              );
             }
 
             const actionName = item.name;

@@ -38,6 +38,8 @@ export interface AppCommandActions {
   setSyncCanvas(on: boolean): void;
   exportActive(format: "png" | "svg" | "pdf" | "copy"): void | Promise<void>;
   importPdf(): void | Promise<void>;
+  /** Pick PDFs/images: PDF -> import dialog, images -> viewport centre. */
+  importFile(): void | Promise<void>;
   saveActiveAsTemplate(): void;
   searchTags(): void;
   newFolder(): void;
@@ -85,6 +87,7 @@ export function appCommandHandlers(
     "file.exportSvg": () => actions.exportActive("svg"),
     "file.exportPdf": () => actions.exportActive("pdf"),
     "file.importPdf": actions.importPdf,
+    "file.importFile": actions.importFile,
     "file.saveCopy": () => actions.exportActive("copy"),
     "templates.saveDrawing": actions.saveActiveAsTemplate,
     "navigator.searchTags": actions.searchTags,

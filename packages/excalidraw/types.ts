@@ -64,7 +64,10 @@ import type App from "./components/App";
 import type { BackgroundPattern } from "./data/backgroundPattern";
 import type { PageSetup } from "./data/pageSetup";
 import type Library from "./data/library";
-import type { ContextMenuItems } from "./components/ContextMenu";
+import type {
+  ContextMenuItems,
+  HostContextMenuItem,
+} from "./components/ContextMenu";
 import type { SnapLine } from "./snapping";
 import type { ImportedDataState } from "./data/types";
 import type { ExportedElements } from "./data/index";
@@ -1119,6 +1122,15 @@ export interface ExcalidrawProps {
    * built-in crop editor.
    */
   onImageEdit?: (element: ExcalidrawImageElement) => boolean;
+  /**
+   * Vaultdraw: extra items for the empty-canvas context menu (shown after
+   * Paste), given the scene point that was right-clicked. Keep it stable
+   * (memoised); it runs only when the menu opens.
+   */
+  canvasContextMenuItems?: (scenePoint: {
+    x: number;
+    y: number;
+  }) => readonly HostContextMenuItem[];
   onPointerDown?: (
     activeTool: AppState["activeTool"],
     pointerDownState: PointerDownState,
@@ -1518,6 +1530,14 @@ export interface ExcalidrawImperativeAPI {
    * selected), exactly like picking them in the library or palette.
    */
   insertLibraryItems: (items: LibraryItems) => void;
+  /**
+   * Insert image files (laid out on a grid, selected) at a scene point,
+   * default the viewport centre, exactly like dropping them on the canvas.
+   */
+  insertImages: (
+    files: File[],
+    scenePoint?: { x: number; y: number },
+  ) => Promise<void>;
   getFiles: () => InstanceType<typeof App>["files"];
   getName: InstanceType<typeof App>["getName"];
   setViewport: InstanceType<typeof App>["viewport"]["setViewport"];

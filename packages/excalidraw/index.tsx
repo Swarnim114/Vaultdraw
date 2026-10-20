@@ -111,6 +111,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     generateIdForFile,
     onLinkOpen,
     onImageEdit,
+    canvasContextMenuItems,
     generateLinkForSelection,
     onPointerDown,
     onPointerUp,
@@ -262,6 +263,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           generateIdForFile={generateIdForFile}
           onLinkOpen={onLinkOpen}
           onImageEdit={onImageEdit}
+          canvasContextMenuItems={canvasContextMenuItems}
           generateLinkForSelection={generateLinkForSelection}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
