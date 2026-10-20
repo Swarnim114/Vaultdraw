@@ -583,6 +583,9 @@ let firstTapPosition: { x: number; y: number } | null = null;
 let isDraggingScrollBar: boolean = false;
 let currentScrollBars: ScrollBars = { horizontal: null, vertical: null };
 let touchTimeout = 0;
+// Vaultdraw: the element bitmap cache is a module singleton shared by every editor, so
+// it is only released when the last mounted editor goes away.
+let mountedEditors = 0;
 let invalidateContextMenu = false;
 
 /**
@@ -3902,6 +3905,7 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   public async componentDidMount() {
+    mountedEditors++;
     this.unmounted = false;
     this.api = this.createExcalidrawAPI();
 
@@ -4000,8 +4004,12 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   public componentWillUnmount() {
-    // Vaultdraw: free this scene's element bitmaps promptly
-    clearElementCanvasCache();
+    // Vaultdraw: free the element bitmaps promptly, but not while another editor
+    // (e.g. the main one behind a history/link preview) still draws from the cache
+    if (--mountedEditors <= 0) {
+      mountedEditors = 0;
+      clearElementCanvasCache();
+    }
     // we're recreating the api object reference so that the
     // <ExcalidrawAPIContext.Provider/> picks up on it
     this.api = { ...this.api, isDestroyed: true };
