@@ -117,7 +117,10 @@ export async function runThumbnailsSmoke(ctx: ThumbnailsSmokeContext) {
     }
 
     await store.clear(handle);
-    const after = await loadImage(url);
+    // The URL names immutable content, so WebKit's in-memory image cache may
+    // still answer it without asking the scheme handler; a query (ignored by
+    // the handler, which reads only the path) makes it a new cache key.
+    const after = await loadImage(`${url}?after-clear=${Date.now()}`);
     if (after) {
       throw new Error("vdthumb still served after thumbs_clear");
     }
