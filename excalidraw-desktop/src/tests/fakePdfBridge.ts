@@ -18,6 +18,8 @@ export type FakePdfBridgeOptions = {
   failPages?: number[];
   /** Error code thrown by open/pick (e.g. PDF_ENCRYPTED). */
   openError?: string;
+  /** Opened docs come back `locked` until `unlock` gets this password. */
+  password?: string;
   /** jsdom fallback: encoded bytes per pixel (default 0.01). */
   bytesPerPx?: number;
   /** Lines of body text per page (perf: realistic encoded sizes). Default 0. */
@@ -47,6 +49,10 @@ export class FakePdfBridge implements PdfBridge {
   delayMs: number;
   failPages: Set<number>;
   openError: string | null;
+  /** Non-null: new docs are locked until unlocked with this password. */
+  password: string | null;
+  /** Passwords `unlock` was called with (tests; the real bridge never keeps them). */
+  readonly unlockAttempts: string[] = [];
   defaultPages: PdfPageInfo[];
   bytesPerPx: number;
   textLines: number;
@@ -61,12 +67,14 @@ export class FakePdfBridge implements PdfBridge {
 
   private nextToken = 1;
   private docs = new Map<number, PdfInfo>();
+  private locked = new Set<number>();
 
   constructor(options: FakePdfBridgeOptions = {}) {
     this.defaultPages = options.pages ?? makePages(3);
     this.delayMs = options.delayMs ?? 0;
     this.failPages = new Set(options.failPages ?? []);
     this.openError = options.openError ?? null;
+    this.password = options.password ?? null;
     this.bytesPerPx = options.bytesPerPx ?? 0.01;
     this.textLines = options.textLines ?? 0;
   }
@@ -82,8 +90,26 @@ export class FakePdfBridge implements PdfBridge {
     };
     this.docs.set(info.token, info);
     this.opened.push(info.token);
-    return info;
+    return this.password === null ? info : this.lock(info);
   }
+
+  private lock(info: PdfInfo): PdfInfo {
+    this.locked.add(info.token);
+    return { ...info, pageCount: 0, pages: [], locked: true };
+  }
+
+  unlock = async (token: number, password: string): Promise<PdfInfo> => {
+    this.unlockAttempts.push(password);
+    const doc = this.docs.get(token);
+    if (!doc || this.closes.includes(token)) {
+      throw codeError("PDF_BAD_TOKEN");
+    }
+    if (this.locked.has(token) && password !== this.password) {
+      throw codeError("PDF_BAD_PASSWORD");
+    }
+    this.locked.delete(token);
+    return doc;
+  };
 
   pick = async (): Promise<PdfInfo | null> => {
     if (this.openError) {
@@ -94,9 +120,12 @@ export class FakePdfBridge implements PdfBridge {
     if (!next) {
       return null;
     }
+    if (next.locked) {
+      return next; // makeDoc already registered and locked it
+    }
     this.docs.set(next.token, next);
     this.opened.push(next.token);
-    return next;
+    return this.password === null ? next : this.lock(next);
   };
 
   openBytes = async (name: string, _bytes: Uint8Array): Promise<PdfInfo> => {
@@ -116,6 +145,9 @@ export class FakePdfBridge implements PdfBridge {
     if (!doc || this.closes.includes(token)) {
       throw codeError("PDF_BAD_TOKEN");
     }
+    if (this.locked.has(token)) {
+      throw codeError("PDF_ENCRYPTED");
+    }
     if (this.delayMs) {
       await new Promise((r) => setTimeout(r, this.delayMs));
     }
@@ -126,9 +158,17 @@ export class FakePdfBridge implements PdfBridge {
     const long = Math.max(page.widthPt, page.heightPt);
     const w = Math.max(1, Math.round((page.widthPt / long) * opts.maxSide));
     const h = Math.max(1, Math.round((page.heightPt / long) * opts.maxSide));
-    return hasCanvas()
-      ? drawPage(w, h, index + 1, opts.format, opts.quality, this.textLines)
+    const bytes = hasCanvas()
+      ? await drawPage(
+          w,
+          h,
+          index + 1,
+          opts.format,
+          opts.quality,
+          this.textLines,
+        )
       : fallbackBytes(w, h, index, opts.format, this.bytesPerPx);
+    return withMagic(bytes, opts.format);
   };
 
   close = async (token: number): Promise<void> => {
@@ -177,6 +217,15 @@ const drawPage = (
   );
 };
 
+/** Canvas mocks return blank bytes: stamp the format's magic so mime sniffing works. */
+const withMagic = (bytes: Uint8Array, format: PdfImageFormat): Uint8Array => {
+  const magic = format === "png" ? [0x89, 0x50, 0x4e, 0x47] : [0xff, 0xd8];
+  if (bytes.length >= magic.length && !magic.every((b, i) => bytes[i] === b)) {
+    bytes.set(magic);
+  }
+  return bytes;
+};
+
 /** jsdom: deterministic bytes whose length scales with the pixel count. */
 const fallbackBytes = (
   w: number,
@@ -190,6 +239,10 @@ const fallbackBytes = (
   for (let i = 0; i < length; i++) {
     bytes[i] = (i * 31 + index * 7 + w) & 0xff;
   }
-  bytes[0] = format === "png" ? 0x89 : 0xff;
+  if (format === "png") {
+    bytes.set([0x89, 0x50, 0x4e, 0x47]);
+  } else {
+    bytes[0] = 0xff;
+  }
   return bytes;
 };

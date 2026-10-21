@@ -47,10 +47,12 @@ const prepare = (
     delayMs?: number;
     failPages?: number[];
     openError?: string;
+    password?: string;
   } = {},
 ) =>
   page.evaluate((opts) => {
     const b = (window as any).__pdfBridge;
+    b.password = opts.password ?? null;
     const pages = Array.from({ length: opts.pages ?? 3 }, () => ({
       widthPt: 595,
       heightPt: 842,
@@ -273,6 +275,46 @@ test("encrypted PDF shows the password message and no dialog", async ({
   await runCommand(page, COMMAND);
   await expect(page.getByRole("alert")).toContainText(/password-protected/);
   await expect(dialog(page)).toHaveCount(0);
+  expect((await scene(page)).images).toHaveLength(0);
+});
+
+test("password-protected PDF: wrong password is refused, the right one imports the pages", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await seedAndOpen(page, DRAWING);
+  await prepare(page, { pages: 2, password: "s3cret" });
+  await runCommand(page, COMMAND);
+  const d = dialog(page);
+  await expect(d).toContainText("password-protected");
+  const field = d.getByLabel("Password");
+  await expect(field).toHaveAttribute("type", "password");
+  await expect(field).toBeFocused();
+  await field.fill("wrong");
+  await field.press("Enter");
+  await expect(d.getByRole("alert")).toContainText("Wrong password");
+  expect((await scene(page)).images).toHaveLength(0);
+  await field.fill("s3cret");
+  await field.press("Enter");
+  await expect(d.getByLabel("Password")).toHaveCount(0);
+  await expect(d).toContainText("2 pages");
+  await d.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(page.locator(".vd-toast")).toContainText("Imported 2 pages");
+  await waitForImages(page, 2);
+  expect(errors).toEqual([]);
+});
+
+test("password prompt: Escape cancels without importing and closes the document", async ({
+  page,
+}) => {
+  await seedAndOpen(page, DRAWING);
+  await prepare(page, { password: "s3cret" });
+  await runCommand(page, COMMAND);
+  await expect(dialog(page).getByLabel("Password")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toHaveCount(0);
+  const st = await bridgeState(page);
+  expect(st.closes).toContain(st.token);
   expect((await scene(page)).images).toHaveLength(0);
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
@@ -6,6 +6,7 @@ import { Dialog } from "../components/Dialog";
 
 import { currentDrawingBytes, estimateImport } from "./budget";
 import { planPdfPlacement } from "./layout";
+import { pdfErrorMessage } from "./pdfErrors";
 import { parsePageRange } from "./pageRange";
 import { MAX_DRAWING_BYTES, PDF_IMPORT_LIMITS } from "./types";
 
@@ -23,6 +24,8 @@ type Props = {
   onImport: (indices: number[]) => void;
   /** Closes the dialog; while importing it aborts the import. */
   onCancel: () => void;
+  /** Unlocks a password-protected PDF; rejects with PDF_BAD_PASSWORD when wrong. */
+  onUnlock?: (password: string) => Promise<void>;
 };
 
 const MB = 1024 * 1024;
@@ -33,7 +36,120 @@ const formatMb = (bytes: number) =>
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export const PdfImportDialog = ({
+const PasswordPrompt = ({
+  name,
+  onUnlock,
+  onCancel,
+}: {
+  name: string;
+  onUnlock?: (password: string) => Promise<void>;
+  onCancel: () => void;
+}) => {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+
+  const submit = async () => {
+    if (checking || password === "" || !onUnlock) {
+      return;
+    }
+    setChecking(true);
+    setError(null);
+    try {
+      await onUnlock(password);
+    } catch (err) {
+      if (alive.current) {
+        setError(pdfErrorMessage(err));
+        setChecking(false);
+        input.current?.focus();
+        input.current?.select();
+      }
+    }
+  };
+
+  return (
+    <Dialog
+      title="Import PDF"
+      titleId="pdf-dialog-title"
+      className="pdf-dialog"
+      testId="pdf-dialog"
+      onClose={onCancel}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+      footer={
+        <>
+          <button type="button" className="vault-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="vault-btn vault-btn--primary"
+            disabled={checking || password === ""}
+          >
+            Unlock
+          </button>
+        </>
+      }
+    >
+      <div className="pdf-dialog__body">
+        <div className="pdf-dialog__file">
+          <strong className="pdf-dialog__name" title={name}>
+            {name}
+          </strong>
+        </div>
+        <div className="pdf-dialog__status">
+          This PDF is password-protected. Enter its password to import it.
+        </div>
+        <label className="pdf-dialog__row">
+          <span className="pdf-dialog__label">Password</span>
+          <input
+            ref={input}
+            autoFocus
+            type="password"
+            className="vault-input"
+            value={password}
+            disabled={checking}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={error !== null}
+            aria-describedby="pdf-dialog-password-status"
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <div id="pdf-dialog-password-status" className="pdf-dialog__status">
+          {error && (
+            <div className="pdf-dialog__error" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
+};
+
+export const PdfImportDialog = (props: Props) =>
+  props.info.locked ? (
+    <PasswordPrompt
+      name={props.info.name}
+      onUnlock={props.onUnlock}
+      onCancel={props.onCancel}
+    />
+  ) : (
+    <ImportOptions {...props} />
+  );
+
+const ImportOptions = ({
   info,
   settings,
   api,

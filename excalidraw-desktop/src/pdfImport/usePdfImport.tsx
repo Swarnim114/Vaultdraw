@@ -9,6 +9,7 @@ import {
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
+import { pdfErrorMessage } from "./pdfErrors";
 import { PdfImportAborted } from "./types";
 
 import type {
@@ -21,6 +22,8 @@ import type {
 
 // The dialog and the importer stay out of the main chunk.
 const PdfImportDialog = lazy(() => import("./PdfImportDialog"));
+
+export { pdfErrorMessage };
 
 export type PdfImportNotify = (message: string, type: "error" | "info") => void;
 
@@ -45,20 +48,6 @@ type Session = {
   info: PdfInfo;
   api: ExcalidrawImperativeAPI;
   settings: PdfImportSettings;
-};
-
-export const pdfErrorMessage = (err: unknown): string => {
-  const code = (err as { code?: unknown } | null)?.code;
-  if (code === "PDF_ENCRYPTED") {
-    return "This PDF is password-protected; Vaultdraw can't import it yet.";
-  }
-  if (code === "PDF_INVALID") {
-    return "Not a readable PDF.";
-  }
-  if (code === "PDF_TOO_LARGE") {
-    return "This PDF is too large to import.";
-  }
-  return "Couldn't import the PDF.";
 };
 
 const pages = (n: number) => `${n} page${n === 1 ? "" : "s"}`;
@@ -165,6 +154,16 @@ export const usePdfImport = ({
     setSession(null);
   }, [closeToken]);
 
+  // Password for a locked PDF; rejects (PDF_BAD_PASSWORD) so the dialog can say so.
+  const unlock = useCallback(async (password: string) => {
+    const token = tokenRef.current;
+    if (token === null) {
+      return;
+    }
+    const info = await live.current.bridge.unlock(token, password);
+    setSession((current) => (current ? { ...current, info } : current));
+  }, []);
+
   const runImport = useCallback(
     async (indices: number[]) => {
       if (!session || abortRef.current) {
@@ -224,6 +223,7 @@ export const usePdfImport = ({
         progress={progress}
         onImport={(indices) => void runImport(indices)}
         onCancel={cancel}
+        onUnlock={unlock}
       />
     </Suspense>
   ) : null;

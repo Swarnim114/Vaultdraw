@@ -13,6 +13,11 @@ export type PdfInfo = {
   pageCount: number;
   pages: PdfPageInfo[];
   byteSize: number;
+  /**
+   * Encrypted and the empty password failed: ask for one and call `unlock`.
+   * Such an info has no pages yet; `unlock` returns the full info (same token).
+   */
+  locked?: boolean;
 };
 
 export type PdfImageFormat = "jpeg" | "png";
@@ -36,6 +41,8 @@ export interface PdfBridge {
     index: number,
     opts: PdfRenderOptions,
   ): Promise<Uint8Array>;
+  /** Unlocks a `locked` document; rejects with PDF_BAD_PASSWORD when wrong. */
+  unlock(token: number, password: string): Promise<PdfInfo>;
   close(token: number): Promise<void>;
 }
 
@@ -80,6 +87,7 @@ export const DRAWING_BYTES_HEADROOM = 0.9;
 /** Error codes from the native side (NativeError.code). */
 export type PdfErrorCode =
   | "PDF_ENCRYPTED"
+  | "PDF_BAD_PASSWORD"
   | "PDF_INVALID"
   | "PDF_PAGE_FAILED"
   | "PDF_BAD_TOKEN"

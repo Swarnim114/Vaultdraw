@@ -90,6 +90,23 @@ describe("importPdf", () => {
     expect(bridge.closes).toEqual([info.token]);
   });
 
+  it("labels a PNG answer to a JPEG request as image/png (gray pages)", async () => {
+    const api = makeApi();
+    const { bridge, info, indices } = setupImport(1);
+    bridge.renderPage = async () =>
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    await importPdf({
+      api,
+      bridge,
+      info,
+      indices,
+      settings: { ...S, format: "jpeg" },
+    });
+    const file = api.addFiles.mock.calls[0][0][0];
+    expect(file.mimeType).toBe("image/png");
+    expect(file.dataURL.startsWith("data:image/png;base64,")).toBe(true);
+  });
+
   it("builds data URLs with the right mime type", async () => {
     for (const format of ["jpeg", "png"] as const) {
       const api = makeApi();

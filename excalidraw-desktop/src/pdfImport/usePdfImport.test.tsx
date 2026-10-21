@@ -155,10 +155,7 @@ describe("usePdfImport", () => {
   });
 
   it.each([
-    [
-      "PDF_ENCRYPTED",
-      "This PDF is password-protected; Vaultdraw can't import it yet.",
-    ],
+    ["PDF_ENCRYPTED", "This PDF is password-protected."],
     ["PDF_INVALID", "Not a readable PDF."],
     ["PDF_BAD_TOKEN", "Couldn't import the PDF."],
   ])("maps %s to a friendly error", async (code, message) => {
@@ -167,6 +164,52 @@ describe("usePdfImport", () => {
     fireEvent.click(screen.getByText("start"));
     await waitFor(() => expect(notify).toHaveBeenCalledWith(message, "error"));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  describe("password-protected PDF", () => {
+    const prompt = async () => {
+      bridge.password = "s3cret";
+      bridge.nextPick = bridge.makeDoc("locked.pdf");
+      render(<Host />);
+      await open();
+      return screen.getByLabelText("Password") as HTMLInputElement;
+    };
+
+    it("asks for the password, rejects a wrong one, then shows the page options", async () => {
+      const field = await prompt();
+      expect(field.type).toBe("password");
+      expect(screen.getByText(/password-protected/)).toBeTruthy();
+      expect(document.activeElement).toBe(field);
+      fireEvent.change(field, { target: { value: "nope" } });
+      fireEvent.submit(field.closest("form")!);
+      expect((await screen.findByRole("alert")).textContent).toMatch(
+        /Wrong password/,
+      );
+      expect(screen.getByLabelText("Password")).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("Password"), {
+        target: { value: "s3cret" },
+      });
+      fireEvent.submit(field.closest("form")!);
+      await screen.findByText(/3 pages below the drawing/);
+      expect(screen.queryByLabelText("Password")).toBeNull();
+      expect(bridge.unlockAttempts).toEqual(["nope", "s3cret"]);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it("Cancel and Escape close the locked document without importing", async () => {
+      await prompt();
+      fireEvent.keyDown(screen.getByLabelText("Password"), { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(bridge.closes).toHaveLength(1);
+      expect(importPdf).not.toHaveBeenCalled();
+    });
+
+    it("an empty password is not submitted", async () => {
+      const field = await prompt();
+      fireEvent.submit(field.closest("form")!);
+      await act(async () => {});
+      expect(bridge.unlockAttempts).toEqual([]);
+    });
   });
 
   it("does nothing without an open drawing", async () => {

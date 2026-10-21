@@ -17,6 +17,8 @@ const MIN_SIDE: u32 = 64;
 const MAX_SIDE: u32 = 8192;
 /// Cap on w*h of one bitmap (about 64 MB at 4 bytes per pixel).
 const MAX_PIXELS: f64 = 16_000_000.0;
+/// Channel spread (0..255) up to which a pixel still counts as neutral grey.
+const NEUTRAL_TOLERANCE: u8 = 2;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +35,16 @@ pub struct PdfInfo {
     pub page_count: usize,
     pub pages: Vec<PdfPageInfo>,
     pub byte_size: u64,
+    /// Encrypted and the empty password failed: ask for a password (`pdf_unlock`); no pages yet.
+    pub locked: bool,
+}
+
+/// True when every sampled RGBX pixel is neutral (r, g, b within `tol`): a monochrome page.
+/// `rgbx` holds `h` rows of `stride` bytes, 4 bytes per pixel (alpha/skip byte ignored).
+fn is_neutral_rgbx(rgbx: &[u8], w: usize, h: usize, stride: usize, tol: u8) -> bool {
+    (0..h).all(|y| {
+        rgbx[y * stride..y * stride + w * 4].chunks_exact(4).all(|p| p[0].abs_diff(p[1]) <= tol && p[1].abs_diff(p[2]) <= tol)
+    })
 }
 
 /// Display size of a box after /Rotate (90 and 270 swap the sides).
@@ -88,7 +100,7 @@ pub(crate) mod mac {
         CFDictionary, CFMutableData, CFNumber, CFRetained, CFString, CFType, CFURL,
     };
     use objc2_core_graphics::{
-        CGBitmapContextCreate, CGBitmapContextCreateImage, CGColorSpace, CGContext, CGImage,
+        CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapContextGetBytesPerRow, CGBitmapContextGetData, CGColorSpace, CGContext, CGImage,
         CGImageAlphaInfo, CGInterpolationQuality, CGPDFBox, CGPDFDocument, CGPDFPage,
     };
     use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
@@ -199,6 +211,33 @@ pub(crate) mod mac {
         Some(ctx)
     }
 
+    /// A DeviceGray copy of the page when it is monochrome (smaller JPEG/PNG, one channel), else None.
+    fn gray_image(ctx: &CGContext, w: usize, h: usize) -> Option<CFRetained<CGImage>> {
+        let src = CGBitmapContextGetData(Some(ctx)) as *const u8;
+        let stride = CGBitmapContextGetBytesPerRow(Some(ctx));
+        if src.is_null() {
+            return None;
+        }
+        let rgbx = unsafe { std::slice::from_raw_parts(src, stride * h) };
+        if !is_neutral_rgbx(rgbx, w, h, stride, NEUTRAL_TOLERANCE) {
+            return None;
+        }
+        let space = CGColorSpace::new_device_gray()?;
+        let gray = unsafe { CGBitmapContextCreate(std::ptr::null_mut(), w, h, 8, 0, Some(&space), CGImageAlphaInfo::None.0) }?;
+        let dst = CGBitmapContextGetData(Some(&gray)) as *mut u8;
+        let dst_stride = CGBitmapContextGetBytesPerRow(Some(&gray));
+        if dst.is_null() {
+            return None;
+        }
+        for y in 0..h {
+            let row = unsafe { std::slice::from_raw_parts_mut(dst.add(y * dst_stride), w) };
+            for (x, px) in row.iter_mut().enumerate() {
+                *px = rgbx[y * stride + x * 4];
+            }
+        }
+        CGBitmapContextCreateImage(Some(&gray))
+    }
+
     fn box_tuple(page: &CGPDFPage, which: CGPDFBox) -> (f64, f64, f64, f64) {
         let r = CGPDFPage::box_rect(Some(page), which);
         (r.origin.x, r.origin.y, r.size.width, r.size.height)
@@ -222,6 +261,8 @@ pub(crate) mod mac {
     pub(super) struct Doc {
         doc: CFRetained<CGPDFDocument>,
         temp: Option<PathBuf>,
+        name: String,
+        byte_size: u64,
     }
 
     impl Drop for Doc {
@@ -235,7 +276,35 @@ pub(crate) mod mac {
     impl Doc {
         #[cfg(test)]
         pub(super) fn for_test(doc: CFRetained<CGPDFDocument>) -> Doc {
-            Doc { doc, temp: None }
+            Doc { doc, temp: None, name: String::new(), byte_size: 0 }
+        }
+
+        /// Encrypted and still locked (the empty password was refused).
+        pub(super) fn locked(&self) -> bool {
+            CGPDFDocument::is_encrypted(Some(&self.doc)) && !CGPDFDocument::is_unlocked(Some(&self.doc))
+        }
+
+        /// Tries `password`; the password is never stored or logged.
+        pub(super) fn unlock(&self, password: &str) -> bool {
+            let Ok(c) = std::ffi::CString::new(password) else { return false };
+            unsafe { CGPDFDocument::unlock_with_password(Some(&self.doc), NonNull::from(c.as_c_str()).cast()) }
+        }
+
+        /// Page sizes and counts; an unlocked document only.
+        pub(super) fn describe(&self, token: u32) -> Result<PdfInfo> {
+            let page_count = CGPDFDocument::number_of_pages(Some(&self.doc));
+            if page_count == 0 {
+                return Err(err("PDF_INVALID", "The PDF has no pages"));
+            }
+            let mut pages = Vec::with_capacity(page_count);
+            for i in 0..page_count as u32 {
+                let page = self.page(i)?;
+                let (w, h) = page_size(&page);
+                // Invalid sizes are reported here as a default and fail on render.
+                let valid = w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0;
+                pages.push(PdfPageInfo { width_pt: if valid { w } else { 612.0 }, height_pt: if valid { h } else { 792.0 } });
+            }
+            Ok(PdfInfo { token, name: self.name.clone(), page_count, pages, byte_size: self.byte_size, locked: false })
         }
 
         pub(super) fn page(&self, index: u32) -> Result<CFRetained<CGPDFPage>> {
@@ -245,22 +314,41 @@ pub(crate) mod mac {
         }
 
         pub(super) fn render(&self, index: u32, max_side: u32, format: Format, quality: f32) -> Result<Vec<u8>> {
+            if self.locked() {
+                return Err(err("PDF_ENCRYPTED", "This PDF is password protected"));
+            }
             let page = self.page(index)?;
             let (wp, hp) = page_size(&page);
             let (w, h) = target_size(wp, hp, max_side)
                 .ok_or_else(|| err("PDF_PAGE_FAILED", "The page has no valid size"))?;
-            let image = {
-                // The bitmap context is dropped before encoding: one bitmap at a time.
+            // The bitmap context is dropped before encoding: one bitmap at a time.
+            let (colour, gray) = {
                 let ctx = draw_page(&page, w, h).ok_or_else(|| err("PDF_PAGE_FAILED", "Could not create the page bitmap"))?;
-                CGBitmapContextCreateImage(Some(&ctx)).ok_or_else(|| err("PDF_PAGE_FAILED", "Could not read the page bitmap"))?
+                match gray_image(&ctx, w, h) {
+                    Some(gray) => (None, Some(gray)),
+                    None => (Some(CGBitmapContextCreateImage(Some(&ctx)).ok_or_else(|| err("PDF_PAGE_FAILED", "Could not read the page bitmap"))?), None),
+                }
             };
-            encode(&image, format, quality)
+            if let Some(gray) = gray {
+                let best = encode(&gray, format, quality)?;
+                // Monochrome text/line art is far smaller (and sharper) as a gray PNG than as a JPEG.
+                if format == Format::Jpeg {
+                    if let Ok(png) = encode(&gray, Format::Png, 1.0) {
+                        if png.len() < best.len() {
+                            return Ok(png);
+                        }
+                    }
+                }
+                return Ok(best);
+            }
+            encode(&colour.expect("colour or gray"), format, quality)
         }
     }
 
     enum Req {
         Open { path: PathBuf, name: String, temp: bool, reply: SyncSender<Result<PdfInfo>> },
         Render { token: u32, index: u32, max_side: u32, format: Format, quality: f32, reply: SyncSender<Result<Vec<u8>>> },
+        Unlock { token: u32, password: String, reply: SyncSender<Result<PdfInfo>> },
         Close { token: u32, reply: SyncSender<()> },
     }
 
@@ -274,28 +362,16 @@ pub(crate) mod mac {
             }
             let url = CFURL::from_file_path(path).ok_or_else(|| err("PDF_INVALID", "Invalid file path"))?;
             let doc = CGPDFDocument::with_url(Some(&url)).ok_or_else(|| err("PDF_INVALID", "This is not a readable PDF"))?;
-            if CGPDFDocument::is_encrypted(Some(&doc)) && !CGPDFDocument::is_unlocked(Some(&doc)) {
+            let doc = Doc { doc, temp: guard.clone(), name, byte_size };
+            if doc.locked() {
                 // Many PDFs are "encrypted" with an empty user password.
-                let empty = c"";
-                let unlocked = unsafe { CGPDFDocument::unlock_with_password(Some(&doc), NonNull::from(empty).cast()) };
-                if !unlocked {
-                    return Err(err("PDF_ENCRYPTED", "This PDF is password protected"));
+                if !doc.unlock("") {
+                    // Kept open and locked: the dialog asks for a password (`pdf_unlock`).
+                    let info = PdfInfo { token, name: doc.name.clone(), page_count: 0, pages: vec![], byte_size, locked: true };
+                    return Ok((doc, info));
                 }
             }
-            let page_count = CGPDFDocument::number_of_pages(Some(&doc));
-            if page_count == 0 {
-                return Err(err("PDF_INVALID", "The PDF has no pages"));
-            }
-            let doc = Doc { doc, temp: guard.clone() };
-            let mut pages = Vec::with_capacity(page_count);
-            for i in 0..page_count as u32 {
-                let page = doc.page(i)?;
-                let (w, h) = page_size(&page);
-                // Invalid sizes are reported here as a default and fail on render.
-                let valid = w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0;
-                pages.push(PdfPageInfo { width_pt: if valid { w } else { 612.0 }, height_pt: if valid { h } else { 792.0 } });
-            }
-            let info = PdfInfo { token, name, page_count, pages, byte_size };
+            let info = doc.describe(token)?;
             Ok((doc, info))
         })();
         if result.is_err() {
@@ -332,6 +408,15 @@ pub(crate) mod mac {
                     let out = match docs.get(&token) {
                         None => Err(err("PDF_BAD_TOKEN", "The PDF is no longer open")),
                         Some(doc) => autoreleasepool(|_| doc.render(index, max_side, format, quality)),
+                    };
+                    let _ = reply.send(out);
+                }
+                Req::Unlock { token, password, reply } => {
+                    let out = match docs.get(&token) {
+                        None => Err(err("PDF_BAD_TOKEN", "The PDF is no longer open")),
+                        Some(doc) if !doc.locked() => autoreleasepool(|_| doc.describe(token)),
+                        Some(doc) if !doc.unlock(&password) => Err(err("PDF_BAD_PASSWORD", "Wrong password")),
+                        Some(doc) => autoreleasepool(|_| doc.describe(token)),
                     };
                     let _ = reply.send(out);
                 }
@@ -400,6 +485,10 @@ pub(crate) mod mac {
             self.ask(|reply| Req::Render { token, index, max_side, format, quality, reply })?
         }
 
+        pub fn unlock(&self, token: u32, password: String) -> Result<PdfInfo> {
+            self.ask(|reply| Req::Unlock { token, password, reply })?
+        }
+
         pub fn close(&self, token: u32) -> Result<()> {
             self.ask(|reply| Req::Close { token, reply })
         }
@@ -464,6 +553,10 @@ pub(crate) mod mac {
         blocking(move || service().render(token, index, max_side, &format, quality)).await
     }
 
+    pub async fn unlock(token: u32, password: String) -> Result<PdfInfo> {
+        blocking(move || service().unlock(token, password)).await
+    }
+
     pub async fn close(token: u32) -> Result<()> {
         blocking(move || service().close(token)).await
     }
@@ -505,6 +598,27 @@ pub(crate) mod mac {
             CGPDFContextClose(Some(&ctx));
         }
 
+        /// One-page CoreGraphics PDF with a red square, encrypted: `user` opens it (empty = no
+        /// prompt), `allow_copying` false marks it copy-protected.
+        pub fn make_encrypted_pdf(path: &Path, user: &str, owner: &str, allow_copying: bool) {
+            use objc2_core_foundation::CFBoolean;
+            use objc2_core_graphics::{kCGPDFContextAllowsCopying, kCGPDFContextOwnerPassword, kCGPDFContextUserPassword};
+            let url = CFURL::from_file_path(path).unwrap();
+            let media = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(200.0, 100.0));
+            let (u, o) = (CFString::from_str(user), CFString::from_str(owner));
+            let copying = CFBoolean::new(allow_copying);
+            let aux = CFDictionary::<CFString, CFType>::from_slices(
+                &[unsafe { kCGPDFContextUserPassword }, unsafe { kCGPDFContextOwnerPassword }, unsafe { kCGPDFContextAllowsCopying }],
+                &[u.as_ref(), o.as_ref(), copying.as_ref()],
+            );
+            let ctx = unsafe { CGPDFContextCreateWithURL(Some(&url), &media, Some(aux.as_opaque())) }.unwrap();
+            unsafe { CGPDFContextBeginPage(Some(&ctx), None) };
+            CGContext::set_rgb_fill_color(Some(&ctx), 1.0, 0.0, 0.0, 1.0);
+            CGContext::fill_rect(Some(&ctx), CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(50.0, 50.0)));
+            CGPDFContextEndPage(Some(&ctx));
+            CGPDFContextClose(Some(&ctx));
+        }
+
         /// Handwritten one-page PDF with a red 50x50 square at the lower-left corner.
         pub fn raw_pdf(media: &str, extra: &str) -> Vec<u8> {
             let content = "1 0 0 rg 0 0 50 50 re f";
@@ -513,6 +627,30 @@ pub(crate) mod mac {
                 "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
                 format!("<< /Type /Page /Parent 2 0 R /MediaBox {media} {extra} /Contents 4 0 R >>"),
                 format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
+            ];
+            let mut out = b"%PDF-1.4\n".to_vec();
+            let mut offsets = vec![];
+            for (i, o) in objs.iter().enumerate() {
+                offsets.push(out.len());
+                out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+            }
+            let xref = out.len();
+            out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+            for off in offsets {
+                out.extend_from_slice(format!("{off:010} 00000 n \n").as_bytes());
+            }
+            out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
+            out
+        }
+
+        /// Like `raw_pdf` with custom page content (no colour unless the content sets it).
+        pub fn raw_pdf_with(content: &str) -> Vec<u8> {
+            let objs = [
+                "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_string(),
+                format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
             ];
             let mut out = b"%PDF-1.4\n".to_vec();
             let mut offsets = vec![];
@@ -559,6 +697,9 @@ mod native {
     pub async fn render(_token: u32, _index: u32, _max_side: u32, _format: String, _quality: f32) -> Result<Vec<u8>> {
         unsupported()
     }
+    pub async fn unlock(_token: u32, _password: String) -> Result<PdfInfo> {
+        unsupported()
+    }
     pub async fn close(_token: u32) -> Result<()> {
         unsupported()
     }
@@ -588,6 +729,11 @@ pub async fn pdf_open_bytes(request: tauri::ipc::Request<'_>) -> Result<PdfInfo>
 #[tauri::command]
 pub async fn pdf_render_page(token: u32, index: u32, max_side: u32, format: String, quality: f32) -> Result<tauri::ipc::Response> {
     native::render(token, index, max_side, format, quality).await.map(tauri::ipc::Response::new)
+}
+
+#[tauri::command]
+pub async fn pdf_unlock(token: u32, password: String) -> Result<PdfInfo> {
+    native::unlock(token, password).await
 }
 
 #[tauri::command]
@@ -762,6 +908,142 @@ mod tests {
         assert_eq!(code(s.open_bytes("big.pdf", &big)), "PDF_TOO_LARGE");
     }
 
+    #[test]
+    fn neutral_detection() {
+        // 3x2 pixels, stride 16 (4 bytes of row padding).
+        let mut buf = vec![255u8; 16 * 2];
+        assert!(is_neutral_rgbx(&buf, 3, 2, 16, 2));
+        buf[16 + 4] = 250; // r of pixel (1, 1) differs by 5 from g
+        assert!(!is_neutral_rgbx(&buf, 3, 2, 16, 2));
+        assert!(is_neutral_rgbx(&buf, 3, 2, 16, 5));
+        // padding bytes are not read as pixels
+        let mut pad = vec![255u8; 16 * 2];
+        pad[12] = 0;
+        assert!(is_neutral_rgbx(&pad, 3, 2, 16, 2));
+    }
+
+    /// Component count of a baseline JPEG (SOF0/SOF2 marker).
+    fn jpeg_components(j: &[u8]) -> u8 {
+        let mut i = 2;
+        while i + 9 < j.len() {
+            assert_eq!(j[i], 0xFF);
+            let marker = j[i + 1];
+            if marker == 0xC0 || marker == 0xC2 {
+                return j[i + 9];
+            }
+            i += 2 + usize::from(u16::from_be_bytes([j[i + 2], j[i + 3]]));
+        }
+        panic!("no SOF marker");
+    }
+
+    #[test]
+    fn monochrome_pages_encode_as_gray_and_colour_pages_stay_rgb() {
+        let dir = tempdir().unwrap();
+        let s = svc(dir.path());
+        let mono = dir.path().join("mono.pdf");
+        // text only: no red square (make_pdf always draws one), so build from raw content
+        std::fs::write(&mono, raw_pdf_with("0 g 20 20 100 40 re f 0.5 g 20 80 100 10 re f")).unwrap();
+        let info = s.open_path(&mono, "mono.pdf").unwrap();
+        let gray = s.render(info.token, 0, 400, "jpeg", 0.85).unwrap();
+        // A JPEG request returns whichever gray encoding is smaller (a PNG for line art).
+        if gray[0] == 0xFF {
+            assert_eq!(jpeg_components(&gray), 1);
+        } else {
+            assert_eq!(gray[25], 0, "gray PNG");
+        }
+        let png = s.render(info.token, 0, 400, "png", 1.0).unwrap();
+        assert_eq!(png[25], 0, "PNG colour type 0 = grayscale");
+        let colour = dir.path().join("colour.pdf");
+        std::fs::write(&colour, raw_pdf("[0 0 200 100]", "")).unwrap();
+        let info = s.open_path(&colour, "colour.pdf").unwrap();
+        let rgb = s.render(info.token, 0, 400, "jpeg", 0.85).unwrap();
+        assert_eq!(jpeg_components(&rgb), 3);
+    }
+
+    #[link(name = "ImageIO", kind = "framework")]
+    extern "C" {
+        fn CGImageSourceCreateWithData(data: *const std::ffi::c_void, options: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+        fn CGImageSourceCreateImageAtIndex(src: *mut std::ffi::c_void, index: usize, options: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+    }
+
+    /// Decodes with ImageIO (the decoder WebKit uses) into sRGB and returns pixel (x, y).
+    fn decode_pixel(bytes: &[u8], x: usize, y: usize) -> [u8; 3] {
+        use objc2_core_foundation::{CFData, CFRetained, CGPoint, CGRect, CGSize};
+        use objc2_core_graphics::{CGBitmapContextCreate, CGBitmapContextGetBytesPerRow, CGBitmapContextGetData, CGColorSpace, CGContext, CGImage, CGImageAlphaInfo};
+        use std::ptr::NonNull;
+        let data = CFData::from_bytes(bytes);
+        let image = unsafe {
+            let src = CGImageSourceCreateWithData((&*data as *const CFData).cast(), std::ptr::null());
+            assert!(!src.is_null(), "ImageIO could not open the image");
+            let raw = CGImageSourceCreateImageAtIndex(src, 0, std::ptr::null());
+            assert!(!raw.is_null(), "ImageIO could not decode the image");
+            CFRetained::from_raw(NonNull::new(raw.cast::<CGImage>()).unwrap())
+        };
+        let (w, h) = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
+        let space = CGColorSpace::with_name(Some(unsafe { objc2_core_graphics::kCGColorSpaceSRGB })).unwrap();
+        let ctx = unsafe { CGBitmapContextCreate(std::ptr::null_mut(), w, h, 8, 0, Some(&space), CGImageAlphaInfo::NoneSkipLast.0) }.unwrap();
+        CGContext::draw_image(Some(&ctx), CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64)), Some(&image));
+        let base = CGBitmapContextGetData(Some(&ctx)) as *const u8;
+        let stride = CGBitmapContextGetBytesPerRow(Some(&ctx));
+        unsafe {
+            let p = base.add(y * stride + x * 4);
+            [*p, *p.add(1), *p.add(2)]
+        }
+    }
+
+    #[test]
+    fn gray_output_decodes_with_correct_tones() {
+        let dir = tempdir().unwrap();
+        let s = svc(dir.path());
+        // 200x100 page: black block at the bottom-left, mid-gray strip above, white elsewhere.
+        let pdf = dir.path().join("tones.pdf");
+        std::fs::write(&pdf, raw_pdf_with("0 g 0 0 100 50 re f 0.5 g 100 50 100 50 re f")).unwrap();
+        let info = s.open_path(&pdf, "tones.pdf").unwrap();
+        // bitmap is 400x200 (row 0 = top); black block covers x<200, y>=100.
+        for format in ["jpeg", "png"] {
+            let bytes = s.render(info.token, 0, 400, format, 0.95).unwrap();
+            let near = |p: [u8; 3], v: i32| p.iter().all(|c| (i32::from(*c) - v).abs() <= 6) ;
+            assert!(near(decode_pixel(&bytes, 100, 150), 0), "{format}: black stays black");
+            assert!(near(decode_pixel(&bytes, 300, 50), 128), "{format}: mid gray stays mid gray (got {:?})", decode_pixel(&bytes, 300, 50));
+            assert!(near(decode_pixel(&bytes, 350, 150), 255), "{format}: white stays white");
+        }
+        // The text-like page is smallest as the gray PNG: the JPEG request returns a PNG here.
+        let png = s.render(info.token, 0, 400, "jpeg", 0.85).unwrap();
+        assert_eq!(&png[..4], &[0x89, b'P', b'N', b'G']);
+    }
+
+    #[test]
+    fn password_flow_and_restricted_pdfs() {
+        let dir = tempdir().unwrap();
+        let s = svc(dir.path());
+        let locked = dir.path().join("locked.pdf");
+        make_encrypted_pdf(&locked, "secret", "owner", true);
+        let info = s.open_path(&locked, "locked.pdf").unwrap();
+        assert!(info.locked && info.page_count == 0 && info.pages.is_empty());
+        assert!(serde_json::to_value(&info).unwrap()["locked"] == true);
+        assert_eq!(code(s.render(info.token, 0, 200, "jpeg", 0.8)), "PDF_ENCRYPTED");
+        assert_eq!(code(s.unlock(info.token, "nope".into())), "PDF_BAD_PASSWORD");
+        assert_eq!(code(s.unlock(info.token, "bad\0nul".into())), "PDF_BAD_PASSWORD");
+        let open = s.unlock(info.token, "secret".into()).unwrap();
+        assert!(!open.locked && open.page_count == 1 && open.token == info.token);
+        assert_eq!(&s.render(info.token, 0, 200, "jpeg", 0.8).unwrap()[..3], &[0xFF, 0xD8, 0xFF]);
+        // Unlocking twice is harmless; the owner password also opens it.
+        assert!(s.unlock(info.token, "".into()).is_ok());
+        assert_eq!(code(s.unlock(999, "x".into())), "PDF_BAD_TOKEN");
+        // Copy-protected with an empty user password: opens without a prompt and renders.
+        let restricted = dir.path().join("restricted.pdf");
+        make_encrypted_pdf(&restricted, "", "owner", false);
+        let info = s.open_path(&restricted, "restricted.pdf").unwrap();
+        assert!(!info.locked && info.page_count == 1);
+        assert!(s.render(info.token, 0, 200, "png", 1.0).is_ok());
+        // A locked drop from bytes keeps (and later removes) its temp file.
+        let bytes = std::fs::read(&locked).unwrap();
+        let info = s.open_bytes("l.pdf", &bytes).unwrap();
+        assert!(info.locked);
+        s.close(info.token).unwrap();
+        assert_eq!(std::fs::read_dir(dir.path().join("tmp")).map(|d| d.count()).unwrap_or(0), 0);
+    }
+
     /// Peak resident set size of this process in MiB (macOS `ru_maxrss` is in bytes).
     fn peak_rss_mib() -> f64 {
         // struct rusage: two timevals (4 x i64) then 14 longs; ru_maxrss is the first long.
@@ -771,6 +1053,37 @@ mod tests {
         let mut u = [0i64; 18];
         assert_eq!(unsafe { getrusage(0, &mut u) }, 0);
         u[4] as f64 / 1_048_576.0
+    }
+
+    /// Size of a dense text page (A4, 1440 px, JPEG 0.85) as gray vs forced colour.
+    #[test]
+    #[ignore]
+    fn bench_gray_vs_colour_size() {
+        let dir = tempdir().unwrap();
+        let s = svc(dir.path());
+        let text: String = (0..70).map(|i| format!("BT /F1 9 Tf 50 {} Td (Line {i}: the quick brown fox jumps over the lazy dog 0123456789) Tj ET\n", 780 - 11 * i)).collect();
+        let big = |content: &str| raw_pdf_with(content).iter().copied().collect::<Vec<u8>>();
+        let mut gray = String::from(&text);
+        let mut colour = String::from("1 0 0 rg 0 0 1 1 re f 0 g\n");
+        colour.push_str(&text);
+        gray.insert_str(0, "0 g\n");
+        let sizes: Vec<usize> = [gray, colour]
+            .iter()
+            .enumerate()
+            .map(|(n, c)| {
+                let path = dir.path().join(format!("t{n}.pdf"));
+                let mut bytes = big(c);
+                // A4 media box instead of 200x100.
+                let find = b"[0 0 200 100]";
+                let at = bytes.windows(find.len()).position(|w| w == find).unwrap();
+                bytes.splice(at..at + find.len(), b"[0 0 595 842]".iter().copied());
+                // offsets shift the xref; CoreGraphics rebuilds a broken xref.
+                std::fs::write(&path, bytes).unwrap();
+                let info = s.open_path(&path, "t.pdf").unwrap();
+                { let png = s.render(info.token, 0, 1440, "png", 1.0).unwrap().len(); println!("png {n}: {png}"); let t = std::time::Instant::now(); let n_bytes = s.render(info.token, 0, 1440, "jpeg", 0.85).unwrap().len(); println!("jpeg request {n}: {n_bytes} bytes in {:.1} ms", t.elapsed().as_secs_f64() * 1000.0); n_bytes }
+            })
+            .collect();
+        println!("BENCH text page 1440 jpeg 0.85: gray {} bytes, colour {} bytes ({:.0}%)", sizes[0], sizes[1], 100.0 * sizes[0] as f64 / sizes[1] as f64);
     }
 
     #[test]

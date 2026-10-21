@@ -49,6 +49,9 @@ export class DesktopPdfBridge implements PdfBridge {
     return new Uint8Array(buffer);
   };
 
+  unlock = (token: number, password: string): Promise<PdfInfo> =>
+    this.call<PdfInfo>("pdf_unlock", { token, password });
+
   close = (token: number): Promise<void> =>
     this.call<void>("pdf_close", { token });
 }

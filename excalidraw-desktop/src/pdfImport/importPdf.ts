@@ -32,7 +32,6 @@ import { PdfImportAborted } from "./types";
 
 import type {
   PdfBridge,
-  PdfImageFormat,
   PdfImportProgress,
   PdfImportResult,
   PdfImportSettings,
@@ -55,10 +54,14 @@ const RETRY_MARGIN = 0.95;
 /** Distance of the first page's top edge from the viewport top (screen px). */
 const SCROLL_TOP_MARGIN = 24;
 
-const MIME: Record<PdfImageFormat, string> = {
-  jpeg: "image/jpeg",
-  png: "image/png",
-};
+/** The native side may answer a JPEG request with a (gray) PNG when that is smaller. */
+const mimeOf = (bytes: Uint8Array): BinaryFileData["mimeType"] =>
+  bytes[0] === 0x89 &&
+  bytes[1] === 0x50 &&
+  bytes[2] === 0x4e &&
+  bytes[3] === 0x47
+    ? "image/png"
+    : "image/jpeg";
 
 const yieldToEventLoop = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -168,14 +171,14 @@ export const importPdf = async ({
           break;
         }
         const dataURL = await getDataURL(
-          new Blob([bytes as BlobPart], { type: MIME[settings.format] }),
+          new Blob([bytes as BlobPart], { type: mimeOf(bytes) }),
         );
         const id = await sha1Hex(bytes);
         abortCheck();
         if (!files.has(id)) {
           files.set(id, {
             id,
-            mimeType: MIME[settings.format] as BinaryFileData["mimeType"],
+            mimeType: mimeOf(bytes),
             dataURL,
             created: Date.now(),
           });
