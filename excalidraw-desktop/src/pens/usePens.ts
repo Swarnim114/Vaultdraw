@@ -235,6 +235,9 @@ export function usePens(
     [],
   );
 
+  /** A different document is shown: its tool and colours are its own. */
+  const reset = useCallback(() => setActiveIndex(null), [setActiveIndex]);
+
   // Alt+1..9 by default: the "pen.selectN" commands (rebindable, Hotkeys page).
   useEffect(() => registerPenSelector(selectPen), [selectPen]);
 
@@ -245,6 +248,7 @@ export function usePens(
     freedrawActive,
     selectPen,
     onAppState,
+    reset,
     freedrawPen,
     laserPointerOptions,
   };

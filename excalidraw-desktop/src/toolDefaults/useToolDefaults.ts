@@ -264,6 +264,18 @@ export function useToolDefaults(
     [apiRef, patchScene, commit],
   );
 
+  /**
+   * A different document is shown: start a fresh session (the new state is
+   * not the old one plus our patch, so nothing applied to the old scene may
+   * be undone on it). The drawing's own picks arrive with `loadDrawingStyles`.
+   */
+  const reset = useCallback(() => {
+    session.current = newToolSession();
+    tool.current = null;
+    state.current = null;
+    styleKey.current = "null";
+  }, []);
+
   /** Called with every editor change. */
   const onAppState = useCallback(
     (appState: AppState) => {
@@ -425,8 +437,11 @@ export function useToolDefaults(
   );
 
   /** The overrides the drawing was opened with (no save, no render). */
+  /** The shown drawing's overrides (the style panel re-reads them). */
   const loadDrawingStyles = useCallback((styles: DrawingStyles) => {
     drawing.current = styles;
+    version.current += 1;
+    setOverridesVersion(version.current);
   }, []);
 
   const getDrawingStyles = useCallback(() => drawing.current, []);
@@ -448,6 +463,7 @@ export function useToolDefaults(
 
   return {
     onAppState,
+    reset,
     currentItemStrokeWidth,
     newTextStyle,
     newContainerStyle,

@@ -12,7 +12,6 @@ import {
   CaptureUpdateAction,
   DefaultSidebar,
   Excalidraw,
-  loadFromBlob,
   MainMenu,
 } from "@excalidraw/excalidraw";
 import { DEFAULT_SIDEBAR } from "@excalidraw/common";
@@ -27,7 +26,6 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
   ImageExportRequest,
-  NormalizedZoomValue,
 } from "@excalidraw/excalidraw/types";
 
 import { isPdfFile } from "../canvasImport/importFiles";
@@ -49,7 +47,6 @@ import { getPreferences, updatePreferences } from "../vault/preferences";
 import { PenBar } from "../pens/PenBar";
 
 import { usePens } from "../pens/usePens";
-import { baseStyleAppState } from "../toolDefaults/baseStyle";
 import { readDrawingStyles } from "../toolDefaults/drawingStyles";
 import { useToolDefaults } from "../toolDefaults/useToolDefaults";
 import { useFormulaCommands } from "../formula/useFormulaCommands";
@@ -61,16 +58,15 @@ import { registerEditorApi } from "./editorApi";
 import { registerEditorFlush } from "./editorFlush";
 import { useEditorPalette } from "./useEditorPalette";
 import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
-import {
-  exportOptionsToAppState,
-  loadExportOptions,
-  rememberExportOptions,
-} from "./exportOptions";
+import { rememberExportOptions } from "./exportOptions";
 import { focusElement } from "./focusElement";
 import { PANNED_CLASS, watchFirstPan } from "./panHint";
 import { renderImageExport } from "./imageExport";
 import { serializeSceneForSave } from "./sceneSerializer";
 import { getSaveSignature } from "./saveSignature";
+import { isSwapping, loadScene } from "./sceneSwap";
+import { LoadingLine } from "./LoadingLine";
+import { useSceneSwap } from "./useSceneSwap";
 
 import type { EditorLinksWiring } from "./links/useVaultEditorLinks";
 import type { ScenePoint } from "../canvasImport/useCanvasImport";
@@ -116,6 +112,8 @@ type Props = {
   onImportFile?: (at?: ScenePoint) => unknown;
   /** Tabs: view for the first paint and the undo stacks to bring back. */
   restore?: EditorRestore;
+  /** The app is reading the next document: shows the progress line after a delay. */
+  loading?: boolean;
 };
 
 type Snapshot = Parameters<
@@ -124,7 +122,12 @@ type Snapshot = Parameters<
 const IDLE_SERIALIZE_MS = 600;
 const MAX_SERIALIZE_MS = 2500;
 
-/** One keyed instance per vault document keeps editor history and image files isolated. */
+/**
+ * One editor instance serves every document of a vault: a new `documentId`
+ * swaps the scene in place (see useSceneSwap), keeping the toolbar and the old
+ * drawing on screen until the new one is ready. History and image files are
+ * reset per document by the swap.
+ */
 const VaultEditorComponent = ({
   documentId,
   initialSource,
@@ -144,6 +147,7 @@ const VaultEditorComponent = ({
   pdfImport,
   onImportFile,
   restore,
+  loading = false,
 }: Props) => {
   const host = useRef<HTMLDivElement | null>(null);
   const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
@@ -169,7 +173,19 @@ const VaultEditorComponent = ({
   const [exporting, setExporting] = useState(false);
   const exportingRef = useRef(false);
   const [editorError, setEditorError] = useState<string | null>(null);
-  const [apiReady, setApiReady] = useState(false);
+  // The document whose scene the editor shows (null until the first load).
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
+  const apiReady = loadedDocId === documentId;
+  const sceneDocId = useRef<string | null>(null);
+  const propDocId = useRef(documentId);
+  propDocId.current = documentId;
+  // What the first load was started for (the props may move on while it runs).
+  const initialDocId = useRef(documentId);
+  const initialRestore = useRef<EditorRestore | undefined>(undefined);
+  // Bumped to rebuild Excalidraw itself after a failed swap.
+  const [mountKey, setMountKey] = useState(0);
+  const [swapping, setSwapping] = useState(false);
+  const wantFocus = useRef(false);
   const [paperDialogOpen, setPaperDialogOpen] = useState(false);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const handledFocusNonce = useRef<number | null>(null);
@@ -177,7 +193,12 @@ const VaultEditorComponent = ({
     null,
   );
   const { libraryUIOptions, onAppState } = useVaultLibrary(library, libraryApi);
-  const editorLinks = useVaultEditorLinks(libraryApi, hostEl, links);
+  // Links act on the scene, so they wait while another document's scene is shown.
+  const editorLinks = useVaultEditorLinks(
+    apiReady ? libraryApi : null,
+    hostEl,
+    links,
+  );
   const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
   const scheduleSaveRef = useRef<() => void>(() => {});
@@ -287,32 +308,23 @@ const VaultEditorComponent = ({
 
   const restoreRef = useRef(restore);
   restoreRef.current = restore;
+  const initialSourceRef = useRef(initialSource);
+  initialSourceRef.current = initialSource;
 
   const initialData = useCallback(async () => {
     const doc = host.current?.ownerDocument;
     if (!doc) {
       throw new Error("Editor document is not mounted");
     }
+    initialDocId.current = documentId;
+    initialRestore.current = restoreRef.current;
     try {
-      const blob = new doc.defaultView!.Blob([initialSource.json], {
-        type: "application/json",
-      });
-      const scene = await loadFromBlob(blob, null, null, null);
-      // Never inherit a file handle or scene from a previously mounted editor.
-      scene.appState = {
-        ...scene.appState,
-        ...exportOptionsToAppState(loadExportOptions()),
-        // saved currentItem* never wins: base = [editor] over built-ins
-        ...baseStyleAppState(getPreferences()),
-        fileHandle: null,
-        ...(restoreRef.current?.view && {
-          scrollX: restoreRef.current.view.scrollX,
-          scrollY: restoreRef.current.view.scrollY,
-          zoom: {
-            value: restoreRef.current.view.zoom as NormalizedZoomValue,
-          },
-        }),
-      };
+      // Never inherits a file handle or scene from a previously open document.
+      const scene = await loadScene(
+        initialSource.json,
+        doc.defaultView!.Blob,
+        restoreRef.current?.view,
+      );
       loadDrawingStyles(readDrawingStyles(initialSource.json));
       return scene;
     } catch (cause) {
@@ -322,7 +334,7 @@ const VaultEditorComponent = ({
     // documentId: a new document must load fresh even with identical JSON.
     // The source is read at call time so it always yields the latest saved text.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSource, documentId]);
+  }, [initialSource, documentId, mountKey]);
 
   const commitTextEditing = useCallback(() => {
     const mounted = host.current;
@@ -352,7 +364,13 @@ const VaultEditorComponent = ({
     }
     timer.current = maxTimer.current = null;
     const current = latest.current;
-    if (!ready.current || !current || !pendingChanges.current) {
+    // Never save a scene under a document it does not belong to.
+    if (
+      !ready.current ||
+      isSwapping(sceneDocId.current, propDocId.current) ||
+      !current ||
+      !pendingChanges.current
+    ) {
       return;
     }
     pendingChanges.current = false;
@@ -367,6 +385,9 @@ const VaultEditorComponent = ({
   }, [getDrawingStyles]);
 
   const scheduleSave = useCallback(() => {
+    if (isSwapping(sceneDocId.current, propDocId.current)) {
+      return; // belongs to the scene on its way out
+    }
     pendingChanges.current = true;
     if (timer.current) {
       clearTimeout(timer.current);
@@ -398,6 +419,7 @@ const VaultEditorComponent = ({
       apiReady && apiRef.current
         ? registerEditorApi(documentId, apiRef.current)
         : undefined,
+    // apiReady is false while another document's scene is shown under this id.
     [documentId, apiReady],
   );
 
@@ -417,11 +439,14 @@ const VaultEditorComponent = ({
           captureUpdate: CaptureUpdateAction.NEVER,
         });
       }),
-    [documentId],
+    [],
   );
 
   const onEditorChange = useCallback(
     (elements: Snapshot[0], appState: Snapshot[1], files: Snapshot[2]) => {
+      if (isSwapping(sceneDocId.current, propDocId.current)) {
+        return; // the shown scene is on its way out: not worth tracking
+      }
       latest.current = [elements, appState, files];
       onAppState(appState);
       onPenAppState(appState);
@@ -464,10 +489,10 @@ const VaultEditorComponent = ({
     ],
   );
 
-  const onInitialize = useCallback(
-    (api: ExcalidrawImperativeAPI) => {
+  /** The editor shows `docId`'s scene: track it, save it, publish it. */
+  const armScene = useCallback(
+    (api: ExcalidrawImperativeAPI, docId: string) => {
       apiRef.current = api;
-      setLibraryApi(api);
       latest.current = [
         api.getSceneElements(),
         api.getAppState(),
@@ -479,25 +504,103 @@ const VaultEditorComponent = ({
         getOverridesVersion(),
       );
       fileRefs.current = latest.current[2];
+      sceneDocId.current = docId;
       ready.current = true;
       onPageChange(latest.current[0], latest.current[1]);
-      setApiReady(true);
+      setLoadedDocId(docId);
     },
     [onPageChange, getOverridesVersion],
   );
 
-  // Tabs: bring back this document's undo history (kept only when the file is
-  // unchanged since it was captured; takeUndo returns nothing otherwise).
+  const onInitialize = useCallback(
+    (api: ExcalidrawImperativeAPI) => {
+      setLibraryApi(api);
+      armScene(api, initialDocId.current);
+    },
+    [armScene],
+  );
+
+  const resetPens = pens.reset;
+  const resetToolDefaults = toolDefaults.reset;
+  const resetPageMode = pageMode.reset;
+  const closeFormula = formula.close;
+  useSceneSwap({
+    documentId,
+    loadedDocId,
+    host,
+    getApi: () => apiRef.current,
+    getSource: () => initialSourceRef.current,
+    getRestore: () => restoreRef.current,
+    begin: () => {
+      // From now on the shown scene is not the props' document: nothing it
+      // reports may reach the save callback.
+      ready.current = false;
+      if (timer.current) {
+        clearTimeout(timer.current);
+      }
+      if (maxTimer.current) {
+        clearTimeout(maxTimer.current);
+      }
+      timer.current = maxTimer.current = null;
+      pendingChanges.current = false;
+      releasePreview.current?.();
+      releasePreview.current = null;
+      wantFocus.current = true;
+      setSwapping(true);
+    },
+    beforeApply: (json) => {
+      resetPens();
+      resetToolDefaults();
+      // the new drawing's own style picks; the old drawing's are gone
+      loadDrawingStyles(readDrawingStyles(json));
+      resetPageMode();
+      closeFormula();
+      setPageSetupOpen(false);
+      setPaperDialogOpen(false);
+      setEditorError(null);
+    },
+    afterApply: (api, docId) => {
+      armScene(api, docId);
+      setSwapping(false);
+    },
+    fail: (cause) => {
+      // eslint-disable-next-line no-console
+      console.error("[editor] scene swap failed, rebuilding the editor", cause);
+      sceneDocId.current = null;
+      ready.current = false;
+      setLoadedDocId(null);
+      setSwapping(false);
+      setMountKey((key) => key + 1);
+    },
+  });
+
+  // Tabs: bring back the first document's undo history (kept only when the
+  // file is unchanged since it was captured; takeUndo returns nothing
+  // otherwise). Later documents are handled by the swap.
   useEffect(() => {
     const api = apiRef.current;
-    if (!apiReady || !api) {
+    const first = initialRestore.current;
+    if (!apiReady || !api || !first) {
       return;
     }
-    const undo = restoreRef.current?.takeUndo();
+    initialRestore.current = undefined;
+    const undo = first.takeUndo();
     if (undo) {
       api.history.import(undo as Parameters<typeof api.history.import>[0]);
     }
   }, [apiReady]);
+
+  // A fresh editor focuses its canvas (autoFocus); a swapped one does the same
+  // once nothing blocks it (the app's own loading state makes the container inert).
+  useEffect(() => {
+    if (!wantFocus.current || swapping || loading || !apiReady) {
+      return;
+    }
+    wantFocus.current = false;
+    host.current
+      ?.querySelector<HTMLElement>(".excalidraw-container")
+      ?.focus({ preventScroll: true });
+  }, [swapping, loading, apiReady]);
 
   // Search results: focus the requested element once per request, after the
   // scene is loaded and laid out.
@@ -542,7 +645,7 @@ const VaultEditorComponent = ({
       releasePreview.current?.();
       releasePreview.current = null;
     },
-    [documentId],
+    [],
   );
 
   const onExcalidrawAPI = useCallback((api: ExcalidrawImperativeAPI | null) => {
@@ -720,11 +823,14 @@ const VaultEditorComponent = ({
     <div
       ref={hostRef}
       className="vault-editor"
-      data-document-id={documentId}
+      // The document whose scene is on screen (not yet the props' during a swap).
+      data-document-id={loadedDocId ?? documentId}
       onDropCapture={guardSceneDrop}
     >
+      <LoadingLine active={loading || swapping} />
       {editorError && <div role="alert">{editorError}</div>}
       <Excalidraw
+        key={mountKey}
         name={name}
         theme={theme}
         onThemeChange={onThemeChange}

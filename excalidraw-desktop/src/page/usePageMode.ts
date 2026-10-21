@@ -32,16 +32,16 @@ export function usePageMode(options: Options) {
   const [outsideCount, setOutsideCount] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const runtime = useRef<PageRuntime | null>(null);
+  const unbindNavigation = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
+  const createRuntime = useCallback(() => {
     const api = () => live.current.apiRef.current;
-    // PageUp/PageDown belong to page navigation only while page mode is on;
-    // otherwise they keep scrolling the infinite canvas.
-    let unbindNavigation: (() => void) | null = null;
-    const instance = new PageRuntime({
+    return new PageRuntime({
+      // PageUp/PageDown belong to page navigation only while page mode is on;
+      // otherwise they keep scrolling the infinite canvas.
       onModeChange: (on) => {
-        unbindNavigation?.();
-        unbindNavigation = on
+        unbindNavigation.current?.();
+        unbindNavigation.current = on
           ? registerCommandHandlers(createPageNavigationHandlers(api))
           : null;
       },
@@ -54,7 +54,18 @@ export function usePageMode(options: Options) {
         }
       },
     });
-    runtime.current = instance;
+  }, []);
+
+  const disposeRuntime = useCallback(() => {
+    unbindNavigation.current?.();
+    unbindNavigation.current = null;
+    runtime.current?.dispose();
+    runtime.current = null;
+  }, []);
+
+  useEffect(() => {
+    const api = () => live.current.apiRef.current;
+    runtime.current = createRuntime();
     const unbind = registerCommandHandlers(
       createPageHandlers({
         getApi: api,
@@ -65,11 +76,21 @@ export function usePageMode(options: Options) {
     );
     return () => {
       unbind();
-      unbindNavigation?.();
-      instance.dispose();
-      runtime.current = null;
+      disposeRuntime();
     };
-  }, []);
+  }, [createRuntime, disposeRuntime]);
+
+  /**
+   * A different document is shown. The runtime remembers the last document's
+   * setup, view lock and what it already enforced, none of which applies to
+   * the next one, so it starts over (as a freshly mounted editor would).
+   */
+  const reset = useCallback(() => {
+    disposeRuntime();
+    runtime.current = createRuntime();
+    setOutsideCount(0);
+    setDismissed(false);
+  }, [createRuntime, disposeRuntime]);
 
   const onChange = useCallback<PageRuntime["onChange"]>((elements, state) => {
     runtime.current?.onChange(elements, state);
@@ -86,6 +107,7 @@ export function usePageMode(options: Options) {
 
   return {
     onChange,
+    reset,
     notice:
       outsideCount > 0 && !dismissed && !options.readOnly && !options.disabled
         ? { count: outsideCount, onFit: fitContent, onDismiss: dismiss }

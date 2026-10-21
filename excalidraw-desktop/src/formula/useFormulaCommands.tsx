@@ -57,6 +57,8 @@ function formulaTarget(el: ExcalidrawImageElement): Target | null {
 export function useFormulaCommands({ apiRef, readOnly = false }: Options): {
   onImageEdit: (el: ExcalidrawImageElement) => boolean;
   dialog: ReactNode;
+  /** Closes the dialog (another document is being shown). */
+  close: () => void;
 } {
   const [state, setState] = useState<DialogState | null>(null);
   const live = useRef({ readOnly });
@@ -155,5 +157,5 @@ export function useFormulaCommands({ apiRef, readOnly = false }: Options): {
     [state, confirm, close],
   );
 
-  return { onImageEdit, dialog };
+  return { onImageEdit, dialog, close };
 }

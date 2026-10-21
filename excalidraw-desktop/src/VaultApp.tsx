@@ -2178,6 +2178,7 @@ export const VaultApp = ({
   >;
 
   openDrawingRef.current = handleOpenDrawing;
+  const editorLoading = isBusy || isClosing || docHook.loading;
 
   const shell = (
     <div
@@ -2246,32 +2247,25 @@ export const VaultApp = ({
             )}
             {activeDoc ? (
               <div
+                // Loading blocks the pointer here (CSS), never through
+                // readOnly/disabled: those switch Excalidraw to view mode and
+                // hide its toolbar. Keys still reach the open drawing, which
+                // the document hook flushes again before it is replaced.
                 inert={mainCovered}
                 className={`vault-editor-container ${
                   vault.readOnly ? "vault-editor-container--readonly" : ""
-                } ${
-                  isBusy || isClosing || docHook.loading
-                    ? "vault-editor-container--busy"
-                    : ""
-                }`}
+                } ${editorLoading ? "vault-editor-container--busy" : ""}`}
               >
                 <EditorComponent
-                  key={activeDoc.id}
+                  key={vault.handle}
                   documentId={activeDoc.id}
                   initialSource={activeDoc.source}
                   name={getBaseName(activeDoc.path)}
                   onChange={changeDoc}
                   onExport={exportEditorFile}
-                  readOnly={
-                    vault.readOnly ||
-                    isBusy ||
-                    isClosing ||
-                    docHook.loading ||
-                    mainCovered
-                  }
-                  disabled={
-                    isBusy || isClosing || docHook.loading || mainCovered
-                  }
+                  loading={editorLoading}
+                  readOnly={vault.readOnly || isClosing || mainCovered}
+                  disabled={isClosing || mainCovered}
                   theme={appTheme}
                   onThemeChange={handleCanvasThemeChange}
                   onOpenSettings={openSettings}
