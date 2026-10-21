@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 
+import { clearElementCanvasCache } from "@excalidraw/element";
 import { CaptureUpdateAction } from "@excalidraw/excalidraw";
 import { Fonts } from "@excalidraw/excalidraw/fonts/Fonts";
 
@@ -98,6 +99,8 @@ export function useSceneSwap(deps: SceneSwapDeps): void {
       }
       flushSync(() => {
         l.beforeApply(json);
+        // the old drawing's element bitmaps would otherwise wait for the idle trim
+        clearElementCanvasCache();
         api.retainFiles(Object.keys(scene.files));
         api.history.clear();
         api.setElementRenderOverrides(null);
