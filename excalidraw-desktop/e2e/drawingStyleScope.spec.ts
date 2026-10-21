@@ -68,9 +68,16 @@ const pickerSelection = async (page: Page) => {
   return value;
 };
 
+/** Pick a font; it is an override, so the pick took once the marker shows. */
 const pickFont = async (page: Page, family: number) => {
-  await trigger(page).click();
-  await page.locator(`button[value="${family}"]`).click();
+  // Under heavy load the first click can land before the list is interactive.
+  await expect(async () => {
+    if (!(await page.getByText("Available fonts").isVisible())) {
+      await trigger(page).click();
+    }
+    await page.locator(`button[value="${family}"]`).click({ timeout: 2000 });
+    await expect(marker(page)).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
 };
 
 /** Cascadia is not in the picker list until a text uses it: "not Nunito". */
