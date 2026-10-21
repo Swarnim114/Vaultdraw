@@ -112,7 +112,7 @@ const webkitProcs = (): Proc[] => {
   }
 };
 
-const UNIT: Record<string, number> = { B: 1, KB: 1024, MB: MB, GB: 1024 * MB };
+const UNIT: Record<string, number> = { B: 1, KB: 1024, MB, GB: 1024 * MB };
 const toMB = (n: string, u: string) => (Number(n) * UNIT[u]) / MB;
 
 /** `footprint -p <pid>` text: total phys_footprint and the graphics-ish categories. */
