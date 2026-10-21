@@ -12,6 +12,7 @@ import { tagsControls } from "./TagsSettings";
 import { pageControls } from "./Page";
 import { pensControls } from "./Pens";
 import { toolDefaultsControls } from "./ToolDefaults";
+import { tabsControls } from "../../../tabs/tabsSettingsControls";
 
 import type { SettingControls } from "../SettingsContext";
 
@@ -21,6 +22,7 @@ export const SETTING_CONTROLS: SettingControls = {
   ...appearanceControls,
   ...pageControls,
   ...interfaceControls,
+  ...tabsControls,
   ...drawingControls,
   ...pensControls,
   ...toolDefaultsControls,

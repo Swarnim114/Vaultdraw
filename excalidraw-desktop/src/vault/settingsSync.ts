@@ -26,6 +26,7 @@ import {
   HISTORY_MAPPINGS,
   type HistoryField,
 } from "../history/historySettings";
+import { TABS_MAPPINGS, type TabsField } from "../tabs/tabsSettings";
 import { parseChord } from "../commands/keys";
 import { PDF_IMPORT_LIMITS } from "../pdfImport/types";
 import { inRange, LASER_LIMITS } from "../pens/laserSettings";
@@ -216,6 +217,7 @@ type ConfigField =
   | "laserDecayMs"
   | "laserLength"
   | HistoryField
+  | TabsField
   | ToolField;
 
 export interface ConfigMapping {
@@ -650,6 +652,7 @@ const TOOL_MAPPINGS: readonly ConfigMapping[] = TOOL_DEFAULT_TOOLS.map(
 export const CONFIG_MAPPING: readonly ConfigMapping[] = [
   ...CORE_MAPPING,
   ...HISTORY_MAPPINGS,
+  ...TABS_MAPPINGS,
   ...TOOL_MAPPINGS,
 ];
 

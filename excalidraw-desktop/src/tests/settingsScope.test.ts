@@ -61,6 +61,8 @@ describe("per-vault schema rows", () => {
         "history-keep-weekly",
         "history-size-cap",
         "history-highlight",
+        "tabs-open-from-navigator",
+        "tabs-restore",
       ].sort(),
     );
   });

@@ -11,6 +11,7 @@ import {
   HISTORY_SETTINGS_PAGES,
   HISTORY_SETTINGS_SCHEMA,
 } from "../../history/historySettingsSchema";
+import { TABS_SETTINGS_SCHEMA } from "../../tabs/tabsSettingsSchema";
 import {
   STYLE_KEY_LABELS,
   TOOL_DEFAULT_TOOLS,
@@ -712,6 +713,7 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
   },
 
   ...HISTORY_SETTINGS_SCHEMA,
+  ...TABS_SETTINGS_SCHEMA,
 
   // ---- Hotkeys ----
   {

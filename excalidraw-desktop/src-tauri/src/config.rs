@@ -163,6 +163,26 @@ autosave_delay_ms = 500
 # stroke_color = "#f08c00"
 # stroke_width = 3
 # stroke_style = "dotted"
+
+[tabs]
+# Open several drawings at once (false = one drawing at a time)
+# enabled = true
+# always | never (never = switch tabs with the keyboard only)
+# show_strip = "always"
+# Opening from the file tree: current (replace the open drawing) | new
+# open_from_navigator = "current"
+# Switch to a drawing opened in a new tab
+# focus_new = true
+# after_active | end
+# new_tab_position = "after_active"
+# Ctrl+Tab order: mru (last used) | order (strip order)
+# ctrl_tab = "mru"
+# Allow Cmd+W to close pinned tabs
+# close_pinned = false
+# Reopen the open tabs when a vault opens
+# restore = true
+# Undo history kept for background tabs in MB, 0 to 1024 (0 = none)
+# undo_budget_mb = 32
 "##;
 
 /// Serializes every config/state write within the process.

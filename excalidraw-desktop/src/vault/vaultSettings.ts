@@ -9,6 +9,7 @@
  * attached at a time. All native calls are serialised in one queue.
  */
 import { HISTORY_FIELDS } from "../history/historySettings";
+import { TABS_VAULT_FIELDS } from "../tabs/tabsSettings";
 import { TOOL_FIELDS } from "../toolDefaults/toolStyles";
 
 import { isTauriAvailable } from "./DesktopVaultRepository";
@@ -31,6 +32,7 @@ export const PER_VAULT_FIELDS = [
   "templatesFolder",
   "paperStyle",
   ...HISTORY_FIELDS,
+  ...TABS_VAULT_FIELDS,
   ...TOOL_FIELDS,
 ] as const;
 export type VaultField = typeof PER_VAULT_FIELDS[number];
