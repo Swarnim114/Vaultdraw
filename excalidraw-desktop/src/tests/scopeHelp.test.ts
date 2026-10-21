@@ -10,6 +10,14 @@ describe("scope help wording", () => {
     expect(vaultScopeDisabledReason({ readOnly: true })).toBe(
       "This vault is read-only, so vault settings can't be saved",
     );
+    expect(
+      vaultScopeDisabledReason({
+        readOnly: true,
+        readOnlyReason: "lockedByOtherProcess",
+      }),
+    ).toBe(
+      "This vault is read-only (open in another Vaultdraw), so vault settings can't be saved",
+    );
     expect(vaultScopeDisabledReason({ readOnly: false })).toBeNull();
     expect(vaultScopeDisabledReason(null)).toBeNull();
   });
