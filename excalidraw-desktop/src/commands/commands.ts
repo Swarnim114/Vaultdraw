@@ -22,6 +22,7 @@ import {
 } from "./drawingCommands";
 import { EDITOR_COMMANDS } from "./editorCommands";
 import { GRAPH_COMMANDS } from "./graphCommands";
+import { TAB_COMMANDS } from "./tabCommands";
 import { THUMBNAIL_COMMANDS } from "./thumbnailCommands";
 
 import type {
@@ -560,6 +561,7 @@ export const COMMANDS: readonly CommandDefinition[] = [
   ...TAGS_COMMANDS,
   ...HISTORY_COMMANDS,
   ...GRAPH_COMMANDS,
+  ...TAB_COMMANDS,
   ...FORMULA_COMMANDS,
   ...THUMBNAIL_COMMANDS,
 ];

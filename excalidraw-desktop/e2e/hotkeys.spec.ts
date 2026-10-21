@@ -525,17 +525,17 @@ test.describe("Hotkeys settings page", () => {
 
   for (const [label, chord] of [
     ["Cmd/Ctrl+Q", "ControlOrMeta+KeyQ"],
-    ["Cmd/Ctrl+W", "ControlOrMeta+KeyW"],
+    ["Cmd/Ctrl+Shift+W", "ControlOrMeta+Shift+KeyW"],
   ] as const) {
     test(`refuses the reserved chord ${label} with a message`, async ({
       page,
     }) => {
-      // Cmd+Q / Cmd+W are reserved on macOS; elsewhere Ctrl+Q/W are free, so
+      // Cmd+Q / Cmd+Shift+W are reserved on macOS; elsewhere Ctrl+Q/W are free, so
       // use a chord reserved on every platform when the page accepts it.
       const isMac = await page.evaluate(() =>
         /Mac/i.test(window.navigator.platform),
       );
-      test.skip(!isMac, "Ctrl+Q / Ctrl+W are only reserved on macOS");
+      test.skip(!isMac, "Ctrl+Q / Ctrl+Shift+W are only reserved on macOS");
       await add(page, "New drawing").click();
       await page.keyboard.press(chord);
       await expect(page.getByRole("alert")).toContainText(/^Can't use .+: .+/);

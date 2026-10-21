@@ -121,7 +121,8 @@ export const TAB_COMMANDS: CommandDefinition[] = [
     I.closeWindow,
     "Window: Close window",
     "Tabs",
-    same("Mod+Shift+W"),
+    // macOS: the app menu owns Cmd+Shift+W (reserved), so no registry key.
+    { mac: [], other: ["Mod+Shift+W"] },
     undefined,
   ),
 ];

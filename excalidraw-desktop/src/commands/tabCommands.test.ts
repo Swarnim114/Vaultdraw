@@ -30,9 +30,14 @@ describe("TAB_COMMANDS", () => {
   });
 
   it("does not reuse ids of registered commands", () => {
-    const existing = new Set(COMMANDS.map((c) => c.id));
+    const tabIds = new Set<string>(TAB_COMMANDS.map((c) => c.id));
+    const others = COMMANDS.filter((c) => !TAB_COMMANDS.includes(c));
+    for (const command of others) {
+      expect(tabIds.has(command.id)).toBe(false);
+    }
+    // registered exactly once
     for (const command of TAB_COMMANDS) {
-      expect(existing.has(command.id)).toBe(false);
+      expect(COMMANDS.filter((c) => c.id === command.id)).toHaveLength(1);
     }
   });
 
@@ -64,7 +69,7 @@ describe("TAB_COMMANDS", () => {
     "does not collide with registered commands on %s",
     (platform) => {
       const result = findConflicts(
-        [...COMMANDS, ...TAB_COMMANDS],
+        COMMANDS,
         {},
         platform,
       );
@@ -104,12 +109,16 @@ describe("TAB_COMMANDS", () => {
   );
 
   it.each(PLATFORMS)(
-    "is reserved only for Mod+W on mac (pending menu change) on %s",
+    "has no reserved default chords on %s (window.close has no mac key: the menu owns Mod+Shift+W)",
     (platform) => {
       const reserved = chordsOf(platform)
         .filter(({ chord }) => reservedReason(chord, platform))
         .map(({ command, chord }) => `${command.id} ${chord}`);
-      expect(reserved).toEqual(platform === "mac" ? ["tabs.close Mod+W"] : []);
+      expect(reserved).toEqual([]);
+      expect(reservedReason("Mod+W", platform)).toBeNull();
+      expect(reservedReason("Mod+Shift+W", platform)).toBe(
+        platform === "mac" ? "the app menu closes the window with this key" : null,
+      );
     },
   );
 });

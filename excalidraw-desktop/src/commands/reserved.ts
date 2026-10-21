@@ -17,7 +17,7 @@ const MAC_ONLY: ReadonlyMap<Chord, string> = new Map([
   ["Mod+H", "the app menu hides Vaultdraw with this key"],
   ["Mod+Alt+H", "the app menu hides other applications with this key"],
   ["Mod+M", "the app menu minimizes the window with this key"],
-  ["Mod+W", "the app menu closes the window with this key"],
+  ["Mod+Shift+W", "the app menu closes the window with this key"],
   ["Mod+Ctrl+F", "the app menu toggles full screen with this key"],
 ]);
 

@@ -5,7 +5,7 @@ import { reservedReason } from "./reserved";
 describe("reservedReason", () => {
   it.each([
     ["Mod+Q", "mac"],
-    ["Cmd+W", "mac"],
+    ["Cmd+Shift+W", "mac"],
     ["Mod+H", "mac"],
     ["Mod+Alt+H", "mac"],
     ["Mod+M", "mac"],
@@ -44,6 +44,7 @@ describe("reservedReason", () => {
     ["Mod+Shift+F", "mac"],
     ["Ctrl+Q", "mac"],
     ["Mod+Comma", "mac"],
+    ["Mod+W", "mac"],
   ] as const)("allows %s on %s", (chord, platform) => {
     expect(reservedReason(chord, platform)).toBeNull();
   });

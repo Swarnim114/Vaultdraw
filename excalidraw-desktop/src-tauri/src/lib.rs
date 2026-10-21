@@ -14,6 +14,8 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
+#[cfg(target_os = "macos")]
+mod app_menu;
 mod clipboard;
 mod config;
 mod drawing_copy;
@@ -1506,6 +1508,10 @@ pub fn run() {
                 }
                 Ok(())
             });
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .menu(|handle| app_menu::build(handle))
+            .on_menu_event(app_menu::on_event);
         let builder = thumbs::register_scheme(builder);
         // Test runs must not take focus at launch (a window manager would follow it).
         #[cfg(all(feature = "smoke-test", target_os = "macos"))]
