@@ -126,7 +126,11 @@ const MermaidToExcalidraw = ({
         }
         if (!result.success) {
           convertedTextRef.current = null;
-          setError(result.error ?? new Error("Invalid mermaid definition"));
+          // no error means nothing to report (preview canvas not mounted yet
+          // while the library loads, or an empty definition)
+          if (result.error) {
+            setError(result.error);
+          }
           return false;
         }
         convertedTextRef.current = definition;
