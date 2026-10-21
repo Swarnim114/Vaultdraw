@@ -345,9 +345,9 @@ impl Index {
     }
     /// The encoded vault graph, rebuilt only when a mutation happened since the last call
     /// (the encode walks the whole link index: ~20 ms at 50k drawings). None without a link index.
-    pub(crate) fn graph_bytes(&self, encode: impl FnOnce(&LinkIndex, &HashMap<String, DocEntry>) -> Vec<u8>) -> Option<std::sync::Arc<Vec<u8>>> {
-        let (li, docs) = self.links_and_docs()?;
-        Some(self.graph_cache.get_or_build(self.generation, || encode(li, docs)))
+    pub(crate) fn graph_bytes(&self, encode: impl FnOnce(&LinkIndex) -> Vec<u8>) -> Option<std::sync::Arc<Vec<u8>>> {
+        let li = self.links()?;
+        Some(self.graph_cache.get_or_build(self.generation, || encode(li)))
     }
     /// Builds a link index from the current docs (read-only; install it with `install_links`).
     pub(crate) fn build_links(&self) -> LinkIndex {

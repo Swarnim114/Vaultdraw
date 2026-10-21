@@ -88,6 +88,8 @@ struct Doc {
     fwd: Box<[(u32, u32)]>,
     /// Keys currently resolving to this doc.
     keys_of: Vec<u32>,
+    /// This drawing's distinct `#tags` as `tag_variants` ids (for the graph export).
+    tags: Box<[u32]>,
 }
 
 struct Key {
@@ -99,6 +101,9 @@ struct Key {
 #[derive(Default)]
 pub(crate) struct LinkIndex {
     docs: Vec<Doc>,
+    /// Live doc ids in vault-path order, maintained on add/remove/rename (the graph export's
+    /// node order, so the first export never sorts).
+    sorted: Vec<u32>,
     free_docs: Vec<u32>,
     by_path: FxMap<Arc<str>, u32>,
     by_base: FxMap<Arc<str>, Vec<u32>>,
@@ -106,6 +111,11 @@ pub(crate) struct LinkIndex {
     free_keys: Vec<u32>,
     key_ids: FxMap<Arc<str>, u32>,
     keys_by_base: FxMap<Arc<str>, Vec<u32>>,
+    /// Tag interning for the graph export: normalised tag key -> id, and every distinct
+    /// `(display, key id)` seen (append-only; a few entries per vault).
+    tag_keys: FxMap<Box<str>, u32>,
+    tag_variants: Vec<(Box<str>, u32)>,
+    tag_variant_ids: FxMap<Box<str>, u32>,
 }
 
 /// One planned path change.
@@ -133,11 +143,13 @@ impl LinkIndex {
         ix.docs.reserve(docs.len());
         ix.by_path.reserve(docs.len());
         ix.by_base.reserve(docs.len());
-        let ids: Vec<u32> = docs.iter().map(|(p, _)| ix.add_doc(p)).collect();
+        let ids: Vec<u32> = docs.iter().map(|(p, _)| ix.add_doc_unsorted(p)).collect();
+        ix.sort_docs();
         for (id, (path, doc)) in ids.into_iter().zip(docs) {
             if doc.parsed {
                 ix.set_links(id, raw_links(path, doc));
             }
+            ix.set_tags(id, doc);
         }
         ix
     }
@@ -301,8 +313,41 @@ impl LinkIndex {
 
     /// Registers a drawing and resolves pending links to it. Returns its id.
     pub(crate) fn add_doc(&mut self, path: &str) -> u32 {
+        let id = self.add_doc_unsorted(path);
+        self.order_insert(id);
+        id
+    }
+
+    /// Doc ids in vault-path order.
+    pub(crate) fn sorted_docs(&self) -> &[u32] {
+        &self.sorted
+    }
+
+    fn sort_docs(&mut self) {
+        let docs = &self.docs;
+        self.sorted = (0..docs.len() as u32).filter(|&i| !docs[i as usize].path.is_empty()).collect();
+        self.sorted.sort_unstable_by(|&a, &b| docs[a as usize].path.cmp(&docs[b as usize].path));
+    }
+
+    fn order_pos(&self, path: &str) -> usize {
+        self.sorted.partition_point(|&i| &*self.docs[i as usize].path < path)
+    }
+
+    fn order_insert(&mut self, id: u32) {
+        let at = self.order_pos(&self.docs[id as usize].path);
+        self.sorted.insert(at, id);
+    }
+
+    fn order_remove(&mut self, id: u32) {
+        let at = self.order_pos(&self.docs[id as usize].path);
+        if self.sorted.get(at) == Some(&id) {
+            self.sorted.remove(at);
+        }
+    }
+
+    fn add_doc_unsorted(&mut self, path: &str) -> u32 {
         let np: Arc<str> = Arc::from(key_of_path(path));
-        let doc = Doc { path: path.into(), npath: np.clone(), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new() };
+        let doc = Doc { path: path.into(), npath: np.clone(), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new(), tags: Box::default() };
         let id = match self.free_docs.pop() {
             Some(i) => {
                 self.docs[i as usize] = doc;
@@ -323,8 +368,9 @@ impl LinkIndex {
         self.set_links(d, Vec::new());
         let mut ks = self.docs[d as usize].keys_of.clone();
         let np = self.docs[d as usize].npath.clone();
+        self.order_remove(d);
         self.base_remove(d);
-        self.docs[d as usize] = Doc { path: Box::default(), npath: Arc::from(""), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new() };
+        self.docs[d as usize] = Doc { path: Box::default(), npath: Arc::from(""), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new(), tags: Box::default() };
         self.free_docs.push(d);
         ks.extend(self.keys_for_base(base_of(&np)));
         ks.sort_unstable();
@@ -445,7 +491,39 @@ impl LinkIndex {
     /// Inserts or refreshes one drawing from its parsed entry.
     pub(crate) fn upsert(&mut self, path: &str, doc: &DocEntry) {
         let id = self.find_doc(path).unwrap_or_else(|| self.add_doc(path));
+        self.set_tags(id, doc);
         self.set_links(id, if doc.parsed { raw_links(path, doc) } else { Vec::new() });
+    }
+
+    fn set_tags(&mut self, id: u32, doc: &DocEntry) {
+        let ids: Box<[u32]> = doc.tag_pairs().map(|(key, display)| self.tag_variant(key, display)).collect();
+        self.docs[id as usize].tags = ids;
+    }
+
+    fn tag_variant(&mut self, key: &str, display: &str) -> u32 {
+        // A display always maps to the same key, so the display identifies the variant.
+        if let Some(&v) = self.tag_variant_ids.get(display) {
+            return v;
+        }
+        let next = self.tag_keys.len() as u32;
+        let k = *self.tag_keys.entry(key.into()).or_insert(next);
+        let v = self.tag_variants.len() as u32;
+        self.tag_variants.push((display.into(), k));
+        self.tag_variant_ids.insert(display.into(), v);
+        v
+    }
+
+    /// Tag keys interned so far (an upper bound for the export's per-key scratch).
+    pub(crate) fn n_tag_keys(&self) -> usize {
+        self.tag_keys.len()
+    }
+    /// `(display, key id)` of a doc's tag variant.
+    pub(crate) fn tag_variant_of(&self, v: u32) -> (&str, u32) {
+        let (display, key) = &self.tag_variants[v as usize];
+        (display, *key)
+    }
+    pub(crate) fn doc_tags(&self, d: u32) -> &[u32] {
+        &self.docs[d as usize].tags
     }
 
     pub(crate) fn remove(&mut self, path: &str) {
@@ -458,7 +536,12 @@ impl LinkIndex {
     /// whose target changed. Reverting is the same call with the old paths.
     pub(crate) fn change_paths(&mut self, ch: &[(u32, String)]) -> Vec<KeyChange> {
         let mut affected: Vec<u32> = Vec::new();
+        // A few renames patch the order; a bulk move re-sorts once.
+        let patch = ch.len() <= 32;
         for (d, _) in ch {
+            if patch {
+                self.order_remove(*d);
+            }
             affected.extend(&self.docs[*d as usize].keys_of);
             let nb = base_of(&self.docs[*d as usize].npath).to_string();
             affected.extend(self.keys_for_base(&nb));
@@ -471,6 +554,12 @@ impl LinkIndex {
             doc.npath = k.clone();
             self.base_add(*d, &k);
             affected.extend(self.keys_for_base(base_of(&k)));
+            if patch {
+                self.order_insert(*d);
+            }
+        }
+        if !patch {
+            self.sort_docs();
         }
         affected.sort_unstable();
         affected.dedup();
@@ -482,7 +571,7 @@ impl LinkIndex {
         const HDR: usize = 16;
         let arc = |s: &Arc<str>| s.len() + 16 + HDR;
         let vec = |cap: usize, sz: usize| if cap == 0 { 0 } else { cap * sz + HDR };
-        let mut n = self.docs.capacity() * std::mem::size_of::<Doc>() + self.keys.capacity() * std::mem::size_of::<Key>();
+        let mut n = self.sorted.capacity() * 4 + self.docs.capacity() * std::mem::size_of::<Doc>() + self.keys.capacity() * std::mem::size_of::<Key>();
         for d in &self.docs {
             n += if d.path.is_empty() { 0 } else { d.path.len() + HDR };
             n += arc(&d.npath) + vec(d.ids.len(), 1) + vec(d.fwd.len(), 8) + vec(d.keys_of.capacity(), 4);

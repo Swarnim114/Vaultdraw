@@ -187,6 +187,31 @@ fn link_index_upsert_equals_a_fresh_build() {
     }
 }
 
+#[test]
+fn link_index_keeps_docs_in_path_order_through_updates_and_renames() {
+    let paths = |li: &LinkIndex| li.sorted_docs().iter().map(|&i| li.path(i).to_string()).collect::<Vec<_>>();
+    let sorted = |mut v: Vec<String>| {
+        v.sort();
+        v
+    };
+    let mut li = LinkIndex::default();
+    let ids: Vec<u32> = ["m", "b", "z", "A/q", "c"].iter().map(|p| li.add_doc(&format!("{p}.excalidraw"))).collect();
+    assert_eq!(paths(&li), sorted(paths(&li)));
+    li.remove_doc(ids[1]);
+    li.add_doc("d.excalidraw");
+    assert_eq!(paths(&li), ["A/q.excalidraw", "c.excalidraw", "d.excalidraw", "m.excalidraw", "z.excalidraw"]);
+    li.change_paths(&[(ids[0], "a.excalidraw".to_string()), (ids[2], "B/y.excalidraw".to_string())]);
+    assert_eq!(paths(&li), ["A/q.excalidraw", "B/y.excalidraw", "a.excalidraw", "c.excalidraw", "d.excalidraw"]);
+    // A bulk move (more than the patch limit) re-sorts.
+    let many: Vec<(u32, String)> = (0..40).map(|i| (li.add_doc(&format!("n{i}.excalidraw")), format!("zz/{:02}.excalidraw", 40 - i))).collect();
+    li.change_paths(&many);
+    let all = paths(&li);
+    assert_eq!(all.len(), 45);
+    assert_eq!(all, sorted(all.clone()));
+    let fresh = index_of(all.iter().map(|p| (p.as_str(), doc(p, &[], &[]))).collect()).build_links();
+    assert_eq!(paths(&fresh), all);
+}
+
 // ---------------------------------------------------------------- queries
 
 #[test]

@@ -37,6 +37,43 @@ const TAG_BIT: u32 = 1 << 31;
 
 type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<Fx>>;
 
+/// Strings packed in one buffer (one allocation instead of one per node).
+#[derive(Default, Debug, PartialEq, Eq)]
+pub(crate) struct Strs {
+    blob: String,
+    ends: Vec<u32>,
+}
+
+impl Strs {
+    fn with_capacity(n: usize) -> Strs {
+        Strs { blob: String::with_capacity(n * 16), ends: Vec::with_capacity(n) }
+    }
+    pub(crate) fn push(&mut self, s: &str) {
+        self.blob.push_str(s);
+        self.ends.push(self.blob.len() as u32);
+    }
+    fn push_tag(&mut self, display: &str) {
+        self.blob.push('#');
+        self.push(display);
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.ends.len()
+    }
+    pub(crate) fn get(&self, i: usize) -> &str {
+        let start = if i == 0 { 0 } else { self.ends[i - 1] as usize };
+        &self.blob[start..self.ends[i] as usize]
+    }
+    fn extend(&mut self, other: Strs) {
+        let base = self.blob.len() as u32;
+        self.blob.push_str(&other.blob);
+        self.ends.extend(other.ends.iter().map(|e| e + base));
+    }
+    #[cfg(test)]
+    pub(crate) fn to_vec(&self) -> Vec<&str> {
+        (0..self.len()).map(|i| self.get(i)).collect()
+    }
+}
+
 /// The decoded-in-memory graph (also what the encoder serialises).
 #[derive(Default, Debug, PartialEq, Eq)]
 pub(crate) struct Graph {
@@ -45,56 +82,48 @@ pub(crate) struct Graph {
     pub in_deg: Vec<u32>,
     pub flags: Vec<u32>,
     pub edges: Vec<u32>,
-    pub labels: Vec<String>,
-    pub folders: Vec<String>,
+    pub labels: Strs,
+    pub folders: Strs,
 }
 
 fn top_folder(path: &str) -> &str {
     path.find('/').map_or("", |i| &path[..i])
 }
 
-/// Builds the graph from the link index and the doc entries it was built from.
-pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
-    // Walk the doc map once (contiguous) and sort it; link-index ids come from an Fx map.
-    let mut entries: Vec<(&str, &DocEntry)> = docs.iter().map(|(p, d)| (p.as_str(), d)).collect();
-    entries.sort_unstable_by(|a, b| a.0.cmp(b.0));
-    let mut id_of: FxMap<&str, u32> = FxMap::default();
-    id_of.reserve(entries.len());
-    for (id, p) in li.live_docs() {
-        id_of.insert(p, id);
-    }
-    let live: Vec<(u32, &str, Option<&DocEntry>)> = entries.iter().filter_map(|&(p, d)| id_of.get(p).map(|&id| (id, p, Some(d)))).collect();
+/// Builds the graph from the link index alone (it keeps the drawings' path order and tags).
+pub(crate) fn build(li: &LinkIndex) -> Graph {
+    let live: Vec<(u32, &str)> = li.sorted_docs().iter().map(|&id| (id, li.path(id))).collect();
     let n_docs = live.len();
     let mut node_of_doc = vec![NONE; live.iter().map(|d| d.0 as usize + 1).max().unwrap_or(0)];
-    for (node, (id, _, _)) in live.iter().enumerate() {
+    for (node, (id, _)) in live.iter().enumerate() {
         node_of_doc[*id as usize] = node as u32;
     }
 
     let mut g = Graph::default();
-    g.folders.push(String::new());
-    g.labels.reserve(n_docs);
+    g.folders.push("");
+    g.labels = Strs::with_capacity(n_docs);
     g.folder.reserve(n_docs);
     let mut cur_folder = "";
-    for (_, path, _) in &live {
+    for (_, path) in &live {
         let top = top_folder(path);
         if !top.is_empty() && top != cur_folder {
             // Paths are sorted, so a top-level folder is one contiguous run.
-            g.folders.push(top.to_string());
+            g.folders.push(top);
             cur_folder = top;
         }
         g.folder.push(if top.is_empty() { 0 } else { (g.folders.len() - 1) as u32 });
-        g.labels.push(strip_ext(path).to_string());
+        g.labels.push(strip_ext(path));
     }
 
     // Edges per source, with ghosts and tags numbered as first seen (tag ids fixed up at the end).
     let mut ghost_of_key: FxMap<u32, u32> = FxMap::default();
-    let mut tag_of_key: FxMap<&str, u32> = FxMap::default();
-    let mut ghost_labels: Vec<String> = Vec::new();
-    let mut tag_labels: Vec<String> = Vec::new();
+    let mut tag_of_key = vec![NONE; li.n_tag_keys()];
+    let mut ghost_labels = Strs::default();
+    let mut tag_labels = Strs::default();
     let mut edges: Vec<u32> = Vec::with_capacity(n_docs * 6);
     let mut real_edges = vec![false; n_docs];
     let mut scratch: Vec<u32> = Vec::new();
-    for (src, (id, _, entry)) in live.iter().enumerate() {
+    for (src, (id, _)) in live.iter().enumerate() {
         scratch.clear();
         for &(key, _) in li.out_links(*id) {
             let t = li.key_target(key);
@@ -102,7 +131,7 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
                 node_of_doc[t as usize]
             } else {
                 *ghost_of_key.entry(key).or_insert_with(|| {
-                    ghost_labels.push(li.key_str(key).to_string());
+                    ghost_labels.push(li.key_str(key));
                     (n_docs + ghost_labels.len() - 1) as u32
                 })
             };
@@ -112,16 +141,16 @@ pub(crate) fn build(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Graph {
         }
         real_edges[src] = !scratch.is_empty();
         push_sorted(&mut edges, src as u32, &mut scratch);
-        if let Some(d) = entry {
-            for (key, display) in d.tag_pairs() {
-                let tid = *tag_of_key.entry(key).or_insert_with(|| {
-                    tag_labels.push(format!("#{display}"));
-                    (tag_labels.len() - 1) as u32
-                });
-                scratch.push(TAG_BIT | tid);
+        for &v in li.doc_tags(*id) {
+            let (display, key) = li.tag_variant_of(v);
+            let slot = &mut tag_of_key[key as usize];
+            if *slot == NONE {
+                tag_labels.push_tag(display);
+                *slot = (tag_labels.len() - 1) as u32;
             }
-            push_sorted(&mut edges, src as u32, &mut scratch);
+            scratch.push(TAG_BIT | *slot);
         }
+        push_sorted(&mut edges, src as u32, &mut scratch);
     }
     let n = n_docs + ghost_labels.len() + tag_labels.len();
     let tag_base = (n_docs + ghost_labels.len()) as u32;
@@ -185,35 +214,27 @@ impl Graph {
     /// Serialises into the `VDG1` layout.
     pub(crate) fn encode(&self) -> Vec<u8> {
         let (n, e, f) = (self.node_count(), self.edges.len() / 2, self.folders.len());
-        let string_bytes: usize = self.labels.iter().chain(&self.folders).map(String::len).sum();
+        let string_bytes = self.labels.blob.len() + self.folders.blob.len();
         let words = 8 + 4 * n + 2 * e + (n + 1) + (f + 1);
         let mut out = Vec::with_capacity(words * 4 + string_bytes);
         push_u32s(&mut out, &[MAGIC, VERSION, n as u32, e as u32, f as u32, string_bytes as u32, 0, 0]);
         for col in [&self.folder, &self.out_deg, &self.in_deg, &self.flags, &self.edges] {
             push_u32s(&mut out, col);
         }
-        let mut off = 0u32;
-        let offsets = |strs: &[String], off: &mut u32| -> Vec<u32> {
-            let mut v = Vec::with_capacity(strs.len() + 1);
-            v.push(*off);
-            for s in strs {
-                *off += s.len() as u32;
-                v.push(*off);
-            }
-            v
+        let offsets = |strs: &Strs, base: u32| -> Vec<u32> {
+            std::iter::once(base).chain(strs.ends.iter().map(|e| e + base)).collect()
         };
-        push_u32s(&mut out, &offsets(&self.labels, &mut off));
-        push_u32s(&mut out, &offsets(&self.folders, &mut off));
-        for s in self.labels.iter().chain(&self.folders) {
-            out.extend_from_slice(s.as_bytes());
-        }
+        push_u32s(&mut out, &offsets(&self.labels, 0));
+        push_u32s(&mut out, &offsets(&self.folders, self.labels.blob.len() as u32));
+        out.extend_from_slice(self.labels.blob.as_bytes());
+        out.extend_from_slice(self.folders.blob.as_bytes());
         out
     }
 }
 
 /// `vault_graph` payload for the vault's link index.
-pub(crate) fn export(li: &LinkIndex, docs: &HashMap<String, DocEntry>) -> Vec<u8> {
-    build(li, docs).encode()
+pub(crate) fn export(li: &LinkIndex) -> Vec<u8> {
+    build(li).encode()
 }
 
 /// The encoded graph of one index generation. Held inside `Index`, which clears it on every
@@ -255,8 +276,8 @@ pub(crate) mod tests {
         }
         let li = ix.build_links();
         ix.install_links(li);
-        let (li, docs) = ix.links_and_docs().unwrap();
-        build(li, docs)
+        let (li, _) = ix.links_and_docs().unwrap();
+        build(li)
     }
 
     fn small() -> Graph {
@@ -271,12 +292,12 @@ pub(crate) mod tests {
 
     fn describe(g: &Graph) -> serde_json::Value {
         let nodes: Vec<_> = (0..g.node_count())
-            .map(|i| serde_json::json!({"label": g.labels[i], "folder": g.folder[i], "out": g.out_deg[i], "in": g.in_deg[i], "flags": g.flags[i]}))
+            .map(|i| serde_json::json!({"label": g.labels.get(i), "folder": g.folder[i], "out": g.out_deg[i], "in": g.in_deg[i], "flags": g.flags[i]}))
             .collect();
         let edges: Vec<_> = g.edges.chunks_exact(2).map(|e| serde_json::json!([e[0], e[1]])).collect();
         serde_json::json!({
             "_doc": "Golden description of fixtures/graph_small.bin (links/graph.rs test small_vault_fixture); the TS decoder test checks the same bytes. Regenerate: VD_UPDATE_FIXTURES=1 cargo test --lib links::graph",
-            "nodeCount": g.node_count(), "edgeCount": g.edges.len() / 2, "folders": g.folders, "nodes": nodes, "edges": edges,
+            "nodeCount": g.node_count(), "edgeCount": g.edges.len() / 2, "folders": g.folders.to_vec(), "nodes": nodes, "edges": edges,
         })
     }
 
@@ -290,9 +311,9 @@ pub(crate) mod tests {
         let li = ix.build_links();
         ix.install_links(li);
         let builds = std::cell::Cell::new(0);
-        let encode = |li: &LinkIndex, docs: &HashMap<String, DocEntry>| {
+        let encode = |li: &LinkIndex| {
             builds.set(builds.get() + 1);
-            export(li, docs)
+            export(li)
         };
         let first = ix.graph_bytes(encode).unwrap();
         let second = ix.graph_bytes(encode).unwrap();
@@ -317,11 +338,42 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn incrementally_maintained_index_exports_the_same_bytes_as_a_fresh_build() {
+        let first = [
+            ("b/two.excalidraw", "[[one]] #Rust #rust/x"),
+            ("a/one.excalidraw", "[[two]] [[nowhere]] #rust"),
+            ("z.excalidraw", "[[a/one]] #other"),
+            ("m/gone.excalidraw", "[[z]] #gone"),
+        ];
+        let last = [("b/two.excalidraw", "[[one]] #Rust #rust/x"), ("a/one.excalidraw", "[[two]] [[nowhere]] #rust"), ("z.excalidraw", "[[b/two]] #Rust"), ("c.excalidraw", "#fresh [[z]]")];
+        let mut inc = Index::default();
+        inc.install_links(LinkIndex::default());
+        for (p, t) in first {
+            let (p, d) = drawing(p, t);
+            inc.upsert(p, d);
+        }
+        inc.remove("m/gone.excalidraw");
+        for (p, t) in &last[2..] {
+            let (p, d) = drawing(p, t);
+            inc.upsert(p, d);
+        }
+        let mut fresh = Index::default();
+        for (p, t) in last {
+            let (p, d) = drawing(p, t);
+            fresh.upsert(p, d);
+        }
+        let li = fresh.build_links();
+        fresh.install_links(li);
+        let bytes = |ix: &Index| export(ix.links().unwrap());
+        assert_eq!(bytes(&inc), bytes(&fresh));
+    }
+
+    #[test]
     fn small_vault_is_encoded_deduplicated_and_flagged() {
         let g = small();
         // drawings by path: A/x, A/y, B/lone, B/z, root; ghost; tags t1, t2
-        assert_eq!(g.labels, ["A/x", "A/y", "B/lone", "B/z", "root", "missing thing", "#t1", "#t2"]);
-        assert_eq!(g.folders, ["", "A", "B"]);
+        assert_eq!(g.labels.to_vec(), ["A/x", "A/y", "B/lone", "B/z", "root", "missing thing", "#t1", "#t2"]);
+        assert_eq!(g.folders.to_vec(), ["", "A", "B"]);
         assert_eq!(g.folder, [1, 1, 2, 2, 0, 0, 0, 0]);
         let edges: Vec<(u32, u32)> = g.edges.chunks_exact(2).map(|e| (e[0], e[1])).collect();
         // x->y once (dup dropped), x->x dropped, x->ghost, x->tags; y->root, y->x; z->ghost; lone->t1
