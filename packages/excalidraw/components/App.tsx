@@ -5137,6 +5137,11 @@ class App extends React.Component<AppProps, AppState> {
       sceneImages,
       ...ids.map((id) => this.imageCache.get(id)?.image),
     ]);
+    // no element uses these yet: the idle prune's grace starts now, not when
+    // decoding began, so a slow preload is not evicted just before it lands
+    for (const id of ids) {
+      this.imageCacheUnreferencedSince.delete(id);
+    }
   };
 
   /**
@@ -5145,19 +5150,24 @@ class App extends React.Component<AppProps, AppState> {
    * earlier scene stay in memory for the editor's lifetime.
    */
   public retainFiles: ExcalidrawImperativeAPI["retainFiles"] = (fileIds) => {
-    const keep = new Set<string>(fileIds);
+    const keep = new Set<FileId>(fileIds as Iterable<FileId>);
     const nextFiles: BinaryFiles = {};
     for (const [id, file] of Object.entries(this.files)) {
-      if (keep.has(id)) {
+      if (keep.has(id as FileId)) {
         nextFiles[id] = file;
       }
     }
     this.files = nextFiles;
-    for (const id of [...this.imageCache.keys()]) {
-      if (!keep.has(id)) {
-        this.imageCache.delete(id);
-      }
-    }
+    // one eviction path: the idle prune's, without its grace period
+    pruneImageCache({
+      cache: this.imageCache,
+      elements: [],
+      unreferencedSince: this.imageCacheUnreferencedSince,
+      now: Date.now(),
+      keep,
+      graceMs: 0,
+      minEntries: 0,
+    });
   };
 
   private addMissingFiles = (

@@ -41,6 +41,23 @@ describe("pruneImageCache", () => {
     expect([...cache.keys()]).toEqual([fid(0), fid(1)]);
   });
 
+  it("graceMs 0 drops every unreferenced entry at once and keeps `keep`", () => {
+    const cache = makeCache(10);
+    const since = new Map<FileId, number>([[fid(3), 5]]);
+    const out = pruneImageCache({
+      cache,
+      elements: [],
+      unreferencedSince: since,
+      now: 0,
+      keep: new Set([fid(1), fid(2)]),
+      graceMs: 0,
+      minEntries: 0,
+    });
+    expect(out).toEqual({ removed: 8, pending: 0 });
+    expect([...cache.keys()]).toEqual([fid(1), fid(2)]);
+    expect(since.size).toBe(0);
+  });
+
   it("a young entry that gets referenced within the grace is kept", () => {
     const cache = makeCache(9);
     const since = new Map<FileId, number>();

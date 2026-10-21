@@ -164,7 +164,8 @@ export const IMAGE_CACHE_PRUNE_GRACE_MS = 2000;
  * insert/paste/crop flows that read the cache for an element not yet in the
  * scene. Dropped entries self-heal: the editor re-decodes any visible image
  * element without an entry (e.g. after undo restores it).
- * `unreferencedSince` is caller-owned state between calls.
+ * `unreferencedSince` is caller-owned state between calls. With `graceMs: 0`
+ * every unreferenced entry goes at once (a host swapping the whole scene).
  * @returns how many entries were removed and how many are still on probation
  */
 export const pruneImageCache = ({
@@ -202,10 +203,10 @@ export const pruneImageCache = ({
       continue;
     }
     const since = unreferencedSince.get(fileId);
-    if (since === undefined) {
+    if (graceMs > 0 && since === undefined) {
       unreferencedSince.set(fileId, now);
       pending++;
-    } else if (now - since >= graceMs) {
+    } else if (graceMs <= 0 || now - since! >= graceMs) {
       cache.delete(fileId);
       unreferencedSince.delete(fileId);
       removed++;
