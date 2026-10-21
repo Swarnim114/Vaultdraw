@@ -9,14 +9,20 @@ const el = (over: Record<string, unknown>) =>
   } as any);
 
 describe("shouldDrawElementDirectly", () => {
-  it("draws unfilled arrows, lines and shapes directly", () => {
-    for (const type of ["arrow", "line", "rectangle", "diamond", "ellipse"]) {
+  it("draws unfilled arrows and lines directly", () => {
+    for (const type of ["arrow", "line"]) {
       expect(shouldDrawElementDirectly(el({ type }), 1, true)).toBe(true);
     }
   });
 
+  it("keeps bitmaps for shapes (dense bbox, costly to re-stroke)", () => {
+    for (const type of ["rectangle", "diamond", "ellipse"]) {
+      expect(shouldDrawElementDirectly(el({ type }), 1, true)).toBe(false);
+    }
+  });
+
   it("allows solid fills but not hachure-like fills", () => {
-    const filled = { type: "rectangle", backgroundColor: "#ffc9c9" };
+    const filled = { type: "line", backgroundColor: "#ffc9c9" };
     expect(
       shouldDrawElementDirectly(el({ ...filled, fillStyle: "solid" }), 1, true),
     ).toBe(true);

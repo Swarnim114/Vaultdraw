@@ -772,7 +772,7 @@ export const beginElementCanvasFrame = (visibleElementCount = 0) => {
 /**
  * Whether an element is cheaper (in memory) drawn directly than cached as a
  * bitmap. Arrows and lines have sparse, padded bboxes (a bitmap is ~2x the
- * painted area), and unfilled or solid-filled shapes are a few path ops.
+ * painted area) and are a few path ops.
  * Excluded: text (runs, RTL, snapping), images (decode/crop/dark filter),
  * freedraw and hachure/cross-hatch/zigzag fills (expensive to re-stroke),
  * and translucent elements (stroke and fill overlap would double-blend
@@ -787,11 +787,11 @@ export const shouldDrawElementDirectly = (
     return false;
   }
   switch (element.type) {
+    // Shapes (rectangle/diamond/ellipse) keep their bitmap: their bbox is
+    // dense, and re-stroking their rough paths every static render made
+    // low-end opens a frame slower (open.small +12-18% median at 4x).
     case "arrow":
     case "line":
-    case "rectangle":
-    case "diamond":
-    case "ellipse":
       return (
         element.backgroundColor === "transparent" ||
         element.fillStyle === "solid"
