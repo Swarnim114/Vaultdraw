@@ -31,8 +31,9 @@ const session = (page: Page) =>
 
 const graph = (page: Page) => page.getByTestId("graph-view");
 const navigator = (page: Page) => page.getByLabel("Vault File Navigator");
-const graphButton = (page: Page) =>
-  navigator(page).getByRole("button", { name: "Graph view", exact: true });
+// The activity bar (on by default) owns the Graph entry; the navigator toolbar
+// button is not rendered while it is on.
+const graphButton = (page: Page) => page.getByTestId("activity-bar-graph");
 
 const expectGraph = async (page: Page) => {
   await expect(graph(page)).toBeVisible();
@@ -51,10 +52,13 @@ const expectClosedOn = async (page: Page, name: string) => {
 
 test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
-test("navigator button opens the graph, shows its key, toggles; Esc returns", async ({
+test("activity bar button opens the graph, shows its key, toggles; Esc returns", async ({
   page,
 }) => {
   await openLinksVault(page, "Hub");
+  await expect(
+    navigator(page).getByRole("button", { name: "Graph view", exact: true }),
+  ).toHaveCount(0);
   await expect(graphButton(page)).toHaveAttribute(
     "title",
     /^Graph view \((Cmd\+Option\+G|Ctrl\+Alt\+G)\)$/,
