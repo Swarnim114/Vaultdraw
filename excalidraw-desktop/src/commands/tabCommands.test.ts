@@ -68,11 +68,7 @@ describe("TAB_COMMANDS", () => {
   it.each(PLATFORMS)(
     "does not collide with registered commands on %s",
     (platform) => {
-      const result = findConflicts(
-        COMMANDS,
-        {},
-        platform,
-      );
+      const result = findConflicts(COMMANDS, {}, platform);
       const tabIds = new Set<string>(TAB_COMMANDS.map((c) => c.id));
       const bad = [...result.entries()]
         .filter(([id]) => tabIds.has(id))
@@ -117,7 +113,9 @@ describe("TAB_COMMANDS", () => {
       expect(reserved).toEqual([]);
       expect(reservedReason("Mod+W", platform)).toBeNull();
       expect(reservedReason("Mod+Shift+W", platform)).toBe(
-        platform === "mac" ? "the app menu closes the window with this key" : null,
+        platform === "mac"
+          ? "the app menu closes the window with this key"
+          : null,
       );
     },
   );

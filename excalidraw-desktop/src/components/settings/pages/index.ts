@@ -1,5 +1,7 @@
 import { pdfImportControls } from "../../../pdfImport/PdfImportSettings";
 
+import { tabsControls } from "../../../tabs/tabsSettingsControls";
+
 import { appearanceControls } from "./Appearance";
 import { drawingControls } from "./Drawing";
 import { filesControls } from "./Files";
@@ -12,7 +14,6 @@ import { tagsControls } from "./TagsSettings";
 import { pageControls } from "./Page";
 import { pensControls } from "./Pens";
 import { toolDefaultsControls } from "./ToolDefaults";
-import { tabsControls } from "../../../tabs/tabsSettingsControls";
 
 import type { SettingControls } from "../SettingsContext";
 
