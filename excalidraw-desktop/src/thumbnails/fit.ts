@@ -7,10 +7,11 @@
  */
 
 /**
- * CSS size of the box. It covers the largest surface (the 300 px Cmd+P
+ * CSS size of the box: exactly the largest surface (the 300 px Cmd+P
  * preview); smaller tiles (Home 160-200 px, gallery 192 px) downscale it.
+ * No bigger: raster + PNG cost grows with the pixel count (low-end Macs).
  */
-export const THUMB_BOX_CSS = { width: 320, height: 240 } as const;
+export const THUMB_BOX_CSS = { width: 300, height: 225 } as const;
 /** Padding on every side, as a fraction of the box's short edge. */
 export const THUMB_PAD_RATIO = 0.06;
 /**

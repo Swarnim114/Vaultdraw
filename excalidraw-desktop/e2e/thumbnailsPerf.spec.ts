@@ -14,7 +14,7 @@ import type { Page } from "@playwright/test";
 import type { Step0Hooks } from "./thumbnailsStep0";
 
 // F2 thumbnails, step 0 (gate before the gallery/surfaces): main-thread cost of
-// renderScenePng (exportToCanvas + toBlob PNG, the 320x240 CSS box at THUMB_DENSITY, default 2) for 100/500/1500 element
+// renderScenePng (exportToCanvas + toBlob PNG, the 300x225 CSS box at THUMB_DENSITY, default 2) for 100/500/1500 element
 // scenes (rough default roughness and roughness 0) plus a scene with an
 // embedded image, at 1x and (Chromium only) 4x CPU throttle. One
 // `THUMB_STEP0 {json}` line per case (record.mjs spec ingests `<NAME>_PERF`).
