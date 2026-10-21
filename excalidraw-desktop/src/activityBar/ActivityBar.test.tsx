@@ -5,14 +5,16 @@ import { ActivityBar } from "./ActivityBar";
 
 afterEach(cleanup);
 
-const setup = (over: { available?: (id: string) => boolean } = {}) => {
+const setup = (
+  over: { available?: (id: string) => boolean; drawingOpen?: boolean } = {},
+) => {
   const run = vi.fn(() => true);
   render(
     <ActivityBar
       run={run}
       isAvailable={over.available ?? (() => true)}
       hasHandler={(id) => id !== "tags.focusPane"}
-      drawingOpen
+      drawingOpen={over.drawingOpen ?? true}
       writable
     />,
   );
@@ -28,7 +30,10 @@ describe("ActivityBar", () => {
   });
 
   it("disabled entries stay focusable and do nothing", () => {
-    const run = setup({ available: (id) => id !== "history.toggle" });
+    const run = setup({
+      available: (id) => id !== "history.toggle",
+      drawingOpen: false,
+    });
     const button = screen.getByTestId("activity-bar-history");
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).toHaveAttribute("title", "History - Open a drawing first");

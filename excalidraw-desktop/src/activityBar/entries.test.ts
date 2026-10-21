@@ -9,6 +9,7 @@ import {
 } from "./entries";
 
 const ctx = (over: Partial<EntryContext> = {}): EntryContext => ({
+  drawingOpen: true,
   hasHandler: () => true,
   isAvailable: () => true,
   shortcut: () => "",
@@ -58,12 +59,35 @@ describe("resolveEntryState", () => {
     ).toBe(true);
   });
 
-  it("disables with a reason when the command is unavailable", () => {
+  it("disables a drawing entry with a reason when no drawing is open, even with no handler", () => {
+    expect(
+      resolveEntryState(
+        entry,
+        ctx({ drawingOpen: false, hasHandler: () => false }),
+      ),
+    ).toEqual({
+      hidden: false,
+      disabled: true,
+      title: "Library - Open a drawing first",
+    });
+  });
+
+  it("hides a vault entry with no handler even when no drawing is open", () => {
+    const tags = ACTIVITY_ENTRIES.find((e) => e.id === "tags")!;
+    expect(
+      resolveEntryState(
+        tags,
+        ctx({ drawingOpen: false, hasHandler: () => false }),
+      ).hidden,
+    ).toBe(true);
+  });
+
+  it("disables when the command is otherwise unavailable", () => {
     expect(resolveEntryState(entry, ctx({ isAvailable: () => false }))).toEqual(
       {
         hidden: false,
         disabled: true,
-        title: "Library - Open a drawing first",
+        title: "Library - Not available now",
       },
     );
   });

@@ -99,6 +99,7 @@ export const ActivityBar = memo(
       () =>
         ACTIVITY_ENTRIES.flatMap((entry) => {
           const state = resolveEntryState(entry, {
+            drawingOpen,
             hasHandler,
             isAvailable,
             shortcut,

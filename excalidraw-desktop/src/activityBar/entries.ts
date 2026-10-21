@@ -42,11 +42,14 @@ export interface ActivityEntry {
   group: ActivityGroup;
   /** The panel this opens is showing: the button is pressed. */
   active?: ActiveStore;
-  /** Why the entry is disabled while its command's `when` fails. */
-  disabledReason?: string;
+  /**
+   * Works on the open drawing: without one the entry is shown disabled with
+   * "Open a drawing first" (even when the editor that binds it is unmounted).
+   */
+  needsDrawing?: boolean;
 }
 
-const OPEN_DRAWING = "Open a drawing first";
+export const OPEN_DRAWING = "Open a drawing first";
 
 export const ACTIVITY_ENTRIES: readonly ActivityEntry[] = [
   {
@@ -56,7 +59,7 @@ export const ACTIVITY_ENTRIES: readonly ActivityEntry[] = [
     commandId: "library.toggle",
     group: "top",
     active: libraryPanelStore,
-    disabledReason: OPEN_DRAWING,
+    needsDrawing: true,
   },
   {
     id: "history",
@@ -68,7 +71,7 @@ export const ACTIVITY_ENTRIES: readonly ActivityEntry[] = [
       subscribe: subscribeHistoryPanelOpen,
       get: isHistoryPanelOpen,
     },
-    disabledReason: OPEN_DRAWING,
+    needsDrawing: true,
   },
   {
     id: "graph",
@@ -125,6 +128,7 @@ export const ACTIVITY_ENTRIES: readonly ActivityEntry[] = [
 
 /** Live facts about a command, supplied by the component. */
 export interface EntryContext {
+  drawingOpen: boolean;
   /** Some component bound a handler for the command. */
   hasHandler(commandId: string): boolean;
   /** The handler is bound and the command's `when` holds. */
@@ -145,6 +149,13 @@ export function resolveEntryState(
   entry: ActivityEntry,
   ctx: EntryContext,
 ): EntryState {
+  if (entry.needsDrawing && !ctx.drawingOpen) {
+    return {
+      hidden: false,
+      disabled: true,
+      title: `${entry.label} - ${OPEN_DRAWING}`,
+    };
+  }
   if (!ctx.hasHandler(entry.commandId)) {
     return { hidden: true, disabled: true, title: entry.label };
   }
@@ -152,7 +163,7 @@ export function resolveEntryState(
     return {
       hidden: false,
       disabled: true,
-      title: `${entry.label} - ${entry.disabledReason ?? "Not available now"}`,
+      title: `${entry.label} - Not available now`,
     };
   }
   const keys = ctx.shortcut(entry.commandId);
