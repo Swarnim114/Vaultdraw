@@ -58,7 +58,11 @@ const state = (over: Record<string, unknown> = {}) =>
   } as any);
 
 const setup = (enabled = true) => {
-  const api = { updateScene: vi.fn(), setActiveTool: vi.fn() };
+  const api = {
+    updateScene: vi.fn(),
+    setActiveTool: vi.fn(),
+    getAppState: vi.fn(() => state()),
+  };
   const hook = renderHook(() => usePens({ current: api as any }, enabled));
   return { api, hook };
 };
@@ -157,6 +161,97 @@ describe("usePens", () => {
     );
     expect(hook.result.current.active).toBeNull();
     expect(hook.result.current.freedrawPen()).toBeNull();
+  });
+
+  it("gives the editor its own look back when the pen tool is left", () => {
+    const { api, hook } = setup();
+    act(() => hook.result.current.onAppState(state()));
+    act(() => hook.result.current.selectPen(4));
+    const pen = {
+      currentItemStrokeColor: "#ffd43b",
+      currentItemOpacity: 40,
+      currentItemStrokeVariability: "constant",
+    };
+    act(() => hook.result.current.onAppState(state(pen)));
+    api.updateScene.mockClear();
+    act(() =>
+      hook.result.current.onAppState(
+        state({ ...pen, activeTool: { type: "rectangle" } }),
+      ),
+    );
+    expect(api.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appState: {
+          currentItemStrokeColor: "#1e1e1e",
+          currentItemOpacity: 100,
+          currentItemStrokeVariability: "variable",
+        },
+      }),
+    );
+    expect(hook.result.current.active).toBeNull();
+  });
+
+  it("leaves a colour picked by hand alone when the pen tool is left", () => {
+    const { api, hook } = setup();
+    act(() => hook.result.current.selectPen(3));
+    api.updateScene.mockClear();
+    const hand = { currentItemStrokeColor: "#000000" };
+    act(() => hook.result.current.onAppState(state(hand)));
+    act(() =>
+      hook.result.current.onAppState(
+        state({ ...hand, activeTool: { type: "rectangle" } }),
+      ),
+    );
+    expect(api.updateScene).not.toHaveBeenCalled();
+  });
+
+  it("restores the editor base, not a styled tool's look, after a pen picked from that tool", () => {
+    const { api, hook } = setup();
+    api.getAppState.mockReturnValue(
+      state({
+        activeTool: { type: "arrow" },
+        currentItemStrokeColor: "#f08c00",
+      }),
+    );
+    act(() => hook.result.current.selectPen(4));
+    const pen = {
+      currentItemStrokeColor: "#ffd43b",
+      currentItemOpacity: 40,
+      currentItemStrokeVariability: "constant",
+    };
+    act(() => hook.result.current.onAppState(state(pen)));
+    api.updateScene.mockClear();
+    act(() =>
+      hook.result.current.onAppState(
+        state({ ...pen, activeTool: { type: "rectangle" } }),
+      ),
+    );
+    expect(api.updateScene.mock.calls[0][0].appState).toMatchObject({
+      currentItemStrokeColor: "#1e1e1e",
+      currentItemOpacity: 100,
+    });
+  });
+
+  it("keeps the pen applied when a pen is picked from another tool", () => {
+    const { api, hook } = setup();
+    act(() =>
+      hook.result.current.onAppState(
+        state({ activeTool: { type: "rectangle" } }),
+      ),
+    );
+    act(() => hook.result.current.selectPen(3));
+    api.updateScene.mockClear();
+    act(() =>
+      hook.result.current.onAppState(
+        state({
+          activeTool: { type: "rectangle" },
+          currentItemStrokeColor: "#e03131",
+          currentItemStrokeVariability: "constant",
+        }),
+      ),
+    );
+    expect(api.updateScene).not.toHaveBeenCalled();
+    expect(hook.result.current.active).toBe(3);
   });
 
   it("keeps stable getter identities and ignores selection when disabled", () => {

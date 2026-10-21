@@ -73,6 +73,23 @@ test("a pen chosen in the bar styles the stroke", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("a pen's colour does not leak into the next shape", async ({ page }) => {
+  const errors = trackErrors(page);
+  const before = new Set((await live(page)).map((el: any) => el.id));
+  await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();
+  await page.keyboard.press("Alt+Digit5");
+  await drag(page, 0.3, 0.7, 200);
+  await page.locator(".vault-editor [data-testid='toolbar-rectangle']").click();
+  await drag(page, 0.3, 0.4, 200, 60);
+  const rect = await savedStroke(
+    page,
+    (el) => !before.has(el.id) && el.type === "rectangle",
+  );
+  expect(rect.strokeColor).toBe("#1e1e1e");
+  expect(rect.opacity).toBe(100);
+  expect(errors).toEqual([]);
+});
+
 test("Alt+2 selects the marker while drawing", async ({ page }) => {
   const errors = trackErrors(page);
   await page.locator(".vault-editor [data-testid='toolbar-freedraw']").click();

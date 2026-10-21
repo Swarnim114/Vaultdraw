@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { CaptureUpdateAction } from "@excalidraw/excalidraw";
+import { getDefaultAppState } from "@excalidraw/excalidraw/appState";
+
 import type {
   AppState,
   ExcalidrawImperativeAPI,
@@ -9,6 +12,8 @@ import { getCommand, penCommandId } from "../commands/commands";
 import { detectPlatform, formatChord } from "../commands/keys";
 import { effectiveKeys } from "../commands/keymap";
 import { useHotkeyOverrides } from "../commands/useCommands";
+import { baseStyleAppState } from "../toolDefaults/baseStyle";
+import { isStyledTool } from "../toolDefaults/toolStyles";
 import { getPreferences, subscribePreferences } from "../vault/preferences";
 
 import { registerPenSelector } from "./penCommands";
@@ -22,6 +27,8 @@ import {
 import type { RefObject } from "react";
 
 import type { PenPreset } from "./penPresets";
+
+type PenAppState = ReturnType<typeof penToAppState>;
 
 type PenState = Pick<
   AppState,
@@ -91,6 +98,8 @@ export function usePens(
   const activeRef = useRef<number | null>(null);
   const freedrawRef = useRef(false);
   const applied = useRef<Applied | null>(null);
+  /** The editor's own colour, opacity and pressure before the first pen. */
+  const before = useRef<PenAppState | null>(null);
   const enabledRef = useRef(enabled);
   presetsRef.current = presets;
   enabledRef.current = enabled;
@@ -121,6 +130,21 @@ export function usePens(
         return;
       }
       const next = penToAppState(preset);
+      if (activeRef.current === null) {
+        // A styled tool's applied look is not the editor's own: its base is.
+        const live = api.getAppState();
+        const own = isStyledTool(live.activeTool.type)
+          ? {
+              ...getDefaultAppState(),
+              ...baseStyleAppState(getPreferences()),
+            }
+          : live;
+        before.current = {
+          currentItemStrokeColor: own.currentItemStrokeColor,
+          currentItemOpacity: own.currentItemOpacity,
+          currentItemStrokeVariability: own.currentItemStrokeVariability,
+        };
+      }
       applied.current = {
         color: next.currentItemStrokeColor,
         opacity: next.currentItemOpacity,
@@ -135,6 +159,38 @@ export function usePens(
     [apiRef],
   );
 
+  /**
+   * Leaving the pen tool: the pen's colour, opacity and pressure must not
+   * leak into the next tool, so the editor's own look comes back (unless the
+   * user changed it by hand meanwhile) and the pen is deselected.
+   */
+  const leavePen = useCallback(
+    (state: PenState) => {
+      const want = applied.current;
+      const back = before.current;
+      before.current = null;
+      if (activeRef.current === null) {
+        return;
+      }
+      setActiveIndex(null);
+      const api = apiRef.current;
+      if (
+        api &&
+        want &&
+        back &&
+        state.currentItemStrokeColor === want.color &&
+        state.currentItemOpacity === want.opacity &&
+        state.currentItemStrokeVariability === want.variability
+      ) {
+        api.updateScene({
+          appState: back,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }
+    },
+    [apiRef, setActiveIndex],
+  );
+
   /** Called with every editor change; cheap compares, no work per stroke. */
   const onAppState = useCallback(
     (state: PenState) => {
@@ -142,6 +198,9 @@ export function usePens(
       if (isFreedraw !== freedrawRef.current) {
         freedrawRef.current = isFreedraw;
         setFreedrawActive(isFreedraw);
+        if (!isFreedraw) {
+          leavePen(state);
+        }
       }
       const want = applied.current;
       if (activeRef.current === null || !want) {
@@ -162,7 +221,7 @@ export function usePens(
         setActiveIndex(null);
       }
     },
-    [setActiveIndex],
+    [setActiveIndex, leavePen],
   );
 
   const freedrawPen = useCallback(() => {
