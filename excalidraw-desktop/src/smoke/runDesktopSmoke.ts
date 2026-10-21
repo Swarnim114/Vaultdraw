@@ -2547,9 +2547,18 @@ export async function runDesktopSmoke(): Promise<void> {
               clientY: y,
             }),
           );
+        // One event per frame, as real input arrives (and as the pens smoke
+        // does): a whole drag inside one task can leave the rectangle 0x0.
+        const frame = () =>
+          new Promise<void>((resolve) =>
+            win.requestAnimationFrame(() => resolve()),
+          );
         send("pointerdown", x1, y1, 1);
+        await frame();
         send("pointermove", x1 + dx / 2, y1 + dy / 2, 1);
+        await frame();
         send("pointermove", x1 + dx, y1 + dy, 1);
+        await frame();
         send("pointerup", x1 + dx, y1 + dy, 0);
         await delay(win, 300);
         doc.dispatchEvent(
