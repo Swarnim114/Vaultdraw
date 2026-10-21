@@ -179,6 +179,31 @@ const diffJson = (expected: unknown, actual: unknown, path = ""): string[] => {
       ];
 };
 
+/**
+ * Config diff. The default config.toml lists every other table commented
+ * out, and those parse as empty tables; any empty table the expectation
+ * does not name is fine, so a new config section needs no smoke edit.
+ */
+const diffConfig = (expected: object, actual: unknown): string[] => {
+  const named = new Set(Object.keys(expected));
+  const relevant =
+    actual && typeof actual === "object"
+      ? Object.fromEntries(
+          Object.entries(actual).filter(
+            ([table, value]) =>
+              named.has(table) ||
+              !(
+                value &&
+                typeof value === "object" &&
+                !Array.isArray(value) &&
+                Object.keys(value).length === 0
+              ),
+          ),
+        )
+      : actual;
+  return diffJson(expected, relevant);
+};
+
 const withConfig = (
   patch: Record<string, Record<string, unknown>>,
 ): typeof DEFAULT_CONFIG_JSON => {
@@ -1828,7 +1853,7 @@ export async function runDesktopSmoke(): Promise<void> {
           `Default config did not parse: ${JSON.stringify(loaded.configError)}`,
         );
       }
-      const mismatches = diffJson(DEFAULT_CONFIG_JSON, loaded.config);
+      const mismatches = diffConfig(DEFAULT_CONFIG_JSON, loaded.config);
       if (mismatches.length) {
         throw new Error(`Config is not the default: ${mismatches.join("; ")}`);
       }
@@ -1958,13 +1983,13 @@ export async function runDesktopSmoke(): Promise<void> {
       let loaded = await call("load_settings");
       const until = win.performance.now() + 3000;
       while (
-        diffJson(expected, loaded.config).length &&
+        diffConfig(expected, loaded.config).length &&
         win.performance.now() < until
       ) {
         await delay(win, 100);
         loaded = await call("load_settings");
       }
-      const mismatches = diffJson(expected, loaded.config);
+      const mismatches = diffConfig(expected, loaded.config);
       if (mismatches.length) {
         throw new Error(
           `GUI edits not written to config.toml: ${mismatches.join("; ")}`,
@@ -3780,7 +3805,7 @@ export async function runDesktopSmoke(): Promise<void> {
         3000,
       );
       const loaded = await call("load_settings");
-      const mismatches = diffJson(DEFAULT_CONFIG_JSON, loaded.config);
+      const mismatches = diffConfig(DEFAULT_CONFIG_JSON, loaded.config);
       if (mismatches.length) {
         throw new Error(`Config not reset: ${mismatches.join("; ")}`);
       }
