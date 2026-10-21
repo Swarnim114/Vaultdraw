@@ -212,6 +212,29 @@ fn link_index_keeps_docs_in_path_order_through_updates_and_renames() {
     assert_eq!(paths(&fresh), all);
 }
 
+#[test]
+fn bulk_removal_prunes_path_order_once_and_matches_single_removals() {
+    let paths = |li: &LinkIndex| li.sorted_docs().iter().map(|&i| li.path(i).to_string()).collect::<Vec<_>>();
+    let make = || {
+        let mut li = LinkIndex::default();
+        for i in 0..100 {
+            li.add_doc(&format!("{}/{i:03}.excalidraw", if i % 2 == 0 { "trash" } else { "keep" }));
+        }
+        li
+    };
+    let gone: Vec<String> = (0..100).step_by(2).map(|i| format!("trash/{i:03}.excalidraw")).collect();
+    let mut bulk = make();
+    bulk.remove_many(gone.iter().map(String::as_str));
+    let mut single = make();
+    gone.iter().for_each(|p| single.remove(p));
+    assert_eq!(paths(&bulk).len(), 50);
+    assert_eq!(paths(&bulk), paths(&single));
+    assert!(paths(&bulk).iter().all(|p| p.starts_with("keep/")));
+    // Freed slots are reused in order.
+    bulk.add_doc("a.excalidraw");
+    assert_eq!(paths(&bulk)[0], "a.excalidraw");
+}
+
 // ---------------------------------------------------------------- queries
 
 #[test]

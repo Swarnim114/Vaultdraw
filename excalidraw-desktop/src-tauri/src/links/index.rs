@@ -365,10 +365,29 @@ impl LinkIndex {
     }
 
     pub(crate) fn remove_doc(&mut self, d: u32) {
+        self.order_remove(d);
+        self.remove_doc_unordered(d);
+    }
+
+    /// Removes many drawings; a bulk removal (e.g. trashing a folder) prunes the
+    /// path order once instead of one O(n) shift per drawing.
+    pub(crate) fn remove_many<'a>(&mut self, paths: impl IntoIterator<Item = &'a str>) {
+        let ids: Vec<u32> = paths.into_iter().filter_map(|p| self.find_doc(p)).collect();
+        if ids.len() <= 32 {
+            ids.into_iter().for_each(|d| self.remove_doc(d));
+            return;
+        }
+        for d in ids {
+            self.remove_doc_unordered(d);
+        }
+        let docs = &self.docs;
+        self.sorted.retain(|&i| !docs[i as usize].path.is_empty());
+    }
+
+    fn remove_doc_unordered(&mut self, d: u32) {
         self.set_links(d, Vec::new());
         let mut ks = self.docs[d as usize].keys_of.clone();
         let np = self.docs[d as usize].npath.clone();
-        self.order_remove(d);
         self.base_remove(d);
         self.docs[d as usize] = Doc { path: Box::default(), npath: Arc::from(""), ids: Box::default(), fwd: Box::default(), keys_of: Vec::new(), tags: Box::default() };
         self.free_docs.push(d);

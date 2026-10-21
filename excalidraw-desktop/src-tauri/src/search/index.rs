@@ -397,16 +397,17 @@ impl Index {
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) -> usize {
         self.bump();
         let before = self.docs.len();
-        let links = &mut self.links;
+        let mut removed: Vec<String> = Vec::new();
         self.docs.retain(|p, _| {
             let k = keep(p);
             if !k {
-                if let Some(l) = links.as_deref_mut() {
-                    l.remove(p);
-                }
+                removed.push(p.clone());
             }
             k
         });
+        if let Some(l) = self.links.as_deref_mut() {
+            l.remove_many(removed.iter().map(String::as_str));
+        }
         before - self.docs.len()
     }
     /// Moves a drawing (`from` is a drawing path) or every drawing under a folder to `to`,
