@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgroundPattern";
 
+import { installNativeContextMenuSuppression } from "../src/platform/nativeContextMenu";
 import { allEditorApis } from "../src/editor/editorApi";
 import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
@@ -42,6 +43,11 @@ const ownerWindow = ownerDocument.defaultView!;
 const params = new ownerWindow.URLSearchParams(ownerWindow.location.search);
 
 ownerWindow.__EXCALIDRAW_DESKTOP__ = true;
+// ?nativemenu=suppress turns on the release-build context menu suppression.
+installNativeContextMenuSuppression(
+  ownerWindow,
+  params.get("nativemenu") === "suppress",
+);
 ownerWindow.EXCALIDRAW_ASSET_PATH = new ownerWindow.URL(
   "./",
   ownerWindow.location.href,

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { installMemoryManagement } from "./memory/install";
+import { installNativeContextMenuSuppression } from "./platform/nativeContextMenu";
 import { getPreferences, getTheme, resolveTheme } from "./vault/preferences";
 import { initSettings } from "./vault/settingsSync";
 
@@ -37,6 +38,8 @@ ownerWindow.EXCALIDRAW_ASSET_PATH = new ownerWindow.URL(
   ownerWindow.location.href,
 ).href;
 ownerWindow.__EXCALIDRAW_SHA__ = import.meta.env.VITE_APP_GIT_SHA;
+// Release builds: no native WebView menu ("Reload" would restart the frontend).
+installNativeContextMenuSuppression(ownerWindow);
 // The macOS window uses an overlay title bar (see tauri.conf.json), so the
 // app's own top bar leaves room for the window buttons.
 if (/Mac/.test(ownerWindow.navigator.userAgent)) {
