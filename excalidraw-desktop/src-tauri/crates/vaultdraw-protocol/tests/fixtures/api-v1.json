@@ -1,0 +1,331 @@
+{
+  "api": 1,
+  "methods": [
+    {
+      "name": "rpc.discover",
+      "params": {
+        "additionalProperties": true,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "api": {
+            "type": "integer"
+          },
+          "apiMin": {
+            "type": "integer"
+          },
+          "app": {
+            "type": "string"
+          },
+          "methods": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "api",
+          "apiMin",
+          "app",
+          "methods"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli",
+        "uri",
+        "mcp"
+      ],
+      "summary": "API level, app version, every method with its schemas",
+      "window": false
+    },
+    {
+      "name": "rpc.hello",
+      "params": {
+        "additionalProperties": true,
+        "properties": {
+          "client": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "api": {
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "api",
+          "role"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli",
+        "uri",
+        "mcp"
+      ],
+      "summary": "Declare this connection's role (cli, uri, mcp) and client name",
+      "window": false
+    },
+    {
+      "name": "app.status",
+      "params": {
+        "additionalProperties": true,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "activeDrawing": {
+            "properties": {
+              "dirty": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "api": {
+            "type": "integer"
+          },
+          "app": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "tabs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "vault": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "readOnly": {
+                "type": "boolean"
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "windowReady": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running",
+          "app",
+          "api",
+          "pid",
+          "vault",
+          "windowReady"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli"
+      ],
+      "summary": "Is the app running: version, pid, open vault, active drawing, tabs",
+      "window": false
+    },
+    {
+      "name": "app.focus",
+      "params": {
+        "additionalProperties": true,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "focused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "focused"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli",
+        "uri"
+      ],
+      "summary": "Show and focus the app window",
+      "window": false
+    },
+    {
+      "name": "app.open",
+      "params": {
+        "additionalProperties": true,
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cwd": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "argv"
+        ],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "handled": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "handled"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli",
+        "uri"
+      ],
+      "summary": "Handle a launch forwarded from a second process: argv (files, vaultdraw:// URIs) and cwd",
+      "window": false
+    },
+    {
+      "name": "command.list",
+      "params": {
+        "additionalProperties": true,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "commands": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "keys": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "when": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "category",
+                "keys",
+                "available"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "commands"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli"
+      ],
+      "summary": "Every palette command: id, title, category, keys, when clauses, available now",
+      "window": true
+    },
+    {
+      "name": "command.run",
+      "params": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "result": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ran": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ran",
+          "id"
+        ],
+        "type": "object"
+      },
+      "roles": [
+        "cli"
+      ],
+      "summary": "Run a palette command by id (same ids as [hotkeys]); prefix commands like drawing.open:<path> too",
+      "window": true
+    }
+  ]
+}

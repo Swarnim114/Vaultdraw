@@ -4396,6 +4396,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vaultdraw-protocol"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "version-compare"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
