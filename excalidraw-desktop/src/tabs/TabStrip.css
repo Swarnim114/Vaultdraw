@@ -1,6 +1,8 @@
 /* Tabs (F5): tab strip. Theme tokens only (see VaultShell.css). */
 
 .vault-tabs {
+  position: relative;
+  z-index: 0;
   display: flex;
   align-items: stretch;
   flex: 0 0 auto;
@@ -152,16 +154,207 @@
   color: var(--vault-text-muted);
 }
 
-/* The graph / gallery cover the pane but not the strip: a tab click closes
-   the overlay and switches (VaultShell.css hides the pane's other children). */
-.vault-editor-pane.vault-editor-pane--graph > .vault-tabs.vault-tabs {
-  visibility: visible;
-  position: relative;
-  z-index: 10;
+/* Drag reorder: the dragged tab follows the pointer; an indicator marks the slot. */
+.vault-tabs__tab--dragging {
+  z-index: 2;
+  opacity: 0.85;
+  background: var(--vault-surface-active);
+  box-shadow: var(--vault-shadow-lg);
+  transition: none;
 }
 
-/* ...and they start below it, so their own toolbars stay reachable. */
-.vault-tabs ~ .vd-graph,
-.vault-tabs ~ .vd-gallery {
-  top: 30px !important;
+.vault-tabs__indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--vault-primary);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.vault-tabs__indicator[hidden] {
+  display: none;
+}
+
+.vault-tabs__overflow,
+.vault-tabs__count {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  margin: 0 4px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vault-text-muted);
+  border-radius: var(--vault-radius-sm);
+  cursor: pointer;
+}
+
+.vault-tabs__overflow {
+  width: 24px;
+}
+
+.vault-tabs__count {
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11px;
+  background: var(--vault-surface-hover);
+}
+
+.vault-tabs__overflow:hover,
+.vault-tabs__count:hover {
+  background: var(--vault-surface-active);
+  color: var(--vault-text);
+}
+
+/* Tab list popover */
+.vault-tablist {
+  position: absolute;
+  top: 100%;
+  right: 4px;
+  z-index: 1000;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  background: var(--vault-menu-bg);
+  border: 1px solid var(--vault-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--vault-shadow-lg);
+  font-family: var(--vault-font);
+}
+
+.vault-tablist__input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--vault-border);
+  border-radius: 5px;
+  background: var(--vault-bg);
+  color: var(--vault-text);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.vault-tablist__input:focus {
+  outline: none;
+  border-color: var(--vault-primary);
+}
+
+.vault-tablist__rows {
+  max-height: 280px;
+  margin-top: 4px;
+  overflow-y: auto;
+}
+
+.vault-tablist__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--vault-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vault-tablist__row--cursor,
+.vault-tablist__row:hover {
+  background: var(--vault-surface-hover);
+}
+
+.vault-tablist__row--active .vault-tablist__name {
+  font-weight: 600;
+  color: var(--vault-primary);
+}
+
+.vault-tablist__row--missing .vault-tablist__name {
+  text-decoration: line-through;
+  font-style: italic;
+}
+
+.vault-tablist__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-tablist__tag {
+  flex: 0 0 auto;
+  color: var(--vault-text-muted);
+  font-size: 10px;
+}
+
+.vault-tablist__empty {
+  padding: 8px;
+  color: var(--vault-text-muted);
+  font-size: 12px;
+}
+
+.vault-menu__item[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Missing-file placeholder */
+.vault-tab-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--vault-bg);
+  color: var(--vault-text);
+  font-family: var(--vault-font);
+  text-align: center;
+}
+
+.vault-tab-missing__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.vault-tab-missing__path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--vault-text-muted);
+  font-size: 12px;
+}
+
+.vault-tab-missing__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vault-tab-missing__btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--vault-border-strong);
+  border-radius: var(--vault-radius-sm);
+  background: var(--vault-surface);
+  color: var(--vault-text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vault-tab-missing__btn:hover {
+  background: var(--vault-surface-hover);
+}
+
+.vault-tab-missing__btn--primary {
+  background: var(--vault-primary);
+  border-color: var(--vault-primary);
+  color: var(--vault-on-primary);
 }
