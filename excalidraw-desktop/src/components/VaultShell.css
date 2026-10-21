@@ -909,44 +909,6 @@ html.dark {
   pointer-events: none;
 }
 
-/* Only shown when a load takes longer than a moment. */
-.vault-editor-loading-line {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 10;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.vault-editor-loading-line::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 35%;
-  background: var(--vault-primary);
-  animation: vault-editor-loading 1s ease-in-out infinite;
-}
-
-@keyframes vault-editor-loading {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(290%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vault-editor-loading-line::after {
-    animation: none;
-    width: 100%;
-    opacity: 0.6;
-  }
-}
-
 .vault-editor-container--readonly {
   position: relative;
 }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import "./LoadingLine.css";
+
 /** A load shorter than this never shows the line (no flash on quick switches). */
 export const LOADING_LINE_DELAY_MS = 150;
 
