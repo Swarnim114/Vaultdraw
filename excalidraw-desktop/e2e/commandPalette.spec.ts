@@ -92,6 +92,19 @@ const rootVar = (page: Page, name: string) =>
   );
 
 test.describe("editor, theme and mode commands", () => {
+  test("'>vaultdraw' lists the CLI install commands", async ({ page }) => {
+    const errors = trackErrors(page);
+    await openVault(page);
+    await runCommand(
+      page,
+      "install 'vaultdraw'",
+      "Install 'vaultdraw' command",
+    );
+    await expect(options(page)).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+  });
+
   test("'>align left' aligns the selection and keeps it selected", async ({
     page,
   }) => {

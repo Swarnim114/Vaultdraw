@@ -350,6 +350,18 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen", "!modalOpen"],
   },
   {
+    id: "cli.install",
+    title: "Install 'vaultdraw' command in PATH",
+    category: "Vault",
+    keys: { default: [] },
+  },
+  {
+    id: "cli.installSystem",
+    title: "Install 'vaultdraw' command in /usr/local/bin",
+    category: "Vault",
+    keys: { default: [] },
+  },
+  {
     id: "vault.switch",
     title: "Open another vault",
     category: "Vault",

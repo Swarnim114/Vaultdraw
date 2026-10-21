@@ -1,0 +1,142 @@
+/**
+ * WebView side of the control API: answers "control-request" events from the
+ * Rust server. Pure: listen/invoke and the app state are injected.
+ */
+import { getCommand } from "../commands/commands";
+
+import { commandInfos } from "./commandsSnapshot";
+
+import type { CommandRunner } from "../commands/useCommands";
+import type { HotkeyOverrides } from "../commands/types";
+
+export type ControlErrorCode =
+  | "UNAVAILABLE"
+  | "NOT_FOUND"
+  | "NOT_READY"
+  | "INVALID_PARAMS"
+  | "IO_ERROR";
+
+export class ControlError extends Error {
+  constructor(
+    readonly code: ControlErrorCode,
+    message: string,
+    readonly data?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+export interface ControlRequest {
+  rid: number;
+  method: string;
+  params: unknown;
+}
+
+export interface ControlDeps {
+  listen: (
+    event: string,
+    cb: (e: { payload: ControlRequest }) => void,
+  ) => Promise<() => void>;
+  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  runner: () => Pick<CommandRunner, "run" | "isAvailable" | "platform"> & {
+    failedClauses?: (id: string) => string[];
+  };
+  overrides: () => HotkeyOverrides;
+  appState: () => {
+    activeDrawing: { path: string; dirty: boolean } | null;
+    tabs: number;
+  };
+  /** Opens the target the way links do; false when it resolves to nothing. */
+  openTarget: (target: string, cwd: string) => Promise<boolean>;
+}
+
+const objectParams = (params: unknown): Record<string, unknown> => {
+  if (params && typeof params === "object") {
+    return params as Record<string, unknown>;
+  }
+  throw new ControlError("INVALID_PARAMS", "params must be an object");
+};
+
+const stringParam = (params: unknown, name: string): string => {
+  const value = objectParams(params)[name];
+  if (typeof value !== "string" || value === "") {
+    throw new ControlError("INVALID_PARAMS", `${name} must be a string`);
+  }
+  return value;
+};
+
+export function createControlBridge(deps: ControlDeps) {
+  const handlers: Record<string, (params: unknown) => unknown> = {
+    "app.state": () => deps.appState(),
+    "command.list": () => {
+      const runner = deps.runner();
+      return {
+        commands: commandInfos(deps.overrides(), runner.platform).map((c) => ({
+          ...c,
+          available: runner.isAvailable(c.id),
+        })),
+      };
+    },
+    "command.run": (params) => {
+      const id = stringParam(params, "id");
+      const runner = deps.runner();
+      if (!getCommand(id)) {
+        throw new ControlError("NOT_FOUND", `Unknown command ${id}`, { id });
+      }
+      if (!runner.run(id)) {
+        throw new ControlError("UNAVAILABLE", `Command ${id} is unavailable`, {
+          id,
+          failed: runner.failedClauses?.(id) ?? [],
+        });
+      }
+      return { ran: true, id };
+    },
+    "app.openTarget": async (params) => {
+      const target = stringParam(params, "target");
+      const cwd = String(objectParams(params).cwd ?? "");
+      if (!(await deps.openTarget(target, cwd))) {
+        throw new ControlError("NOT_FOUND", `Cannot open ${target}`, {
+          target,
+        });
+      }
+      return { opened: true };
+    },
+  };
+
+  const reply = (rid: number, body: Record<string, unknown>) =>
+    deps.invoke("control_reply", { rid, ...body }).catch(() => {});
+
+  const handle = async ({ rid, method, params }: ControlRequest) => {
+    try {
+      const fn = handlers[method];
+      if (!fn) {
+        throw new ControlError("NOT_FOUND", "Unknown window method");
+      }
+      await reply(rid, { result: await fn(params) });
+    } catch (e) {
+      const err =
+        e instanceof ControlError
+          ? e
+          : new ControlError(
+              "IO_ERROR",
+              e instanceof Error ? e.message : String(e),
+            );
+      await reply(rid, {
+        error: { code: err.code, message: err.message, data: err.data },
+      });
+    }
+  };
+
+  return {
+    handle,
+    /** Registers the one listener, then tells Rust the window is ready. */
+    async start(): Promise<() => void> {
+      const unlisten = await deps.listen(
+        "control-request",
+        (e) => void handle(e.payload),
+      );
+      await deps.invoke("control_ready");
+      return unlisten;
+    },
+  };
+}

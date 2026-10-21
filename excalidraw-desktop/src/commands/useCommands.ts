@@ -8,7 +8,7 @@ import {
 } from "../vault/preferences";
 
 import { allCommands, getCommand } from "./commands";
-import { readContext, whenHolds, type AppContext } from "./context";
+import { failingClauses, readContext, type AppContext } from "./context";
 import { installCommandDispatcher, runHandler } from "./dispatcher";
 import { getRegisteredHandler } from "./handlerRegistry";
 import { detectPlatform } from "./keys";
@@ -77,6 +77,8 @@ export interface CommandRunner {
   /** Run a command if it is available; true when a handler ran. */
   run(id: string, options?: AvailabilityOptions): boolean;
   isAvailable(id: string, options?: AvailabilityOptions): boolean;
+  /** The `when` clauses of `id` that do not hold now (what makes it unavailable). */
+  failedClauses(id: string, options?: AvailabilityOptions): string[];
   platform: Platform;
 }
 
@@ -132,22 +134,26 @@ export function useCommandDispatcher(
     });
   }, [win, platform, context, handlerFor]);
 
-  const isAvailable = useCallback(
+  const failedClauses = useCallback(
     (id: string, options?: AvailabilityOptions) => {
-      const command = getCommand(id);
-      if (!command || !handlerFor(id)) {
-        return false;
-      }
-      const when = command.when?.filter((clause) => {
+      const when = getCommand(id)?.when?.filter((clause) => {
         const key = clause.replace("!", "");
         return (
           !FOCUS_RULES.has(key) &&
           !(options?.fromPalette && key === "modalOpen")
         );
       });
-      return whenHolds(when, context());
+      return failingClauses(when, context());
     },
-    [context, handlerFor],
+    [context],
+  );
+
+  const isAvailable = useCallback(
+    (id: string, options?: AvailabilityOptions) =>
+      !!getCommand(id) &&
+      !!handlerFor(id) &&
+      failedClauses(id, options).length === 0,
+    [failedClauses, handlerFor],
   );
 
   const run = useCallback(
@@ -162,7 +168,7 @@ export function useCommandDispatcher(
     [isAvailable, handlerFor],
   );
 
-  return { run, isAvailable, platform };
+  return { run, isAvailable, failedClauses, platform };
 }
 
 /**

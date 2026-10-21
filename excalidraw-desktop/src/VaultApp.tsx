@@ -16,6 +16,8 @@ import {
 import { DesktopVaultSearch } from "./search/DesktopVaultSearch";
 import { DesktopVaultLinks } from "./links/DesktopVaultLinks";
 import { useLinkDisplayPrefs } from "./links/useLinkDisplayPrefs";
+import { resolveOpenTarget } from "./control/openTarget";
+import { useControlBridge } from "./control/useControlBridge";
 import { useAppLinks } from "./links/useAppLinks";
 import { DesktopVaultTagRename } from "./tags/DesktopVaultTagRename";
 import { useAppTags } from "./tags/useAppTags";
@@ -1893,6 +1895,27 @@ export const VaultApp = ({
     },
   });
   runnerRef.current = commandRunner;
+  useControlBridge(win, {
+    runner: () => runnerRef.current ?? commandRunner,
+    appState: () => ({
+      activeDrawing: activeDoc
+        ? { path: activeDoc.path, dirty: saveStatus !== "saved" }
+        : null,
+      tabs: tabs.store?.getState().tabs.length ?? (activeDoc ? 1 : 0),
+    }),
+    openTarget: async (target, cwd) => {
+      const path = vault
+        ? resolveOpenTarget(target, cwd, vault.path, (p) =>
+            allIndexedEntries.some((e) => e.kind === "drawing" && e.path === p),
+          )
+        : null;
+      if (path === null) {
+        return false;
+      }
+      await appLinks.openLink(path);
+      return true;
+    },
+  });
   const commandHandlersRef = useRef(commandHandlers);
   commandHandlersRef.current = commandHandlers;
   const hasCommandHandler = useCallback(

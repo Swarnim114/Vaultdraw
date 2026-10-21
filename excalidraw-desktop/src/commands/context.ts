@@ -67,21 +67,23 @@ export function readContext(doc: Document, app: AppContext): CommandContext {
   };
 }
 
+const clauseHolds = (clause: WhenClause, ctx: CommandContext): boolean =>
+  clause.charCodeAt(0) === 33 /* ! */
+    ? !ctx[clause.slice(1) as keyof CommandContext]
+    : !!ctx[clause as keyof CommandContext];
+
+/** The clauses of `when` that do not hold in `ctx`. */
+export function failingClauses(
+  when: readonly WhenClause[] | undefined,
+  ctx: CommandContext,
+): WhenClause[] {
+  return (when ?? []).filter((clause) => !clauseHolds(clause, ctx));
+}
+
+/** Hot path (every keypress): no allocation, stops at the first failing clause. */
 export function whenHolds(
   when: readonly WhenClause[] | undefined,
   ctx: CommandContext,
 ): boolean {
-  if (!when) {
-    return true;
-  }
-  for (const clause of when) {
-    if (clause.charCodeAt(0) === 33 /* ! */) {
-      if (ctx[clause.slice(1) as keyof CommandContext]) {
-        return false;
-      }
-    } else if (!ctx[clause as keyof CommandContext]) {
-      return false;
-    }
-  }
-  return true;
+  return !when || when.every((clause) => clauseHolds(clause, ctx));
 }
