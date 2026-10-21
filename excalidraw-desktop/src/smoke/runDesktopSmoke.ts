@@ -2990,6 +2990,16 @@ export async function runDesktopSmoke(): Promise<void> {
     await step("templates-picker-creates-drawing", async () => {
       const marker = `${runId}-v`;
       const name = `Smoke Tpl ${marker}`;
+      // With no default folder set, a new drawing (blank or from a template)
+      // goes next to the active drawing, which an earlier step left in a
+      // subfolder; look there, not only in the vault root.
+      const activePath =
+        root.querySelector<HTMLElement>(
+          ".vault-tree-item--active .vault-tree-item__name",
+        )?.title ?? "";
+      const parent = activePath.includes("/")
+        ? activePath.slice(0, activePath.lastIndexOf("/"))
+        : "";
       doc.dispatchEvent(
         new win.KeyboardEvent("keydown", {
           key: "n",
@@ -3008,11 +3018,11 @@ export async function runDesktopSmoke(): Promise<void> {
       const revealShown = !!doc.querySelector(".template-picker__state button");
       row.click();
       const created = await pollAsync(
-        `drawing created from ${name}`,
+        `drawing created from ${name} in "${parent}"`,
         async () => {
           const entries = await call("list_directory", {
             handle: activeVault.handle,
-            path: "",
+            path: parent,
           }).catch(() => [] as VaultEntry[]);
           return (
             entries.find(
@@ -3034,7 +3044,7 @@ export async function runDesktopSmoke(): Promise<void> {
       ) {
         throw new Error(`Created drawing is wrong: ${file.json.slice(0, 300)}`);
       }
-      return { created, revealShown };
+      return { created, parent, revealShown };
     });
 
     await step("templates-global-write-list-read", async () => {
