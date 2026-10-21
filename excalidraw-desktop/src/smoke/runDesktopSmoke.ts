@@ -27,12 +27,14 @@ import {
   paperDrawingPngExportStep,
 } from "./paperSmoke";
 import {
+  openSmokeDrawing,
   pageDefaultStampedStep,
   pageModeSwitchStep,
   pagePdfExportStep,
 } from "./pageModeSmoke";
 import { runPensSmoke } from "./pensSmoke";
 import {
+  earlierFailures,
   RELOAD_STEP,
   reloadResumeStep,
   requestReload,
@@ -439,6 +441,29 @@ export async function runDesktopSmoke(): Promise<void> {
       throw error;
     }
   };
+  // A failing step is still recorded as failed (and the final "Failed steps"
+  // throw stays), but the run goes on after it. Dialogs the step left open are
+  // closed so the next step starts clean. Used for the steps that don't gate
+  // the rest (startup and the first editor drawing stay hard steps).
+  const softStep = <T>(name: string, work: () => Promise<T>): Promise<T> =>
+    step(name, work).catch(async () => {
+      doc
+        .querySelector<HTMLElement>(
+          '.vault-settings-modal [aria-label="Close Settings"]',
+        )
+        ?.click();
+      doc.querySelector<HTMLElement>(".Modal__background")?.click();
+      doc.dispatchEvent(
+        new win.KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await delay(win, 200);
+      return undefined as unknown as T;
+    });
   const button = (name: string) => {
     const found = Array.from(root.querySelectorAll("button")).find(
       (item) =>
@@ -526,7 +551,8 @@ export async function runDesktopSmoke(): Promise<void> {
       throw new Error("Native smoke environment is not enabled");
     }
     // Resumed after the page-reload step's location.reload(): run only that step.
-    if (takeReloadMarker(win.sessionStorage, Date.now())) {
+    const resumed = takeReloadMarker(win.sessionStorage, Date.now());
+    if (resumed) {
       await step(RELOAD_STEP, () =>
         reloadResumeStep({
           win,
@@ -537,6 +563,11 @@ export async function runDesktopSmoke(): Promise<void> {
           call: invokeNative as never,
         }),
       );
+      // The earlier launch's failures live in the marker; keep failing on them.
+      const earlier = earlierFailures(resumed);
+      if (earlier.length) {
+        throw new Error(`Failed before the reload: ${earlier.join(", ")}`);
+      }
       if (pageErrors.length) {
         throw new Error(
           `WebView reported errors: ${JSON.stringify(pageErrors)}`,
@@ -1831,7 +1862,7 @@ export async function runDesktopSmoke(): Promise<void> {
       doc,
       handle: activeVault.handle,
       drawingPath: filePath,
-      step,
+      step: softStep,
     });
 
     // ---- Persisted library (F10): phase decided by the personal file, see librarySmoke.ts ----
@@ -1843,7 +1874,7 @@ export async function runDesktopSmoke(): Promise<void> {
       win,
       handle: activeVault.handle,
       startedAt,
-      step,
+      step: softStep,
       waitFor,
       invoke: invokeNative,
     }).finally(() => {
@@ -1851,7 +1882,7 @@ export async function runDesktopSmoke(): Promise<void> {
     });
 
     // ---- Config folder (personal/planning/config.md) ----
-    await step("config-loaded", async () => {
+    await softStep("config-loaded", async () => {
       const loaded = await call("load_settings");
       const status = getSettingsStatus();
       if (status.mode !== "tauri") {
@@ -1925,7 +1956,7 @@ export async function runDesktopSmoke(): Promise<void> {
     // Records the zoom the app booted with. For the two-run restart check
     // (see the smoke handbook): set interface.zoom in the config dir, relaunch,
     // and compare the native window width with innerWidth.
-    await step("startup-zoom", async () => {
+    await softStep("startup-zoom", async () => {
       const loaded = await call("load_settings");
       const configured =
         ((loaded.config as Record<string, Record<string, unknown>> | null)
@@ -1960,7 +1991,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("config-gui-write-preserves-comments", async () => {
+    await softStep("config-gui-write-preserves-comments", async () => {
       button("Settings").click();
       const modal = await waitFor("settings modal", () =>
         doc.querySelector<HTMLElement>(".vault-settings-modal"),
@@ -2052,7 +2083,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("config-external-edit-live-reload", async () => {
+    await softStep("config-external-edit-live-reload", async () => {
       let received: VaultPreferences | null = null;
       const onChanged = (event: Event) => {
         const detail = (event as CustomEvent<VaultPreferences>).detail;
@@ -2084,7 +2115,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return { latencyMs, autosaveDelayMs: 1500 };
     });
 
-    await step("config-invalid-value-banner", async () => {
+    await softStep("config-invalid-value-banner", async () => {
       let lastStatus: SettingsStatus | null = null;
       const onStatus = (event: Event) => {
         lastStatus = (event as CustomEvent<SettingsStatus>).detail;
@@ -2142,7 +2173,7 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     });
 
-    await step("config-hotkey-key-roundtrip", async () => {
+    await softStep("config-hotkey-key-roundtrip", async () => {
       const key = "hotkeys.vault.newDrawing";
       await call("update_config", { changes: [{ key, value: ["Mod+N"] }] });
       const written = await call("load_settings");
@@ -2172,7 +2203,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return { written: hotkeys, afterRemoval: after };
     });
 
-    await step("vault-settings-roundtrip", async () => {
+    await softStep("vault-settings-roundtrip", async () => {
       const handle = vault.handle;
       const initial = await call("load_vault_settings", { handle });
       if (initial.settingsError || JSON.stringify(initial.settings) !== "{}") {
@@ -2240,7 +2271,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("settings-cmd-comma", async () => {
+    await softStep("settings-cmd-comma", async () => {
       if (doc.querySelector(".vault-settings-modal")) {
         throw new Error("Settings modal already open before Cmd+,");
       }
@@ -2298,7 +2329,7 @@ export async function runDesktopSmoke(): Promise<void> {
         .querySelector('[aria-label="Vault File Navigator"]')
         ?.getBoundingClientRect().width ?? 0;
 
-    await step("hotkeys-config-hand-edit-live", async () => {
+    await softStep("hotkeys-config-hand-edit-live", async () => {
       const key = "hotkeys.view.toggleNavigator";
       const chord = { key: "b", code: "KeyB", metaKey: true, altKey: true };
       const startedAt = win.performance.now();
@@ -2345,7 +2376,7 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     });
 
-    await step("hotkeys-cmd-p-command-palette", async () => {
+    await softStep("hotkeys-cmd-p-command-palette", async () => {
       const dialog = () =>
         doc.querySelector<HTMLElement>(
           '[role="dialog"][aria-label="Command palette"]',
@@ -2448,7 +2479,7 @@ export async function runDesktopSmoke(): Promise<void> {
       );
     };
 
-    await step("settings-phase2-config-live", async () => {
+    await softStep("settings-phase2-config-live", async () => {
       const primaryBefore = cssPrimary();
       const startedAt = win.performance.now();
       await call("update_config", {
@@ -2499,12 +2530,12 @@ export async function runDesktopSmoke(): Promise<void> {
       win,
       handle: activeVault.handle,
       path: `${nested}/ui-edited.excalidraw`,
-      step,
+      step: softStep,
       waitFor,
       invoke: invokeNative,
     });
 
-    await step("interface-zoom", async () => {
+    await softStep("interface-zoom", async () => {
       const setZoomViaConfig = async (percent: number) => {
         await call("update_config", {
           changes: [{ key: "interface.zoom", value: percent }],
@@ -2729,7 +2760,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("vault-settings-override", async () => {
+    await softStep("vault-settings-override", async () => {
       const handle = activeVault.handle;
       const probe = `smoke-suite-${runId}/sort-probe`;
       const names = ["a-probe", "b-probe", "c-probe"];
@@ -2852,7 +2883,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return trail;
     });
 
-    await step("new-drawing-default-folder", async () => {
+    await softStep("new-drawing-default-folder", async () => {
       const handle = activeVault.handle;
       const folder = "Smoke Inbox/Deep";
       await call("update_vault_settings", {
@@ -2975,7 +3006,7 @@ export async function runDesktopSmoke(): Promise<void> {
       global: createGlobalTemplateStore({ invoke: invoke as InvokeFn }),
     });
 
-    await step("templates-vault-create-list-instantiate", async () => {
+    await softStep("templates-vault-create-list-instantiate", async () => {
       const marker = `${runId}-v`;
       const name = `Smoke Tpl ${marker}`;
       await call("create_folder", {
@@ -3013,7 +3044,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return { listed: listed.vault.length, newId: el.id };
     });
 
-    await step("templates-picker-creates-drawing", async () => {
+    await softStep("templates-picker-creates-drawing", async () => {
       const marker = `${runId}-v`;
       const name = `Smoke Tpl ${marker}`;
       // With no default folder set, a new drawing (blank or from a template)
@@ -3073,7 +3104,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return { created, parent, revealShown };
     });
 
-    await step("templates-global-write-list-read", async () => {
+    await softStep("templates-global-write-list-read", async () => {
       const marker = `${runId}-g`;
       const file = `Smoke Global ${marker}.excalidraw`;
       const json = templateScene(marker);
@@ -3337,6 +3368,14 @@ export async function runDesktopSmoke(): Promise<void> {
       darkCanvas: DARK_CANVAS,
     };
 
+    // The template and default-folder steps leave their own new drawing active;
+    // the theme and export steps below work on (and assert against) ui-edited.
+    await softStep("reopen-smoke-drawing", async () => {
+      await openSmokeDrawing(exportCtx);
+      await waitFor("static canvas", () => staticCanvasPixel());
+      return { path: exportCtx.drawingPath };
+    });
+
     await themeStep("theme-user-palette-loaded", async () => {
       const { getThemeRegistry, findTheme } = await import("../theme/registry");
       const registry = getThemeRegistry();
@@ -3490,9 +3529,12 @@ export async function runDesktopSmoke(): Promise<void> {
         );
       }
       const islandBg = island.bg;
-      if (!menuBg || !near(cssRgb(islandBg), hexToRgb(menuBg), 1)) {
+      // Islands are --vault-surface (--island-bg-color); only popovers use
+      // --vault-menu-bg (theme/excalidrawVars.ts, excalidrawChrome.css).
+      const surfaceBg = rootVar("--vault-surface");
+      if (!surfaceBg || !near(cssRgb(islandBg), hexToRgb(surfaceBg), 1)) {
         throw new Error(
-          `Island background ${islandBg} != --vault-menu-bg ${menuBg}: ${JSON.stringify(
+          `Island background ${islandBg} != --vault-surface ${surfaceBg}: ${JSON.stringify(
             diagnostics,
           )}`,
         );
@@ -3905,14 +3947,15 @@ export async function runDesktopSmoke(): Promise<void> {
     );
 
     // Last: reloads the page (never returns); the resumed run asserts the
-    // reopened vault is writable (see reloadSmoke.ts). Skipped when anything failed.
-    if (records.every((record) => record.ok) && !pageErrors.length) {
-      await requestReload({
-        win,
-        records,
-        log: (record) => call("smoke_log", record),
-      });
-    }
+    // reopened vault is writable (see reloadSmoke.ts). It runs even after soft
+    // step failures (they travel in the marker and still fail the run); a hard
+    // step failure aborts before this point and skips it.
+    await requestReload({
+      win,
+      records,
+      pageErrors,
+      log: (record) => call("smoke_log", record),
+    });
 
     const failed = records.filter((record) => !record.ok);
     if (failed.length) {

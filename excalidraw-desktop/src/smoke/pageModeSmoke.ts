@@ -33,6 +33,10 @@ type SavedPageSetup = {
 };
 type Scene = { appState?: { pageSetup?: SavedPageSetup | null } };
 
+/** Folder part of a vault path ("" for the root). */
+export const parentOf = (path: string) =>
+  path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+
 const savedSetup = async (ctx: ExportSmokeContext, path: string) =>
   (
     JSON.parse(
@@ -60,7 +64,8 @@ const pollSaved = async (
   );
 };
 
-const openSmokeDrawing = async (ctx: ExportSmokeContext) => {
+/** Opens the smoke drawing from the navigator tree (replaces the current tab). */
+export const openSmokeDrawing = async (ctx: ExportSmokeContext) => {
   const row = await ctx.waitFor("smoke drawing tree row", () =>
     ctx.root.querySelector<HTMLElement>(
       `.vault-tree-item__name[title="${ctx.drawingPath}"]`,
@@ -159,11 +164,14 @@ export const pageDefaultStampedStep = async (ctx: ExportSmokeContext) => {
     }
     const expected = getDefaultPageSetup(ctx.win);
 
+    // Mod+N creates next to the active drawing (no default folder is set).
+    await openSmokeDrawing(ctx);
+    const parent = parentOf(ctx.drawingPath);
     const list = async () =>
       (
         (await ctx.call("list_directory", {
           handle: ctx.vaultHandle,
-          path: "",
+          path: parent,
         })) as VaultEntry[]
       ).filter((e) => e.kind === "drawing");
     const before = new Set((await list()).map((e) => e.path));
@@ -186,7 +194,7 @@ export const pageDefaultStampedStep = async (ctx: ExportSmokeContext) => {
       }
     }
     if (!created) {
-      throw new Error("Mod+N created no drawing in the root");
+      throw new Error(`Mod+N created no drawing in "${parent}"`);
     }
     const setup = await pollSaved(
       ctx,

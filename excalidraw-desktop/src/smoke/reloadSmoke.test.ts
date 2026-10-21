@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  earlierFailures,
   encodeReloadMarker,
   parseReloadMarker,
   RELOAD_MARKER_KEY,
@@ -14,7 +15,24 @@ describe("reload marker", () => {
       v: 1,
       at: 1000,
       stepsBefore: 7,
+      failedSteps: [],
+      pageErrors: [],
     });
+  });
+  it("carries earlier failures and page errors across the reload", () => {
+    const marker = parseReloadMarker(
+      encodeReloadMarker(1000, 7, ["a", "b"], [{ type: "error" }]),
+      2000,
+    )!;
+    expect(marker.failedSteps).toEqual(["a", "b"]);
+    expect(earlierFailures(marker)).toEqual([
+      "a",
+      "b",
+      'page errors: [{"type":"error"}]',
+    ]);
+    expect(
+      earlierFailures(parseReloadMarker(encodeReloadMarker(1, 1), 2)!),
+    ).toEqual([]);
   });
   it("ignores missing, malformed, wrong-version, future and expired markers", () => {
     expect(parseReloadMarker(null, 0)).toBeNull();

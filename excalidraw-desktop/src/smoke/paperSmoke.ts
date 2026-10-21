@@ -13,6 +13,8 @@ import {
   openExportDialog,
 } from "./exportSmoke";
 
+import { openSmokeDrawing, parentOf } from "./pageModeSmoke";
+
 import type { ExportSmokeContext } from "./exportSmoke";
 import type { VaultEntry } from "../vault/types";
 
@@ -130,18 +132,21 @@ export const paperDefaultStampedStep = async (ctx: ExportSmokeContext) => {
       throw new Error(`config.toml paper.style is ${JSON.stringify(style)}`);
     }
 
+    // Mod+N creates next to the active drawing (no default folder is set).
+    await openSmokeDrawing(ctx);
+    const parent = parentOf(ctx.drawingPath);
     const list = async () =>
       (
         (await ctx.call("list_directory", {
           handle: ctx.vaultHandle,
-          path: "",
+          path: parent,
         })) as VaultEntry[]
       ).filter((e) => e.kind === "drawing");
     const before = new Set((await list()).map((e) => e.path));
     // The header button is gone; Mod+N is the same command (no `code` + both
     // modifiers set = plain Mod on every OS, see chordFromEvent).
     ctx.root.ownerDocument.dispatchEvent(
-      new KeyboardEvent("keydown", {
+      new ctx.win.KeyboardEvent("keydown", {
         key: "n",
         metaKey: true,
         ctrlKey: true,
@@ -157,7 +162,7 @@ export const paperDefaultStampedStep = async (ctx: ExportSmokeContext) => {
       }
     }
     if (!created) {
-      throw new Error("New drawing command created no drawing in the root");
+      throw new Error(`New drawing command created no drawing in "${parent}"`);
     }
     await pollSavedType(ctx, created, "grid");
     const ink = await ctx.waitFor(

@@ -6,7 +6,8 @@
  * reopened vault finds its own flock held and comes back read-only.
  *
  * `location.reload()` restarts the JS runner, so the step is resumable:
- *  1. At the end of the run (all other steps passed) `requestReload` flushes
+ *  1. At the end of the run (no hard abort; soft failures are fine, they are
+ *     carried in the marker) `requestReload` flushes
  *     the records so far to the native report (the Rust report lives in the
  *     process and survives the reload), stores a marker in sessionStorage and
  *     reloads.
@@ -24,10 +25,23 @@ export const RELOAD_MARKER_KEY = "vaultdraw-smoke-reload-v1";
 export const RELOAD_MARKER_TTL_MS = 120_000;
 export const RELOAD_STEP = "page-reload-keeps-vault-writable";
 
-export type ReloadMarker = { v: 1; at: number; stepsBefore: number };
+export type ReloadMarker = {
+  v: 1;
+  at: number;
+  stepsBefore: number;
+  /** Steps that failed before the reload; the resumed run must still fail. */
+  failedSteps: string[];
+  /** Page errors seen before the reload (the resumed page starts empty). */
+  pageErrors: unknown[];
+};
 
-export const encodeReloadMarker = (now: number, stepsBefore: number): string =>
-  JSON.stringify({ v: 1, at: now, stepsBefore } as ReloadMarker);
+export const encodeReloadMarker = (
+  now: number,
+  stepsBefore: number,
+  failedSteps: string[] = [],
+  pageErrors: unknown[] = [],
+): string =>
+  JSON.stringify({ v: 1, at: now, stepsBefore, failedSteps, pageErrors });
 
 /** Returns the marker when `raw` is a well-formed, unexpired one. */
 export const parseReloadMarker = (
@@ -48,7 +62,18 @@ export const parseReloadMarker = (
       return null;
     }
     const age = now - value.at;
-    return age >= 0 && age <= ttlMs ? (value as ReloadMarker) : null;
+    if (age < 0 || age > ttlMs) {
+      return null;
+    }
+    return {
+      v: 1,
+      at: value.at,
+      stepsBefore: value.stepsBefore,
+      failedSteps: Array.isArray(value.failedSteps)
+        ? value.failedSteps.map(String)
+        : [],
+      pageErrors: Array.isArray(value.pageErrors) ? value.pageErrors : [],
+    };
   } catch {
     return null;
   }
@@ -87,10 +112,19 @@ export const writableProblems = (
 
 type SmokeRecord = { step: string; ok: boolean; details?: unknown };
 
+/** The earlier failures a resumed run must still report (empty when none). */
+export const earlierFailures = (marker: ReloadMarker): string[] => [
+  ...marker.failedSteps,
+  ...(marker.pageErrors.length
+    ? [`page errors: ${JSON.stringify(marker.pageErrors)}`]
+    : []),
+];
+
 /** Flushes the finished records, stores the marker, reloads. Never resolves. */
 export const requestReload = (ctx: {
   win: Window;
   records: SmokeRecord[];
+  pageErrors?: unknown[];
   log: (record: SmokeRecord) => Promise<unknown>;
 }): Promise<never> =>
   (async () => {
@@ -99,7 +133,12 @@ export const requestReload = (ctx: {
     }
     ctx.win.sessionStorage.setItem(
       RELOAD_MARKER_KEY,
-      encodeReloadMarker(Date.now(), ctx.records.length),
+      encodeReloadMarker(
+        Date.now(),
+        ctx.records.length,
+        ctx.records.filter((r) => !r.ok).map((r) => r.step),
+        ctx.pageErrors ?? [],
+      ),
     );
     ctx.win.location.reload();
     return new Promise<never>(() => {});

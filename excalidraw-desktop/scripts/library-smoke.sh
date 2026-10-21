@@ -22,14 +22,15 @@ run() { # label, prefix...
   rm -rf "$D"/smoke-suite-*
   start=$(date +%s)
   # perl alarm: a hung WebView (rAF stops when the window is occluded) must not hold the lock forever.
-  lockf -k "$LOCK" env EXCALIDRAW_VAULT_SMOKE_DIR="$D" VAULTDRAW_CONFIG_DIR="$C/config" VAULTDRAW_STATE_DIR="$C/state" "$@" perl -e 'alarm 420; exec {$ARGV[0]} @ARGV' "$APP"
+  lockf -k "$LOCK" env EXCALIDRAW_VAULT_SMOKE_DIR="$D" VAULTDRAW_CONFIG_DIR="$C/config" VAULTDRAW_STATE_DIR="$C/state" "$@" perl -e 'alarm 900; exec {$ARGV[0]} @ARGV' "$APP"
   echo "== $label: exit=$? wall=$(( $(date +%s) - start ))s"
   cp "$D/smoke-report.json" "$D/smoke-report-$label.json" 2>/dev/null
   node -e '
 const r=require(process.argv[1]);const a=r.details||r;
 console.log("status",r.status,"elapsedMs",a.elapsedMs);
-for(const s of a.records||r.steps){if(!s.ok||/^library/.test(s.step))console.log(s.ok?"ok  ":"FAIL",s.step,JSON.stringify(s.details).slice(0,400))}
-const f=(a.records||[]).filter(s=>!s.ok);console.log("failed steps:",f.length,"pageErrors:",(a.pageErrors||[]).length)' "$D/smoke-report-$label.json"
+const all=r.steps||a.records||[];
+for(const s of all){if(!s.ok||/^library/.test(s.step))console.log(s.ok?"ok  ":"FAIL",s.step,JSON.stringify(s.details).slice(0,400))}
+const f=all.filter(s=>!s.ok);console.log("failed steps:",f.length,"pageErrors:",(a.pageErrors||[]).length)' "$D/smoke-report-$label.json"
 }
 run run1 env
 if [ "${SMOKE_MILESTONE:-0}" = 1 ]; then
