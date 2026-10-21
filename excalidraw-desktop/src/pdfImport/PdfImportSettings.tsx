@@ -15,12 +15,12 @@ import {
   getPreferences,
   subscribePreferences,
   updatePreferences,
-  type VaultPreferences,
+  type PreferencesSnapshot,
 } from "../vault/preferences";
 
 import { PDF_IMPORT_LIMITS, type PdfImageFormat } from "./types";
 
-const usePrefs = (): VaultPreferences => {
+const usePrefs = (): PreferencesSnapshot => {
   const { win } = useSettings();
   const [prefs, setPrefs] = useState(() => getPreferences(win));
   useEffect(

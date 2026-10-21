@@ -13,17 +13,18 @@ const STORAGE_KEY = "excalidraw-vault-preferences-v1";
 describe("getPreferences localStorage cache", () => {
   afterEach(() => window.localStorage.clear());
 
-  it("returns a fresh object each call (cached value can't be mutated)", () => {
+  it("returns the same frozen snapshot until a change", () => {
     updatePreferences({ autosaveDelayMs: 1234 }, window);
-    const a = getPreferences(window);
-    a.autosaveDelayMs = 1;
-    a.recentVaults.push("/mutated");
-    a.hotkeys.x = ["y"];
-    const b = getPreferences(window);
-    expect(b).not.toBe(a);
-    expect(b.autosaveDelayMs).toBe(1234);
-    expect(b.recentVaults).not.toContain("/mutated");
-    expect(b.hotkeys.x).toBeUndefined();
+    const a = getPreferences(window) as any;
+    expect(getPreferences(window)).toBe(a);
+    expect(() => {
+      a.autosaveDelayMs = 1;
+    }).toThrow(TypeError);
+    expect(() => a.recentVaults.push("/mutated")).toThrow(TypeError);
+    expect(() => {
+      a.hotkeys.x = ["y"];
+    }).toThrow(TypeError);
+    expect(getPreferences(window).autosaveDelayMs).toBe(1234);
   });
 
   it("sees a direct localStorage change (keyed by the raw string)", () => {

@@ -246,14 +246,6 @@ const emptyToolStyles = () =>
     TOOL_DEFAULT_TOOLS.map((tool) => [toolField(tool), {}]),
   ) as Record<ToolField, ToolStyle>;
 
-const cloneToolStyles = (prefs: Record<ToolField, ToolStyle>) =>
-  Object.fromEntries(
-    TOOL_DEFAULT_TOOLS.map((tool) => [
-      toolField(tool),
-      { ...prefs[toolField(tool)] },
-    ]),
-  ) as Record<ToolField, ToolStyle>;
-
 /** Untrusted -> a valid style per tool; anything invalid becomes {}. */
 const normalizeToolStyles = (parsed: Partial<Record<ToolField, unknown>>) =>
   Object.fromEntries(
@@ -339,7 +331,9 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
 };
 
 /** The laser fields of the preferences as one settings object. */
-export const getLaserSettings = (prefs: VaultPreferences): LaserSettings => ({
+export const getLaserSettings = (
+  prefs: PreferencesSnapshot,
+): LaserSettings => ({
   color: prefs.laserColor,
   size: prefs.laserSize,
   decayMs: prefs.laserDecayMs,
@@ -347,7 +341,9 @@ export const getLaserSettings = (prefs: VaultPreferences): LaserSettings => ({
 });
 
 /** The links fields of the preferences as one settings object. */
-export const getLinksSettings = (prefs: VaultPreferences): LinksSettings => ({
+export const getLinksSettings = (
+  prefs: PreferencesSnapshot,
+): LinksSettings => ({
   newLinkFormat: prefs.linkNewFormat,
   shapeLinkFormat: prefs.linkShapeFormat,
   openModifier: prefs.linkOpenModifier,
@@ -360,14 +356,14 @@ export const getLinksSettings = (prefs: VaultPreferences): LinksSettings => ({
 });
 
 /** The tags fields of the preferences as one settings object. */
-export const getTagsSettings = (prefs: VaultPreferences): TagsSettings => ({
+export const getTagsSettings = (prefs: PreferencesSnapshot): TagsSettings => ({
   autocomplete: prefs.tagAutocomplete,
   paneSort: prefs.tagPaneSort,
 });
 
 /** The `[pdf_import]` fields of the preferences as one settings object. */
 export const getPdfImportSettings = (
-  prefs: VaultPreferences,
+  prefs: PreferencesSnapshot,
 ): PdfImportSettings => ({
   maxSide: prefs.pdfMaxSide,
   format: prefs.pdfFormat,
@@ -680,14 +676,79 @@ export function normalizePreferences(input: unknown): VaultPreferences {
   };
 }
 
-const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
-  ...prefs,
-  recentVaults: [...prefs.recentVaults],
-  expandedFolders: { ...prefs.expandedFolders },
-  hotkeys: { ...prefs.hotkeys },
-  penPresets: prefs.penPresets.map((p) => ({ ...p })),
-  ...cloneToolStyles(prefs),
-});
+export type DeepReadonly<T> = T extends (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+  ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+  : T;
+
+/** What getPreferences returns: a frozen snapshot, identity stable until a change. */
+export type PreferencesSnapshot = DeepReadonly<VaultPreferences>;
+
+const isPlain = (v: unknown): v is object =>
+  typeof v === "object" && v !== null;
+
+const deepEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) {
+    return true;
+  }
+  if (!isPlain(a) || !isPlain(b) || Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) {
+    return false;
+  }
+  return ka.every((k) =>
+    deepEqual(
+      (a as Record<string, unknown>)[k],
+      (b as Record<string, unknown>)[k],
+    ),
+  );
+};
+
+/** Frozen deep copy; the caller's value is never frozen or retained. */
+const freezeClone = <T>(v: T): T => {
+  if (!isPlain(v)) {
+    return v;
+  }
+  const copy: Record<string, unknown> | unknown[] = Array.isArray(v)
+    ? v.map(freezeClone)
+    : Object.fromEntries(
+        Object.entries(v).map(([k, x]) => [k, freezeClone(x)]),
+      );
+  return Object.freeze(copy) as T;
+};
+
+/**
+ * Next frozen snapshot built from `next`, reusing `prev`'s nested objects
+ * where deep-equal (structural sharing). Returns `prev` itself when nothing
+ * changed, so consumers can compare by identity.
+ */
+const toSnapshot = (
+  prev: PreferencesSnapshot | null,
+  next: DeepReadonly<Partial<VaultPreferences>> | PreferencesSnapshot,
+): PreferencesSnapshot => {
+  const out: Record<string, unknown> = {};
+  let changed = prev === null;
+  for (const [key, value] of Object.entries(next)) {
+    const old = prev ? (prev as Record<string, unknown>)[key] : undefined;
+    if (prev && deepEqual(old, value)) {
+      out[key] = old;
+    } else {
+      out[key] = freezeClone(value);
+      changed = true;
+    }
+  }
+  if (prev && Object.keys(prev).length !== Object.keys(out).length) {
+    changed = true;
+  }
+  return changed ? (Object.freeze(out) as PreferencesSnapshot) : prev!;
+};
+
+let defaultsSnapshot: PreferencesSnapshot | null = null;
+const getDefaultsSnapshot = () =>
+  (defaultsSnapshot ??= toSnapshot(null, DEFAULT_PREFERENCES));
 
 // ---------------------------------------------------------------------------
 // In-memory store (desktop config folder mode)
@@ -699,10 +760,13 @@ const clonePreferences = (prefs: VaultPreferences): VaultPreferences => ({
 // original localStorage behaviour.
 // ---------------------------------------------------------------------------
 
-type PersistCallback = (next: VaultPreferences, prev: VaultPreferences) => void;
+type PersistCallback = (
+  next: PreferencesSnapshot,
+  prev: PreferencesSnapshot,
+) => void;
 
 let memoryStore: {
-  prefs: VaultPreferences;
+  prefs: PreferencesSnapshot;
   persist: PersistCallback;
 } | null = null;
 
@@ -723,10 +787,10 @@ const notifyPreferences = () => {
 };
 
 export function attachPreferencesStore(
-  initial: VaultPreferences,
+  initial: DeepReadonly<VaultPreferences>,
   persist: PersistCallback,
 ): void {
-  memoryStore = { prefs: clonePreferences(initial), persist };
+  memoryStore = { prefs: toSnapshot(null, initial), persist };
 }
 
 export function detachPreferencesStore(): void {
@@ -738,9 +802,11 @@ export function isPreferencesStoreAttached(): boolean {
 }
 
 /** Replace the in-memory preferences without persisting (used on reload). */
-export function replaceStoredPreferences(next: VaultPreferences): void {
+export function replaceStoredPreferences(
+  next: DeepReadonly<VaultPreferences>,
+): void {
   if (memoryStore) {
-    memoryStore.prefs = clonePreferences(next);
+    memoryStore.prefs = toSnapshot(memoryStore.prefs, next);
   }
   notifyPreferences();
 }
@@ -781,7 +847,7 @@ export function readLocalStoragePreferences(
 // localStorage mode: the last stored string and its normalised preferences.
 // getPreferences runs on many renders; re-parsing and re-normalising an
 // unchanged string each time cost ~1 ms per call at 4x CPU throttling.
-let parsedCache: { raw: string; prefs: VaultPreferences } | null = null;
+let parsedCache: { raw: string; prefs: PreferencesSnapshot } | null = null;
 
 function readStoredRaw(win?: Window | null): string | null {
   const storage = getStorage(win);
@@ -795,13 +861,14 @@ function readStoredRaw(win?: Window | null): string | null {
   }
 }
 
-export function getPreferences(win?: Window | null): VaultPreferences {
+export function getPreferences(win?: Window | null): PreferencesSnapshot {
   if (memoryStore) {
-    return clonePreferences(memoryStore.prefs);
+    return memoryStore.prefs;
   }
   const raw = readStoredRaw(win);
   if (!raw) {
-    return clonePreferences(DEFAULT_PREFERENCES);
+    parsedCache = null;
+    return getDefaultsSnapshot();
   }
   if (parsedCache?.raw !== raw) {
     let parsed: unknown = null;
@@ -811,54 +878,61 @@ export function getPreferences(win?: Window | null): VaultPreferences {
       // unreadable: defaults, as for a missing value
     }
     if (!parsed || typeof parsed !== "object") {
-      return clonePreferences(DEFAULT_PREFERENCES);
+      parsedCache = null;
+      return getDefaultsSnapshot();
     }
-    parsedCache = { raw, prefs: normalizePreferences(parsed) };
+    parsedCache = {
+      raw,
+      prefs: toSnapshot(
+        parsedCache?.prefs ?? getDefaultsSnapshot(),
+        normalizePreferences(parsed),
+      ),
+    };
   }
-  return clonePreferences(parsedCache.prefs);
+  return parsedCache.prefs;
 }
 
 export function updatePreferences(
-  partial: Partial<VaultPreferences>,
+  partial: DeepReadonly<Partial<VaultPreferences>>,
   win?: Window | null,
-): VaultPreferences {
+): PreferencesSnapshot {
   if (memoryStore) {
     const prev = memoryStore.prefs;
-    const next: VaultPreferences = { ...prev, ...partial };
+    const next = toSnapshot(prev, { ...prev, ...partial });
     memoryStore.prefs = next;
     try {
-      memoryStore.persist(clonePreferences(next), clonePreferences(prev));
+      memoryStore.persist(next, prev);
     } catch {
       // persistence failures are reported by the store, never thrown here
     }
     notifyPreferences();
-    return clonePreferences(next);
+    return next;
   }
   const current = getPreferences(win);
-  const next: VaultPreferences = {
-    ...current,
-    ...partial,
-  };
+  const next = toSnapshot(current, { ...current, ...partial });
   const storage = getStorage(win);
+  let stored = false;
   if (storage) {
     try {
       storage.setItem(STORAGE_KEY, JSON.stringify(next));
+      stored = true;
     } catch {
       // quota or security error ignored gracefully
     }
   }
   notifyPreferences();
-  return next;
+  // Re-read so the returned snapshot is the one later reads share identity with.
+  return stored ? getPreferences(win) : next;
 }
 
-export function loadPreferences(win?: Window | null): VaultPreferences {
+export function loadPreferences(win?: Window | null): PreferencesSnapshot {
   return getPreferences(win);
 }
 
 export function savePreferences(
-  partial: Partial<VaultPreferences>,
+  partial: DeepReadonly<Partial<VaultPreferences>>,
   win?: Window | null,
-): VaultPreferences {
+): PreferencesSnapshot {
   return updatePreferences(partial, win);
 }
 
@@ -924,7 +998,7 @@ export function setEditorDefaults(
   updatePreferences(defaults, win);
 }
 
-export function getRecentVaults(win?: Window | null): string[] {
+export function getRecentVaults(win?: Window | null): readonly string[] {
   return getPreferences(win).recentVaults;
 }
 
@@ -954,7 +1028,7 @@ export function removeRecentVault(
 export function getExpandedFolders(
   vaultKey: string,
   win?: Window | null,
-): string[] {
+): readonly string[] {
   const prefs = getPreferences(win);
   return prefs.expandedFolders[vaultKey] ?? [""];
 }

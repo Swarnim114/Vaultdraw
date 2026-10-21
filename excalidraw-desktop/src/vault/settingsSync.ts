@@ -85,6 +85,8 @@ import {
   isVaultTheme,
   readLocalStoragePreferences,
   replaceStoredPreferences,
+  type DeepReadonly,
+  type PreferencesSnapshot,
   type VaultPreferences,
 } from "./preferences";
 
@@ -682,8 +684,8 @@ export const STATE_FIELDS = [
   "hasPanned",
 ] as const;
 
-type StateField = typeof STATE_FIELDS[number];
-export type PersistedState = Pick<VaultPreferences, StateField>;
+type StateField = (typeof STATE_FIELDS)[number];
+export type PersistedState = DeepReadonly<Pick<VaultPreferences, StateField>>;
 
 export const show = (value: unknown) =>
   typeof value === "string" ? `"${value}"` : JSON.stringify(value);
@@ -815,8 +817,8 @@ const isToolField = (field: ConfigField): field is ToolField =>
 
 /** Changed config-mapped fields -> update_config changes (dotted keys). */
 export function preferencesToConfigChanges(
-  prev: VaultPreferences,
-  next: VaultPreferences,
+  prev: PreferencesSnapshot,
+  next: PreferencesSnapshot,
 ): ConfigChange[] {
   const changes: ConfigChange[] = [];
   for (const { field, key } of CONFIG_MAPPING) {
@@ -872,7 +874,7 @@ export function stateToPreferences(
   };
 }
 
-export function preferencesToState(prefs: VaultPreferences): PersistedState {
+export function preferencesToState(prefs: PreferencesSnapshot): PersistedState {
   return {
     recentVaults: prefs.recentVaults,
     lastVaultPath: prefs.lastVaultPath,
@@ -887,7 +889,7 @@ export function preferencesToState(prefs: VaultPreferences): PersistedState {
 const sameValue = (a: unknown, b: unknown) =>
   a === b || JSON.stringify(a) === JSON.stringify(b);
 
-const configSlice = (prefs: VaultPreferences) => ({
+const configSlice = (prefs: PreferencesSnapshot) => ({
   ...Object.fromEntries(
     CONFIG_MAPPING.map(({ field }) => [field, prefs[field]]),
   ),
@@ -991,7 +993,11 @@ function enqueue<T>(rt: Runtime, task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function persist(rt: Runtime, next: VaultPreferences, prev: VaultPreferences) {
+function persist(
+  rt: Runtime,
+  next: PreferencesSnapshot,
+  prev: PreferencesSnapshot,
+) {
   if (rt.disposed) {
     return;
   }
@@ -1066,7 +1072,7 @@ function applyLoad(
   includeState: boolean,
 ): boolean {
   const current = getPreferences(rt.win);
-  let next: VaultPreferences = { ...current };
+  let next: PreferencesSnapshot = current;
   const loadProblems: SettingsProblem[] = [];
 
   if (result.configError) {

@@ -13,7 +13,7 @@ import {
   getPreferences,
   subscribePreferences,
   updatePreferences,
-  type VaultPreferences,
+  type PreferencesSnapshot,
 } from "../../../vault/preferences";
 import { IconPlus, IconTrash } from "../../Icons";
 import { SettingRow } from "../SettingRow";
@@ -36,7 +36,7 @@ const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
 /** Preferences, kept in step with every change (also from config reloads). */
-const usePrefs = (): VaultPreferences => {
+const usePrefs = (): PreferencesSnapshot => {
   const { win } = useSettings();
   const [prefs, setPrefs] = useState(() => getPreferences(win));
   useEffect(

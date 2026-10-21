@@ -11,7 +11,7 @@ import {
 import "./home.css";
 
 interface OnboardingProps {
-  recentVaults: string[];
+  recentVaults: readonly string[];
   lastVaultPath?: string | null;
   onOpenVault: () => void | Promise<void>;
   onCreateVault: () => void | Promise<void>;

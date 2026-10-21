@@ -51,7 +51,10 @@ import type {
   LoadSettingsResult,
   SettingsStatus,
 } from "../vault/settingsSync";
-import type { VaultPreferences } from "../vault/preferences";
+import type {
+  PreferencesSnapshot,
+  VaultPreferences,
+} from "../vault/preferences";
 
 import type { VaultEntry, VaultInfo } from "../vault/types";
 
@@ -2522,7 +2525,7 @@ export async function runDesktopSmoke(): Promise<void> {
         .trim();
     const waitPrefs = (
       label: string,
-      test: (prefs: VaultPreferences) => boolean,
+      test: (prefs: PreferencesSnapshot) => boolean,
       ms = 4000,
     ) => waitFor(label, () => (test(getPreferences(win)) ? true : null), ms);
     const pollAsync = async <T>(

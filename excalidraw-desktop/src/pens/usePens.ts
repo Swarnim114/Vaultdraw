@@ -64,7 +64,7 @@ function usePenShortcuts(count: number): string[] {
 }
 
 /** Presets from preferences; the state only changes when their content does. */
-function usePresets(): PenPreset[] {
+function usePresets(): readonly PenPreset[] {
   const [presets, setPresets] = useState(() => getPreferences().penPresets);
   useEffect(() => {
     let key = JSON.stringify(presets);

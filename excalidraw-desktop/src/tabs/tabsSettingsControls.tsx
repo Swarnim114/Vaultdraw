@@ -19,6 +19,7 @@ import {
   getPreferences,
   subscribePreferences,
   updatePreferences,
+  type PreferencesSnapshot,
   type VaultPreferences,
 } from "../vault/preferences";
 
@@ -27,7 +28,7 @@ import { TABS_UNDO_BUDGET_MB, type TabsField } from "./tabsSettings";
 /** A global (not per-vault) tabs preference, kept in sync with config.toml. */
 const useTabsPref = <F extends TabsField>(
   field: F,
-): [VaultPreferences[F], (value: VaultPreferences[F]) => void] => {
+): [PreferencesSnapshot[F], (value: PreferencesSnapshot[F]) => void] => {
   const { win } = useSettings();
   const [value, setValue] = useState(() => getPreferences(win)[field]);
   useEffect(() => {
