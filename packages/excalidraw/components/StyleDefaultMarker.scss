@@ -1,0 +1,42 @@
+.excalidraw {
+  .style-default-heading-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .style-default-marker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+    vertical-align: baseline;
+  }
+
+  .style-default-marker__dot {
+    width: 0.3125rem;
+    height: 0.3125rem;
+    border-radius: 50%;
+    background: var(--color-primary);
+    flex: none;
+  }
+
+  .style-default-marker__button {
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    font-size: 0.6875rem;
+    line-height: 1;
+    color: var(--color-primary);
+    text-decoration: underline;
+
+    &:hover {
+      color: var(--color-primary-darker);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-highlight-color, var(--color-primary));
+      outline-offset: 1px;
+    }
+  }
+}

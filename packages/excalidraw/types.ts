@@ -966,6 +966,11 @@ export interface ExcalidrawProps {
    */
   newTextStyle?: () => NewTextStyle | null;
   /**
+   * Lets the style panel mark properties the host overrides (e.g. picked in
+   * this drawing) and offer "Use default". Pass a new object when overrides change.
+   */
+  styleOverrides?: StyleOverridesHook;
+  /**
    * Host-controlled style of the rectangle "Wrap selection in container"
    * creates. Set fields win over the current-item state; null keeps it.
    */
@@ -1835,3 +1840,11 @@ export type NewTextStyle = Partial<
     "strokeColor" | "opacity" | "fontFamily" | "fontSize" | "textAlign"
   >
 >;
+
+/** Host hook for marking overridden style properties (see `styleOverrides`). */
+export type StyleOverridesHook = {
+  /** True when any of these current-item fields is overridden by the host (e.g. in this drawing). */
+  isOverridden: (fields: readonly (keyof AppState)[]) => boolean;
+  /** Clear the host's override(s) for these fields so its default applies again. */
+  useDefault: (fields: readonly (keyof AppState)[]) => void;
+};

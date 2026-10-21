@@ -103,6 +103,10 @@ import type { CaptureUpdateActionType } from "@excalidraw/element";
 import { trackEvent } from "../analytics";
 import { RadioSelection } from "../components/RadioSelection";
 import { IconButton } from "../components/IconButton";
+import {
+  StyleDefaultMarker,
+  StyleHeadingRow,
+} from "../components/StyleDefaultMarker";
 import { ColorPicker } from "../components/ColorPicker/ColorPicker";
 import { FontPicker } from "../components/FontPicker/FontPicker";
 import { IconPicker } from "../components/IconPicker";
@@ -409,7 +413,16 @@ export const actionChangeStrokeColor = register<
 
     return (
       <>
-        {stylesPanelMode === "full" && <h3 aria-hidden="true">{label}</h3>}
+        {stylesPanelMode === "full" && (
+          <StyleHeadingRow>
+            <h3 aria-hidden="true">{label}</h3>
+            <StyleDefaultMarker
+              fields={["currentItemStrokeColor"]}
+              name="strokeColor"
+              label={label}
+            />
+          </StyleHeadingRow>
+        )}
         <ColorPicker
           topPicks={target.topPicks}
           palette={target.palette}
@@ -522,7 +535,14 @@ export const actionChangeBackgroundColor = register<
     return (
       <>
         {stylesPanelMode === "full" && (
-          <h3 aria-hidden="true">{t("labels.background")}</h3>
+          <StyleHeadingRow>
+            <h3 aria-hidden="true">{t("labels.background")}</h3>
+            <StyleDefaultMarker
+              fields={["currentItemBackgroundColor"]}
+              name="backgroundColor"
+              label={t("labels.background")}
+            />
+          </StyleHeadingRow>
         )}
         <ColorPicker
           topPicks={target.topPicks}
@@ -574,7 +594,14 @@ export const actionChangeBucketFillBackgroundColor = register<
     return (
       <>
         {stylesPanelMode === "full" && (
-          <h3 aria-hidden="true">{t("labels.background")}</h3>
+          <StyleHeadingRow>
+            <h3 aria-hidden="true">{t("labels.background")}</h3>
+            <StyleDefaultMarker
+              fields={["currentItemBackgroundColor"]}
+              name="backgroundColor"
+              label={t("labels.background")}
+            />
+          </StyleHeadingRow>
         )}
         <ColorPicker
           topPicks={BUCKET_FILL_BACKGROUND_PICKS}
@@ -634,7 +661,14 @@ export const actionChangeFillStyle = register<ExcalidrawElement["fillStyle"]>({
 
     return (
       <fieldset>
-        <legend>{t("labels.fill")}</legend>
+        <legend>
+          {t("labels.fill")}
+          <StyleDefaultMarker
+            fields={["currentItemFillStyle"]}
+            name="fillStyle"
+            label={t("labels.fill")}
+          />
+        </legend>
         <div className="buttonList">
           <RadioSelection
             type="button"
@@ -724,7 +758,14 @@ export const actionChangeStrokeWidth = register<StrokeWidthKey>({
   },
   PanelComponent: ({ elements, appState, updateData, app, data }) => (
     <fieldset>
-      <legend>{t("labels.strokeWidth")}</legend>
+      <legend>
+        {t("labels.strokeWidth")}
+        <StyleDefaultMarker
+          fields={["currentItemStrokeWidthKey"]}
+          name="strokeWidth"
+          label={t("labels.strokeWidth")}
+        />
+      </legend>
       <div className="buttonList">
         <RadioSelection<StrokeWidthKey>
           group="stroke-width"
@@ -781,7 +822,14 @@ export const actionChangeSloppiness = register<ExcalidrawElement["roughness"]>({
   },
   PanelComponent: ({ elements, appState, updateData, app, data }) => (
     <fieldset>
-      <legend>{t("labels.sloppiness")}</legend>
+      <legend>
+        {t("labels.sloppiness")}
+        <StyleDefaultMarker
+          fields={["currentItemRoughness"]}
+          name="roughness"
+          label={t("labels.sloppiness")}
+        />
+      </legend>
       <div className="buttonList">
         <RadioSelection
           group="sloppiness"
@@ -917,7 +965,14 @@ export const actionChangeStrokeStyle = register<
   },
   PanelComponent: ({ elements, appState, updateData, app, data }) => (
     <fieldset>
-      <legend>{t("labels.strokeStyle")}</legend>
+      <legend>
+        {t("labels.strokeStyle")}
+        <StyleDefaultMarker
+          fields={["currentItemStrokeStyle"]}
+          name="strokeStyle"
+          label={t("labels.strokeStyle")}
+        />
+      </legend>
       <div className="buttonList">
         <RadioSelection
           group="strokeStyle"
@@ -983,7 +1038,16 @@ export const actionChangeOpacity = register<ExcalidrawElement["opacity"]>({
 
     return (
       <Range
-        label={t("labels.opacity")}
+        label={
+          <>
+            {t("labels.opacity")}
+            <StyleDefaultMarker
+              fields={["currentItemOpacity"]}
+              name="opacity"
+              label={t("labels.opacity")}
+            />
+          </>
+        }
         value={opacity ?? appState.currentItemOpacity}
         hasCommonValue={opacity !== null}
         onChange={updateData}
@@ -1018,7 +1082,14 @@ export const actionChangeFontSize = register<ExcalidrawTextElement["fontSize"]>(
 
       return (
         <fieldset>
-          <legend>{t("labels.fontSize")}</legend>
+          <legend>
+            {t("labels.fontSize")}
+            <StyleDefaultMarker
+              fields={["currentItemFontSize"]}
+              name="fontSize"
+              label={t("labels.fontSize")}
+            />
+          </legend>
           <div className="buttonList">
             <RadioSelection
               group="font-size"
@@ -1438,7 +1509,14 @@ export const actionChangeFontFamily = register<{
     return (
       <>
         {stylesPanelMode === "full" && (
-          <legend>{t("labels.fontFamily")}</legend>
+          <legend>
+            {t("labels.fontFamily")}
+            <StyleDefaultMarker
+              fields={["currentItemFontFamily"]}
+              name="fontFamily"
+              label={t("labels.fontFamily")}
+            />
+          </legend>
         )}
         <FontPicker
           isOpened={appState.openPopup === "fontFamily"}
@@ -1584,7 +1662,14 @@ export const actionChangeTextAlign = register<TextAlign>({
 
     return (
       <fieldset>
-        <legend>{t("labels.textAlign")}</legend>
+        <legend>
+          {t("labels.textAlign")}
+          <StyleDefaultMarker
+            fields={["currentItemTextAlign"]}
+            name="textAlign"
+            label={t("labels.textAlign")}
+          />
+        </legend>
         <div className="buttonList">
           <RadioSelection<TextAlign | false>
             group="text-align"
@@ -1788,7 +1873,14 @@ export const actionChangeRoundness = register<"sharp" | "round">({
 
     return (
       <fieldset>
-        <legend>{t("labels.edges")}</legend>
+        <legend>
+          {t("labels.edges")}
+          <StyleDefaultMarker
+            fields={["currentItemRoundness"]}
+            name="roundness"
+            label={t("labels.edges")}
+          />
+        </legend>
         <div className="buttonList">
           <RadioSelection
             group="edges"
@@ -1993,7 +2085,14 @@ export const actionChangeArrowhead = register<{
 
     return (
       <fieldset>
-        <legend>{t("labels.arrowheads")}</legend>
+        <legend>
+          {t("labels.arrowheads")}
+          <StyleDefaultMarker
+            fields={["currentItemStartArrowhead", "currentItemEndArrowhead"]}
+            name="arrowheads"
+            label={t("labels.arrowheads")}
+          />
+        </legend>
         <div className="iconSelectList buttonList">
           <IconPicker
             visibleSections={startArrowheadOptions.visibleSections}
@@ -2251,7 +2350,14 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
   PanelComponent: ({ elements, appState, updateData, app }) => {
     return (
       <fieldset>
-        <legend>{t("labels.arrowtypes")}</legend>
+        <legend>
+          {t("labels.arrowtypes")}
+          <StyleDefaultMarker
+            fields={["currentItemArrowType"]}
+            name="arrowType"
+            label={t("labels.arrowtypes")}
+          />
+        </legend>
         <div className="buttonList">
           <RadioSelection
             group="arrowtypes"
