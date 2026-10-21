@@ -10,10 +10,13 @@
 //  - zeroes canvas width/height on eviction/replacement so WebKit frees the
 //    backing store immediately.
 
-/** Off-screen cache budget. A full Retina viewport is ~20 MB of bitmaps, so
- * 64 MiB keeps a couple of screens of neighbours for smooth panning. The
- * budget is soft for the visible set. */
-export const ELEMENT_CANVAS_CACHE_BUDGET_BYTES = 64 * 1024 * 1024;
+/** Allowance for entries that are NOT on screen (not drawn in the current or
+ * previous frame), on top of the visible set, which is never evicted. 16 MiB
+ * keeps roughly a screen edge of neighbours for smooth panning. */
+export const ELEMENT_CANVAS_CACHE_BUDGET_BYTES = 16 * 1024 * 1024;
+
+/** After this long without a static render, off-screen entries are released. */
+export const ELEMENT_CANVAS_CACHE_IDLE_TRIM_MS = 5000;
 
 type CanvasHolder = { canvas: HTMLCanvasElement };
 
@@ -36,12 +39,34 @@ export class ElementCanvasCache<K extends object, V extends CanvasHolder> {
   private totalBytes = 0;
   private frame = 0;
 
-  constructor(private budget: number = ELEMENT_CANVAS_CACHE_BUDGET_BYTES) {}
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private budget: number = ELEMENT_CANVAS_CACHE_BUDGET_BYTES,
+    private idleTrimMs: number = ELEMENT_CANVAS_CACHE_IDLE_TRIM_MS,
+  ) {}
 
   /** call once at the start of every static scene render */
   beginFrame() {
     this.frame++;
     this.evict();
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer);
+    }
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      this.trimOffscreen();
+    }, this.idleTrimMs);
+  }
+
+  /** release every entry that was not drawn in the last frame */
+  trimOffscreen() {
+    for (const [key, entry] of this.map) {
+      if (entry.frame >= this.frame) {
+        break;
+      }
+      this.delete(key);
+    }
   }
 
   get(key: K): V | undefined {
@@ -64,7 +89,8 @@ export class ElementCanvasCache<K extends object, V extends CanvasHolder> {
     const bytes = canvasBytes(value.canvas);
     this.map.set(key, { value, bytes, frame: this.frame });
     this.totalBytes += bytes;
-    this.evict();
+    // no eviction here: the new entry is on screen, and everything else is
+    // trimmed at the next `beginFrame`
     return this;
   }
 
@@ -80,6 +106,10 @@ export class ElementCanvasCache<K extends object, V extends CanvasHolder> {
   }
 
   clear() {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
     for (const entry of this.map.values()) {
       releaseCanvas(entry.value.canvas);
     }
@@ -99,16 +129,22 @@ export class ElementCanvasCache<K extends object, V extends CanvasHolder> {
     if (this.totalBytes <= this.budget) {
       return;
     }
+    // Entries drawn in the previous frame are on screen too: `beginFrame`
+    // runs before the new frame touches anything, so protecting only the
+    // current frame evicted the on-screen set whenever it exceeded the
+    // budget, and every visible element was re-rasterised every frame.
+    // The budget is the allowance for everything else.
+    let visibleBytes = 0;
+    for (const entry of this.map.values()) {
+      if (entry.frame >= this.frame - 1) {
+        visibleBytes += entry.bytes;
+      }
+    }
+    // LRU order: the first protected entry ends the evictable prefix.
     for (const [key, entry] of this.map) {
-      if (this.totalBytes <= this.budget) {
+      if (this.totalBytes - visibleBytes <= this.budget) {
         break;
       }
-      // Entries drawn in the previous frame are protected too: `beginFrame`
-      // runs before the new frame touches anything, so protecting only the
-      // current frame evicted the on-screen set whenever it exceeded the
-      // budget, and every visible element was re-rasterised every frame.
-      // LRU order: everything after the first protected entry is protected
-      // too, so nothing evictable remains.
       if (entry.frame >= this.frame - 1) {
         break;
       }

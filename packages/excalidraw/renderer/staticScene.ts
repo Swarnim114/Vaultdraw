@@ -328,7 +328,7 @@ const _renderStaticScene = ({
   const { renderGrid = true, isExporting } = renderConfig;
   if (!isExporting) {
     // Vaultdraw: new frame for the element bitmap LRU
-    beginElementCanvasFrame();
+    beginElementCanvasFrame(visibleElements.length);
   }
   // export draws vectors, not cached bitmaps — nothing to keep on the grid
   const appState = isExporting

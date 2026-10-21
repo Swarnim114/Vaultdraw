@@ -744,9 +744,53 @@ export const elementWithCanvasCache = new ElementCanvasCache<
   ExcalidrawElementWithCanvas
 >();
 
+/**
+ * Vaultdraw: up to this many visible elements, cheap vector kinds are drawn
+ * straight onto the scene canvas instead of through a per-element bitmap
+ * (see `shouldDrawElementDirectly`). Above it, a bitmap blit is the cheaper
+ * frame, and at that size bitmaps are small anyway (low zoom).
+ */
+export const DIRECT_DRAW_MAX_VISIBLE_ELEMENTS = 600;
+
+let directDrawAllowed = true;
+
 /** call at the start of each static scene render */
-export const beginElementCanvasFrame = () =>
+export const beginElementCanvasFrame = (visibleElementCount = 0) => {
+  directDrawAllowed = visibleElementCount <= DIRECT_DRAW_MAX_VISIBLE_ELEMENTS;
   elementWithCanvasCache.beginFrame();
+};
+
+/**
+ * Whether an element is cheaper (in memory) drawn directly than cached as a
+ * bitmap. Arrows and lines have sparse, padded bboxes (a bitmap is ~2x the
+ * painted area), and unfilled or solid-filled shapes are a few path ops.
+ * Excluded: text (runs, RTL, snapping), images (decode/crop/dark filter),
+ * freedraw and hachure/cross-hatch/zigzag fills (expensive to re-stroke),
+ * and translucent elements (stroke and fill overlap would double-blend
+ * where a bitmap blends once).
+ */
+export const shouldDrawElementDirectly = (
+  element: ExcalidrawElement,
+  opacity: number,
+  allowed = directDrawAllowed,
+) => {
+  if (!allowed || opacity !== 1) {
+    return false;
+  }
+  switch (element.type) {
+    case "arrow":
+    case "line":
+    case "rectangle":
+    case "diamond":
+    case "ellipse":
+      return (
+        element.backgroundColor === "transparent" ||
+        element.fillStyle === "solid"
+      );
+    default:
+      return false;
+  }
+};
 
 /** release all cached bitmaps (e.g. when the editor unmounts) */
 export const clearElementCanvasCache = () => elementWithCanvasCache.clear();
@@ -1061,7 +1105,9 @@ export const renderElement = (
   // Cached bitmaps apply the offset before pixel snapping. Moving it into
   // the canvas transform first loses precision at half-device-pixel ties.
   if (
-    (renderConfig.isExporting || isFrameLikeElement(element)) &&
+    (renderConfig.isExporting ||
+      isFrameLikeElement(element) ||
+      shouldDrawElementDirectly(element, renderState.opacity)) &&
     (renderState.offset.x || renderState.offset.y)
   ) {
     context.translate(renderState.offset.x, renderState.offset.y);
@@ -1182,7 +1228,14 @@ const drawElement = (
     case "text":
     case "iframe":
     case "embeddable": {
-      if (renderConfig.isExporting) {
+      const directOnScreen =
+        !renderConfig.isExporting &&
+        shouldDrawElementDirectly(element, renderState.opacity);
+      if (directOnScreen) {
+        // a bitmap cached before the scene got small enough is dead weight
+        elementWithCanvasCache.delete(element);
+      }
+      if (renderConfig.isExporting || directOnScreen) {
         const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
         const centerX = (x1 + x2) / 2;
         const centerY = (y1 + y2) / 2;
