@@ -32,6 +32,12 @@ import {
   pagePdfExportStep,
 } from "./pageModeSmoke";
 import { runPensSmoke } from "./pensSmoke";
+import {
+  RELOAD_STEP,
+  reloadResumeStep,
+  requestReload,
+  takeReloadMarker,
+} from "./reloadSmoke";
 import { runThumbnailsSmoke } from "./thumbnailsSmoke";
 
 import type { InvokeFn } from "../vault/DesktopVaultRepository";
@@ -518,6 +524,26 @@ export async function runDesktopSmoke(): Promise<void> {
     const env = await call("smoke_environment");
     if (!env.enabled || !env.vaultPath) {
       throw new Error("Native smoke environment is not enabled");
+    }
+    // Resumed after the page-reload step's location.reload(): run only that step.
+    if (takeReloadMarker(win.sessionStorage, Date.now())) {
+      await step(RELOAD_STEP, () =>
+        reloadResumeStep({
+          win,
+          root,
+          vaultPath: env.vaultPath,
+          waitFor,
+          clickOpenVault: () => button("Open Vault Folder").click(),
+          call: invokeNative as never,
+        }),
+      );
+      if (pageErrors.length) {
+        throw new Error(
+          `WebView reported errors: ${JSON.stringify(pageErrors)}`,
+        );
+      }
+      exitStatus = 0;
+      return;
     }
     const vault = await step(
       "startup-and-onboarding",
@@ -3877,6 +3903,16 @@ export async function runDesktopSmoke(): Promise<void> {
     await exportStep("page-default-stamped", () =>
       pageDefaultStampedStep(exportCtx),
     );
+
+    // Last: reloads the page (never returns); the resumed run asserts the
+    // reopened vault is writable (see reloadSmoke.ts). Skipped when anything failed.
+    if (records.every((record) => record.ok) && !pageErrors.length) {
+      await requestReload({
+        win,
+        records,
+        log: (record) => call("smoke_log", record),
+      });
+    }
 
     const failed = records.filter((record) => !record.ok);
     if (failed.length) {
