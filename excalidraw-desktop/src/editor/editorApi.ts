@@ -18,3 +18,8 @@ export const registerEditorApi = (
 export const getEditorApi = (
   documentId: string,
 ): ExcalidrawImperativeAPI | undefined => apis.get(documentId);
+
+/** Every mounted editor API (e2e harness hook: one entry per live editor). */
+export const allEditorApis = (): ExcalidrawImperativeAPI[] => [
+  ...apis.values(),
+];

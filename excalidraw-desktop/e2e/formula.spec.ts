@@ -231,7 +231,7 @@ test.describe("formula", () => {
               id: "plainimg",
               fileId,
               x: base.x + 400,
-              y: base.y + 300,
+              y: base.y + 200,
               width: 160,
               height: 100,
               customData: undefined,

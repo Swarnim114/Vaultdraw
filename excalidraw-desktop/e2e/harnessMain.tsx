@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createBackgroundPattern } from "@excalidraw/excalidraw/data/backgroundPattern";
 import { renderBackgroundPattern } from "@excalidraw/excalidraw/renderer/backgroundPattern";
 
+import { allEditorApis } from "../src/editor/editorApi";
 import { FakeHistoryRepository } from "../src/tests/fakeHistoryRepository";
 import { FakeLibraryRepository } from "../src/tests/fakeLibraryRepository";
 import { FakePdfBridge } from "../src/tests/fakePdfBridge";
@@ -599,6 +600,8 @@ repository.writeDrawing = async (input) => {
 
 (ownerWindow as any).__vaultRepo = repository;
 (ownerWindow as any).__vaultToasts = toastStore;
+// Tabs specs: the live editors' APIs (there is exactly one while a drawing is open).
+(ownerWindow as any).__editorApis = allEditorApis;
 (ownerWindow as any).__updatePreferences = updatePreferences;
 // Paper perf spec: the canvas renderer, for a micro-benchmark.
 (ownerWindow as any).__paperRenderer = {
