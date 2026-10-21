@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { thumbDensity } from "../src/thumbnails/fit";
+import { pngRenderVersion } from "../src/thumbnails/render";
+
 import { openDrawing, openVault, trackErrors } from "./helpers";
 
 // F2 thumbnails QA (functional, fake store ?thumbs=1): the editor is not
@@ -237,16 +240,18 @@ test.describe("render cap", () => {
     );
     await expect(tile.locator("img.vault-thumb")).toHaveCount(0);
     // The store answers "failed" for it: one fail marker, no image.
+    const dpr = await page.evaluate(() => window.devicePixelRatio);
+    const version = pngRenderVersion(thumbDensity(dpr));
     const state = () =>
-      page.evaluate(async () => {
+      page.evaluate(async (v) => {
         const w = window as any;
         const r = await w.__thumbStore.lookup(
           w.__vaultRepo.handle,
           ["Huge/Huge.excalidraw"],
-          1,
+          v,
         );
         return r.items[0].state as string;
-      });
+      }, version);
     await expect.poll(state).toBe("failed");
     // Re-open the gallery: the marker is honoured, nothing is rendered again.
     const settled = await calls(page);

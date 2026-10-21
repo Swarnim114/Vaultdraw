@@ -28,7 +28,7 @@ const RUNS = Number(process.env.THUMB_RUNS ?? 30);
 /** Pixel density of the PNG renders (2 = Retina, what most Macs use). */
 const DENSITY = Number(process.env.THUMB_DENSITY ?? 2);
 const WARMUP = 3;
-const SIZES = [100, 500, 1500];
+const SIZES = [100, 500, 600, 1500]; // 600 = the render cap (D12)
 
 test.skip(!PERF, "set E2E_PERF=1 to run the thumbnail render measurements");
 test.describe.configure({ timeout: 600_000 });
@@ -279,6 +279,19 @@ test.describe("render step 0", () => {
               window as unknown as { __step0: Step0Hooks }
             ).__step0;
             const times: number[] = [];
+            // Main-thread blocking (the real budget): long tasks during the runs.
+            const longTasks: number[] = [];
+            let obs: PerformanceObserver | null = null;
+            try {
+              obs = new PerformanceObserver((list) => {
+                for (const e of list.getEntries()) {
+                  longTasks.push(e.duration);
+                }
+              });
+              obs.observe({ type: "longtask", buffered: false });
+            } catch {
+              obs = null; // WebKit has no longtask entries
+            }
             let fails = 0;
             let bytes = 0;
             let reason = "";
@@ -296,7 +309,15 @@ test.describe("render step 0", () => {
                 times.push(dt);
               }
             }
-            return { times, fails, bytes, reason };
+            await new Promise((r) => setTimeout(r, 50));
+            obs?.disconnect();
+            return {
+              times,
+              fails,
+              bytes,
+              reason,
+              longTasks: obs ? longTasks : null,
+            };
           },
           { json, runs: RUNS, warmup: WARMUP, density: DENSITY },
         );
@@ -311,11 +332,16 @@ test.describe("render step 0", () => {
           p95: r1(pct(res.times, 95)),
           max: r1(Math.max(...res.times)),
           pngKB: Math.round(res.bytes / 102.4) / 10,
+          longTasks: res.longTasks?.length ?? null,
+          longTaskMax: res.longTasks ? r1(Math.max(0, ...res.longTasks)) : null,
           fails: res.fails,
           reason: res.reason,
         };
         console.log(`THUMB_STEP0 ${JSON.stringify(row)}`);
-        expect(res.fails, `${c.name}: render failed (${res.reason})`).toBe(0);
+        if (res.reason !== "too-many") {
+          // Over-cap scenes (1500) are expected placeholders (D12).
+          expect(res.fails, `${c.name}: render failed (${res.reason})`).toBe(0);
+        }
       }
       await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     });
