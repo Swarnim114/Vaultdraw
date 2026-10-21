@@ -487,6 +487,117 @@ for (const rate of RATES) {
   });
 }
 
+// ---- phase 3 UI: 50 tabs with a pinned tab and the menu closed, menu and list open -------
+
+/** Stamps contextmenu / click / keydown, resolves ms to the first DOM insertion of `selector`. */
+const armOpen = (page: Page, selector: string) =>
+  page.evaluate((sel) => {
+    const w = window as any;
+    const stamp = () => {
+      w.__open0 = performance.now();
+    };
+    if (!w.__openStamped) {
+      w.__openStamped = true;
+      for (const t of ["contextmenu", "click", "keydown"]) {
+        document.addEventListener(t, stamp, true);
+      }
+    }
+    w.__opened = new Promise<{ commit: number; frame: number }>((resolve) => {
+      const mo = new MutationObserver(() => {
+        if (document.querySelector(sel)) {
+          mo.disconnect();
+          const commit = performance.now() - w.__open0;
+          requestAnimationFrame(() =>
+            resolve({ commit, frame: performance.now() - w.__open0 }),
+          );
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    });
+  }, selector);
+
+const opened = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as any).__opened as Promise<{ commit: number; frame: number }>,
+  );
+
+for (const rate of RATES) {
+  test(`tabs phase 3 UI with 50 tabs (pinned, menu closed), menu and list open, cpu x${rate}`, async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "CDP throttling is chromium only");
+    await openSeededVault(page);
+    await installProbe(page);
+    const cdp = await page.context().newCDPSession(page);
+    for (let i = 0; i < 49; i++) {
+      await page.getByTestId("vault-tab-new").click();
+    }
+    await expect(page.getByTestId("vault-tab")).toHaveCount(50);
+    // Pin the first tab through its menu, then dismiss nothing else: menu closed.
+    await page.getByTestId("vault-tab").first().click({ button: "right" });
+    await page.getByTestId("vault-tab-menu-pin").click();
+    await expect(page.getByTestId("vault-tab-menu")).toHaveCount(0);
+    await expect(page.locator(".vault-tabs__tab--pinned")).toHaveCount(1);
+    await throttle(cdp, rate);
+
+    // Strip commit (activation) with the new UI mounted.
+    const commit: number[] = [];
+    for (let i = 0; i < 25; i++) {
+      const target = page.getByTestId("vault-tab").nth(1 + ((i * 7) % 48));
+      await page.waitForTimeout(80);
+      await page.evaluate(() => (window as any).__armMutation("select"));
+      await target.click();
+      const ms = (await page.evaluate(
+        () => (window as any).__mutation,
+      )) as number;
+      if (i >= 2) {
+        commit.push(ms);
+      }
+    }
+    report(rate, "tabs.stripCommit50.pinned", commit);
+
+    // Context menu open: right click on a tab -> menu in the DOM (and painted).
+    const menuCommit: number[] = [];
+    const menuFrame: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      const target = page.getByTestId("vault-tab").nth(2 + ((i * 5) % 40));
+      await page.waitForTimeout(80);
+      await armOpen(page, '[data-testid="vault-tab-menu"]');
+      await target.click({ button: "right" });
+      const r = await opened(page);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("vault-tab-menu")).toHaveCount(0);
+      if (i >= 2) {
+        menuCommit.push(r.commit);
+        menuFrame.push(r.frame);
+      }
+    }
+    report(rate, "tabs.menuOpen50.commit", menuCommit);
+    report(rate, "tabs.menuOpen50.frame", menuFrame);
+
+    // Tab list open: chevron click -> list in the DOM with 50 rows.
+    const listCommit: number[] = [];
+    const listFrame: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(80);
+      await armOpen(page, '[data-testid="vault-tab-list-item"]:nth-child(50)');
+      await page.getByTestId("vault-tab-overflow").click();
+      const r = await opened(page);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("vault-tab-list")).toHaveCount(0);
+      if (i >= 2) {
+        listCommit.push(r.commit);
+        listFrame.push(r.frame);
+      }
+    }
+    report(rate, "tabs.listOpen50.commit", listCommit);
+    report(rate, "tabs.listOpen50.frame", listFrame);
+    note(rate, "tabs.phase3.load", { load: +load().toFixed(2) });
+  });
+}
+
 // ---- session restore: 20 saved tabs vs 1 ------------------------------------------------
 
 for (const rate of RATES) {

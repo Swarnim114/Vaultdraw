@@ -59,3 +59,44 @@ test("tabs: click two drawings into two tabs, click the first tab, its shapes an
   await expect(zoomLabel(page)).toHaveText(zoomA);
   expect(errors).toEqual([]);
 });
+
+// Phase 3: the ONE visible-UI test (mouse only: no shortcut, no palette).
+test("tabs phase 3: pin a tab from its context menu, a navigator click opens the next drawing in a new tab", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await openSeededVault(page, PAIR);
+  await clickTree(page, A);
+  await expectShown(page, ["a-rect"]);
+  expect(await tabNames(page)).toEqual([A]);
+
+  // Right-click the tab, click "Pin" in the menu.
+  await tabByName(page, A).click({ button: "right" });
+  const menu = page.getByTestId("vault-tab-menu");
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(menu).toHaveCount(0);
+  const pinned = page.getByTestId("vault-tab").first();
+  await expect(pinned).toHaveAttribute("aria-label", `${A} (pinned)`);
+  await expect(pinned).toHaveClass(/vault-tabs__tab--pinned/);
+  await expect(pinned.getByTestId("vault-tab-close")).toHaveCount(0);
+
+  // A navigator click on B must not replace the pinned tab: B gets a new tab.
+  await clickTree(page, B);
+  await expectShown(page, ["b-ellipse"]);
+  await expect(tabEls(page)).toHaveCount(2);
+  await expect(pinned).toHaveAttribute("aria-label", `${A} (pinned)`);
+  await expect(pinned).toHaveAttribute("data-path", `${A}.excalidraw`);
+  await expect(pinned).toHaveAttribute("aria-selected", "false");
+  // The pinned tab shows only its icon (no name element text).
+  expect(await tabNames(page)).toEqual(["", B]);
+  expect(await activeTab(page)).toBe(B);
+  expect(await onScreenIds(page)).toEqual(["b-ellipse"]);
+
+  // Clicking the pinned tab shows A's shapes again.
+  await pinned.click();
+  await expectShown(page, ["a-rect"]);
+  await expect(pinned).toHaveAttribute("aria-selected", "true");
+  expect(await onScreenIds(page)).toEqual(["a-rect"]);
+  expect(errors).toEqual([]);
+});
