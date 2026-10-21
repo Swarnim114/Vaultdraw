@@ -53,3 +53,20 @@ describe("CSP parity between tauri.conf.json and index.html", () => {
     expect(metaPolicy().get("img-src")).toContain("vdthumb:");
   });
 });
+
+describe("native CSP style-src in release builds", () => {
+  it("keeps 'unsafe-inline' effective: Tauri must not add a style nonce", () => {
+    // index.html carries an inline <style>; with Tauri's nonce injection the
+    // browser ignores 'unsafe-inline' and blocks CodeMirror/runtime styles.
+    const security = JSON.parse(
+      readFileSync(resolve(root, "src-tauri/tauri.conf.json"), "utf8"),
+    ).app.security;
+    expect(nativePolicy().get("style-src")).toContain("'unsafe-inline'");
+    expect(security.dangerousDisableAssetCspModification).toContain(
+      "style-src",
+    );
+    expect(security.dangerousDisableAssetCspModification).not.toContain(
+      "script-src",
+    );
+  });
+});
