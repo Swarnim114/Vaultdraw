@@ -163,11 +163,23 @@ pub fn test_run() -> bool {
     enabled() || env::var("VAULTDRAW_PERF").ok().as_deref() == Some("1")
 }
 
+/// `VAULTDRAW_SMOKE_FOREGROUND=1`: the test run opens as a normal, focused app, for window
+/// managers that keep a never-activated window off the visible workspace (the WebView then
+/// reports hidden and the smoke refuses to start).
+pub fn foreground_test() -> bool {
+    env::var("VAULTDRAW_SMOKE_FOREGROUND").ok().as_deref() == Some("1")
+}
+
+/// A test run that stays in the background (the default for smoke and perf runs).
+pub fn background_test() -> bool {
+    test_run() && !foreground_test()
+}
+
 /// Test runs stay in the background: no Dock icon, never the active app. A window manager
 /// then has no activation to follow, so test windows never pull the user to another workspace.
 pub fn background_test_app(app: &mut tauri::App) {
     #[cfg(target_os = "macos")]
-    if test_run() {
+    if background_test() {
         app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     }
     #[cfg(not(target_os = "macos"))]

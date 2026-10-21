@@ -1447,7 +1447,7 @@ pub fn run() {
                 smoke::background_test_app(app);
                 let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &window_config)?;
                 #[cfg(feature = "smoke-test")]
-                let builder = builder.focused(!smoke::test_run());
+                let builder = builder.focused(!smoke::background_test());
                 #[cfg(target_os = "macos")]
                 let builder = {
                     let mtm = objc2::MainThreadMarker::new()
@@ -1481,7 +1481,7 @@ pub fn run() {
         let builder = thumbs::register_scheme(builder);
         // Test runs must not take focus at launch (a window manager would follow it).
         #[cfg(all(feature = "smoke-test", target_os = "macos"))]
-        let builder = builder.activate_ignoring_other_apps(!smoke::test_run());
+        let builder = builder.activate_ignoring_other_apps(!smoke::background_test());
         #[cfg(feature = "smoke-test")]
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
