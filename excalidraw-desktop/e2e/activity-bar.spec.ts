@@ -86,11 +86,9 @@ test("activity bar: every entry opens its panel, view or dialog", async ({
   // Gallery.
   await entry(page, "gallery").click();
   await expect(page.getByTestId("gallery-view")).toBeVisible();
-  await pressed(page, "gallery", true);
   // The gallery command opens (it does not toggle); Escape closes it.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("gallery-view")).toHaveCount(0);
-  await pressed(page, "gallery", false);
 
   // Search focuses the navigator's search box.
   await entry(page, "search").click();

@@ -45,8 +45,13 @@ describe("ACTIVITY_ENTRIES", () => {
     expect(of("bottom")).toEqual(["hotkeys", "settings"]);
   });
 
-  it("gives panel entries an active store", () => {
-    for (const id of ["library", "history", "graph", "gallery"]) {
+  it("gives toggling panel entries an active store", () => {
+    // Gallery's command only opens it, so a pressed state would invite a
+    // click that does nothing.
+    expect(ACTIVITY_ENTRIES.find((e) => e.id === "gallery")?.active).toBe(
+      undefined,
+    );
+    for (const id of ["library", "history", "graph"]) {
       expect(ACTIVITY_ENTRIES.find((e) => e.id === id)?.active).toBeDefined();
     }
   });

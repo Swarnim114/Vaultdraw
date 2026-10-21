@@ -20,7 +20,7 @@ import {
   subscribeHistoryPanelOpen,
 } from "../history/historyPanelState";
 
-import { graphPanelStore, galleryPanelStore } from "./panelStores";
+import { graphPanelStore } from "./panelStores";
 
 import type { ComponentType, SVGProps } from "react";
 
@@ -87,7 +87,6 @@ export const ACTIVITY_ENTRIES: readonly ActivityEntry[] = [
     icon: IconGallery,
     commandId: "thumbnails.galleryOpen",
     group: "top",
-    active: galleryPanelStore,
   },
   {
     id: "search",

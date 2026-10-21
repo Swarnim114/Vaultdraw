@@ -70,7 +70,7 @@ import {
 } from "./vault/newDrawing";
 import { commitCanvasTextEdit } from "./commands/context";
 import { ActivityBar } from "./activityBar/ActivityBar";
-import { galleryPanelStore, graphPanelStore } from "./activityBar/panelStores";
+import { graphPanelStore } from "./activityBar/panelStores";
 import { getRegisteredHandler } from "./commands/handlerRegistry";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
@@ -1785,10 +1785,6 @@ export const VaultApp = ({
       runnerRef.current?.isAvailable(id, { fromPalette: true }) ?? false,
     [],
   );
-  const handleGalleryOpenChange = useCallback((open: boolean) => {
-    setGalleryOpen(open);
-    galleryPanelStore.publish(open);
-  }, []);
   const handleGraphOpenChange = useCallback((open: boolean) => {
     setGraphOpen(open);
     graphPanelStore.publish(open);
@@ -2155,7 +2151,7 @@ export const VaultApp = ({
             templatesFolder={templatesFolder}
             activePath={activeDoc?.path ?? null}
             onOpenDrawing={handleOpenDrawing}
-            onOpenChange={handleGalleryOpenChange}
+            onOpenChange={setGalleryOpen}
             onClosed={focusCanvas}
           />
           <GraphHost
