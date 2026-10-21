@@ -3,6 +3,8 @@
  * pan and wheel zoom. Listeners exist only while the graph is open (the returned function
  * removes them).
  */
+import { clickTarget } from "../tabs/newTabClick";
+
 import { GLIDE_START, wheelZoomFactor } from "./camera";
 
 import type { GraphSession } from "./GraphSession";
@@ -48,7 +50,13 @@ export function bindPointer(
   session: GraphSession,
   onInteract: () => void,
 ): () => void {
-  let down: { x: number; y: number; node: number; id: number } | null = null;
+  let down: {
+    x: number;
+    y: number;
+    node: number;
+    id: number;
+    button: number;
+  } | null = null;
   let moved = false;
   let lastX = 0;
   let lastY = 0;
@@ -60,10 +68,14 @@ export function bindPointer(
   };
 
   const onDown = (e: PointerEvent) => {
-    if (e.button !== 0) {
+    // Left button, or the middle button on a node (opens in a new tab).
+    if (e.button !== 0 && e.button !== 1) {
       return;
     }
     const p = local(e);
+    if (e.button === 1 && session.pickScreen(p.x, p.y) < 0) {
+      return;
+    }
     onInteract();
     session.stopMotion();
     samples = [{ x: p.x, y: p.y, t: e.timeStamp }];
@@ -72,6 +84,7 @@ export function bindPointer(
       y: p.y,
       node: session.pickScreen(p.x, p.y),
       id: e.pointerId,
+      button: e.button,
     };
     moved = false;
     lastX = p.x;
@@ -124,7 +137,7 @@ export function bindPointer(
         }
       }
     } else if (d.node >= 0) {
-      session.activate(d.node);
+      session.activate(d.node, d.button === 1 ? "new" : clickTarget(e));
     }
     const p = local(e);
     session.hoverAt(p.x, p.y);

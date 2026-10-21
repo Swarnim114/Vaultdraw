@@ -12,12 +12,14 @@ import {
   type ShownNode,
 } from "./GraphSession";
 
+import type { OpenTarget } from "../tabs/types";
+
 export interface UseGraphSessionOptions {
   handle: string;
   source: GraphSource;
   inputs: SessionInputs;
   forceCanvas2d?: boolean;
-  onOpen: (path: string) => void;
+  onOpen: (path: string, target?: OpenTarget) => void;
   /** Called on pointer/wheel interaction (e.g. leave hint mode). */
   onInteract?: () => void;
 }
@@ -49,7 +51,7 @@ export function useGraphSession(opts: UseGraphSessionOptions) {
       ui: {
         shown: setShown,
         state: setState,
-        open: (p) => latest.current.onOpen(p),
+        open: (p, target) => latest.current.onOpen(p, target),
       },
       createRenderer: (host) =>
         createRenderer(host, { forceCanvas2d: opts.forceCanvas2d }),

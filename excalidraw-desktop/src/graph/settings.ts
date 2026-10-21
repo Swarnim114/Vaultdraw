@@ -5,6 +5,8 @@
  */
 import { DEFAULT_FORCE_SETTINGS, type ForceSettings } from "./barnesHut";
 
+import type { OpenTarget } from "../tabs/types";
+
 /** A colour group: nodes matching `query` (`path:`, `tag:#x`, or a name) get `colour`. */
 export type GraphColourGroup = { query: string; colour: string };
 
@@ -62,7 +64,7 @@ export type GraphViewProps = {
   settings: GraphSettings;
   onSettingsChange: (next: GraphSettings) => void;
   /** Open a drawing (vault-relative `.excalidraw` path) and close the graph. */
-  onOpen: (path: string) => void;
+  onOpen: (path: string, target?: OpenTarget) => void;
   /** Esc / close button: back to the editor, same viewport. */
   onClose: () => void;
   /** Hotkey label of the bound `drawing.open:<path>` command, if any (hover card). */

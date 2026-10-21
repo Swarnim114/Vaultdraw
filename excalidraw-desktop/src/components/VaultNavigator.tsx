@@ -23,6 +23,8 @@ import { createTagsProvider } from "../palette/providers/tags";
 
 import { requestGallery } from "../thumbnails/gallery/openRequest";
 
+import { isNewTabClick } from "../tabs/newTabClick";
+
 import {
   IconChevronDown,
   IconChevronRight,
@@ -92,7 +94,9 @@ export type NavigatorAction =
   | { kind: "newFolder" }
   | { kind: "newDrawingInFolder" }
   | { kind: "rename" | "move" | "trash"; path: string }
-  | { kind: "search"; query: string };
+  | { kind: "search"; query: string }
+  /** Focus and scroll to a row (the caller expanded its folders). */
+  | { kind: "reveal"; path: string };
 
 export type NavigatorRequest = NavigatorAction & { nonce: number };
 
@@ -107,6 +111,7 @@ interface VaultNavigatorProps {
   onOpenSearchResult?: (
     path: string,
     match?: ElementMatch,
+    opts?: { target: OpenTarget },
   ) => void | Promise<void>;
   /** Bump to focus and select the search input (Cmd+Shift+F). */
   searchFocusNonce?: number;
@@ -371,6 +376,11 @@ export const VaultNavigator = ({
       searchInputRef.current?.focus();
       return;
     }
+    if (request.kind === "reveal") {
+      setSearchQuery("");
+      setFocusedPath(request.path);
+      return;
+    }
     if (request.kind === "newFolder") {
       setCreateParent("");
       setCreateKind("folder");
@@ -520,7 +530,7 @@ export const VaultNavigator = ({
             } else {
               void onOpenDrawing(
                 item.path,
-                e.metaKey || e.ctrlKey ? { target: "new" } : undefined,
+                isNewTabClick(e) ? { target: "new" } : undefined,
               );
             }
           }
@@ -748,13 +758,15 @@ export const VaultNavigator = ({
             handle={vault.handle}
             allIndexedEntries={allIndexedEntries}
             activePath={activePath}
-            onOpenDrawing={(path) =>
-              void (onOpenSearchResult ?? onOpenDrawing)(path)
-            }
-            onOpenMatch={(path, match) =>
+            onOpenDrawing={(path, opts) =>
               void (onOpenSearchResult
-                ? onOpenSearchResult(path, match)
-                : onOpenDrawing(path))
+                ? onOpenSearchResult(path, undefined, opts)
+                : onOpenDrawing(path, opts))
+            }
+            onOpenMatch={(path, match, opts) =>
+              void (onOpenSearchResult
+                ? onOpenSearchResult(path, match, opts)
+                : onOpenDrawing(path, opts))
             }
             onOpenFolder={(path) => {
               onExpandFolder(path);
@@ -1156,9 +1168,7 @@ const TreeRow = memo(
         aria-expanded={isFolder ? isExpanded : undefined}
         aria-selected={isActive}
         tabIndex={isFocused ? 0 : -1}
-        onClick={(e) =>
-          onSelect(entry.path, entry.kind, e.metaKey || e.ctrlKey)
-        }
+        onClick={(e) => onSelect(entry.path, entry.kind, isNewTabClick(e))}
         onAuxClick={(e) => {
           // Middle click opens a drawing in a new tab.
           if (e.button === 1 && !isFolder) {

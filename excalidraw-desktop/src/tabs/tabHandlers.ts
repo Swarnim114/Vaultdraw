@@ -8,6 +8,7 @@ import { getActiveTab } from "./tabsModel";
 
 import type { CommandHandlers } from "../commands/types";
 import type { TabsController } from "./tabController";
+import type { StripSignals } from "./stripSignals";
 import type { TabStore } from "./tabStore";
 import type { NewTabPosition } from "./types";
 
@@ -18,6 +19,18 @@ export type TabHandlerContext = {
   newTabPosition: () => NewTabPosition;
   copyPath: (path: string) => void;
   toggleStrip: () => void;
+  /** Signals the strip UI (tab list, focus). */
+  signals: StripSignals;
+  /** The strip is mounted (show_strip = "always"). */
+  stripVisible: () => boolean;
+  /** Expand the navigator to the path and focus its row. */
+  revealInNavigator: (path: string) => void;
+  /**
+   * Open the Cmd+P files palette; `newTab` makes Enter open in a new tab.
+   * Also the fallback of "show open tabs" when the strip is hidden: a file
+   * that is already open focuses its tab (one tab per file).
+   */
+  openPalette: (newTab: boolean) => void;
 };
 
 const GO_TO = [
@@ -66,5 +79,14 @@ export function buildTabHandlers(ctx: TabHandlerContext): CommandHandlers {
     [T.moveRight]: () => c.moveBy(active().id, 1),
     [T.copyPath]: onActivePath(ctx.copyPath),
     [T.toggleStrip]: ctx.toggleStrip,
+    [T.showAll]: () =>
+      ctx.stripVisible() ? ctx.signals.emit("showAll") : ctx.openPalette(false),
+    [T.focusStrip]: () => {
+      if (ctx.stripVisible()) {
+        ctx.signals.emit("focus");
+      }
+    },
+    [T.reveal]: onActivePath(ctx.revealInNavigator),
+    [T.openInNewTab]: () => ctx.openPalette(true),
   };
 }

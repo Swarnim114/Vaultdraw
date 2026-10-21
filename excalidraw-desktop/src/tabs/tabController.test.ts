@@ -228,6 +228,35 @@ describe("TabsController", () => {
     expect(t.doc.current?.path).toBe("d.excalidraw");
   });
 
+  it("move reorders without any IO", async () => {
+    const t = await twoTabs();
+    const [a, b] = t.store.getState().tabs;
+    await t.controller.move(b.id, 0);
+    expect(t.store.getState().tabs.map((x) => x.id)).toEqual([b.id, a.id]);
+    expect(t.calls).toEqual([]);
+  });
+
+  it("marking a background tab missing does no IO; activating it shows the placeholder; clearing reopens", async () => {
+    const t = await twoTabs();
+    const [a] = t.store.getState().tabs;
+    await t.controller.setMissing("a.excalidraw", true);
+    expect(t.calls).toEqual([]);
+    expect(t.store.getState().tabs[0].missing).toBe(true);
+    await t.controller.activate(a.id);
+    expect(t.calls).toEqual(["close"]);
+    t.calls.length = 0;
+    await t.controller.setMissing("a.excalidraw", false);
+    expect(t.calls).toEqual(["open:a.excalidraw"]);
+  });
+
+  it("an in-app rename of a background tab keeps it unmarked", async () => {
+    const t = await twoTabs();
+    t.controller.renamed("a.excalidraw", "c.excalidraw");
+    await t.controller.setMissing("a.excalidraw", true); // stale event for the old path
+    expect(paths(t.store.getState())).toEqual(["c.excalidraw", "b.excalidraw"]);
+    expect(t.store.getState().tabs[0].missing).toBeFalsy();
+  });
+
   it("closing the active tab opens the MRU previous tab", async () => {
     const t = await twoTabs();
     const [a, b] = t.store.getState().tabs;

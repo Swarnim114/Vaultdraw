@@ -235,6 +235,9 @@ export class TabsController {
   togglePin(id: TabId): Promise<void> {
     return this.run((s) => model.togglePin(s, id));
   }
+  move(id: TabId, toIndex: number): Promise<void> {
+    return this.run((s) => model.move(s, id, toIndex));
+  }
   moveBy(id: TabId, delta: 1 | -1): Promise<void> {
     return this.run((s) => model.moveBy(s, id, delta));
   }

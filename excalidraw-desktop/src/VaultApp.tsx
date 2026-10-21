@@ -76,6 +76,9 @@ import { getRegisteredHandler } from "./commands/handlerRegistry";
 import { GRAPH_COMMAND_IDS } from "./commands/graphCommands";
 import { THUMBNAIL_COMMAND_IDS } from "./commands/thumbnailCommands";
 import { TabStrip } from "./tabs/TabStrip";
+import { ActiveTabGate } from "./tabs/ActiveTabGate";
+import "./tabs/editorBody.css";
+import { ancestorFolders } from "./tabs/revealPath";
 import { useTabs } from "./tabs/useTabs";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
@@ -1294,14 +1297,16 @@ export const VaultApp = ({
     indexing: isIndexing,
     activePath: activeDoc?.path ?? null,
     navigatorCollapsed,
-    open: handleOpenSearchResult
-      ? (path, elementId) =>
-          handleOpenSearchResult(
-            path,
-            elementId ? { elementId, containerId: null } : undefined,
-            { target: "current" },
-          )
-      : async () => {},
+    // Tabs are created below; these read the store live through the ref.
+    activeTabId: tabsRef.current?.getActiveId() ?? null,
+    getActiveTabId: () => tabsRef.current?.getActiveId() ?? null,
+    openTabIds: () => tabsRef.current?.openIds() ?? new Set<string>(),
+    open: (path, elementId, target = "current") =>
+      handleOpenSearchResult(
+        path,
+        elementId ? { elementId, containerId: null } : undefined,
+        { target },
+      ),
     prepareParent: prepareNewDrawingParent,
     createDrawing: handleCreateDrawing,
     loadDirectory,
@@ -1653,6 +1658,20 @@ export const VaultApp = ({
     });
   };
 
+  // Tabs: expand the navigator to a drawing and focus its row.
+  const revealInNavigator = (path: string) => {
+    showNavigator();
+    ancestorFolders(path).forEach(handleExpandFolder);
+    requestNavigator({ kind: "reveal", path });
+  };
+  // Tabs: the palette's Enter opens in a new tab (file.openInNewTab).
+  const switcherNewTab = useRef(false);
+  useEffect(() => {
+    if (!switcher) {
+      switcherNewTab.current = false;
+    }
+  }, [switcher]);
+
   const focusNavigatorSearch = () => {
     showNavigator();
     setSearchFocusNonce((n) => n + 1);
@@ -1704,6 +1723,16 @@ export const VaultApp = ({
       }
     },
     setShowStrip: (tabsShowStrip) => updatePreferences({ tabsShowStrip }, win),
+    repository,
+    revealInNavigator,
+    openPalette: (newTab) => {
+      switcherNewTab.current = newTab;
+      setSwitcher("files");
+    },
+    searchFor: (query) => {
+      showNavigator();
+      requestNavigator({ kind: "search", query });
+    },
     entries: allIndexedEntries,
     indexing: isIndexing,
   });
@@ -1711,7 +1740,7 @@ export const VaultApp = ({
   const editorRestore = useMemo(
     () =>
       activeDoc
-        ? tabs.restoreFor(activeDoc.path, activeDoc.revision)
+        ? tabs.restoreFor(activeDoc.path, activeDoc.revision, activeDoc.id)
         : undefined,
     // The restore belongs to one mounted document.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2162,114 +2191,122 @@ export const VaultApp = ({
             win={win}
           />
         )}
-        <div
-          className={`vault-editor-pane ${
-            mainCovered ? "vault-editor-pane--graph" : ""
-          }`}
-        >
+        <div className="vault-editor-pane">
           {tabs.showStrip && tabs.stripProps && (
             <TabStrip
               {...tabs.stripProps}
               activeStatus={saveStatus === "saving" ? "dirty" : saveStatus}
             />
           )}
-          {visibleProblem && (
-            <Banner
-              kind="warning"
-              className="vault-settings-alert"
-              testId="settings-problem-banner"
-              message={visibleProblem}
-              onDismiss={() => setDismissedProblem(problemText)}
-              dismissLabel="Dismiss settings problem"
-            />
-          )}
-          {globalAlert && (
-            <Banner
-              kind={globalAlert.type}
-              message={globalAlert.message}
-              onDismiss={() => setGlobalAlert(null)}
-              dismissLabel="Dismiss alert"
-            />
-          )}
-          {activeDoc ? (
-            <div
-              inert={mainCovered}
-              className={`vault-editor-container ${
-                vault.readOnly ? "vault-editor-container--readonly" : ""
-              } ${
-                isBusy || isClosing || docHook.loading
-                  ? "vault-editor-container--busy"
-                  : ""
-              }`}
-            >
-              <EditorComponent
-                key={activeDoc.id}
-                documentId={activeDoc.id}
-                initialSource={activeDoc.source}
-                name={getBaseName(activeDoc.path)}
-                onChange={changeDoc}
-                onExport={exportEditorFile}
-                readOnly={
-                  vault.readOnly ||
-                  isBusy ||
-                  isClosing ||
-                  docHook.loading ||
-                  mainCovered
-                }
-                disabled={isBusy || isClosing || docHook.loading || mainCovered}
-                theme={appTheme}
-                onThemeChange={handleCanvasThemeChange}
-                onOpenSettings={openSettings}
-                onOpenGraph={openGraph}
-                onToggleHistory={toggleHistory}
-                focusRequest={
-                  focusRequest?.path === activeDoc.path ? focusRequest : null
-                }
-                library={libraryBundle}
-                links={editorLinks}
-                pdfImport={pdfControls}
-                onImportFile={importFile}
-                restore={editorRestore}
+          <div
+            className={`vault-editor-body ${
+              mainCovered ? "vault-editor-body--covered" : ""
+            }`}
+          >
+            {visibleProblem && (
+              <Banner
+                kind="warning"
+                className="vault-settings-alert"
+                testId="settings-problem-banner"
+                message={visibleProblem}
+                onDismiss={() => setDismissedProblem(problemText)}
+                dismissLabel="Dismiss settings problem"
               />
-            </div>
-          ) : (
-            <VaultHome
-              readOnly={vault.readOnly}
-              recent={recentDrawings.map((entry) => ({
-                path: entry.path,
-                name: getBaseName(entry.path).replace(/\.excalidraw$/i, ""),
-                folder: getParentPath(entry.path) || vault.name,
-              }))}
-              onRun={(id) => commandRunner.run(id)}
-              onOpenDrawing={(path) => void handleOpenDrawing(path)}
-              ownerWindow={win}
-              inert={mainCovered}
+            )}
+            {globalAlert && (
+              <Banner
+                kind={globalAlert.type}
+                message={globalAlert.message}
+                onDismiss={() => setGlobalAlert(null)}
+                dismissLabel="Dismiss alert"
+              />
+            )}
+            {activeDoc ? (
+              <div
+                inert={mainCovered}
+                className={`vault-editor-container ${
+                  vault.readOnly ? "vault-editor-container--readonly" : ""
+                } ${
+                  isBusy || isClosing || docHook.loading
+                    ? "vault-editor-container--busy"
+                    : ""
+                }`}
+              >
+                <EditorComponent
+                  key={activeDoc.id}
+                  documentId={activeDoc.id}
+                  initialSource={activeDoc.source}
+                  name={getBaseName(activeDoc.path)}
+                  onChange={changeDoc}
+                  onExport={exportEditorFile}
+                  readOnly={
+                    vault.readOnly ||
+                    isBusy ||
+                    isClosing ||
+                    docHook.loading ||
+                    mainCovered
+                  }
+                  disabled={
+                    isBusy || isClosing || docHook.loading || mainCovered
+                  }
+                  theme={appTheme}
+                  onThemeChange={handleCanvasThemeChange}
+                  onOpenSettings={openSettings}
+                  onOpenGraph={openGraph}
+                  onToggleHistory={toggleHistory}
+                  focusRequest={
+                    focusRequest?.path === activeDoc.path ? focusRequest : null
+                  }
+                  library={libraryBundle}
+                  links={editorLinks}
+                  pdfImport={pdfControls}
+                  onImportFile={importFile}
+                  restore={editorRestore}
+                />
+              </div>
+            ) : (
+              <ActiveTabGate {...tabs.gateProps}>
+                <VaultHome
+                  readOnly={vault.readOnly}
+                  recent={recentDrawings.map((entry) => ({
+                    path: entry.path,
+                    name: getBaseName(entry.path).replace(/\.excalidraw$/i, ""),
+                    folder: getParentPath(entry.path) || vault.name,
+                  }))}
+                  onRun={(id) => commandRunner.run(id)}
+                  onOpenDrawing={(path) => void handleOpenDrawing(path)}
+                  ownerWindow={win}
+                  inert={mainCovered}
+                />
+              </ActiveTabGate>
+            )}
+            <GalleryHost
+              handle={vault.handle}
+              vaultName={vault.name}
+              directoryMap={directoryMap}
+              loadDirectory={loadDirectory}
+              sort={navigatorSort}
+              templatesFolder={templatesFolder}
+              activePath={activeDoc?.path ?? null}
+              onOpenDrawing={handleOpenDrawing}
+              onOpenChange={handleGalleryOpenChange}
+              onClosed={focusCanvas}
             />
-          )}
-          <GalleryHost
-            handle={vault.handle}
-            vaultName={vault.name}
-            directoryMap={directoryMap}
-            loadDirectory={loadDirectory}
-            sort={navigatorSort}
-            templatesFolder={templatesFolder}
-            activePath={activeDoc?.path ?? null}
-            onOpenDrawing={handleOpenDrawing}
-            onOpenChange={handleGalleryOpenChange}
-            onClosed={focusCanvas}
-          />
-          <GraphHost
-            handle={vault.handle}
-            currentPath={activeDoc?.path ?? null}
-            themeKey={appearance.snapshot.key}
-            shortcutFor={graphShortcutFor}
-            onOpenDrawing={(path) =>
-              path === activeDoc?.path ? undefined : handleOpenDrawing(path)
-            }
-            onOpenChange={handleGraphOpenChange}
-            onClosed={focusCanvas}
-            {...graph}
-          />
+            <GraphHost
+              handle={vault.handle}
+              currentPath={activeDoc?.path ?? null}
+              themeKey={appearance.snapshot.key}
+              shortcutFor={graphShortcutFor}
+              onOpenDrawing={(path, opts) =>
+                path === activeDoc?.path && !opts
+                  ? undefined
+                  : handleOpenDrawing(path, opts)
+              }
+              onOpenChange={handleGraphOpenChange}
+              onClosed={focusCanvas}
+              {...graph}
+            />
+          </div>
         </div>
 
         <HistoryHost
@@ -2401,9 +2438,10 @@ export const VaultApp = ({
               return;
             }
             setSwitcher(null);
-            // Enter: current tab; Mod+Enter: a new tab.
+            // Enter: current tab (new after file.openInNewTab); Mod+Enter: new.
             void handleOpenDrawing(path, {
-              target: opts?.target ?? "current",
+              target:
+                opts?.target ?? (switcherNewTab.current ? "new" : "current"),
             });
           }}
           onCreateDrawing={

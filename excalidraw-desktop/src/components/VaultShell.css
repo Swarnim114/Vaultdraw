@@ -956,6 +956,6 @@ html.dark {
 }
 
 /* Graph view open: the editor stays mounted (instant return) but is hidden. */
-.vault-editor-pane--graph > :not(.vd-graph):not(.vd-gallery) {
+.vault-editor-body--covered > :not(.vd-graph):not(.vd-gallery) {
   visibility: hidden;
 }

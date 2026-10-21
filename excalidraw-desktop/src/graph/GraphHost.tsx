@@ -17,6 +17,7 @@ import {
 import { GRAPH_COMMAND_IDS } from "../commands/graphCommands";
 import { registerCommandHandlers } from "../commands/handlerRegistry";
 
+import type { OpenTarget } from "../tabs/types";
 import type { GraphDispatch } from "./GraphHostInner";
 import type { GraphSession, GraphSource } from "./GraphSession";
 import type { GraphViewProps } from "./settings";
@@ -31,7 +32,7 @@ export interface GraphHostProps {
   /** Changes when the app theme changes (colours are re-read). */
   themeKey: string;
   shortcutFor?: GraphViewProps["shortcutFor"];
-  onOpenDrawing: (path: string) => unknown;
+  onOpenDrawing: (path: string, opts?: { target: OpenTarget }) => unknown;
   /** The editor is hidden and frozen while this is true. */
   onOpenChange: (open: boolean) => void;
   /** Called after the graph closed: give focus back to the canvas. */

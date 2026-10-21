@@ -1,0 +1,14 @@
+/*
+ * The editor pane is the tab strip plus this body. Everything the pane used
+ * to hold (banners, editor, home, graph, gallery) lives in the body, so the
+ * absolutely positioned overlays (`inset: 0`) fill the body under the strip.
+ */
+.vault-editor-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}

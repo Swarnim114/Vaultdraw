@@ -9,6 +9,7 @@
  * after the layout settles. `dispose()` terminates the worker, disposes the renderer, cancels
  * rAF and timers, and flushes an unsaved settled layout.
  */
+
 import { drawArrows } from "./arrows";
 import { Camera, computeBounds } from "./camera";
 import { ALPHA_WARM, GLOBAL_DRAG_MAX } from "./barnesHut";
@@ -40,6 +41,8 @@ import {
 } from "./theme";
 import { FLAG_UNRESOLVED } from "./types";
 import { assignNodeHints, visibleHintNodes, type HintMap } from "./hints";
+
+import type { OpenTarget } from "../tabs/types";
 
 import type { FrameLoopDeps } from "./frameLoop";
 import type { LayoutCallbacks, LayoutStart } from "./layoutClient";
@@ -106,7 +109,7 @@ export interface SessionState {
 export interface SessionUi {
   shown(s: ShownNode | null): void;
   state(s: SessionState): void;
-  open(path: string): void;
+  open(path: string, target?: OpenTarget): void;
 }
 
 export interface SessionDeps {
@@ -871,12 +874,12 @@ export class GraphSession {
   }
 
   /** Opens a drawing node (ghosts and tags do nothing). Returns whether it opened. */
-  activate(i: number): boolean {
+  activate(i: number, target?: OpenTarget): boolean {
     const path = this.pathOf(i);
     if (!path) {
       return false;
     }
-    this.d.ui.open(path);
+    this.d.ui.open(path, target);
     return true;
   }
 

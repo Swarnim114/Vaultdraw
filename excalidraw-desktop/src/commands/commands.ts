@@ -160,6 +160,13 @@ const LINKS_COMMANDS: CommandDefinition[] = [
     when: [...WHEN_LINK_SELECTION],
   },
   {
+    id: "links.openUnderSelectionNew",
+    title: "Links: Open link under selection in new tab",
+    category: "Links",
+    keys: { default: ["Mod+Alt+Shift+Enter"] },
+    when: [...WHEN_LINK_SELECTION],
+  },
+  {
     id: "links.toggleDock",
     title: "Links: Toggle backlinks panel",
     category: "Links",

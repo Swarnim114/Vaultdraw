@@ -157,9 +157,12 @@ export default function GraphHostInner({
         onModeChange={setMode}
         settings={settings}
         onSettingsChange={commit}
-        onOpen={(path) => {
+        onOpen={(path, target) => {
           setOpen(false);
-          void live.current.onOpenDrawing(path);
+          void live.current.onOpenDrawing(
+            path,
+            target ? { target } : undefined,
+          );
         }}
         onClose={close}
         shortcutFor={shortcutFor}

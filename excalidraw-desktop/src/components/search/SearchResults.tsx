@@ -14,6 +14,7 @@ import { useVaultSearch } from "../../search/useVaultSearch";
 import { getParentPath, searchEntries } from "../../vault/treeStore";
 import { useThumbDarkClass } from "../../thumbnails/surfaces/darkInvert";
 import { SearchThumb } from "../../thumbnails/surfaces/SearchThumb";
+import { isNewTabClick } from "../../tabs/newTabClick";
 import { IconFolder } from "../Icons";
 
 import "./SearchResults.css";
@@ -21,6 +22,7 @@ import "./SearchResults.css";
 import type { RefObject } from "react";
 
 import type { ElementMatch, SearchHit, VaultSearch } from "../../search/types";
+import type { OpenTarget } from "../../tabs/types";
 import type { VaultEntry } from "../../vault/types";
 
 export const MAX_DRAWINGS = 50;
@@ -40,8 +42,12 @@ interface Props {
   handle: string;
   allIndexedEntries: VaultEntry[];
   activePath: string | null;
-  onOpenDrawing: (path: string) => void;
-  onOpenMatch: (path: string, match: ElementMatch) => void;
+  onOpenDrawing: (path: string, opts?: { target: OpenTarget }) => void;
+  onOpenMatch: (
+    path: string,
+    match: ElementMatch,
+    opts?: { target: OpenTarget },
+  ) => void;
   onOpenFolder: (path: string) => void;
 }
 
@@ -71,7 +77,7 @@ const DrawingRow = memo(
     hit: SearchHit;
     active: boolean;
     current: boolean;
-    onPick: (index: number) => void;
+    onPick: (index: number, newTab?: boolean) => void;
   }) => {
     const parent = getParentPath(hit.path);
     return (
@@ -84,7 +90,13 @@ const DrawingRow = memo(
         className={`vault-search-row ${
           active ? "vault-search-row--active" : ""
         } ${current ? "vault-search-row--current" : ""}`}
-        onClick={() => onPick(index)}
+        onClick={(e) => onPick(index, isNewTabClick(e))}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            onPick(index, true);
+          }
+        }}
       >
         <SearchThumb path={hit.path} />
         <span className="vault-search-row__name" title={hit.path}>
@@ -111,7 +123,7 @@ const SnippetRow = memo(
     index: number;
     match: ElementMatch;
     active: boolean;
-    onPick: (index: number) => void;
+    onPick: (index: number, newTab?: boolean) => void;
   }) => {
     return (
       <div
@@ -123,7 +135,13 @@ const SnippetRow = memo(
         className={`vault-search-row vault-search-row--snippet ${
           active ? "vault-search-row--active" : ""
         }`}
-        onClick={() => onPick(index)}
+        onClick={(e) => onPick(index, isNewTabClick(e))}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            onPick(index, true);
+          }
+        }}
       >
         <span className="vault-search-row__snippet">
           <Highlighted text={match.snippet} ranges={match.highlights} />
@@ -145,7 +163,7 @@ const FolderRow = memo(
     index: number;
     entry: VaultEntry;
     active: boolean;
-    onPick: (index: number) => void;
+    onPick: (index: number, newTab?: boolean) => void;
   }) => {
     const parent = getParentPath(entry.path);
     return (
@@ -158,7 +176,13 @@ const FolderRow = memo(
         className={`vault-search-row ${
           active ? "vault-search-row--active" : ""
         }`}
-        onClick={() => onPick(index)}
+        onClick={(e) => onPick(index, isNewTabClick(e))}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            onPick(index, true);
+          }
+        }}
       >
         <span className="vault-search-row__icon">
           <IconFolder />
@@ -241,18 +265,19 @@ export const SearchResults = ({
   const handlersRef = useRef({ onOpenDrawing, onOpenMatch, onOpenFolder });
   handlersRef.current = { onOpenDrawing, onOpenMatch, onOpenFolder };
 
-  const activate = useCallback((index: number) => {
+  const activate = useCallback((index: number, newTab?: boolean) => {
     const row = rowsRef.current[index];
     if (!row) {
       return;
     }
     const h = handlersRef.current;
+    const opts = newTab ? { target: "new" as const } : undefined;
     if (row.kind === "folder") {
       h.onOpenFolder(row.entry.path);
     } else if (row.kind === "drawing") {
-      h.onOpenDrawing(row.hit.path);
+      h.onOpenDrawing(row.hit.path, opts);
     } else {
-      h.onOpenMatch(row.hit.path, row.match);
+      h.onOpenMatch(row.hit.path, row.match, opts);
     }
   }, []);
 
@@ -281,7 +306,7 @@ export const SearchResults = ({
         setActiveIndex((safeIndexRef.current + step + count) % count);
       } else if (event.key === "Enter" && safeIndexRef.current >= 0) {
         event.preventDefault();
-        activate(safeIndexRef.current);
+        activate(safeIndexRef.current, isNewTabClick(event));
       }
     };
     input.addEventListener("keydown", onKeyDown);
