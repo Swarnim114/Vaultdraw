@@ -44,6 +44,7 @@ describe("per-vault schema rows", () => {
       [
         "sort-order",
         "activity-bar",
+        "activity-bar-entries",
         "paper",
         "tool-rectangle",
         "tool-diamond",

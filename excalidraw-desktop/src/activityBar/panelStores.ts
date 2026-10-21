@@ -2,3 +2,4 @@
 import { createFlagStore } from "./flagStore";
 
 export const graphPanelStore = createFlagStore();
+export const galleryPanelStore = createFlagStore();

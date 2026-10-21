@@ -299,6 +299,26 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     perVault: true,
   },
   {
+    id: "activity-bar-entries",
+    page: "interface",
+    label: "Activity bar entries",
+    description:
+      "Choose which entries the activity bar shows and in what order. Hidden entries stay available in the command palette.",
+    keywords: [
+      "activity",
+      "bar",
+      "reorder",
+      "hide",
+      "order",
+      "entries",
+      "icons",
+      "activity_bar_order",
+      "activity_bar_hidden",
+    ],
+    configKey: "interface.activity_bar_order",
+    perVault: true,
+  },
+  {
     id: "sort-order",
     page: "interface",
     label: "Navigator Sort Order",

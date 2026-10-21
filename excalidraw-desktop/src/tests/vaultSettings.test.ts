@@ -116,6 +116,8 @@ describe("parse and merge", () => {
     ).toBe("modified_asc");
     expect(resolveSettings({ newDrawingFolder: "A" }, prefs)).toEqual({
       activityBar: true,
+      activityBarOrder: [],
+      activityBarHidden: [],
       navigatorSort: "name_desc",
       newDrawingFolder: "A",
       templatesFolder: "Templates",

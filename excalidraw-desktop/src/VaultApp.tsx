@@ -71,7 +71,7 @@ import {
 } from "./vault/newDrawing";
 import { commitCanvasTextEdit } from "./commands/context";
 import { ActivityBar } from "./activityBar/ActivityBar";
-import { graphPanelStore } from "./activityBar/panelStores";
+import { galleryPanelStore, graphPanelStore } from "./activityBar/panelStores";
 import { getRegisteredHandler } from "./commands/handlerRegistry";
 import { GRAPH_COMMAND_IDS } from "./commands/graphCommands";
 import { THUMBNAIL_COMMAND_IDS } from "./commands/thumbnailCommands";
@@ -338,7 +338,11 @@ export const VaultApp = ({
   // One preferences read per render (localStorage parse + normalise).
   const prefsNow = getPreferences(win);
   const { confirmDelete, showTagChips } = prefsNow;
-  const { activityBar: activityBarOn } = vaultSettings.effective;
+  const {
+    activityBar: activityBarOn,
+    activityBarOrder,
+    activityBarHidden,
+  } = vaultSettings.effective;
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
@@ -1872,6 +1876,10 @@ export const VaultApp = ({
       runnerRef.current?.isAvailable(id, { fromPalette: true }) ?? false,
     [],
   );
+  const handleGalleryOpenChange = useCallback((open: boolean) => {
+    setGalleryOpen(open);
+    galleryPanelStore.publish(open);
+  }, []);
   const handleGraphOpenChange = useCallback((open: boolean) => {
     setGraphOpen(open);
     graphPanelStore.publish(open);
@@ -2149,6 +2157,8 @@ export const VaultApp = ({
             hasHandler={hasCommandHandler}
             drawingOpen={activeDoc != null}
             writable={!vault?.readOnly}
+            order={activityBarOrder}
+            hidden={activityBarHidden}
             win={win}
           />
         )}
@@ -2245,7 +2255,7 @@ export const VaultApp = ({
             templatesFolder={templatesFolder}
             activePath={activeDoc?.path ?? null}
             onOpenDrawing={handleOpenDrawing}
-            onOpenChange={setGalleryOpen}
+            onOpenChange={handleGalleryOpenChange}
             onClosed={focusCanvas}
           />
           <GraphHost

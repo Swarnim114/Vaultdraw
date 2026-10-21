@@ -89,7 +89,7 @@ test.describe("gallery grid", () => {
     await expect(
       options.filter({ hasText: "Gallery: Show folder as grid" }),
     ).toBeVisible();
-    await options.filter({ hasText: "Toggle list/grid" }).click();
+    await options.filter({ hasText: "Gallery: Toggle grid view" }).click();
     await expect(gallery(page)).toHaveCount(0);
   });
 

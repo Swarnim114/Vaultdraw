@@ -221,6 +221,31 @@ describe("settingsSync mapping", () => {
     });
   });
 
+  it("maps the activity bar entry lists (default empty, non-lists reported)", () => {
+    const { values } = configToPreferences({});
+    expect(values.activityBarOrder).toEqual([]);
+    expect(values.activityBarHidden).toEqual([]);
+    expect(
+      configToPreferences({
+        interface: {
+          activity_bar_order: ["graph"],
+          activity_bar_hidden: ["tags"],
+        },
+      }).values,
+    ).toMatchObject({
+      activityBarOrder: ["graph"],
+      activityBarHidden: ["tags"],
+    });
+    expect(
+      configToPreferences({
+        interface: { activity_bar_order: "graph", activity_bar_hidden: [1] },
+      }).problems.map((p) => p.key),
+    ).toEqual([
+      "interface.activity_bar_order",
+      "interface.activity_bar_hidden",
+    ]);
+  });
+
   it("maps interface.activity_bar (default on, invalid reported)", () => {
     expect(configToPreferences({}).values.activityBar).toBe(true);
     expect(

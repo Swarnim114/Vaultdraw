@@ -1,0 +1,41 @@
+.vault-abe {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.vault-abe__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vault-abe__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--vd-radius-control, 6px);
+}
+
+.vault-abe__row svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: var(--vault-text-muted);
+}
+
+.vault-abe__name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vault-abe__row[data-hidden] .vault-abe__name {
+  color: var(--vault-text-muted);
+}

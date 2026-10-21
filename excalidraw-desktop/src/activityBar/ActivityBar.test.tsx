@@ -1,14 +1,26 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { libraryPanelStore } from "../library/libraryPanelState";
 
+import { galleryPanelStore } from "./panelStores";
 import { ActivityBar } from "./ActivityBar";
 
 afterEach(cleanup);
 
 const setup = (
-  over: { available?: (id: string) => boolean; drawingOpen?: boolean } = {},
+  over: {
+    available?: (id: string) => boolean;
+    drawingOpen?: boolean;
+    order?: string[];
+    hidden?: string[];
+  } = {},
 ) => {
   const run = vi.fn(() => true);
   render(
@@ -18,6 +30,8 @@ const setup = (
       hasHandler={(id) => id !== "tags.focusPane"}
       drawingOpen={over.drawingOpen ?? true}
       writable
+      order={over.order ?? []}
+      hidden={over.hidden ?? []}
     />,
   );
   return run;
@@ -29,6 +43,27 @@ describe("ActivityBar", () => {
     expect(screen.queryByTestId("activity-bar-tags")).toBeNull();
     fireEvent.click(screen.getByTestId("activity-bar-graph"));
     expect(run).toHaveBeenCalledWith("graph.open");
+  });
+
+  it("gallery runs the toggle command and shows pressed while open", () => {
+    const run = setup();
+    fireEvent.click(screen.getByTestId("activity-bar-gallery"));
+    expect(run).toHaveBeenCalledWith("thumbnails.galleryToggle");
+    const button = screen.getByTestId("activity-bar-gallery");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    act(() => galleryPanelStore.publish(true));
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    act(() => galleryPanelStore.publish(false));
+  });
+
+  it("follows the configured order and hides entries", () => {
+    setup({ order: ["settings", "graph"], hidden: ["history"] });
+    const ids = screen
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("data-entry"));
+    expect(ids).not.toContain("history");
+    expect(ids.indexOf("graph")).toBeLessThan(ids.indexOf("library"));
+    expect(ids.slice(-2)).toEqual(["settings", "hotkeys"]);
   });
 
   it("disabled entries stay focusable and do nothing", () => {

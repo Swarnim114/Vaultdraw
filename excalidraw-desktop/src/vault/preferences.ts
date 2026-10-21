@@ -172,6 +172,10 @@ interface VaultPreferencesBase {
   thumbnails: boolean;
   /** Show the icon bar on the left edge. A vault's settings.toml may override it. */
   activityBar: boolean;
+  /** Activity bar entry ids in display order; unlisted entries follow in default order. */
+  activityBarOrder: string[];
+  /** Activity bar entry ids hidden from the bar (their commands still work). */
+  activityBarHidden: string[];
   /** Global navigator sort order; a vault's settings.toml may override it. */
   navigatorSort: SortOrder;
   /** Folder for new drawings, relative to the vault root ("" = unset). A vault's settings.toml may override it. */
@@ -301,6 +305,8 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   showTagChips: true,
   thumbnails: true,
   activityBar: true,
+  activityBarOrder: [],
+  activityBarHidden: [],
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
   templatesFolder: DEFAULT_TEMPLATES_FOLDER,
@@ -588,6 +594,16 @@ export function normalizePreferences(input: unknown): VaultPreferences {
     showTagChips: pick(parsed.showTagChips, isBoolean, d.showTagChips),
     thumbnails: pick(parsed.thumbnails, isBoolean, d.thumbnails),
     activityBar: pick(parsed.activityBar, isBoolean, d.activityBar),
+    activityBarOrder: pick(
+      parsed.activityBarOrder,
+      isStringArray,
+      d.activityBarOrder,
+    ),
+    activityBarHidden: pick(
+      parsed.activityBarHidden,
+      isStringArray,
+      d.activityBarHidden,
+    ),
     navigatorSort: pick(parsed.navigatorSort, isSortOrder, d.navigatorSort),
     newDrawingFolder: pick(
       parsed.newDrawingFolder,

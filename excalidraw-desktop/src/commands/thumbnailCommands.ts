@@ -28,8 +28,9 @@ const command = (
 });
 
 export const THUMBNAIL_COMMANDS: CommandDefinition[] = [
-  command(I.galleryOpen, "Gallery: Show folder as grid", ["Mod+Alt+KeyE"]),
-  command(I.galleryToggle, "Gallery: Toggle list/grid for this folder", []),
+  command(I.galleryOpen, "Gallery: Show folder as grid", []),
+  // The key toggles (open/close), like Graph view; the activity bar shows it.
+  command(I.galleryToggle, "Gallery: Toggle grid view", ["Mod+Alt+KeyE"]),
   command(I.toggle, "Thumbnails: Show/hide thumbnails", []),
   command(I.clearCache, "Thumbnails: Clear cache for this vault", []),
 ];

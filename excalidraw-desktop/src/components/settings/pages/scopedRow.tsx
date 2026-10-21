@@ -33,8 +33,11 @@ export const useScopeAttrs = (
 export const ScopeBadge = ({
   field,
   resetLabel,
+  alsoReset = [],
 }: {
   field: VaultField;
+  /** Fields stored together with `field`: reset with it. */
+  alsoReset?: readonly VaultField[];
   /** Accessible name of the reset button, e.g. "Reset Arrow to global". */
   resetLabel: string;
 }) => {
@@ -56,7 +59,7 @@ export const ScopeBadge = ({
           type="button"
           className="vault-btn vault-btn--ghost vault-btn--sm"
           aria-label={resetLabel}
-          onClick={() => resetToGlobal(field)}
+          onClick={() => [field, ...alsoReset].forEach(resetToGlobal)}
         >
           Reset to global
         </button>
@@ -100,6 +103,7 @@ export const ScopedRow = <F extends VaultField>({
   onReset,
   layout,
   testId,
+  alsoReset,
 }: {
   id: string;
   field: F;
@@ -115,6 +119,8 @@ export const ScopedRow = <F extends VaultField>({
   onReset?: () => void;
   layout?: "row" | "block" | "stacked";
   testId?: string;
+  /** Other fields saved with `field`: "Reset to global" resets them too. */
+  alsoReset?: readonly VaultField[];
 }) => {
   const { scope, scopedValue, setScopedValue } = useSettings();
   const attrs = useScopeAttrs(field);
@@ -137,6 +143,7 @@ export const ScopedRow = <F extends VaultField>({
           {details}
           <ScopeBadge
             field={field}
+            alsoReset={alsoReset}
             resetLabel={`Reset ${getSettingSchema(id).label} to global`}
           />
           <ScopeErrors />

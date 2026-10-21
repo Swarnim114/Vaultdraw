@@ -9,6 +9,7 @@ import { SettingRow } from "../SettingRow";
 import { useSettings, type SettingControls } from "../SettingsContext";
 
 import { Switch } from "./controls";
+import { ActivityBarEntriesSetting } from "./ActivityBarEntries";
 import { ScopedRow } from "./scopedRow";
 
 const isMac = () =>
@@ -105,5 +106,6 @@ export const interfaceControls: SettingControls = {
   "show-tag-chips": { Component: ShowTagChipsSetting },
   thumbnails: { Component: ThumbnailsSetting },
   "activity-bar": { Component: ActivityBarSetting },
+  "activity-bar-entries": { Component: ActivityBarEntriesSetting },
   "sort-order": { Component: SortOrderSetting },
 };

@@ -86,9 +86,16 @@ test("activity bar: every entry opens its panel, view or dialog", async ({
   // Gallery.
   await entry(page, "gallery").click();
   await expect(page.getByTestId("gallery-view")).toBeVisible();
-  // The gallery command opens (it does not toggle); Escape closes it.
+  await pressed(page, "gallery", true);
+  await entry(page, "gallery").click();
+  await expect(page.getByTestId("gallery-view")).toHaveCount(0);
+  await pressed(page, "gallery", false);
+  // Escape still closes it.
+  await entry(page, "gallery").click();
+  await expect(page.getByTestId("gallery-view")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("gallery-view")).toHaveCount(0);
+  await pressed(page, "gallery", false);
 
   // Search focuses the navigator's search box.
   await entry(page, "search").click();
@@ -131,4 +138,83 @@ test("activity bar: every entry opens its panel, view or dialog", async ({
   await expect(settings(page)).toHaveCount(0);
 
   expect(errors).toEqual([]);
+});
+
+test("activity bar: short windows scroll the top group, bottom entries stay", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 220 });
+  await openTagsVault(page);
+  const bar = page.getByTestId("activity-bar");
+  await expect(bar).toBeVisible();
+  const box = (await bar.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(220);
+  // The bar's own groups scroll instead of overflowing the window.
+  const top = page.locator(".vault-activity-bar__group--top");
+  expect(await top.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(
+    true,
+  );
+  // Bottom entries are visible without scrolling and do not overlap the top group.
+  for (const id of ["hotkeys", "settings"]) {
+    await expect(entry(page, id)).toBeInViewport({ ratio: 1 });
+  }
+  const topBox = (await top.boundingBox())!;
+  const hotkeys = (await entry(page, "hotkeys").boundingBox())!;
+  expect(topBox.y + topBox.height).toBeLessThanOrEqual(hotkeys.y + 0.5);
+  // The last top entry scrolls into view and works.
+  await entry(page, "templates").scrollIntoViewIfNeeded();
+  await expect(entry(page, "templates")).toBeInViewport({ ratio: 1 });
+  await entry(page, "templates").click();
+  const picker = page.getByRole("dialog", {
+    name: "New drawing from template",
+  });
+  await expect(picker).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+});
+
+test("activity bar: Settings > Interface hides and reorders entries", async ({
+  page,
+}) => {
+  await openTagsVault(page);
+  const order = () =>
+    page
+      .getByTestId("activity-bar")
+      .locator("button[data-entry]")
+      .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.entry));
+  expect((await order())[0]).toBe("library");
+
+  await entry(page, "settings").click();
+  await expect(settings(page)).toBeVisible();
+  await page.getByRole("tab", { name: "Interface" }).click();
+  const list = settings(page).getByRole("list", {
+    name: "Activity bar entries",
+  });
+  await list.scrollIntoViewIfNeeded();
+
+  await page.getByRole("button", { name: "Move Graph view up" }).click();
+  await expect
+    .poll(order)
+    .toEqual(expect.arrayContaining(["graph", "history"]));
+  expect((await order()).indexOf("graph")).toBeLessThan(
+    (await order()).indexOf("history"),
+  );
+
+  await page
+    .getByRole("switch", { name: "Show Tags" })
+    .uncheck({ force: true });
+  await expect(entry(page, "tags")).toHaveCount(0);
+  await expect(
+    page.getByRole("switch", { name: "Show Tags" }),
+  ).not.toBeChecked();
+
+  // Hidden entries still work through the palette; reset restores the bar.
+  await page
+    .getByRole("button", { name: "Reset order and visibility" })
+    .click();
+  await expect(entry(page, "tags")).toBeVisible();
+  expect((await order())[0]).toBe("library");
+  expect((await order()).indexOf("history")).toBeLessThan(
+    (await order()).indexOf("graph"),
+  );
 });

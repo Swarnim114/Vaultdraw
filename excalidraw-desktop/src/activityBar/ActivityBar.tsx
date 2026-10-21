@@ -25,6 +25,8 @@ import {
   type EntryState,
 } from "./entries";
 
+import { resolveActivityLayout } from "./layout";
+
 import "./activityBar.css";
 
 const NEVER_ACTIVE: ActiveStore = {
@@ -78,6 +80,9 @@ interface Props {
   /** Context facts that change availability; they re-render the bar. */
   drawingOpen: boolean;
   writable: boolean;
+  /** Settings: entry ids in display order / hidden (see layout.ts). */
+  order: readonly string[];
+  hidden: readonly string[];
   win?: Window | null;
 }
 
@@ -88,6 +93,8 @@ export const ActivityBar = memo(
     hasHandler,
     drawingOpen,
     writable,
+    order,
+    hidden: hiddenIds,
     win = null,
   }: Props) => {
     const shortcut = useCommandShortcutLookup(win);
@@ -98,15 +105,20 @@ export const ActivityBar = memo(
     );
     const visible = useMemo(
       () =>
-        ACTIVITY_ENTRIES.flatMap((entry) => {
-          const state = resolveEntryState(entry, {
-            drawingOpen,
-            hasHandler,
-            isAvailable,
-            shortcut,
-          });
-          return state.hidden ? [] : [{ entry, state }];
-        }),
+        resolveActivityLayout(ACTIVITY_ENTRIES, order, hiddenIds).flatMap(
+          ({ entry, hidden }) => {
+            if (hidden) {
+              return [];
+            }
+            const state = resolveEntryState(entry, {
+              drawingOpen,
+              hasHandler,
+              isAvailable,
+              shortcut,
+            });
+            return state.hidden ? [] : [{ entry, state }];
+          },
+        ),
       // drawingOpen, writable and handlersVersion change what is offered.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [
@@ -115,6 +127,8 @@ export const ActivityBar = memo(
         shortcut,
         drawingOpen,
         writable,
+        order,
+        hiddenIds,
         handlersVersion,
       ],
     );

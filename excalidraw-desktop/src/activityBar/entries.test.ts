@@ -46,12 +46,7 @@ describe("ACTIVITY_ENTRIES", () => {
   });
 
   it("gives toggling panel entries an active store", () => {
-    // Gallery's command only opens it, so a pressed state would invite a
-    // click that does nothing.
-    expect(ACTIVITY_ENTRIES.find((e) => e.id === "gallery")?.active).toBe(
-      undefined,
-    );
-    for (const id of ["library", "history", "graph"]) {
+    for (const id of ["library", "history", "graph", "gallery"]) {
       expect(ACTIVITY_ENTRIES.find((e) => e.id === id)?.active).toBeDefined();
     }
   });

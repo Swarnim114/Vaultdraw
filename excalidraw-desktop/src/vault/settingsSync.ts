@@ -191,6 +191,8 @@ type ConfigField =
   | "showTagChips"
   | "thumbnails"
   | "activityBar"
+  | "activityBarOrder"
+  | "activityBarHidden"
   | "navigatorSort"
   | "newDrawingFolder"
   | "templatesFolder"
@@ -238,6 +240,8 @@ const COLOR_RE =
   /^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|transparent|[a-z]+)$/i;
 
 const isColor = (v: unknown) => typeof v === "string" && COLOR_RE.test(v);
+const isStringList = (v: unknown) =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
 const isInt = (v: unknown) => typeof v === "number" && Number.isInteger(v);
 const isPositive = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1000;
@@ -302,6 +306,18 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
     key: "interface.activity_bar",
     expected: "true or false",
     valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "activityBarOrder",
+    key: "interface.activity_bar_order",
+    expected: 'a list of entry ids like ["library", "history"]',
+    valid: isStringList,
+  },
+  {
+    field: "activityBarHidden",
+    key: "interface.activity_bar_hidden",
+    expected: 'a list of entry ids like ["tags"]',
+    valid: isStringList,
   },
   {
     field: "defaultCanvasBackground",

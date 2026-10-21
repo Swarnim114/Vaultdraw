@@ -71,3 +71,9 @@
   background: transparent;
   color: var(--vault-text-muted);
 }
+
+/* Dark themes: the shared pressed tint (--vault-surface-active) is nearly
+   the bar's own surface; use the stronger selection tint instead. */
+html.dark .vault-activity-bar__btn[aria-pressed="true"] {
+  background: var(--vault-sel-strong);
+}
