@@ -322,6 +322,15 @@ if (params.get("seed") === "tags") {
   );
 }
 
+if (params.get("seed") === "memprobe") {
+  // Opt-in (?seed=memprobe, memoryProbe.spec.ts): the typical 300-element
+  // drawing with 2 images, injected by the spec as window.__memprobeScene.
+  repository.seedDrawing(
+    "Projects/Architecture 300.excalidraw",
+    (ownerWindow as any).__memprobeScene,
+  );
+}
+
 if (params.get("seed") === "templates") {
   // Opt-in (?seed=templates): vault templates, plus one in a custom folder.
   for (const [name, background] of Object.entries(TEMPLATE_BACKGROUNDS)) {
