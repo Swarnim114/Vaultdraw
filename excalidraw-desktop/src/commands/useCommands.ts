@@ -8,7 +8,12 @@ import {
 } from "../vault/preferences";
 
 import { allCommands, getCommand } from "./commands";
-import { failingClauses, readContext, type AppContext } from "./context";
+import {
+  failingClauses,
+  readContext,
+  whenHolds,
+  type AppContext,
+} from "./context";
 import { installCommandDispatcher, runHandler } from "./dispatcher";
 import { getRegisteredHandler } from "./handlerRegistry";
 import { detectPlatform } from "./keys";
@@ -134,26 +139,31 @@ export function useCommandDispatcher(
     });
   }, [win, platform, context, handlerFor]);
 
-  const failedClauses = useCallback(
-    (id: string, options?: AvailabilityOptions) => {
-      const when = getCommand(id)?.when?.filter((clause) => {
+  const activeWhen = useCallback(
+    (id: string, options?: AvailabilityOptions) =>
+      getCommand(id)?.when?.filter((clause) => {
         const key = clause.replace("!", "");
         return (
           !FOCUS_RULES.has(key) &&
           !(options?.fromPalette && key === "modalOpen")
         );
-      });
-      return failingClauses(when, context());
-    },
-    [context],
+      }),
+    [],
   );
 
   const isAvailable = useCallback(
     (id: string, options?: AvailabilityOptions) =>
       !!getCommand(id) &&
       !!handlerFor(id) &&
-      failedClauses(id, options).length === 0,
-    [failedClauses, handlerFor],
+      whenHolds(activeWhen(id, options), context()),
+    [activeWhen, context, handlerFor],
+  );
+
+  /** Only for the control API's UNAVAILABLE error; isAvailable stays allocation-light. */
+  const failedClauses = useCallback(
+    (id: string, options?: AvailabilityOptions) =>
+      failingClauses(activeWhen(id, options), context()),
+    [activeWhen, context],
   );
 
   const run = useCallback(
