@@ -1,5 +1,7 @@
 import React from "react";
 
+import { setElementDirectDrawDisabled } from "@excalidraw/element";
+
 import { Excalidraw } from "../index";
 import { snapScrollToDevicePixels } from "../renderer/helpers";
 
@@ -48,6 +50,10 @@ const renderAt = async (zoom: number, scrollX: number, scrollY: number) => {
 
 const distanceToWholePixel = ({ x, y }: { x: number; y: number }) =>
   Math.abs(x - Math.round(x)) + Math.abs(y - Math.round(y));
+
+// these assert on the cached-bitmap blit path
+beforeAll(() => setElementDirectDrawDisabled(true));
+afterAll(() => setElementDirectDrawDisabled(false));
 
 describe("element pixel snap", () => {
   beforeEach(async () => {

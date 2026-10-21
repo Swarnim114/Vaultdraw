@@ -753,10 +753,19 @@ export const elementWithCanvasCache = new ElementCanvasCache<
 export const DIRECT_DRAW_MAX_VISIBLE_ELEMENTS = 600;
 
 let directDrawAllowed = true;
+let directDrawDisabled = false;
+
+/** Tests that assert on the bitmap blit path turn direct drawing off. */
+export const setElementDirectDrawDisabled = (disabled: boolean) => {
+  directDrawDisabled = disabled;
+  directDrawAllowed = directDrawAllowed && !disabled;
+};
 
 /** call at the start of each static scene render */
 export const beginElementCanvasFrame = (visibleElementCount = 0) => {
-  directDrawAllowed = visibleElementCount <= DIRECT_DRAW_MAX_VISIBLE_ELEMENTS;
+  directDrawAllowed =
+    !directDrawDisabled &&
+    visibleElementCount <= DIRECT_DRAW_MAX_VISIBLE_ELEMENTS;
   elementWithCanvasCache.beginFrame();
 };
 

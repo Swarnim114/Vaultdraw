@@ -536,6 +536,10 @@ describe("setElementRenderOverrides", () => {
   });
 });
 
+// these assert on the cached-bitmap blit path
+beforeAll(() => Element.setElementDirectDrawDisabled(true));
+afterAll(() => Element.setElementDirectDrawDisabled(false));
+
 describe("render override geometry", () => {
   const setup = (elements: NonDeletedExcalidrawElement[]) => {
     const scene = new Element.Scene(elements, { skipValidation: true });
