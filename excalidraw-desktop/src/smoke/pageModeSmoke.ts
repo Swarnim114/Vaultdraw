@@ -167,12 +167,17 @@ export const pageDefaultStampedStep = async (ctx: ExportSmokeContext) => {
         })) as VaultEntry[]
       ).filter((e) => e.kind === "drawing");
     const before = new Set((await list()).map((e) => e.path));
-    const header = await ctx.waitFor("header New Drawing", () =>
-      ctx.root.querySelector<HTMLButtonElement>(
-        '.vault-header [aria-label="New Drawing"]',
-      ),
+    // The header button is gone; Mod+N is the same command (no `code` + both
+    // modifiers set = plain Mod on every OS, see chordFromEvent).
+    ctx.root.ownerDocument.dispatchEvent(
+      new ctx.win.KeyboardEvent("keydown", {
+        key: "n",
+        metaKey: true,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
     );
-    header.click();
     let created: string | null = null;
     for (let i = 0; i < 40 && !created; i++) {
       created = (await list()).find((e) => !before.has(e.path))?.path ?? null;
@@ -181,7 +186,7 @@ export const pageDefaultStampedStep = async (ctx: ExportSmokeContext) => {
       }
     }
     if (!created) {
-      throw new Error("Header New Drawing created no drawing in the root");
+      throw new Error("Mod+N created no drawing in the root");
     }
     const setup = await pollSaved(
       ctx,

@@ -1954,24 +1954,34 @@ export async function runDesktopSmoke(): Promise<void> {
       const shownPath =
         configRow.querySelector(".vault-config-path")?.textContent ?? null;
       (await waitFor("Files tab", () => modalButton("Files"))).click();
-      const select = await waitFor("autosave select", () =>
-        modal.querySelector<HTMLSelectElement>(
-          'select[aria-label="Autosave delay preset"]',
+      // Autosave delay is a stepper (span[role=spinbutton] + Increase/Decrease
+      // buttons, 50 ms per step); click until it reads 1000, as a user would.
+      const stepper = await waitFor("autosave stepper", () =>
+        modal.querySelector<HTMLElement>(
+          '[role="spinbutton"][aria-label="Autosave delay"]',
         ),
       );
-      if (
-        !Array.from(select.options).some((option) => option.value === "1000")
-      ) {
-        throw new Error("Autosave select has no 1000 ms option");
+      for (let i = 0; i < 40; i++) {
+        const now = Number(stepper.getAttribute("aria-valuenow"));
+        if (now === 1000) {
+          break;
+        }
+        modal
+          .querySelector<HTMLButtonElement>(
+            `[aria-label="${
+              now < 1000 ? "Increase" : "Decrease"
+            } Autosave delay"]`,
+          )
+          ?.click();
+        await delay(win, 50);
       }
-      const setSelect = Object.getOwnPropertyDescriptor(
-        win.HTMLSelectElement.prototype,
-        "value",
-      )?.set;
-      setSelect?.call(select, "1000");
-      select.dispatchEvent(new win.Event("change", { bubbles: true }));
+      if (stepper.getAttribute("aria-valuenow") !== "1000") {
+        throw new Error(
+          `Autosave stepper stuck at ${stepper.getAttribute("aria-valuenow")}`,
+        );
+      }
       if (getPreferences(win).autosaveDelayMs !== 1000) {
-        throw new Error("Autosave select did not update preferences");
+        throw new Error("Autosave stepper did not update preferences");
       }
       if (!doc.documentElement.classList.contains("dark")) {
         throw new Error("Dark theme button did not apply the dark class");
@@ -2010,7 +2020,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return {
         shownPath,
         method:
-          "Settings UI: Appearance > Dark, General > config path, Files > autosave select 1000",
+          "Settings UI: Appearance > Dark, General > config path, Files > autosave stepper to 1000",
         commentsCheck:
           "no native file-read smoke helper; comments verified by the operator reading config.toml after the run",
       };
