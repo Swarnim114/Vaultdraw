@@ -15,6 +15,8 @@ import { desktopRepository } from "../vault/DesktopVaultRepository";
 import { copyToClipboard } from "../vault/clipboard";
 import { getPreferences } from "../vault/preferences";
 
+import { clipboardColourProblem } from "./clipboardColours";
+
 export type Rgba = [number, number, number, number];
 
 export type ExportSmokeContext = {
@@ -623,15 +625,13 @@ export const clipboardCopyStep = async (ctx: ExportSmokeContext) => {
   });
   const svgText = svg.value.svgText ?? "";
   const colours = svgColours(svgText);
-  const themed = colours.filter((c) => ctx.themeColours.has(c));
-  if (themed.length || !colours.includes("#1e1e1e")) {
-    throw new Error(
-      `Clipboard SVG colours ${JSON.stringify(
-        colours,
-      )} (themed ${JSON.stringify(
-        themed,
-      )}), expected the drawing's #1e1e1e and no theme colours`,
-    );
+  const problem = clipboardColourProblem(
+    colours,
+    ctx.themeColours,
+    ctx.doc.documentElement.classList.contains("dark"),
+  );
+  if (problem) {
+    throw new Error(problem);
   }
   await closeDialog(ctx);
 
