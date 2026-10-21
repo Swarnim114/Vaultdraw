@@ -3,8 +3,6 @@
  * scenarios in perfScenarios.ts: DOM helpers, open/save/pan primitives and the
  * run-wide sample/info/error sinks. No environment-specific imports.
  */
-import { desktopRepository } from "../vault/DesktopVaultRepository";
-
 import type fixturesConfig from "../../perf/fixtures.config.json";
 
 export type PerfConfig = typeof fixturesConfig;
@@ -64,6 +62,8 @@ export async function openVaultFolder(
   ready: () => boolean,
 ): Promise<number> {
   const { root, now, waitUntil, afterPaint } = kit;
+  // Loaded here, not at module level: every perf bundle imports this module.
+  const { desktopRepository } = await import("../vault/DesktopVaultRepository");
   if (!root.querySelector(".vault-onboarding")) {
     throw new Error("Onboarding is not visible");
   }

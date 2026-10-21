@@ -6,11 +6,6 @@
  * process), so the drop between consecutive samples is that part's share.
  * Each step restores what it changed before the next baseline.
  */
-import {
-  clearElementCanvasCache,
-  elementWithCanvasCache,
-} from "@excalidraw/element";
-
 import type { PerfKit } from "./perfKit";
 
 const SETTLE_MS = 5000;
@@ -21,6 +16,10 @@ const round = (n: number) => Math.round(n * 10) / 10;
 
 export async function runAblation(kit: PerfKit): Promise<void> {
   const { doc, info, sleep, raf, scenario } = kit;
+  // Loaded here, not at module level: every perf bundle imports this module.
+  const { clearElementCanvasCache, elementWithCanvasCache } = await import(
+    "@excalidraw/element"
+  );
   let baselines = 0;
 
   /** Canvases and images document-wide, the element bitmap cache, and the window geometry. */
