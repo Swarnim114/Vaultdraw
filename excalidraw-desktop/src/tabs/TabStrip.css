@@ -151,3 +151,17 @@
   margin: 0 4px;
   color: var(--vault-text-muted);
 }
+
+/* The graph / gallery cover the pane but not the strip: a tab click closes
+   the overlay and switches (VaultShell.css hides the pane's other children). */
+.vault-editor-pane.vault-editor-pane--graph > .vault-tabs.vault-tabs {
+  visibility: visible;
+  position: relative;
+  z-index: 10;
+}
+
+/* ...and they start below it, so their own toolbars stay reachable. */
+.vault-tabs ~ .vd-graph,
+.vault-tabs ~ .vd-gallery {
+  top: 30px !important;
+}

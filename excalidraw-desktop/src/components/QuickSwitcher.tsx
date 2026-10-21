@@ -55,6 +55,7 @@ import "./home.css";
 import "./QuickSwitcher.css";
 
 import type { Names } from "../palette/namesCache";
+import type { OpenTarget } from "../tabs/types";
 import type { DrawingIndex, PaletteMode, RankedRow } from "../palette/rank";
 import type { PaletteItem } from "../palette/types";
 import type { Platform } from "../commands/types";
@@ -98,7 +99,8 @@ export interface QuickSwitcherProps {
   /** Entries from the palette providers (collectPaletteItems); called when commands mode first shows and again after a Mod+Enter run. */
   collectItems(): readonly PaletteItem[];
   platform: Platform;
-  onOpenDrawing(path: string): void;
+  /** Mod+Enter on a drawing asks for a new tab. */
+  onOpenDrawing(path: string, opts?: { target: OpenTarget }): void;
   /** Creates an empty drawing with this name (the "Create" row); omitted = no Create row. */
   onCreateDrawing?(name: string): void;
   /** Pick mode: a drawing row calls `onOpenDrawing` as usual, but commands are not offered; the label replaces the placeholder. */
@@ -440,7 +442,7 @@ export const QuickSwitcher = ({
     }
     if (row.kind === "drawing") {
       recordRecent(row.key, win);
-      onOpenDrawing(row.drawing.path);
+      onOpenDrawing(row.drawing.path, keepOpen ? { target: "new" } : undefined);
       return;
     }
     if (row.kind === "create") {

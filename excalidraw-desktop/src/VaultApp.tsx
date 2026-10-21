@@ -73,6 +73,10 @@ import { commitCanvasTextEdit } from "./commands/context";
 import { ActivityBar } from "./activityBar/ActivityBar";
 import { graphPanelStore } from "./activityBar/panelStores";
 import { getRegisteredHandler } from "./commands/handlerRegistry";
+import { GRAPH_COMMAND_IDS } from "./commands/graphCommands";
+import { THUMBNAIL_COMMAND_IDS } from "./commands/thumbnailCommands";
+import { TabStrip } from "./tabs/TabStrip";
+import { useTabs } from "./tabs/useTabs";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
   useCommandDispatcher,
@@ -127,6 +131,8 @@ import { VaultHome } from "./components/VaultHome";
 import "./components/VaultShell.css";
 import "./components/shell.css";
 
+import type { OpenTarget } from "./tabs/types";
+import type { TabsApi } from "./tabs/useTabs";
 import type { PdfBridge } from "./pdfImport/types";
 import type { SettingsTarget } from "./components/settings/schema";
 import type { PaletteMode } from "./palette/rank";
@@ -463,6 +469,7 @@ export const VaultApp = ({
 
   const docHookRef = useRef(docHook);
   docHookRef.current = docHook;
+  const tabsRef = useRef<TabsApi | null>(null);
 
   // One close path serves both window close and app-wide Quit. Keep the editor
   // frozen after a failed flush until the user explicitly keeps editing/discards.
@@ -477,6 +484,7 @@ export const VaultApp = ({
     setIsClosing(true);
     const operation = (async () => {
       try {
+        tabsRef.current?.prepareLeave();
         await docHookRef.current.flush();
         await libraryStore.flush();
         await appWinRef.current?.destroy();
@@ -870,6 +878,7 @@ export const VaultApp = ({
     try {
       // Close old doc first (flushes pending edits). Keep its generation valid
       // until that succeeds so a failed flush leaves the current vault usable.
+      tabs.prepareLeave();
       await closeDoc();
       vaultGeneration.current += 1;
       // Release old vault handle ONLY after old doc has flushed and closed
@@ -1073,20 +1082,37 @@ export const VaultApp = ({
 
   // Open drawing with busy freeze and error catching
   /** False when the open failed (an alert says why). */
-  const handleOpenDrawing = async (drawingPath: string) => {
+  // Rejects on failure (the tabs controller rolls back on it).
+  const openWithFreeze = async (drawingPath: string) => {
     setIsBusy(true);
     setGlobalAlert(null);
     try {
       await openDoc(drawingPath);
-      return true;
     } catch (err) {
-      setGlobalAlert({
-        message: `Failed to open drawing: ${errorMessage(err)}`,
-        type: "error",
-      });
-      return false;
+      // A restored session naming a deleted file is not worth an alert.
+      if (!(tabs.isRestoring() && isNotFoundError(err))) {
+        setGlobalAlert({
+          message: `Failed to open drawing: ${errorMessage(err)}`,
+          type: "error",
+        });
+      }
+      throw err;
     } finally {
       setIsBusy(false);
+    }
+  };
+  const handleOpenDrawing = async (
+    drawingPath: string,
+    opts?: { target?: OpenTarget },
+  ) => {
+    if (tabs.enabled) {
+      return tabs.open(drawingPath, opts?.target);
+    }
+    try {
+      await openWithFreeze(drawingPath);
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -1094,9 +1120,10 @@ export const VaultApp = ({
   const handleOpenSearchResult = async (
     drawingPath: string,
     match?: { elementId: string; containerId: string | null },
+    opts?: { target?: OpenTarget },
   ) => {
     if (drawingPath !== activeDoc?.path) {
-      await handleOpenDrawing(drawingPath);
+      await handleOpenDrawing(drawingPath, opts);
     }
     if (match) {
       setFocusRequest({
@@ -1135,7 +1162,9 @@ export const VaultApp = ({
         currentItemStrokeWidth: prefs.defaultStrokeWidth,
         currentItemRoughness: prefs.defaultRoughness,
       };
+      tabs.captureActive();
       await createDoc(parentPath, name, initialAppState);
+      await tabs.openCreated(joinPath(parentPath, name));
       await loadDirectory(parentPath);
       handleExpandFolder(parentPath);
       startIndexing();
@@ -1205,7 +1234,9 @@ export const VaultApp = ({
     setIsBusy(true);
     setGlobalAlert(null);
     try {
+      tabs.captureActive();
       await createDoc(parentPath, name, undefined, json);
+      await tabs.openCreated(joinPath(parentPath, name));
       await loadDirectory(parentPath);
       handleExpandFolder(parentPath);
       startIndexing();
@@ -1264,6 +1295,7 @@ export const VaultApp = ({
           handleOpenSearchResult(
             path,
             elementId ? { elementId, containerId: null } : undefined,
+            { target: "current" },
           )
       : async () => {},
     prepareParent: prepareNewDrawingParent,
@@ -1386,6 +1418,7 @@ export const VaultApp = ({
       if (!(await moveWithLinks(oldPath, newPath))) {
         return;
       }
+      tabs.renamed(oldPath, newPath);
       rebaseFolders(oldPath, newPath);
       await loadDirectory(parent);
       startIndexing();
@@ -1417,6 +1450,7 @@ export const VaultApp = ({
       if (!(await moveWithLinks(sourcePath, newPath))) {
         return;
       }
+      tabs.renamed(sourcePath, newPath);
       rebaseFolders(sourcePath, newPath);
       await loadDirectory(oldParent);
       await loadDirectory(destinationParentPath);
@@ -1460,7 +1494,9 @@ export const VaultApp = ({
       const parent = getParentPath(target);
       await loadDirectory(parent);
       startIndexing();
+      tabs.captureActive();
       await openDoc(target);
+      await tabs.openCreated(target);
     } catch (err) {
       setGlobalAlert({
         message: `Failed to duplicate drawing: ${errorMessage(err)}`,
@@ -1478,19 +1514,25 @@ export const VaultApp = ({
     }
     setIsBusy(true);
     setGlobalAlert(null);
+    let closedActive = false;
     try {
       if (
         activeDoc &&
         (activeDoc.path === path || activeDoc.path.startsWith(`${path}/`))
       ) {
         await closeDoc();
+        closedActive = true;
       }
       await repository.trash(vault.handle, path);
+      await tabs.removed(path);
       rebaseFolders(path, null);
       const parent = getParentPath(path);
       await loadDirectory(parent);
       startIndexing();
     } catch (err) {
+      if (closedActive) {
+        tabs.resync(); // the document was closed but the file is still there
+      }
       setGlobalAlert({
         message: `Failed to trash entry: ${errorMessage(err)}`,
         type: "error",
@@ -1561,7 +1603,9 @@ export const VaultApp = ({
       const parent = getParentPath(targetPath);
       await loadDirectory(parent);
       startIndexing();
+      tabs.captureActive();
       await openDoc(targetPath);
+      await tabs.openCreated(targetPath);
     } catch (err) {
       setGlobalAlert({
         message: `Failed to open recovered snapshot: ${errorMessage(err)}`,
@@ -1634,6 +1678,41 @@ export const VaultApp = ({
   const [graphOpen, setGraphOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const mainCovered = graphOpen || galleryOpen;
+  const { effective: effectiveSettings } = vaultSettings;
+  const tabs = useTabs({
+    vault,
+    settings: {
+      ...prefsNow,
+      tabsOpenFromNavigator: effectiveSettings.tabsOpenFromNavigator,
+      tabsRestore: effectiveSettings.tabsRestore,
+    },
+    docHook,
+    openDocument: openWithFreeze,
+    closeDocument: closeDoc,
+    notify: (message) => toastStore.push({ message }),
+    runCommand: (id) => runnerRef.current?.run(id) ?? false,
+    closeOverlays: () => {
+      if (graphOpen) {
+        void getRegisteredHandler(GRAPH_COMMAND_IDS.open)?.();
+      }
+      if (galleryOpen) {
+        void getRegisteredHandler(THUMBNAIL_COMMAND_IDS.galleryToggle)?.();
+      }
+    },
+    setShowStrip: (tabsShowStrip) => updatePreferences({ tabsShowStrip }, win),
+    entries: allIndexedEntries,
+    indexing: isIndexing,
+  });
+  tabsRef.current = tabs;
+  const editorRestore = useMemo(
+    () =>
+      activeDoc
+        ? tabs.restoreFor(activeDoc.path, activeDoc.revision)
+        : undefined,
+    // The restore belongs to one mounted document.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeDoc?.id, tabs.restoreFor],
+  );
   const shortcutLabel = useCommandShortcutLookup(win);
   const graphShortcutFor = useCallback(
     (path: string) => shortcutLabel(drawingOpenCommandId(path)) || null,
@@ -2078,6 +2157,12 @@ export const VaultApp = ({
             mainCovered ? "vault-editor-pane--graph" : ""
           }`}
         >
+          {tabs.showStrip && tabs.stripProps && (
+            <TabStrip
+              {...tabs.stripProps}
+              activeStatus={saveStatus === "saving" ? "dirty" : saveStatus}
+            />
+          )}
           {visibleProblem && (
             <Banner
               kind="warning"
@@ -2134,6 +2219,7 @@ export const VaultApp = ({
                 links={editorLinks}
                 pdfImport={pdfControls}
                 onImportFile={importFile}
+                restore={editorRestore}
               />
             </div>
           ) : (
@@ -2299,13 +2385,16 @@ export const VaultApp = ({
           pickLabel={palettePick.pick?.label}
           collectItems={collectPaletteItems}
           platform={commandRunner.platform}
-          onOpenDrawing={(path) => {
+          onOpenDrawing={(path, opts) => {
             if (palettePick.pick) {
               palettePick.finish(path);
               return;
             }
             setSwitcher(null);
-            void handleOpenDrawing(path);
+            // Enter: current tab; Mod+Enter: a new tab.
+            void handleOpenDrawing(path, {
+              target: opts?.target ?? "current",
+            });
           }}
           onCreateDrawing={
             vault.readOnly

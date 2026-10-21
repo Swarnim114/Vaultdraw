@@ -68,6 +68,8 @@ import { ghostTransform, useTreeDrag } from "./tree/useTreeDrag";
 
 import type { ReactNode } from "react";
 
+import type { OpenTarget } from "../tabs/types";
+
 import type { TreeNode } from "../vault/treeStore";
 import type { TreeRow as TreeRowData } from "./tree/flattenTree";
 
@@ -100,7 +102,7 @@ interface VaultNavigatorProps {
   activePath: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  onOpenDrawing: (path: string) => unknown;
+  onOpenDrawing: (path: string, opts?: { target: OpenTarget }) => unknown;
   /** Vault-wide search backend; null = name-only search over the loaded tree. */
   search?: VaultSearch | null;
   onOpenSearchResult?: (
@@ -425,10 +427,13 @@ export const VaultNavigator = ({
   const live = useRef({ onOpenDrawing, onToggleFolder });
   live.current = { onOpenDrawing, onToggleFolder };
   const onRowSelect = useCallback(
-    (path: string, kind: "folder" | "drawing") => {
+    (path: string, kind: "folder" | "drawing", newTab?: boolean) => {
       setFocusedPath(path);
       if (kind === "drawing") {
-        void live.current.onOpenDrawing(path);
+        void live.current.onOpenDrawing(
+          path,
+          newTab ? { target: "new" } : undefined,
+        );
       } else {
         live.current.onToggleFolder(path);
       }
@@ -514,7 +519,10 @@ export const VaultNavigator = ({
             if (item.kind === "folder") {
               onToggleFolder(item.path);
             } else {
-              void onOpenDrawing(item.path);
+              void onOpenDrawing(
+                item.path,
+                e.metaKey || e.ctrlKey ? { target: "new" } : undefined,
+              );
             }
           }
         }
@@ -1027,7 +1035,11 @@ interface TreeRowsProps {
   activePath: string | null;
   focusedPath: string | null;
   readOnly: boolean;
-  onSelect: (path: string, kind: "folder" | "drawing") => void;
+  onSelect: (
+    path: string,
+    kind: "folder" | "drawing",
+    newTab?: boolean,
+  ) => void;
   onToggleFolder: (path: string) => void;
   onNewInside: (folderPath: string, kind: "folder" | "drawing") => void;
   onOpenMenu: (entry: VaultEntry, x: number, y: number) => void;
@@ -1155,7 +1167,16 @@ const TreeRow = memo(
         aria-expanded={isFolder ? isExpanded : undefined}
         aria-selected={isActive}
         tabIndex={isFocused ? 0 : -1}
-        onClick={() => onSelect(entry.path, entry.kind)}
+        onClick={(e) =>
+          onSelect(entry.path, entry.kind, e.metaKey || e.ctrlKey)
+        }
+        onAuxClick={(e) => {
+          // Middle click opens a drawing in a new tab.
+          if (e.button === 1 && !isFolder) {
+            e.preventDefault();
+            onSelect(entry.path, entry.kind, true);
+          }
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           onOpenMenu(entry, e.clientX, e.clientY);

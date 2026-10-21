@@ -27,6 +27,7 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
   ImageExportRequest,
+  NormalizedZoomValue,
 } from "@excalidraw/excalidraw/types";
 
 import { isPdfFile } from "../canvasImport/importFiles";
@@ -74,6 +75,7 @@ import type { ScenePoint } from "../canvasImport/useCanvasImport";
 import type { SettingsTarget } from "../components/settings/schema";
 import type { LibraryStore } from "../library/libraryStore";
 import type { LibraryRepository } from "../library/types";
+import type { EditorRestore } from "../tabs/useTabs";
 
 import type { FlushOptions } from "./editorFlush";
 
@@ -110,6 +112,8 @@ type Props = {
   pdfImport?: { start: () => void; openFile: (file: File) => void };
   /** Canvas right-click "Import file…" (PDF or images at that point). */
   onImportFile?: (at?: ScenePoint) => unknown;
+  /** Tabs: view for the first paint and the undo stacks to bring back. */
+  restore?: EditorRestore;
 };
 
 type Snapshot = Parameters<
@@ -137,6 +141,7 @@ const VaultEditorComponent = ({
   links,
   pdfImport,
   onImportFile,
+  restore,
 }: Props) => {
   const host = useRef<HTMLDivElement | null>(null);
   const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
@@ -273,6 +278,9 @@ const VaultEditorComponent = ({
   const canExport = !!onExport;
   const canOpenSettings = !!onOpenSettings;
 
+  const restoreRef = useRef(restore);
+  restoreRef.current = restore;
+
   const initialData = useCallback(async () => {
     const doc = host.current?.ownerDocument;
     if (!doc) {
@@ -288,6 +296,13 @@ const VaultEditorComponent = ({
         ...scene.appState,
         ...exportOptionsToAppState(loadExportOptions()),
         fileHandle: null,
+        ...(restoreRef.current?.view && {
+          scrollX: restoreRef.current.view.scrollX,
+          scrollY: restoreRef.current.view.scrollY,
+          zoom: {
+            value: restoreRef.current.view.zoom as NormalizedZoomValue,
+          },
+        }),
       };
       return scene;
     } catch (cause) {
@@ -438,6 +453,19 @@ const VaultEditorComponent = ({
     },
     [onPageChange],
   );
+
+  // Tabs: bring back this document's undo history (kept only when the file is
+  // unchanged since it was captured; takeUndo returns nothing otherwise).
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!apiReady || !api) {
+      return;
+    }
+    const undo = restoreRef.current?.takeUndo();
+    if (undo) {
+      api.history.import(undo as Parameters<typeof api.history.import>[0]);
+    }
+  }, [apiReady]);
 
   // Search results: focus the requested element once per request, after the
   // scene is loaded and laid out.

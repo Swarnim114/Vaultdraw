@@ -31,6 +31,8 @@ export type VaultDocument = {
 };
 export type UseVaultDocumentResult = {
   document: VaultDocument | null;
+  /** The live document right now (path and the latest saved revision, id of the mounted editor); `document` lags a render and keeps the load revision. */
+  getActive: () => { id: string; path: string; revision: string } | null;
   status: SaveStatus;
   error: string | null;
   loading: boolean;
@@ -760,8 +762,14 @@ export const useVaultDocument = (
     [],
   );
 
+  const getActive = useCallback(() => {
+    const a = active.current;
+    return a ? { id: a.id, path: a.path, revision: a.revision } : null;
+  }, []);
+
   return {
     document,
+    getActive,
     status,
     error,
     loading,
