@@ -54,7 +54,7 @@ import { useFormulaCommands } from "../formula/useFormulaCommands";
 import "../theme/excalidrawChrome.css";
 
 import { registerCanvasRepaint, suspendCanvasSync } from "./canvasSync";
-import { registerEditorApi } from "./editorApi";
+import { registerEditorApi, registerLiveEditor } from "./editorApi";
 import { registerEditorFlush } from "./editorFlush";
 import { useEditorPalette } from "./useEditorPalette";
 import { useVaultEditorLinks } from "./links/useVaultEditorLinks";
@@ -421,6 +421,11 @@ const VaultEditorComponent = ({
         : undefined,
     // apiReady is false while another document's scene is shown under this id.
     [documentId, apiReady],
+  );
+
+  useEffect(
+    () => (libraryApi ? registerLiveEditor(libraryApi) : undefined),
+    [libraryApi],
   );
 
   // Canvas sync: the display colour transform changed (theme, mode, sync
