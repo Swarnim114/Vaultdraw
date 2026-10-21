@@ -144,6 +144,7 @@ export class DesktopVaultRepository implements VaultRepository {
     this.chooseVault = this.chooseVault.bind(this);
     this.reopenVault = this.reopenVault.bind(this);
     this.releaseVault = this.releaseVault.bind(this);
+    this.retryVault = this.retryVault.bind(this);
     this.listDirectory = this.listDirectory.bind(this);
     this.readDrawing = this.readDrawing.bind(this);
     this.readRevision = this.readRevision.bind(this);
@@ -199,6 +200,15 @@ export class DesktopVaultRepository implements VaultRepository {
     const invoke = await this.getInvoke();
     try {
       await invoke<void>("release_vault", { handle });
+    } catch (err) {
+      throw normalizeError(err);
+    }
+  }
+
+  async retryVault(handle: string): Promise<VaultInfo> {
+    const invoke = await this.getInvoke();
+    try {
+      return await invoke<VaultInfo>("retry_vault", { handle });
     } catch (err) {
       throw normalizeError(err);
     }

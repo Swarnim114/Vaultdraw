@@ -518,6 +518,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen"],
   },
   {
+    id: "vault.retryWritable",
+    title: "Retry opening vault writable",
+    category: "Vault",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
     id: "vault.revealRecovery",
     title: "Reveal recovery folder",
     category: "Vault",

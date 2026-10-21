@@ -88,6 +88,8 @@ export interface FakeVaultOptions {
   handle?: string;
   vaultPath?: string;
   vaultName?: string;
+  readOnlyReason?: VaultInfo["readOnlyReason"];
+  lockHolderPid?: number;
 }
 
 export class FakeVaultRepository implements VaultRepository {
@@ -110,6 +112,8 @@ export class FakeVaultRepository implements VaultRepository {
       path: options.vaultPath ?? "/fake/My Vault",
       name: options.vaultName ?? "My Vault",
       readOnly: options.readOnly ?? false,
+      readOnlyReason: options.readOnly ? options.readOnlyReason : undefined,
+      lockHolderPid: options.readOnly ? options.lockHolderPid : undefined,
     };
     this.latencyMs = options.latencyMs ?? 0;
     this.failWrites = options.failWrites ?? false;
@@ -220,7 +224,31 @@ export class FakeVaultRepository implements VaultRepository {
     return this.released ? null : { ...this.vault };
   }
 
+  /** retryVault frees the lock (true) or still finds it held (false). */
+  retryFreesLock = true;
+  private retired = new Set<string>();
+
+  async retryVault(handle: string): Promise<VaultInfo> {
+    this.ensureOpen(handle);
+    const fresh = `${handle}+`;
+    if (!this.retryFreesLock) {
+      this.retired.add(fresh);
+      return { ...this.vault, handle: fresh };
+    }
+    this.retired.add(handle);
+    Object.assign(this.vault, {
+      handle: fresh,
+      readOnly: false,
+      readOnlyReason: null,
+      lockHolderPid: null,
+    });
+    return { ...this.vault };
+  }
+
   async releaseVault(handle: string): Promise<void> {
+    if (this.retired.delete(handle)) {
+      return;
+    }
     this.ensureOpen(handle);
     this.released = true;
     this.listeners.clear();

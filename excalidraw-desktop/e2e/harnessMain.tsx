@@ -88,6 +88,9 @@ const thumbRect = (id: string, k: number) => ({
 const repository = new FakeVaultRepository({
   vaultName: "E2E Vault",
   readOnly: params.get("readonly") === "1",
+  // ?readonly=1&locked=1: held by another Vaultdraw process (pid 4242).
+  readOnlyReason: params.get("locked") === "1" ? "lockedByOtherProcess" : null,
+  lockHolderPid: params.get("locked") === "1" ? 4242 : undefined,
 });
 if (params.get("seed") !== "empty") {
   repository.seedFolder("DSA/Dynamic Programming");

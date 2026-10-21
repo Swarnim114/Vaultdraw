@@ -1,7 +1,8 @@
 import { useCommandShortcut } from "../commands/useCommandShortcut";
 
 import { HistoryButton } from "./HistoryButton";
-import { IconAlert, IconHistory, IconLock, IconSidebar } from "./Icons";
+import { IconAlert, IconHistory, IconSidebar } from "./Icons";
+import { ReadOnlyBadge } from "./readonly/ReadOnlyBadge";
 
 import type { SaveStatus, VaultInfo } from "../vault/types";
 
@@ -18,6 +19,8 @@ interface VaultHeaderProps {
   onSave?: () => void;
   /** Header "History" button (shown while a drawing is open): history.toggle. */
   onToggleHistory?: () => void;
+  /** Read-only badge "Try again" (vault.retryWritable). */
+  onRetryWritable?: () => void | Promise<void>;
 }
 
 export const VaultHeader = ({
@@ -32,6 +35,7 @@ export const VaultHeader = ({
   onOpenRecovery,
   onSave,
   onToggleHistory,
+  onRetryWritable,
 }: VaultHeaderProps) => {
   const toggleKeys = useCommandShortcut("view.toggleNavigator");
   if (!vault) {
@@ -96,13 +100,7 @@ export const VaultHeader = ({
 
       <div className="vault-header__center" data-tauri-drag-region>
         {vault.readOnly && (
-          <span
-            className="vault-badge vault-badge--readonly"
-            title="This vault is open read-only because it is not writable or another app instance owns its lock"
-          >
-            <IconLock />
-            <span>Read-Only</span>
-          </span>
+          <ReadOnlyBadge vault={vault} onRetry={onRetryWritable} />
         )}
 
         {recoveryCount > 0 && (

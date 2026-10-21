@@ -57,6 +57,8 @@ export interface AppCommandActions {
   openRecovered?: () => void;
   /** Only while the open drawing has a conflict. */
   resolveConflict?: () => void;
+  /** Only while the vault is open read-only. */
+  retryWritable?: () => void;
 }
 
 export function appCommandHandlers(
@@ -111,6 +113,7 @@ export function appCommandHandlers(
     "vault.revealRecovery": actions.revealRecovery,
     "vault.openRecovered": actions.openRecovered,
     "file.resolveConflict": actions.resolveConflict,
+    "vault.retryWritable": actions.retryWritable,
     ...Object.fromEntries(
       SETTINGS_PAGES.filter((page) => page.id !== "hotkeys").map((page) => [
         settingsPageCommandId(page.id),

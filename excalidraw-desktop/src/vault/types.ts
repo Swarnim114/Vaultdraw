@@ -1,8 +1,17 @@
+/** Why a vault opened read-only (reported by the native side). */
+export type ReadOnlyReason =
+  | "notWritable"
+  | "lockedByOtherProcess"
+  | "lockUnavailable";
+
 export type VaultInfo = {
   handle: string;
   path: string;
   name: string;
   readOnly: boolean;
+  readOnlyReason?: ReadOnlyReason | null;
+  /** The other Vaultdraw process holding the lock (lockedByOtherProcess). */
+  lockHolderPid?: number | null;
 };
 
 export type VaultEntry = {
@@ -27,6 +36,8 @@ export interface VaultRepository {
   chooseVault(create?: boolean): Promise<VaultInfo | null>;
   reopenVault(): Promise<VaultInfo | null>;
   releaseVault(handle: string): Promise<void>;
+  /** Opens the vault behind `handle` again as a new handle (writable if its lock is free now). */
+  retryVault?(handle: string): Promise<VaultInfo>;
   listDirectory(handle: string, path: string): Promise<VaultEntry[]>;
   readDrawing(handle: string, path: string): Promise<DrawingFile>;
   /** Cheap revision probe (no content transfer); null when the file is missing. */

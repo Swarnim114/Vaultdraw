@@ -116,6 +116,7 @@ import { QuickSwitcher } from "./components/QuickSwitcher";
 import { Banner } from "./components/Banner";
 import { Toasts } from "./components/Toasts";
 import { toastStore } from "./toasts/toastStore";
+import { describeReadOnly } from "./vault/readOnlyReason";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { VaultHome } from "./components/VaultHome";
 
@@ -846,8 +847,9 @@ export const VaultApp = ({
   }, [loadDirectory, refreshRecovery, repository, startIndexing, vault, win]);
 
   // Safely switch vaults: flush and close old doc BEFORE releasing old vault handle
-  const safelySwitchVault = async (chosen: VaultInfo) => {
-    if (vault && chosen.path === vault.path) {
+  // `sameVault`: swap the current vault's handle for a fresh one (Retry writable).
+  const safelySwitchVault = async (chosen: VaultInfo, sameVault = false) => {
+    if (!sameVault && vault && chosen.path === vault.path) {
       // Avoid choosing same old root and acquiring a duplicate/read-only clone
       await repository.releaseVault(chosen.handle);
       return;
@@ -922,6 +924,38 @@ export const VaultApp = ({
       setGlobalAlert({ message: msg, type: "error" });
     } finally {
       setLoadingVault(false);
+    }
+  };
+
+  // Read-only badge / palette "Retry opening vault writable" (toimprove #40):
+  // a fresh handle replaces the read-only one once the lock is free.
+  const handleRetryWritable = async () => {
+    if (!vault?.readOnly || !repository.retryVault) {
+      return;
+    }
+    let next: VaultInfo | null = null;
+    try {
+      next = await repository.retryVault(vault.handle);
+      if (next.readOnly) {
+        const still = next;
+        next = null;
+        await repository.releaseVault(still.handle).catch(() => {});
+        toastStore.push({
+          message: `Still read-only: ${describeReadOnly(still).detail}`,
+        });
+        return;
+      }
+      await safelySwitchVault(next, true);
+      next = null;
+      toastStore.push({ message: `${vault.name} is writable again` });
+    } catch (err: unknown) {
+      if (next) {
+        await repository.releaseVault(next.handle).catch(() => {});
+      }
+      setGlobalAlert({
+        message: `Could not reopen the vault: ${errorMessage(err)}`,
+        type: "error",
+      });
     }
   };
 
@@ -1713,6 +1747,8 @@ export const VaultApp = ({
       recoveryCount > 0 ? () => setShowRecoveryDialog(true) : undefined,
     resolveConflict:
       saveStatus === "conflict" ? () => setShowConflictDialog(true) : undefined,
+    retryWritable:
+      vault?.readOnly && idle ? () => void handleRetryWritable() : undefined,
   });
   const commandRunner = useCommandDispatcher(doc, win, {
     handlers: commandHandlers,
@@ -1983,6 +2019,9 @@ export const VaultApp = ({
         onOpenRecovery={() => setShowRecoveryDialog(true)}
         onSave={handleExplicitSave}
         onToggleHistory={toggleHistory}
+        onRetryWritable={
+          repository.retryVault ? handleRetryWritable : undefined
+        }
       />
 
       <div className="vault-main">
