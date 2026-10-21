@@ -1,6 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AppState } from "@excalidraw/excalidraw/types";
+
 import { LOADING_LINE_DELAY_MS, LoadingLine } from "./LoadingLine";
 import {
   isSceneCurrent,
@@ -10,8 +12,6 @@ import {
   swapAppState,
   withDocumentAppState,
 } from "./sceneSwap";
-
-import type { AppState } from "@excalidraw/excalidraw/types";
 
 const live = {
   theme: "dark",

@@ -89,7 +89,7 @@ const HOST_KEYS = ["theme", "openSidebar", "viewModeEnabled", "toast"] as const;
  */
 export const swapAppState = (
   loaded: Partial<AppState>,
-  live: Pick<AppState, (typeof HOST_KEYS)[number] | "preferredSelectionTool">,
+  live: Pick<AppState, typeof HOST_KEYS[number] | "preferredSelectionTool">,
 ): Partial<AppState> => {
   const preferredSelectionTool = live.preferredSelectionTool?.initialized
     ? live.preferredSelectionTool
