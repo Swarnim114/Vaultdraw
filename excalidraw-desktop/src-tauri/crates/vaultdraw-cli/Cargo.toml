@@ -1,0 +1,22 @@
+[package]
+name = "vaultdraw-cli"
+version = "0.1.0"
+edition = "2021"
+description = "vaultdraw: command-line client for the Vaultdraw control API"
+publish = false
+
+[[bin]]
+name = "vaultdraw"
+path = "src/main.rs"
+
+[dependencies]
+vaultdraw-protocol = { path = "../vaultdraw-protocol" }
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+clap_complete = "4"
+clap_complete_nushell = "4"
+clap_mangen = "0.2"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+vaultdraw-protocol = { path = "../vaultdraw-protocol" }
