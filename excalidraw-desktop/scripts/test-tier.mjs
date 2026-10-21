@@ -77,17 +77,22 @@ if (tier === "fast") {
     if (specs.length) npx(desktop, `playwright (${specs.length} spec(s), webkit)`, ["playwright", "test", ...specs.map((s) => `e2e/${s}.spec.ts`)]);
   }
 } else {
+  // Load caps (personal/feature/README.md "Load caps"): full suites must not flood the machine while
+  // other teams and the user's app run. vitest 3.0.6 refuses --maxWorkers without --minWorkers.
+  // E2E_WORKERS from the caller's env wins (e.g. 4 when this is the only heavy job).
+  const vitestCaps = ["--maxWorkers=4", "--minWorkers=1"];
+  const e2eEnv = { E2E_WORKERS: process.env.E2E_WORKERS || "2" };
   npx(desktop, "tsc (desktop)", tscIncremental("tsconfig.json", "desktop.tsbuildinfo"));
   npx(root, "eslint (desktop)", eslint(["--ext", ".js,.ts,.tsx", "excalidraw-desktop"]));
-  npx(desktop, "vitest (desktop)", ["vitest", "run"]);
+  npx(desktop, "vitest (desktop)", ["vitest", "run", ...vitestCaps]);
   step("perf lib tests", root, "node", ["--test", "excalidraw-desktop/perf/lib/*.test.mjs", "excalidraw-desktop/scripts/*.test.mjs"]);
   if (tier === "milestone") {
     npx(root, "tsc (root)", ["tsc"]);
-    npx(root, "vitest (root)", ["vitest", "run"]);
+    npx(root, "vitest (root)", ["vitest", "run", ...vitestCaps]);
   }
   if (!o["no-e2e"]) {
     npx(desktop, `playwright (${tier === "milestone" ? "full, webkit + chromium" : "functional, webkit"})`, ["playwright", "test"],
-      tier === "milestone" ? { E2E_FULL: "1" } : {});
+      tier === "milestone" ? { ...e2eEnv, E2E_FULL: "1" } : e2eEnv);
   }
   if (!o["no-perf"]) {
     if (tier === "merge") {
@@ -107,7 +112,8 @@ if (!steps.length) console.log("nothing to test");
 const results = [];
 const t0 = Date.now();
 for (const s of steps) {
-  console.log(`\n== ${s.name}: ${s.cmd} ${s.args.join(" ")}`.slice(0, 400));
+  const env = Object.entries(s.env).map(([k, v]) => `${k}=${v} `).join("");
+  console.log(`\n== ${s.name}: ${env}${s.cmd} ${s.args.join(" ")}`.slice(0, 400));
   if (o["dry-run"]) continue;
   const t = Date.now();
   const r = spawnSync(s.cmd, s.args, { cwd: s.cwd, stdio: "inherit", env: { ...process.env, ...s.env } });
