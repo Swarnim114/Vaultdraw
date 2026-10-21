@@ -2891,11 +2891,19 @@ export async function runDesktopSmoke(): Promise<void> {
       }
     ).__TAURI_INTERNALS__;
     const originalInternalInvoke = internals?.invoke;
+    // Newer Tauri builds freeze __TAURI_INTERNALS__.invoke; then the spy is
+    // off and the step says so instead of aborting the whole run.
+    let ipcSpy = false;
     if (internals && originalInternalInvoke) {
-      internals.invoke = (cmd: string, ...rest: unknown[]) => {
-        templateIpc.push(cmd);
-        return originalInternalInvoke.call(internals, cmd, ...rest);
-      };
+      try {
+        internals.invoke = (cmd: string, ...rest: unknown[]) => {
+          templateIpc.push(cmd);
+          return originalInternalInvoke.call(internals, cmd, ...rest);
+        };
+        ipcSpy = internals.invoke !== originalInternalInvoke;
+      } catch {
+        ipcSpy = false;
+      }
     }
     const templateScene = (marker: string) =>
       JSON.stringify({
@@ -3063,9 +3071,9 @@ export async function runDesktopSmoke(): Promise<void> {
       if (templateIpc.includes("open_global_templates_dir")) {
         throw new Error("open_global_templates_dir was invoked");
       }
-      return { listed: listed.length, ipc: templateIpc.length };
+      return { listed: listed.length, ipc: templateIpc.length, ipcSpy };
     });
-    if (internals && originalInternalInvoke) {
+    if (internals && originalInternalInvoke && ipcSpy) {
       internals.invoke = originalInternalInvoke;
     }
 
