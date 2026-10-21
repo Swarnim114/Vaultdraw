@@ -113,3 +113,44 @@ describe("save signature", () => {
     expect(new Set([a, b, c]).size).toBe(3);
   });
 });
+
+describe("usePageMode reset (another document is shown)", () => {
+  it("unbinds page navigation and starts the runtime over, so the next document's setup is judged fresh", async () => {
+    let appState = state({ ...DEFAULT_PAGE_SETUP });
+    const api = {
+      getAppState: () => appState,
+      getSceneElementsIncludingDeleted: () => [],
+      getSceneElementsMapIncludingDeleted: () => new Map(),
+      updateScene: (d: any) => {
+        appState = { ...appState, ...d.appState };
+      },
+    };
+    const { result } = renderHook(() =>
+      usePageMode({
+        apiRef: { current: api as any },
+        getWindow: () => window,
+        disabled: false,
+        readOnly: false,
+        openPageSetup: () => {},
+      }),
+    );
+    await act(async () => {
+      result.current.onChange([], appState);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(getRegisteredHandler("page.next")).toBeTypeOf("function");
+
+    act(() => result.current.reset());
+    expect(getRegisteredHandler("page.next")).toBeUndefined();
+    // the page commands themselves stay bound
+    expect(getRegisteredHandler("page.on")).toBeTypeOf("function");
+
+    // the same setup in the next document turns navigation on again
+    appState = state({ ...DEFAULT_PAGE_SETUP });
+    await act(async () => {
+      result.current.onChange([], appState);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(getRegisteredHandler("page.next")).toBeTypeOf("function");
+  });
+});

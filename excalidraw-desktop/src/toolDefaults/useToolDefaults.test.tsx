@@ -593,3 +593,24 @@ describe("newContainerStyle (wrap selection in container)", () => {
     });
   });
 });
+
+describe("reset (another document is shown)", () => {
+  it("keeps what the old tool was last used with and does not undo the old patch on the new state", () => {
+    store.defaults = { rectangle: { stroke_color: "#e03131" } };
+    const t = setup();
+    t.switchTo("rectangle");
+    expect(t.state.currentItemStrokeColor).toBe("#e03131"); // applied to the old scene
+    t.set({ currentItemStrokeColor: "#2f9e44" }); // user tweaks it
+    t.updateScene.mockClear();
+
+    act(() => t.hook.result.current.reset());
+    expect(getToolMemory("rectangle")).toMatchObject({
+      stroke_color: "#2f9e44",
+    });
+
+    // the next document opens on the selection tool with its own colours
+    t.switchTo("selection", { currentItemStrokeColor: "#1971c2" });
+    expect(t.updateScene).not.toHaveBeenCalled();
+    expect(t.state.currentItemStrokeColor).toBe("#1971c2");
+  });
+});
