@@ -12,12 +12,31 @@ export const screenshot = async (
   }
 };
 
+/**
+ * WebKit/Chromium report this when a frame's ResizeObserver callbacks could not
+ * all be delivered before paint. It is benign: no persistent layout loop exists.
+ * Every ResizeObserver in src/ (rowWindow, useTreeWindow, ChangeOverlay, graph,
+ * GalleryView) only reads size and updates state that does not resize the
+ * observed element (compare-before-set or rAF-deferred), and the failure did not
+ * reproduce in 15 + 60 repeat runs; it appeared once in a full run under load.
+ * Opening a docked panel also resizes Excalidraw's own observed container.
+ * Filter exactly this message, nothing broader.
+ */
+const BENIGN_RESIZE_OBSERVER =
+  "ResizeObserver loop completed with undelivered notifications.";
+const isBenign = (message: string) =>
+  message.replace(/\.?$/, ".") === BENIGN_RESIZE_OBSERVER;
+
 /** Collect console errors / page errors so every spec can assert none occurred. */
 export const trackErrors = (page: Page) => {
   const errors: string[] = [];
-  page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+  page.on("pageerror", (err) => {
+    if (!isBenign(err.message)) {
+      errors.push(`pageerror: ${err.message}`);
+    }
+  });
   page.on("console", (msg) => {
-    if (msg.type() === "error") {
+    if (msg.type() === "error" && !isBenign(msg.text())) {
       errors.push(`console: ${msg.text()}`);
     }
   });
