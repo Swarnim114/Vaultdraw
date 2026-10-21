@@ -68,6 +68,19 @@ const ThumbnailsSetting = () => {
   );
 };
 
+const ActivityBarSetting = () => (
+  <ScopedRow id="activity-bar" field="activityBar">
+    {(value, onChange) => (
+      <Switch
+        id="vault-activity-bar"
+        checked={value}
+        label="Activity bar"
+        onChange={onChange}
+      />
+    )}
+  </ScopedRow>
+);
+
 const SortOrderSetting = () => (
   <ScopedRow id="sort-order" field="navigatorSort">
     {(value, onChange) => (
@@ -91,5 +104,6 @@ export const interfaceControls: SettingControls = {
   "interface-zoom": { Component: ZoomSetting },
   "show-tag-chips": { Component: ShowTagChipsSetting },
   thumbnails: { Component: ThumbnailsSetting },
+  "activity-bar": { Component: ActivityBarSetting },
   "sort-order": { Component: SortOrderSetting },
 };

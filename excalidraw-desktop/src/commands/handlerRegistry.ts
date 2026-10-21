@@ -6,14 +6,34 @@
 import type { CommandHandler, CommandHandlers } from "./types";
 
 const layers: CommandHandlers[] = [];
+const listeners = new Set<() => void>();
+let version = 0;
+
+const changed = () => {
+  version++;
+  listeners.forEach((l) => l());
+};
+
+/** Notified whenever a layer is bound or unbound (for UI that lists what is offered). */
+export function subscribeCommandHandlers(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Bumps on every bind/unbind: a cheap snapshot for useSyncExternalStore. */
+export const commandHandlersVersion = (): number => version;
 
 /** Bind `handlers` until the returned function is called. */
 export function registerCommandHandlers(handlers: CommandHandlers): () => void {
   layers.push(handlers);
+  changed();
   return () => {
     const i = layers.lastIndexOf(handlers);
     if (i >= 0) {
       layers.splice(i, 1);
+      changed();
     }
   };
 }

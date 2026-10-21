@@ -20,6 +20,8 @@ import type {
 
 import { toastStore } from "../toasts/toastStore";
 
+import { libraryPanelStore } from "./libraryPanelState";
+
 import "./library.css";
 
 import { LibraryStore } from "./libraryStore";
@@ -89,14 +91,17 @@ export const useVaultLibrary = (
     }
   }, [api, store, version]);
 
+  // The editor going away closes its sidebar.
+  useEffect(() => () => libraryPanelStore.publish(false), []);
+
   const onAppState = useCallback(
     (appState: Pick<AppState, "openSidebar">) => {
       const sidebar = appState.openSidebar;
-      if (
-        !store.isStarted() &&
+      const showing =
         sidebar?.name === DEFAULT_SIDEBAR.name &&
-        (sidebar.tab ?? LIBRARY_SIDEBAR_TAB) === LIBRARY_SIDEBAR_TAB
-      ) {
+        (sidebar.tab ?? LIBRARY_SIDEBAR_TAB) === LIBRARY_SIDEBAR_TAB;
+      libraryPanelStore.publish(showing);
+      if (!store.isStarted() && showing) {
         void store.loadNow();
       }
     },

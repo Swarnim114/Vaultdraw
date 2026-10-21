@@ -69,6 +69,9 @@ import {
   resolveNewDrawingParent,
 } from "./vault/newDrawing";
 import { commitCanvasTextEdit } from "./commands/context";
+import { ActivityBar } from "./activityBar/ActivityBar";
+import { galleryPanelStore, graphPanelStore } from "./activityBar/panelStores";
+import { getRegisteredHandler } from "./commands/handlerRegistry";
 import { appCommandHandlers } from "./commands/useAppCommands";
 import {
   useCommandDispatcher,
@@ -328,6 +331,7 @@ export const VaultApp = ({
   // One preferences read per render (localStorage parse + normalise).
   const prefsNow = getPreferences(win);
   const { confirmDelete, showTagChips } = prefsNow;
+  const { activityBar: activityBarOn } = vaultSettings.effective;
 
   const handleCanvasThemeChange = useCallback(
     (newTheme: "light" | "dark" | "system") => {
@@ -1600,6 +1604,15 @@ export const VaultApp = ({
 
   // Write where the value currently lives: this vault if it overrides the
   // global order, else config.toml.
+  // Same rule for the activity bar toggle.
+  const handleToggleActivityBar = () => {
+    if (vaultSettings.isOverridden("activityBar")) {
+      void vaultSettings.setOverride("activityBar", !activityBarOn);
+    } else {
+      updatePreferences({ activityBar: !activityBarOn }, win);
+    }
+  };
+
   const handleSortChange = (order: SortOrder) => {
     if (vaultSettings.isOverridden("navigatorSort")) {
       void vaultSettings.setOverride("navigatorSort", order);
@@ -1668,6 +1681,7 @@ export const VaultApp = ({
     focusSearch: focusNavigatorSearch,
     zoom: (command) => runZoomCommand(command, win),
     toggleNavigator: handleToggleNavigator,
+    toggleActivityBar: handleToggleActivityBar,
     newDrawing: () => {
       if (idle) {
         return handleNewDrawing();
@@ -1759,6 +1773,26 @@ export const VaultApp = ({
     },
   });
   runnerRef.current = commandRunner;
+  const commandHandlersRef = useRef(commandHandlers);
+  commandHandlersRef.current = commandHandlers;
+  const hasCommandHandler = useCallback(
+    (id: string) =>
+      !!(commandHandlersRef.current[id] ?? getRegisteredHandler(id)),
+    [],
+  );
+  const isCommandAvailable = useCallback(
+    (id: string) =>
+      runnerRef.current?.isAvailable(id, { fromPalette: true }) ?? false,
+    [],
+  );
+  const handleGalleryOpenChange = useCallback((open: boolean) => {
+    setGalleryOpen(open);
+    galleryPanelStore.publish(open);
+  }, []);
+  const handleGraphOpenChange = useCallback((open: boolean) => {
+    setGraphOpen(open);
+    graphPanelStore.publish(open);
+  }, []);
   // UI entry points (navigator, main menu, row menu) dispatch the graph commands.
   const runCommand = useCallback(
     (id: string) => runnerRef.current?.run(id) ?? false,
@@ -2025,6 +2059,16 @@ export const VaultApp = ({
       />
 
       <div className="vault-main">
+        {activityBarOn && (
+          <ActivityBar
+            run={runCommand}
+            isAvailable={isCommandAvailable}
+            hasHandler={hasCommandHandler}
+            drawingOpen={activeDoc != null}
+            writable={!vault?.readOnly}
+            win={win}
+          />
+        )}
         <div
           className={`vault-editor-pane ${
             mainCovered ? "vault-editor-pane--graph" : ""
@@ -2111,7 +2155,7 @@ export const VaultApp = ({
             templatesFolder={templatesFolder}
             activePath={activeDoc?.path ?? null}
             onOpenDrawing={handleOpenDrawing}
-            onOpenChange={setGalleryOpen}
+            onOpenChange={handleGalleryOpenChange}
             onClosed={focusCanvas}
           />
           <GraphHost
@@ -2122,7 +2166,7 @@ export const VaultApp = ({
             onOpenDrawing={(path) =>
               path === activeDoc?.path ? undefined : handleOpenDrawing(path)
             }
-            onOpenChange={setGraphOpen}
+            onOpenChange={handleGraphOpenChange}
             onClosed={focusCanvas}
             {...graph}
           />
@@ -2149,7 +2193,7 @@ export const VaultApp = ({
           collapsed={navigatorCollapsed}
           onToggleCollapse={handleToggleNavigator}
           onOpenSettings={() => openSettings()}
-          onOpenGraph={openGraph}
+          onOpenGraph={activityBarOn ? undefined : openGraph}
           graphOpen={graphOpen}
           onOpenLocalGraph={openLocalGraph}
           onShowHistory={showHistory}

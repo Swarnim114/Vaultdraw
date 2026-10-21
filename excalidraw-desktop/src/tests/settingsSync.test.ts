@@ -221,6 +221,19 @@ describe("settingsSync mapping", () => {
     });
   });
 
+  it("maps interface.activity_bar (default on, invalid reported)", () => {
+    expect(configToPreferences({}).values.activityBar).toBe(true);
+    expect(
+      configToPreferences({ interface: { activity_bar: false } }).values
+        .activityBar,
+    ).toBe(false);
+    expect(
+      configToPreferences({ interface: { activity_bar: 1 } }).problems.map(
+        (p) => p.key,
+      ),
+    ).toEqual(["interface.activity_bar"]);
+  });
+
   it("defaults the phase 2 keys when absent", () => {
     const { values, problems } = configToPreferences({});
     expect(problems).toEqual([]);

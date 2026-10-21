@@ -288,6 +288,16 @@ export const SETTINGS_SCHEMA: readonly SettingSchema[] = [
     configKey: "interface.thumbnails",
   },
   {
+    id: "activity-bar",
+    page: "interface",
+    label: "Activity bar",
+    description:
+      "Show the icon bar on the left edge for Library, History, Graph and other panels.",
+    keywords: ["activity", "bar", "ribbon", "icons", "sidebar", "toolbar"],
+    configKey: "interface.activity_bar",
+    perVault: true,
+  },
+  {
     id: "sort-order",
     page: "interface",
     label: "Navigator Sort Order",

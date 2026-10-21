@@ -26,6 +26,7 @@ import type { VaultPreferences } from "./preferences";
 
 export const PER_VAULT_FIELDS = [
   "navigatorSort",
+  "activityBar",
   "newDrawingFolder",
   "templatesFolder",
   "paperStyle",

@@ -1,0 +1,5 @@
+/** Open state of the app shell's covering panels, published by VaultApp. */
+import { createFlagStore } from "./flagStore";
+
+export const graphPanelStore = createFlagStore();
+export const galleryPanelStore = createFlagStore();

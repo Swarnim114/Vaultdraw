@@ -327,6 +327,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     when: ["vaultOpen", "!modalOpen"],
   },
   {
+    id: "view.toggleActivityBar",
+    title: "Toggle activity bar",
+    category: "View",
+    keys: { default: [] },
+    when: ["vaultOpen", "!modalOpen"],
+  },
+  {
     id: "vault.switch",
     title: "Open another vault",
     category: "Vault",

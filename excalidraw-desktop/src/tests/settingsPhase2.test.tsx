@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -138,7 +139,9 @@ describe("per-vault rows", () => {
     const row = () =>
       document.querySelector<HTMLElement>('[data-setting-id="sort-order"]')!;
     expect(row()).toHaveAttribute("data-scope-state", "inherited");
-    expect(screen.getByText("Inherited from global")).toBeInTheDocument();
+    expect(
+      within(row()).getByText("Inherited from global"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: "Reset Navigator Sort Order to global",

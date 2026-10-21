@@ -189,6 +189,7 @@ type ConfigField =
   | "confirmDelete"
   | "showTagChips"
   | "thumbnails"
+  | "activityBar"
   | "navigatorSort"
   | "newDrawingFolder"
   | "templatesFolder"
@@ -291,6 +292,12 @@ const CORE_MAPPING: readonly ConfigMapping[] = [
   {
     field: "thumbnails",
     key: "interface.thumbnails",
+    expected: "true or false",
+    valid: (v) => typeof v === "boolean",
+  },
+  {
+    field: "activityBar",
+    key: "interface.activity_bar",
     expected: "true or false",
     valid: (v) => typeof v === "boolean",
   },

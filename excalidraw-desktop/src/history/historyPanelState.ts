@@ -18,7 +18,7 @@ export function publishHistoryPanelOpen(value: boolean): void {
 
 export const isHistoryPanelOpen = (): boolean => open;
 
-const subscribe = (cb: () => void) => {
+export const subscribeHistoryPanelOpen = (cb: () => void) => {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);
@@ -26,4 +26,8 @@ const subscribe = (cb: () => void) => {
 };
 
 export const useHistoryPanelOpen = (): boolean =>
-  useSyncExternalStore(subscribe, isHistoryPanelOpen, () => false);
+  useSyncExternalStore(
+    subscribeHistoryPanelOpen,
+    isHistoryPanelOpen,
+    () => false,
+  );

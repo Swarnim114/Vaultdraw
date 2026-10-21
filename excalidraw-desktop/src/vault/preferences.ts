@@ -165,6 +165,8 @@ interface VaultPreferencesBase {
   showTagChips: boolean;
   /** Show drawing thumbnails (home, search, palette, gallery). */
   thumbnails: boolean;
+  /** Show the icon bar on the left edge. A vault's settings.toml may override it. */
+  activityBar: boolean;
   /** Global navigator sort order; a vault's settings.toml may override it. */
   navigatorSort: SortOrder;
   /** Folder for new drawings, relative to the vault root ("" = unset). A vault's settings.toml may override it. */
@@ -292,6 +294,7 @@ export const DEFAULT_PREFERENCES: VaultPreferences = {
   confirmDelete: true,
   showTagChips: true,
   thumbnails: true,
+  activityBar: true,
   navigatorSort: DEFAULT_SORT_ORDER,
   newDrawingFolder: "",
   templatesFolder: DEFAULT_TEMPLATES_FOLDER,
@@ -577,6 +580,7 @@ export function normalizePreferences(input: unknown): VaultPreferences {
     confirmDelete: pick(parsed.confirmDelete, isBoolean, d.confirmDelete),
     showTagChips: pick(parsed.showTagChips, isBoolean, d.showTagChips),
     thumbnails: pick(parsed.thumbnails, isBoolean, d.thumbnails),
+    activityBar: pick(parsed.activityBar, isBoolean, d.activityBar),
     navigatorSort: pick(parsed.navigatorSort, isSortOrder, d.navigatorSort),
     newDrawingFolder: pick(
       parsed.newDrawingFolder,

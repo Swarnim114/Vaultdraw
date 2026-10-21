@@ -43,6 +43,7 @@ describe("per-vault schema rows", () => {
     expect(flagged.sort()).toEqual(
       [
         "sort-order",
+        "activity-bar",
         "paper",
         "tool-rectangle",
         "tool-diamond",

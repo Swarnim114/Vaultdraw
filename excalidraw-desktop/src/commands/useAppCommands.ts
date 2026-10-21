@@ -26,6 +26,7 @@ export interface AppCommandActions {
   focusSearch(): void;
   zoom(command: "in" | "out" | "reset"): void;
   toggleNavigator(): void;
+  toggleActivityBar(): void;
   newDrawing(): void | Promise<void>;
   newFromTemplate(): void | Promise<void>;
   switchVault(): void | Promise<void>;
@@ -81,6 +82,7 @@ export function appCommandHandlers(
     "view.zoomOut": () => actions.zoom("out"),
     "view.zoomReset": () => actions.zoom("reset"),
     "view.toggleNavigator": actions.toggleNavigator,
+    "view.toggleActivityBar": actions.toggleActivityBar,
     "vault.newDrawing": actions.newDrawing,
     "vault.newFromTemplate": actions.newFromTemplate,
     "vault.switch": actions.switchVault,

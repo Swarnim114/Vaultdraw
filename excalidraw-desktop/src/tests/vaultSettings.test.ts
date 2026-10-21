@@ -115,6 +115,7 @@ describe("parse and merge", () => {
       resolveSetting("navigatorSort", { navigatorSort: "modified_asc" }, prefs),
     ).toBe("modified_asc");
     expect(resolveSettings({ newDrawingFolder: "A" }, prefs)).toEqual({
+      activityBar: true,
       navigatorSort: "name_desc",
       newDrawingFolder: "A",
       templatesFolder: "Templates",
