@@ -49,7 +49,7 @@ export async function runTypicalScenarios(
     // A few ordinary opens first: the app is in normal use when the big drawing is opened.
     for (const path of siblings.slice(0, config.warmOpens)) {
       await openByRow(path);
-      await sleep(300);
+      await sleep(kit.modes.warmGapMs ?? 300);
     }
     push("typical.open.300", await openByRow(target.path));
     await sleep(500);

@@ -49,6 +49,8 @@ const HELP = `Usage: node excalidraw-desktop/perf/run.mjs [options]
                          folders + one 300-element drawing with 2 images; cold start, open, save, pan, idle footprint per
                          process (memory.typical.*) for comparison with other note apps. Replaces the stress scenarios.
   --foreground           (or PERF_FOREGROUND=1) launch the perf app as a normal foreground app (no accessory/hidden-rendering hardening); default unchanged
+  PERF_TYPICAL_GAP_MS=N  (env) typical mode: ms between the warm drawing opens (default 300), e.g. 2000 for a human pace
+  PERF_CONFIG_TOML=<f>   (env) config.toml for the perf app's temp config dir (e.g. [interface] thumbnails = false)
   --quick                1 run, no warmup, no extra noise runs (harness smoke test)
 
 Recommended merge gate: node excalidraw-desktop/perf/ab.mjs --base <ref> (interleaved base/head A/B in one session; bisect only after a
@@ -75,9 +77,9 @@ const fixturesDir = process.env.PERF_FIXTURES_DIR ? path.resolve(process.env.PER
 if (o.foreground || process.env.PERF_FOREGROUND === "1") process.env.VAULTDRAW_PERF_FOREGROUND = "1";
 const mode = o["low-end"] ? "low-end" : "normal";
 const leakOnly = !!(o["leak-only"] || process.env.PERF_LEAK_ONLY === "1");
-const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || o.ablate || process.env.PERF_TYPICAL === "1" || process.env.PERF_ABLATE === "1"), ablate: !!(o.ablate || process.env.PERF_ABLATE === "1") };
+const modes = { leak: leakOnly || !!(o.leak || process.env.PERF_LEAK === "1"), leakOnly, typical: !!(o.typical || o.ablate || process.env.PERF_TYPICAL === "1" || process.env.PERF_ABLATE === "1"), ablate: !!(o.ablate || process.env.PERF_ABLATE === "1"), warmGapMs: Number(process.env.PERF_TYPICAL_GAP_MS) || undefined };
 if (modes.ablate) process.env.PERF_MEM_TIMELINE = "1";
-const variant = [modes.leakOnly ? "leak-only" : modes.leak && "leak", modes.typical && "typical", modes.ablate && "ablate"].filter(Boolean).join("+");
+const variant = [modes.leakOnly ? "leak-only" : modes.leak && "leak", modes.typical && "typical", modes.ablate && "ablate", modes.warmGapMs && `gap${modes.warmGapMs}`].filter(Boolean).join("+");
 const runs = o.quick ? 1 : Number(o.runs ?? (o.milestone ? 4 : 2));
 const warmup = o.quick ? 0 : Number(o.warmup ?? (o.milestone ? 1 : 0));
 // Packaged-app runs open windows on the user's screen: only on request or at milestones.
@@ -140,7 +142,7 @@ if (!skipApp && isScreenLocked()) {
       runOne: async (i) => {
         const r = await runAppOnce({
           appPath: built.appPath, pristineVault: vaultDir, lowEnd: mode === "low-end", runIndex: i,
-          keepRuns: !!o["keep-runs"], memoryPressure: mode === "low-end" || !!o["memory-pressure"], log, modes, altVault,
+          keepRuns: !!o["keep-runs"], memoryPressure: mode === "low-end" || !!o["memory-pressure"], log, modes, altVault, configToml: process.env.PERF_CONFIG_TOML ? readFileSync(process.env.PERF_CONFIG_TOML, "utf8") : undefined,
         });
         for (const n of r.notes) if (!notes.includes(n)) notes.push(n);
         return r;

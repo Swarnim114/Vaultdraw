@@ -17,6 +17,8 @@ export type PerfModes = {
   typical?: boolean;
   /** Memory ablation probe after the typical open (implies typical). */
   ablate?: boolean;
+  /** typical mode: ms between the warm opens (vault token `gap<ms>`) */
+  warmGapMs?: number;
 };
 
 export type PerfKit = {

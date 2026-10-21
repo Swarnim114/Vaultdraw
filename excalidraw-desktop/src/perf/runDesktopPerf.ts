@@ -108,6 +108,9 @@ export function modesFromVaultPath(vaultPath: string): PerfModes {
     leakOnly,
     typical: tokens.includes("typical"),
     ablate: tokens.includes("ablate"),
+    warmGapMs:
+      Number(tokens.find((token) => /^gap\d+$/.test(token))?.slice(3)) ||
+      undefined,
   };
 }
 
