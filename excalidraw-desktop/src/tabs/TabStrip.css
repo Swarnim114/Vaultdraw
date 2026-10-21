@@ -1,0 +1,153 @@
+/* Tabs (F5): tab strip. Theme tokens only (see VaultShell.css). */
+
+.vault-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  height: 30px;
+  min-height: 30px;
+  min-width: 0;
+  background: var(--vault-bg);
+  border-bottom: 1px solid var(--vault-border);
+  font-family: var(--vault-font);
+  user-select: none;
+}
+
+.vault-tabs__list {
+  display: flex;
+  align-items: stretch;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.vault-tabs__list::-webkit-scrollbar {
+  display: none;
+}
+
+.vault-tabs__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 160px;
+  min-width: 72px;
+  max-width: 200px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  color: var(--vault-text-muted);
+  border-right: 1px solid var(--vault-border);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.vault-tabs__tab:hover {
+  background: var(--vault-surface-hover);
+  color: var(--vault-text);
+}
+
+.vault-tabs__tab--active,
+.vault-tabs__tab--active:hover {
+  background: var(--vault-surface);
+  color: var(--vault-text);
+}
+
+.vault-tabs__tab--active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--vault-primary);
+}
+
+.vault-tabs__tab:focus-visible {
+  outline: 2px solid var(--vault-primary);
+  outline-offset: -2px;
+}
+
+.vault-tabs__tab--pinned {
+  flex: 0 0 32px;
+  min-width: 32px;
+  max-width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.vault-tabs__tab--missing .vault-tabs__name {
+  text-decoration: line-through;
+  font-style: italic;
+}
+
+.vault-tabs__icon,
+.vault-tabs__pin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  opacity: 0.8;
+}
+
+.vault-tabs__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.vault-tabs__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vault-text-muted);
+}
+
+.vault-tabs__warn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--vault-warning);
+}
+
+.vault-tabs__close,
+.vault-tabs__new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: var(--vault-radius-sm);
+  cursor: pointer;
+}
+
+.vault-tabs__close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+}
+
+.vault-tabs__tab:hover .vault-tabs__close,
+.vault-tabs__tab--active .vault-tabs__close,
+.vault-tabs__tab:focus-visible .vault-tabs__close {
+  opacity: 1;
+}
+
+.vault-tabs__close:hover,
+.vault-tabs__new:hover {
+  background: var(--vault-surface-active);
+  color: var(--vault-text);
+}
+
+.vault-tabs__new {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 4px;
+  color: var(--vault-text-muted);
+}
