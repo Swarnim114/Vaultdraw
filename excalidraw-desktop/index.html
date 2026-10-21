@@ -11,15 +11,16 @@
     <!--
       Local-only CSP for the Tauri 2 WebView. No remote connections, frames,
       or objects; images/fonts may come from bundled assets, the asset
-      protocol, blob workers, or data URLs (embedded scene images). Tauri IPC
-      needs `ipc:` / `http://ipc.localhost`. The native worker also enforces
-      this policy in tauri.conf.json capabilities — this meta tag is
-      defense-in-depth and documents intent. No analytics, Sentry, Firebase,
-      service worker, or hosted share scripts are loaded here.
+      protocol, the vdthumb: thumbnail scheme, blob workers, or data URLs
+      (embedded scene images). Tauri IPC needs `ipc:` / `http://ipc.localhost`.
+      The WebView enforces BOTH this tag and tauri.conf.json app.security.csp,
+      so every source must be allowed in both (src/tests/cspParity.test.ts).
+      No analytics, Sentry, Firebase, service worker, or hosted share scripts
+      are loaded here.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost blob: data:; font-src 'self' asset: http://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost vdthumb: http://vdthumb.localhost blob: data:; font-src 'self' asset: http://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <style>
       html,
