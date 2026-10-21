@@ -1578,7 +1578,14 @@ export interface ExcalidrawImperativeAPI {
   registerAction: (action: Action) => void;
   refresh: InstanceType<typeof App>["refresh"];
   setToast: InstanceType<typeof App>["setToast"];
-  addFiles: (data: BinaryFileData[]) => void;
+  /**
+   * Adds files (existing ids are kept). The promise resolves when the images
+   * of the added files are decoded into the image cache, so a scene using
+   * them paints without a "loading" frame; it never rejects.
+   */
+  addFiles: (data: BinaryFileData[]) => Promise<void>;
+  /** Drops all files and decoded images except the given file ids. */
+  retainFiles: (fileIds: Iterable<string>) => void;
   id: string;
   setActiveTool: InstanceType<typeof App>["setActiveTool"];
   setCursor: InstanceType<typeof App>["cursor"]["set"];

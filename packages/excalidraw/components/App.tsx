@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import throttle from "lodash.throttle";
 import React, { useContext } from "react";
-import { flushSync } from "react-dom";
+import { flushSync, unstable_batchedUpdates } from "react-dom";
 import rough from "roughjs/bin/rough";
 import { nanoid } from "nanoid";
 
@@ -821,6 +821,7 @@ class App extends React.Component<AppProps, AppState> {
       mutateElement: this.mutateElement,
       updateLibrary: this.library.updateLibrary,
       addFiles: this.addFiles,
+      retainFiles: this.retainFiles,
       resetScene: this.resetScene,
       getSceneElementsIncludingDeleted: this.getSceneElementsIncludingDeleted,
       getSceneElementsMapIncludingDeleted:
@@ -5098,16 +5099,66 @@ class App extends React.Component<AppProps, AppState> {
    * adds supplied files to existing files in the appState.
    * NOTE if file already exists in editor state, the file data is not updated
    * */
-  public addFiles: ExcalidrawImperativeAPI["addFiles"] = withBatchedUpdates(
-    (files) => {
-      const { addedFiles } = this.addMissingFiles(files);
+  public addFiles: ExcalidrawImperativeAPI["addFiles"] = (files) => {
+    let addedFiles: BinaryFiles = {};
+    let sceneImages: Promise<void> = Promise.resolve();
+    unstable_batchedUpdates(() => {
+      addedFiles = this.addMissingFiles(files).addedFiles;
 
       this.clearImageShapeCache(addedFiles);
       this.scene.triggerUpdate();
 
-      this.addNewImagesToImageCache();
-    },
-  );
+      sceneImages = this.addNewImagesToImageCache();
+    });
+    return this.preloadImages(addedFiles, sceneImages);
+  };
+
+  /**
+   * Fills the image cache for the added files even when no element uses them
+   * yet (a host can preload before the elements land). Resolves when every
+   * file's image is decoded (or failed); never rejects.
+   */
+  private preloadImages = async (
+    addedFiles: BinaryFiles,
+    sceneImages: Promise<void>,
+  ) => {
+    const ids = Object.keys(addedFiles) as FileId[];
+    const { erroredFiles } = await _updateImageCache({
+      imageCache: this.imageCache,
+      fileIds: ids.filter((id) => !this.imageCache.has(id)),
+      files: this.files,
+    });
+    // an errored entry would block the render path from retrying and flagging
+    // the element, so leave those uncached
+    for (const id of erroredFiles.keys()) {
+      this.imageCache.delete(id);
+    }
+    await Promise.allSettled([
+      sceneImages,
+      ...ids.map((id) => this.imageCache.get(id)?.image),
+    ]);
+  };
+
+  /**
+   * Drops every file (and its decoded image) that is not in `fileIds`. For a
+   * host that swaps the scene in place: without it the files of every
+   * earlier scene stay in memory for the editor's lifetime.
+   */
+  public retainFiles: ExcalidrawImperativeAPI["retainFiles"] = (fileIds) => {
+    const keep = new Set<string>(fileIds);
+    const nextFiles: BinaryFiles = {};
+    for (const [id, file] of Object.entries(this.files)) {
+      if (keep.has(id)) {
+        nextFiles[id] = file;
+      }
+    }
+    this.files = nextFiles;
+    for (const id of [...this.imageCache.keys()]) {
+      if (!keep.has(id)) {
+        this.imageCache.delete(id);
+      }
+    }
+  };
 
   private addMissingFiles = (
     files: BinaryFiles | BinaryFileData[],
