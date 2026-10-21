@@ -127,6 +127,8 @@ describe("parse and merge", () => {
       toolArrow: {},
       toolLine: {},
       toolText: {},
+      tabsOpenFromNavigator: "current",
+      tabsRestore: true,
     });
     expect(resolveSettings({ templatesFolder: "T/x" }, prefs)).toMatchObject({
       templatesFolder: "T/x",

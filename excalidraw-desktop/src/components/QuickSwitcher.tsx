@@ -442,7 +442,11 @@ export const QuickSwitcher = ({
     }
     if (row.kind === "drawing") {
       recordRecent(row.key, win);
-      onOpenDrawing(row.drawing.path, keepOpen ? { target: "new" } : undefined);
+      if (keepOpen) {
+        onOpenDrawing(row.drawing.path, { target: "new" });
+      } else {
+        onOpenDrawing(row.drawing.path);
+      }
       return;
     }
     if (row.kind === "create") {

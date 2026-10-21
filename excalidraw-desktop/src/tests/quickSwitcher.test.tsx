@@ -277,11 +277,16 @@ describe("QuickSwitcher", () => {
     }
   });
 
-  it("Mod+Enter on a drawing opens it like Enter", async () => {
+  it("Mod+Enter on a drawing opens it in a new tab", async () => {
     const h = await setup();
     type("roadm");
     key("Enter", { metaKey: true });
-    expect(h.onOpenDrawing).toHaveBeenCalledWith("Projects/roadmap.excalidraw");
+    expect(h.onOpenDrawing).toHaveBeenCalledWith(
+      "Projects/roadmap.excalidraw",
+      {
+        target: "new",
+      },
+    );
     expect(h.onRunItem).not.toHaveBeenCalled();
   });
 
