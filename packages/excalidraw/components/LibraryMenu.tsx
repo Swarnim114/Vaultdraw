@@ -221,7 +221,9 @@ const usePendingElementsMemo = (
       // Reading directly from app.state to make it clear it's not reactive
       // (hence, there's potential for stale state)
       app.state.cursorButton === "up" &&
-      app.state.activeTool.type === "selection"
+      // lasso is a selection tool too (the default one in the phone layout)
+      (app.state.activeTool.type === "selection" ||
+        app.state.activeTool.type === "lasso")
     ) {
       setState((prev) => {
         // if selectedElementIds changed, we don't have to compare versions
