@@ -53,6 +53,8 @@ const OUT = process.env.SMOOTH_OUT;
 const SWITCHES = Number(process.env.SMOOTH_SWITCHES ?? 10);
 const MRU_SWITCHES = Number(process.env.SMOOTH_MRU_SWITCHES ?? 4);
 const LAT = process.env.SMOOTH_LAT === "1";
+// CPU throttle for the correctness test (SMOOTH_RATE=4 = low-end).
+const RATE = Number(process.env.SMOOTH_RATE ?? 1);
 const WINDOW_MS = 500;
 const PRE_MS = 50;
 const SETTLE_MS = 700;
@@ -294,6 +296,8 @@ test.describe("smooth tab switching", () => {
     expect(s.noise.local).toBeLessThan(LOCAL_T / 2);
     expect(s.ab.mean).toBeGreaterThan(MEAN_T * 5);
 
+    const throttleCdp = await page.context().newCDPSession(page);
+    await throttleCdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
     // currently shown: Alpha (last settle in prepare)
     let shown: "Alpha" | "Beta" = "Alpha";
     const results: SwitchResult[] = [];
@@ -309,7 +313,7 @@ test.describe("smooth tab switching", () => {
       shown = to;
       await settle(page, to); // the next switch starts from a settled editor
     }
-    save("smooth", results, s);
+    save(RATE > 1 ? `smooth-x${RATE}` : "smooth", results, s);
     const bad = results.flatMap((r) =>
       failuresOf(r).map((f) => `switch ${r.index} (${r.how} -> ${r.to}): ${f}`),
     );
