@@ -108,6 +108,26 @@ const MAPPING: Record<ToolStyleKey, KeyMapping> = {
   text_align: direct("currentItemTextAlign", "textAlign"),
 };
 
+/** Every AppState field a style key drives (the only ones the recorder diffs). */
+export const STYLE_FIELDS: readonly Field[] = (
+  Object.keys(MAPPING) as ToolStyleKey[]
+).map((key) => MAPPING[key].field);
+
+/** The style key behind an AppState field, if it is one of the mapped ones. */
+export const styleKeyOfField = (field: Field): ToolStyleKey | undefined =>
+  (Object.keys(MAPPING) as ToolStyleKey[]).find(
+    (key) => MAPPING[key].field === field,
+  );
+
+/** The AppState field of a style key. */
+export const fieldOfStyleKey = (key: ToolStyleKey): Field => MAPPING[key].field;
+
+/** A key's current value in `appState`, in style terms (stroke width in px). */
+export const styleKeyValue = (
+  key: ToolStyleKey,
+  appState: Partial<AppState>,
+): unknown => MAPPING[key].fromState(appState[MAPPING[key].field]);
+
 /** AppState patch for the keys the style sets (and the tool understands). */
 export function styleToAppState(
   tool: StyledTool,

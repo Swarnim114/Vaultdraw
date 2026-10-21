@@ -49,6 +49,8 @@ import { getPreferences, updatePreferences } from "../vault/preferences";
 import { PenBar } from "../pens/PenBar";
 
 import { usePens } from "../pens/usePens";
+import { baseStyleAppState } from "../toolDefaults/baseStyle";
+import { readDrawingStyles } from "../toolDefaults/drawingStyles";
 import { useToolDefaults } from "../toolDefaults/useToolDefaults";
 import { useFormulaCommands } from "../formula/useFormulaCommands";
 
@@ -178,7 +180,12 @@ const VaultEditorComponent = ({
   const editorLinks = useVaultEditorLinks(libraryApi, hostEl, links);
   const pens = usePens(apiRef, !readOnly && !disabled);
   const onPenAppState = pens.onAppState;
-  const toolDefaults = useToolDefaults(apiRef, !readOnly && !disabled);
+  const scheduleSaveRef = useRef<() => void>(() => {});
+  const toolDefaults = useToolDefaults(apiRef, !readOnly && !disabled, {
+    onOverridesChange: () => scheduleSaveRef.current(),
+  });
+  const { getDrawingStyles, getOverridesVersion, loadDrawingStyles } =
+    toolDefaults;
   const onToolAppState = toolDefaults.onAppState;
   useEditorPalette({
     apiRef,
@@ -295,6 +302,8 @@ const VaultEditorComponent = ({
       scene.appState = {
         ...scene.appState,
         ...exportOptionsToAppState(loadExportOptions()),
+        // saved currentItem* never wins: base = [editor] over built-ins
+        ...baseStyleAppState(getPreferences()),
         fileHandle: null,
         ...(restoreRef.current?.view && {
           scrollX: restoreRef.current.view.scrollX,
@@ -304,6 +313,7 @@ const VaultEditorComponent = ({
           },
         }),
       };
+      loadDrawingStyles(readDrawingStyles(initialSource.json));
       return scene;
     } catch (cause) {
       setEditorError(cause instanceof Error ? cause.message : String(cause));
@@ -347,9 +357,26 @@ const VaultEditorComponent = ({
     }
     pendingChanges.current = false;
     callbackRef.current(
-      serializeSceneForSave(current[0], current[1], current[2]),
+      serializeSceneForSave(
+        current[0],
+        current[1],
+        current[2],
+        getDrawingStyles(),
+      ),
     );
-  }, []);
+  }, [getDrawingStyles]);
+
+  const scheduleSave = useCallback(() => {
+    pendingChanges.current = true;
+    if (timer.current) {
+      clearTimeout(timer.current);
+    }
+    timer.current = setTimeout(serializePending, IDLE_SERIALIZE_MS);
+    if (!maxTimer.current) {
+      maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
+    }
+  }, [serializePending]);
+  scheduleSaveRef.current = scheduleSave;
 
   const flushImmediate = useCallback(
     (options?: FlushOptions) => {
@@ -412,7 +439,11 @@ const VaultEditorComponent = ({
         releasePreview.current();
         releasePreview.current = null;
       }
-      const nextSignature = getSaveSignature(elements, appState);
+      const nextSignature = getSaveSignature(
+        elements,
+        appState,
+        getOverridesVersion(),
+      );
       const fileChanged =
         Object.keys(files).length !== Object.keys(fileRefs.current).length ||
         Object.keys(files).some((id) => files[id] !== fileRefs.current[id]);
@@ -421,16 +452,16 @@ const VaultEditorComponent = ({
       }
       signature.current = nextSignature;
       fileRefs.current = files;
-      pendingChanges.current = true;
-      if (timer.current) {
-        clearTimeout(timer.current);
-      }
-      timer.current = setTimeout(serializePending, IDLE_SERIALIZE_MS);
-      if (!maxTimer.current) {
-        maxTimer.current = setTimeout(serializePending, MAX_SERIALIZE_MS);
-      }
+      scheduleSave();
     },
-    [serializePending, onAppState, onPenAppState, onToolAppState, onPageChange],
+    [
+      scheduleSave,
+      getOverridesVersion,
+      onAppState,
+      onPenAppState,
+      onToolAppState,
+      onPageChange,
+    ],
   );
 
   const onInitialize = useCallback(
@@ -445,13 +476,14 @@ const VaultEditorComponent = ({
       signature.current = getSaveSignature(
         latest.current[0],
         latest.current[1],
+        getOverridesVersion(),
       );
       fileRefs.current = latest.current[2];
       ready.current = true;
       onPageChange(latest.current[0], latest.current[1]);
       setApiReady(true);
     },
-    [onPageChange],
+    [onPageChange, getOverridesVersion],
   );
 
   // Tabs: bring back this document's undo history (kept only when the file is
@@ -534,6 +566,7 @@ const VaultEditorComponent = ({
         api.getSceneElements(),
         api.getAppState(),
         api.getFiles(),
+        getDrawingStyles(),
       );
       const blob = new ownerDocument.defaultView!.Blob([json], {
         type: "application/json",
@@ -549,7 +582,7 @@ const VaultEditorComponent = ({
       exportingRef.current = false;
       setExporting(false);
     }
-  }, []);
+  }, [getDrawingStyles]);
 
   // Every image export (dialog, shortcuts, context menu copy) lands here.
   // Throwing makes the editor show its own error.
@@ -713,6 +746,7 @@ const VaultEditorComponent = ({
         currentItemStrokeWidth={toolDefaults.currentItemStrokeWidth}
         newTextStyle={toolDefaults.newTextStyle}
         newContainerStyle={toolDefaults.newContainerStyle}
+        styleOverrides={toolDefaults.styleOverrides}
         laserPointerOptions={pens.laserPointerOptions}
         libraryUIOptions={libraryUIOptions}
         UIOptions={{

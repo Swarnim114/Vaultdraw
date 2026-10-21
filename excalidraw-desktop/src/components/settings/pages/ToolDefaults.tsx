@@ -73,9 +73,11 @@ const NUMBER_HINTS: Partial<Record<ToolStyleKey, string>> = {
   stroke_width: "px",
   opacity: "%",
   font_size: "px",
-  font_family:
-    "[editor] defaults only seed new drawings; existing drawings keep their own fonts.",
+  font_family: "Default = the font set on the Drawing page.",
 };
+
+const SCOPE_NOTE =
+  "New elements use these defaults in every drawing. A style you pick inside a drawing applies to that drawing only; use “Use default” in the style panel or the command “Reset this drawing's styles to defaults” to go back.";
 
 const COLOR_PRESETS: Partial<Record<ToolStyleKey, readonly string[]>> = {
   stroke_color: STROKE_COLORS,
@@ -338,6 +340,9 @@ export const ToolStylePanel = ({ tool }: { tool: StyledTool }) => {
         />
       </ToolsPanelHeader>
       <ScopeErrors />
+      <p className="vault-tools-legend" data-testid="tool-scope-note">
+        {SCOPE_NOTE}
+      </p>
       <ToolStylePreview
         tool={tool}
         style={style}

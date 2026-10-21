@@ -1,42 +1,121 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CaptureUpdateAction } from "@excalidraw/excalidraw";
 
 import type {
   AppState,
   ExcalidrawImperativeAPI,
+  StyleOverridesHook,
 } from "@excalidraw/excalidraw/types";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { registerCommandHandlers } from "../commands/handlerRegistry";
+import { getPreferences, subscribePreferences } from "../vault/preferences";
 import {
   getEffectiveToolDefaults,
   subscribeToolDefaults,
 } from "../vault/toolDefaultsStore";
 
+import { baseStyleAppState, editorDefaultsKey } from "./baseStyle";
+import {
+  clearDrawingStyle,
+  effectiveToolStyle,
+  isEmptyDrawingStyles,
+  setDrawingStyle,
+  type DrawingStyles,
+} from "./drawingStyles";
 import { createToolDefaultHandlers } from "./toolDefaultCommands";
 import {
-  captureToolStyle,
+  STYLE_FIELDS,
   newContainerStyleOf,
   newTextStyleOf,
   newToolSession,
+  styleKeyOfField,
+  styleKeyValue,
   switchTool,
 } from "./toolApply";
-import { getToolMemory, rememberToolStyle } from "./toolMemory";
-import { isEmptyStyle, isStyledTool, type StyledTool } from "./toolStyles";
+import {
+  TOOL_STYLE_KEYS,
+  isEmptyStyle,
+  isStyledTool,
+  type StyledTool,
+  type ToolStyleKey,
+} from "./toolStyles";
 
 import type { RefObject } from "react";
 
+type Field = keyof AppState;
+type Loose = Record<string, unknown>;
+
+const ownsKey = (tool: StyledTool, key: ToolStyleKey) =>
+  TOOL_STYLE_KEYS[tool].includes(key);
+
+const hasSelection = (selected: AppState["selectedElementIds"]) => {
+  for (const id in selected) {
+    if (selected[id]) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** Mapped fields whose value differs (null when none: no allocation). */
+function changedFields(a: Partial<AppState>, b: Partial<AppState>) {
+  let changed: Field[] | null = null;
+  for (const field of STYLE_FIELDS) {
+    if (a[field] !== b[field]) {
+      (changed ??= []).push(field);
+    }
+  }
+  return changed;
+}
+
 /**
- * Applies each tool's saved default style when the tool becomes active (and
- * undoes it when it stops being). Observes the editor's onChange: every
- * change costs two ref writes and one string compare; work happens only when
- * the active tool changes. Nothing here re-renders React.
+ * The styled tool types a selection (or the text being edited) stands for:
+ * its elements' types, plus "text" for a container with a bound label.
+ */
+function selectionTools(
+  api: ExcalidrawImperativeAPI,
+  appState: AppState,
+): Set<StyledTool> {
+  const tools = new Set<StyledTool>();
+  if (appState.editingTextElement) {
+    tools.add("text");
+  }
+  const selected = appState.selectedElementIds;
+  for (const el of api.getSceneElements() as readonly ExcalidrawElement[]) {
+    if (!selected[el.id]) {
+      continue;
+    }
+    if (isStyledTool(el.type)) {
+      tools.add(el.type);
+    }
+    if (el.boundElements?.some((b) => b.type === "text")) {
+      tools.add("text");
+    }
+  }
+  return tools;
+}
+
+export interface ToolDefaultsOptions {
+  /** The drawing's overrides changed (the editor schedules a save). */
+  onOverridesChange?: () => void;
+}
+
+/**
+ * Applies each tool's style when the tool becomes active: its effective
+ * default (global, This vault) with this drawing's picks on top. A style
+ * picked inside the drawing is recorded as a per-drawing override (saved
+ * with the drawing by the editor). Observes the editor's onChange: every
+ * change costs a few ref writes and up to 14 field compares; work happens
+ * only when the tool or a style field changed. Nothing here re-renders React
+ * except when the overrides change.
  */
 export function useToolDefaults(
   apiRef: RefObject<ExcalidrawImperativeAPI | null>,
   enabled: boolean,
+  { onOverridesChange }: ToolDefaultsOptions = {},
 ) {
   const session = useRef(newToolSession());
   const tool = useRef<string | null>(null);
@@ -44,26 +123,18 @@ export function useToolDefaults(
   const styleKey = useRef("null");
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  const changeRef = useRef(onOverridesChange);
+  changeRef.current = onOverridesChange;
+  const drawing = useRef<DrawingStyles>({});
+  const version = useRef(0);
+  const [overridesVersion, setOverridesVersion] = useState(0);
 
-  const enter = useCallback(
-    (type: string | null, appState: AppState) => {
-      const defaults = getEffectiveToolDefaults();
-      const saved = isStyledTool(type) ? defaults[type] : undefined;
-      styleKey.current = JSON.stringify(saved ?? null);
-      // what the tool was last used with wins over its saved default
-      const remembered = isStyledTool(type) ? getToolMemory(type) : undefined;
-      const styles = remembered
-        ? { ...defaults, [type as string]: remembered }
-        : defaults;
-      const out = switchTool(session.current, type, appState, styles);
-      session.current = out.session;
-      // the editor reports the patched state on its next change; until then
-      // that is what was last seen
-      session.current.lastSeen = { ...appState, ...out.patch };
+  const patchScene = useCallback(
+    (patch: Loose) => {
       const api = apiRef.current;
-      if (api && enabledRef.current && Object.keys(out.patch).length > 0) {
+      if (api && enabledRef.current && Object.keys(patch).length > 0) {
         api.updateScene({
-          appState: out.patch as AppState,
+          appState: patch as unknown as AppState,
           captureUpdate: CaptureUpdateAction.NEVER,
         });
       }
@@ -71,20 +142,127 @@ export function useToolDefaults(
     [apiRef],
   );
 
-  /** Remember the style `leaving` was last used with (the state seen while it was active). */
-  const remember = useCallback((leaving: string | null) => {
-    const style = captureToolStyle(
-      session.current,
-      leaving,
-      session.current.lastSeen,
-    );
-    if (style && isStyledTool(leaving)) {
-      rememberToolStyle(leaving, style);
-    }
+  const styleOf = useCallback(
+    (type: string | null) =>
+      isStyledTool(type)
+        ? effectiveToolStyle(getEffectiveToolDefaults(), drawing.current, type)
+        : undefined,
+    [],
+  );
+
+  /** Enter `type` from `appState` (`extra`: fields already merged into it that still have to be sent). */
+  const enter = useCallback(
+    (type: string | null, appState: AppState, extra: Loose = {}) => {
+      const style = styleOf(type);
+      styleKey.current = JSON.stringify(style ?? null);
+      const out = switchTool(
+        session.current,
+        type,
+        appState,
+        isStyledTool(type) && style ? { [type]: style } : {},
+      );
+      session.current = out.session;
+      // the editor reports the patched state on its next change; until then
+      // that is what was last seen (so our own patches never record)
+      session.current.lastSeen = { ...appState, ...out.patch };
+      patchScene({ ...extra, ...out.patch });
+    },
+    [styleOf, patchScene],
+  );
+
+  /** Re-apply the active tool (and, with `base`, the [editor] base style) without touching elements. */
+  const resync = useCallback(
+    (base: boolean) => {
+      const live = apiRef.current?.getAppState() ?? state.current;
+      if (!live) {
+        return;
+      }
+      session.current.lastSeen = live;
+      if (!base) {
+        enter(tool.current, live);
+        return;
+      }
+      const left = switchTool(session.current, null, live, {});
+      session.current = left.session;
+      const wanted: Loose = {
+        ...left.patch,
+        ...baseStyleAppState(getPreferences()),
+      };
+      const extra: Loose = {};
+      for (const field of Object.keys(wanted)) {
+        if (wanted[field] !== (live as unknown as Loose)[field]) {
+          extra[field] = wanted[field];
+        }
+      }
+      enter(tool.current, { ...live, ...extra }, extra);
+    },
+    [apiRef, enter],
+  );
+
+  const commit = useCallback((next: DrawingStyles) => {
+    drawing.current = next;
+    version.current += 1;
+    setOverridesVersion(version.current);
+    changeRef.current?.();
   }, []);
 
-  // The editor going away (drawing switch) leaves the active tool too.
-  useEffect(() => () => remember(tool.current), [remember]);
+  /** Record the mapped fields that changed while the tool stayed the same. */
+  const record = useCallback(
+    (appState: AppState, seen: Partial<AppState>, changed: Field[]) => {
+      const api = apiRef.current;
+      const selecting =
+        !!api &&
+        (!!appState.editingTextElement ||
+          hasSelection(appState.selectedElementIds));
+      const picked = selecting ? selectionTools(api, appState) : null;
+      const activeType = appState.activeTool.type;
+      const active = isStyledTool(activeType) ? activeType : null;
+      const restore: Loose = {};
+      let next = drawing.current;
+      for (const field of changed) {
+        const key = styleKeyOfField(field);
+        if (!key) {
+          continue;
+        }
+        const value = styleKeyValue(key, appState);
+        const activeOwns = !!active && ownsKey(active, key);
+        if (picked) {
+          let owned = false;
+          for (const t of picked) {
+            if (ownsKey(t, key)) {
+              owned = true;
+              next = setDrawingStyle(next, t, key, value);
+            }
+          }
+          if (owned && !activeOwns) {
+            restore[field] = (seen as Loose)[field];
+            continue;
+          }
+        } else if (activeOwns) {
+          next = setDrawingStyle(next, active, key, value);
+        } else {
+          continue;
+        }
+        if (activeOwns && session.current.tool === active) {
+          // the active tool's applied style follows the pick (px width too)
+          session.current.applied[field] = (appState as unknown as Loose)[
+            field
+          ];
+          if (key === "stroke_width") {
+            session.current.strokeWidthPx = value as number;
+          }
+        }
+      }
+      if (Object.keys(restore).length > 0) {
+        session.current.lastSeen = { ...appState, ...restore };
+        patchScene(restore);
+      }
+      if (next !== drawing.current) {
+        commit(next);
+      }
+    },
+    [apiRef, patchScene, commit],
+  );
 
   /** Called with every editor change. */
   const onAppState = useCallback(
@@ -92,40 +270,51 @@ export function useToolDefaults(
       const type = appState.activeTool.type;
       state.current = appState;
       if (type !== tool.current) {
-        remember(tool.current);
         tool.current = type;
         // session.lastSeen is still the state before this change; enter()
         // leaves it at the patched state
         enter(type, appState);
-      } else {
-        session.current.lastSeen = appState;
+        return;
+      }
+      const seen = session.current.lastSeen;
+      session.current.lastSeen = appState;
+      const changed = seen && changedFields(seen, appState);
+      if (changed) {
+        record(appState, seen, changed);
       }
     },
-    [enter, remember],
+    [enter, record],
   );
 
   // Defaults edited (settings, live reload, vault switch) for the active tool.
   useEffect(
     () =>
       subscribeToolDefaults(() => {
-        const current = state.current;
-        if (!current || tool.current === null) {
+        if (!state.current || tool.current === null) {
           return;
         }
-        const type = tool.current;
-        const style = isStyledTool(type)
-          ? getEffectiveToolDefaults()[type]
-          : undefined;
-        if (JSON.stringify(style ?? null) !== styleKey.current) {
-          // re-apply: everything we applied is restored first (nothing was
-          // changed by someone else as far as this call is concerned)
-          const live = apiRef.current?.getAppState() ?? current;
-          session.current.lastSeen = live;
-          enter(type, live);
+        if (
+          JSON.stringify(styleOf(tool.current) ?? null) !== styleKey.current
+        ) {
+          resync(false);
         }
       }),
-    [enter, apiRef],
+    [styleOf, resync],
   );
+
+  // [editor] defaults edited: the base style follows (elements are untouched).
+  useEffect(() => {
+    let last = editorDefaultsKey(getPreferences());
+    return subscribePreferences(() => {
+      const next = editorDefaultsKey(getPreferences());
+      if (next !== last) {
+        last = next;
+        if (state.current) {
+          resync(true);
+        }
+      }
+    });
+  }, [resync]);
 
   /** Width in px for a new element, or null (use the panel's width key). */
   const currentItemStrokeWidth = useCallback(
@@ -148,32 +337,100 @@ export function useToolDefaults(
 
   /**
    * The Text tool's style for text created without it (double-click, Enter
-   * on a shape, labels, paste): remembered, else saved default. Null while
-   * the Text tool is active (its style is already the editor's) or when the
-   * Text tool has no default (the editor's current style, as upstream).
+   * on a shape, labels, paste): its default with this drawing's picks. Null
+   * while the Text tool is active (its style is already the editor's) or when
+   * nothing is set (the editor's current style, as upstream).
    */
   const newTextStyle = useCallback(() => {
     if (!enabledRef.current || tool.current === "text") {
       return null;
     }
-    const saved = getEffectiveToolDefaults().text;
-    if (isEmptyStyle(saved)) {
-      return null;
-    }
-    return newTextStyleOf(getToolMemory("text") ?? saved!);
-  }, []);
+    const style = styleOf("text");
+    return isEmptyStyle(style) ? null : newTextStyleOf(style!);
+  }, [styleOf]);
 
   /** The Rectangle tool's style for "Wrap selection in container". */
   const newContainerStyle = useCallback(() => {
     if (!enabledRef.current) {
       return null;
     }
-    const saved = getEffectiveToolDefaults().rectangle;
-    if (isEmptyStyle(saved)) {
-      return null;
+    const style = styleOf("rectangle");
+    return isEmptyStyle(style) ? null : newContainerStyleOf(style!);
+  }, [styleOf]);
+
+  /** The tools a style panel edit applies to: the selection's types, else the active tool. */
+  const scopeTools = useCallback((): StyledTool[] => {
+    const api = apiRef.current;
+    if (!api) {
+      return [];
     }
-    return newContainerStyleOf(getToolMemory("rectangle") ?? saved!);
+    const s = api.getAppState();
+    if (s.editingTextElement || hasSelection(s.selectedElementIds)) {
+      return [...selectionTools(api, s)];
+    }
+    return isStyledTool(s.activeTool.type) ? [s.activeTool.type] : [];
+  }, [apiRef]);
+
+  const keysOf = (fields: readonly Field[]) =>
+    fields.flatMap((f) => styleKeyOfField(f) ?? []);
+
+  // new identity whenever the overrides change (the style panel re-renders)
+  const styleOverrides = useMemo<StyleOverridesHook>(
+    () => ({
+      isOverridden: (fields) => {
+        const keys = keysOf(fields);
+        return (
+          keys.length > 0 &&
+          scopeTools().some((t) =>
+            keys.some((key) => drawing.current[t]?.[key] !== undefined),
+          )
+        );
+      },
+      useDefault: (fields) => {
+        const tools = scopeTools();
+        const next = clearDrawingStyle(drawing.current, tools, keysOf(fields));
+        if (next === drawing.current) {
+          return;
+        }
+        commit(next);
+        if (isStyledTool(tool.current) && tools.includes(tool.current)) {
+          resync(false);
+        }
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overridesVersion, scopeTools, commit, resync],
+  );
+
+  /** Forget every pick of this drawing (palette command). */
+  const resetDrawingStyles = useCallback(() => {
+    if (isEmptyDrawingStyles(drawing.current)) {
+      return;
+    }
+    commit({});
+    if (isStyledTool(tool.current)) {
+      resync(false);
+    }
+  }, [commit, resync]);
+
+  /** A tool's default was saved or reset: this drawing's picks for it no longer apply. */
+  const clearToolOverrides = useCallback(
+    (t: StyledTool) => {
+      const next = clearDrawingStyle(drawing.current, [t]);
+      if (next !== drawing.current) {
+        commit(next);
+      }
+    },
+    [commit],
+  );
+
+  /** The overrides the drawing was opened with (no save, no render). */
+  const loadDrawingStyles = useCallback((styles: DrawingStyles) => {
+    drawing.current = styles;
   }, []);
+
+  const getDrawingStyles = useCallback(() => drawing.current, []);
+  const getOverridesVersion = useCallback(() => version.current, []);
 
   useEffect(
     () =>
@@ -181,9 +438,12 @@ export function useToolDefaults(
         createToolDefaultHandlers({
           api: () => apiRef.current,
           strokePx: (t: StyledTool) => currentItemStrokeWidth(t),
+          drawingStyle: (t: StyledTool) => drawing.current[t],
+          clearToolOverrides,
+          resetDrawingStyles,
         }),
       ),
-    [apiRef, currentItemStrokeWidth],
+    [apiRef, currentItemStrokeWidth, clearToolOverrides, resetDrawingStyles],
   );
 
   return {
@@ -191,5 +451,10 @@ export function useToolDefaults(
     currentItemStrokeWidth,
     newTextStyle,
     newContainerStyle,
+    styleOverrides,
+    resetDrawingStyles,
+    loadDrawingStyles,
+    getDrawingStyles,
+    getOverridesVersion,
   };
 }

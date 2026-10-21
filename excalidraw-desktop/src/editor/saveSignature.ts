@@ -15,9 +15,11 @@ export const getSaveSignature = (
     | "viewBackgroundPattern"
     | "pageSetup"
   >,
+  /** Version of the drawing's style overrides (they are saved with the file). */
+  stylesVersion = 0,
 ) =>
   `${getSceneVersion(elements)}|${appState.viewBackgroundColor}|${
     appState.gridModeEnabled
   }|${backgroundPatternKey(appState.viewBackgroundPattern)}|${pageSetupKey(
     appState.pageSetup,
-  )}`;
+  )}|${stylesVersion}`;

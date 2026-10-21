@@ -3,7 +3,6 @@
  * tiny pure-ish store for the editor hook and the palette commands. Reads
  * the two existing stores; owns no state besides subscriptions.
  */
-import { clearToolMemory } from "../toolDefaults/toolMemory";
 import {
   isEmptyStyle,
   orderedStyle,
@@ -68,36 +67,6 @@ export function subscribeToolDefaults(cb: () => void): () => void {
     offVault();
   };
 }
-
-/**
- * A tool whose effective default changed (Settings, config reload, the This
- * vault switch) forgets its remembered style, so the new default takes effect.
- * Installed once at import, so it also works while no editor is open; it is
- * registered before any editor subscribes, so memory is clear by the time an
- * open editor re-applies.
- */
-function forgetMemoryOfChangedDefaults() {
-  const snapshot = () =>
-    Object.fromEntries(
-      TOOL_DEFAULT_TOOLS.map((tool) => [
-        tool,
-        JSON.stringify(getEffectiveToolDefaults()[tool] ?? null),
-      ]),
-    ) as Record<StyledTool, string>;
-  let last = snapshot();
-  const check = () => {
-    const next = snapshot();
-    for (const tool of TOOL_DEFAULT_TOOLS) {
-      if (next[tool] !== last[tool]) {
-        clearToolMemory(tool);
-      }
-    }
-    last = next;
-  };
-  subscribePreferences(check);
-  subscribeVaultSettings(check);
-}
-forgetMemoryOfChangedDefaults();
 
 async function writeToolDefault(
   tool: StyledTool,

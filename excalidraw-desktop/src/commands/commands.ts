@@ -8,6 +8,7 @@ import { HISTORY_COMMANDS } from "../history/historyCommands";
 import { SETTINGS_PAGES } from "../components/settings/schema";
 import { MAX_PEN_PRESETS } from "../pens/penPresets";
 import {
+  TOOL_DEFAULT_RESET_DRAWING_ID,
   TOOL_DEFAULT_SAVE_ACTIVE_ID,
   toolDefaultResetId,
   toolDefaultSaveId,
@@ -74,6 +75,13 @@ const TOOL_DEFAULT_COMMANDS: CommandDefinition[] = [
   {
     id: TOOL_DEFAULT_SAVE_ACTIVE_ID,
     title: "Tool defaults: Save current style for this tool",
+    category: "Tool defaults",
+    keys: { default: [] },
+    when: ["drawingOpen", "!textEditing", "!modalOpen"],
+  },
+  {
+    id: TOOL_DEFAULT_RESET_DRAWING_ID,
+    title: "Tool defaults: Reset this drawing's styles to defaults",
     category: "Tool defaults",
     keys: { default: [] },
     when: ["drawingOpen", "!textEditing", "!modalOpen"],

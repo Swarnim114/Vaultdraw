@@ -1,11 +1,16 @@
 import { serializeAsJSON } from "@excalidraw/excalidraw";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
+
 import type {
   AppState,
   BinaryFileData,
   BinaryFiles,
 } from "@excalidraw/excalidraw/types";
+
+import { appendDrawingStyles } from "../toolDefaults/drawingStyles";
+
+import type { DrawingStyles } from "../toolDefaults/drawingStyles";
 
 /**
  * Scene serializer for autosave and "Save a copy".
@@ -119,8 +124,22 @@ const referencedFiles = (
   return next;
 };
 
-/** Byte-identical to `serializeAsJSON(elements, appState, files, "local")`. */
+/**
+ * Byte-identical to `serializeAsJSON(elements, appState, files, "local")`,
+ * plus the drawing's style overrides as a trailing `vaultdraw` block when
+ * there are any.
+ */
 export const serializeSceneForSave = (
+  elements: readonly ExcalidrawElement[],
+  appState: Partial<AppState>,
+  files: BinaryFiles,
+  styles?: DrawingStyles,
+): string =>
+  styles
+    ? appendDrawingStyles(serializeScene(elements, appState, files), styles)
+    : serializeScene(elements, appState, files);
+
+const serializeScene = (
   elements: readonly ExcalidrawElement[],
   appState: Partial<AppState>,
   files: BinaryFiles,

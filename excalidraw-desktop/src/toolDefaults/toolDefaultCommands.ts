@@ -15,18 +15,19 @@ import { resetToolDefault, saveToolDefault } from "../vault/toolDefaultsStore";
 import { toastStore } from "../toasts/toastStore";
 
 import {
+  TOOL_DEFAULT_RESET_DRAWING_ID,
   TOOL_DEFAULT_SAVE_ACTIVE_ID,
   toolDefaultResetId,
   toolDefaultSaveId,
 } from "./toolDefaultIds";
 
-import { clearToolMemory } from "./toolMemory";
 import { styleFromAppState, styleFromElement } from "./toolApply";
 import {
   TOOL_DEFAULT_TOOLS,
   TOOL_LABELS,
   isStyledTool,
   type StyledTool,
+  type ToolStyle,
 } from "./toolStyles";
 
 import type { CommandHandlers } from "../commands/types";
@@ -37,6 +38,12 @@ export interface ToolDefaultDeps {
   api: () => ExcalidrawImperativeAPI | null;
   /** Stroke width in px the active tool's saved style applied, else null. */
   strokePx: (tool: StyledTool) => number | null;
+  /** This drawing's picks for the tool. */
+  drawingStyle: (tool: StyledTool) => ToolStyle | undefined;
+  /** Forget this drawing's picks for the tool (its default changed). */
+  clearToolOverrides: (tool: StyledTool) => void;
+  /** Forget all of this drawing's picks. */
+  resetDrawingStyles: () => void;
 }
 
 /** First selected element of the tool's type (text: also bound text). */
@@ -88,11 +95,15 @@ export function createToolDefaultHandlers(
       return;
     }
     const element = selectedOfTool(api, tool);
+    // the editor's state, with this drawing's picks for the tool on top
     const style = element
       ? styleFromElement(tool, element)
-      : styleFromAppState(tool, api.getAppState(), deps.strokePx(tool));
+      : {
+          ...styleFromAppState(tool, api.getAppState(), deps.strokePx(tool)),
+          ...deps.drawingStyle(tool),
+        };
     // before the write, so the editor's re-apply sees the new default
-    clearToolMemory(tool);
+    deps.clearToolOverrides(tool);
     const layer = await saveToolDefault(tool, style);
     toast(
       `Saved ${TOOL_LABELS[tool]} style as the default (${
@@ -102,7 +113,7 @@ export function createToolDefaultHandlers(
   };
 
   const reset = async (tool: StyledTool) => {
-    clearToolMemory(tool);
+    deps.clearToolOverrides(tool);
     const layer = await resetToolDefault(tool);
     toast(
       `Reset ${TOOL_LABELS[tool]} default (${
@@ -125,6 +136,14 @@ export function createToolDefaultHandlers(
     await save(tool);
   };
 
+  const resetDrawing = () => {
+    if (!deps.api()) {
+      return;
+    }
+    deps.resetDrawingStyles();
+    toast("Reset this drawing's styles to defaults");
+  };
+
   return {
     ...Object.fromEntries(
       TOOL_DEFAULT_TOOLS.flatMap((tool) => [
@@ -133,5 +152,6 @@ export function createToolDefaultHandlers(
       ]),
     ),
     [TOOL_DEFAULT_SAVE_ACTIVE_ID]: saveActive,
+    [TOOL_DEFAULT_RESET_DRAWING_ID]: resetDrawing,
   };
 }

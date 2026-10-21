@@ -6,3 +6,4 @@ export const toolDefaultSaveId = (tool: StyledTool) =>
 export const toolDefaultResetId = (tool: StyledTool) =>
   `toolDefaults.reset.${tool}`;
 export const TOOL_DEFAULT_SAVE_ACTIVE_ID = "toolDefaults.saveActive";
+export const TOOL_DEFAULT_RESET_DRAWING_ID = "toolDefaults.resetDrawingStyles";

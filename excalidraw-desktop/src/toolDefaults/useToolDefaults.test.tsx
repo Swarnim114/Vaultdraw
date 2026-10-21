@@ -5,7 +5,8 @@ import { getCommand } from "../commands/commands";
 import { getRegisteredHandler } from "../commands/handlerRegistry";
 import { toastStore } from "../toasts/toastStore";
 
-import { clearAllToolMemory, getToolMemory } from "./toolMemory";
+import { updatePreferences } from "../vault/preferences";
+
 import { TOOL_DEFAULT_TOOLS } from "./toolStyles";
 import { useToolDefaults } from "./useToolDefaults";
 
@@ -80,7 +81,7 @@ function setup() {
 }
 
 beforeEach(() => {
-  clearAllToolMemory();
+  window.localStorage.clear();
   store.defaults = {
     arrow: {
       stroke_color: "#f08c00",
@@ -139,8 +140,8 @@ describe("useToolDefaults", () => {
     expect(width()("arrow")).toBe(3);
     expect(width()("line")).toBeNull();
     expect(width()("freedraw")).toBeNull();
-    t.set({ currentItemStrokeWidthKey: "bold" }); // manual change in the panel
-    expect(width()("arrow")).toBeNull();
+    t.set({ currentItemStrokeWidthKey: "bold" }); // a pick in the panel: its own px
+    expect(width()("arrow")).toBe(4);
     t.switchTo("selection");
     expect(width()("arrow")).toBeNull();
   });
@@ -282,114 +283,249 @@ describe("tool default commands", () => {
   });
 });
 
-describe("tool memory (last style per tool, until quit)", () => {
+describe("drawing overrides (picks inside this drawing)", () => {
   const RED = "#e03131";
+  const drawing = (t: ReturnType<typeof setup>) =>
+    t.hook.result.current.getDrawingStyles();
+  const arrow = (id = "a") => ({
+    id,
+    type: "arrow",
+    boundElements: [],
+  });
 
-  it("remembers a mid-session style across switches, per tool", () => {
+  it("records a pick made with the tool and brings it back on re-entry", () => {
     const t = setup();
     t.switchTo("arrow");
-    t.set({ currentItemStrokeColor: RED, currentItemStrokeStyle: "dashed" });
+    t.set({ currentItemStrokeColor: RED });
+    expect(drawing(t)).toEqual({ arrow: { stroke_color: RED } });
     t.switchTo("rectangle");
     expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
-    expect(t.state.currentItemStrokeStyle).toBe("solid");
     t.switchTo("arrow");
     expect(t.state).toMatchObject({
       currentItemStrokeColor: RED,
-      currentItemStrokeStyle: "dashed",
+      currentItemStrokeStyle: "dotted", // the saved default still fills the rest
     });
     t.switchTo("selection");
     expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
   });
 
-  it("remembers for tools with no saved default", () => {
-    const t = setup();
-    t.switchTo("ellipse");
-    t.set({ currentItemStrokeColor: RED });
-    t.switchTo("rectangle");
-    expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
-    t.switchTo("ellipse");
-    expect(t.state.currentItemStrokeColor).toBe(RED);
-  });
-
-  it("falls back to the saved default when nothing is remembered", () => {
+  it("never records our own patches (tool entry, re-apply)", () => {
     const t = setup();
     t.switchTo("arrow");
-    expect(t.state.currentItemStrokeColor).toBe("#f08c00");
-    expect(getToolMemory("arrow")).toBeUndefined();
+    t.emit();
+    store.defaults = { arrow: { stroke_color: "#1971c2" } };
+    act(() => store.listeners.forEach((cb) => cb()));
+    t.emit();
+    expect(drawing(t)).toEqual({});
   });
 
-  it("keeps the saved px when the width key is untouched, loses it when changed by hand", () => {
+  it("is per tool: a pick for the arrow does not touch the rectangle", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.set({ currentItemStrokeColor: RED });
+    t.switchTo("rectangle");
+    t.set({ currentItemStrokeColor: "#2f9e44" });
+    expect(drawing(t)).toEqual({
+      arrow: { stroke_color: RED },
+      rectangle: { stroke_color: "#2f9e44" },
+    });
+  });
+
+  it("records an arrow type cycled with the A key", () => {
+    const t = setup();
+    t.switchTo("arrow");
+    t.set({ currentItemArrowType: "elbow" });
+    expect(drawing(t)).toEqual({ arrow: { arrow_type: "elbow" } });
+  });
+
+  it("records the px of a picked width key and uses it for new elements", () => {
     const t = setup();
     const width = () => t.hook.result.current.currentItemStrokeWidth;
     t.switchTo("arrow");
-    t.set({ currentItemStrokeColor: RED });
-    t.switchTo("selection");
-    expect(getToolMemory("arrow")?.stroke_width).toBe(3);
-    t.switchTo("arrow");
     expect(width()("arrow")).toBe(3);
     t.set({ currentItemStrokeWidthKey: "bold" });
+    expect(drawing(t).arrow?.stroke_width).toBe(4);
+    expect(width()("arrow")).toBe(4);
+    t.set({ currentItemStrokeWidthKey: "medium" }); // back to the key of the 3 px default
+    expect(drawing(t).arrow?.stroke_width).toBe(2);
+    expect(width()("arrow")).toBe(2);
+  });
+
+  it("ignores freedraw, other tools, unmapped fields and plain selection-tool changes", () => {
+    const t = setup();
+    t.switchTo("freedraw");
+    t.set({ currentItemStrokeColor: RED });
     t.switchTo("selection");
-    expect(getToolMemory("arrow")?.stroke_width).toBe(4);
+    t.set({ currentItemOpacity: 40 });
     t.switchTo("arrow");
-    expect(width()("arrow")).toBe(4); // the hand-picked key wins over the 3 px
+    t.set({ currentItemStrokeVariability: "pressure" });
+    expect(drawing(t)).toEqual({});
   });
 
-  it("survives the editor remounting (drawing switch)", () => {
-    const first = setup();
-    first.switchTo("arrow");
-    first.set({ currentItemStrokeColor: RED });
-    first.hook.unmount(); // leaves the active tool
-    const second = setup();
-    second.switchTo("arrow");
-    expect(second.state.currentItemStrokeColor).toBe(RED);
+  it("records a selection edit for the selected element's tool and restores the base", () => {
+    const t = setup();
+    t.setElements([arrow()]);
+    t.set({ selectedElementIds: { a: true } });
+    t.set({ currentItemStrokeColor: RED });
+    expect(drawing(t)).toEqual({ arrow: { stroke_color: RED } });
+    expect(t.state.currentItemStrokeColor).toBe("#1e1e1e");
+    // the restore is not recorded again
+    t.emit();
+    expect(drawing(t)).toEqual({ arrow: { stroke_color: RED } });
   });
 
-  it("ignores style edits made with the selection tool", () => {
+  it("records a font picked for a selected container for the text tool only", () => {
+    const t = setup();
+    t.setElements([
+      {
+        id: "r",
+        type: "rectangle",
+        boundElements: [{ type: "text", id: "x" }],
+      },
+    ]);
+    t.set({ selectedElementIds: { r: true } });
+    t.set({ currentItemFontFamily: 3, currentItemStrokeColor: RED });
+    expect(drawing(t)).toEqual({
+      rectangle: { stroke_color: RED },
+      text: { stroke_color: RED, font_family: 3 },
+    });
+    expect(t.state.currentItemFontFamily).toBeUndefined();
+  });
+
+  it("counts a text being edited as a text pick without restoring the Text tool's own state", () => {
+    const t = setup();
+    t.switchTo("text");
+    t.set({ editingTextElement: { id: "t" } });
+    t.set({ currentItemFontSize: 40 });
+    expect(drawing(t)).toEqual({ text: { font_size: 40 } });
+    expect(t.state.currentItemFontSize).toBe(40);
+  });
+
+  it("does not record a selection of unstyled elements", () => {
+    const t = setup();
+    t.setElements([{ id: "f", type: "freedraw", boundElements: null }]);
+    t.set({ selectedElementIds: { f: true } });
+    t.set({ currentItemStrokeColor: RED });
+    expect(drawing(t)).toEqual({});
+    expect(t.state.currentItemStrokeColor).toBe(RED);
+  });
+
+  it("marks overridden properties for the active tool or the selection, and Use default clears them", () => {
     const t = setup();
     t.switchTo("arrow");
-    t.switchTo("selection");
-    t.set({ currentItemStrokeColor: RED }); // restyling a selected element
-    t.switchTo("rectangle");
-    t.switchTo("selection");
-    expect(getToolMemory("rectangle")?.stroke_color).toBe(RED); // shared baseline, not arrow's
-    expect(getToolMemory("arrow")?.stroke_color).toBe("#f08c00");
+    const before = t.hook.result.current.styleOverrides;
+    expect(before.isOverridden(["currentItemStrokeColor"])).toBe(false);
+    act(() => t.set({ currentItemStrokeColor: RED }));
+    const after = t.hook.result.current.styleOverrides;
+    expect(after).not.toBe(before);
+    expect(after.isOverridden(["currentItemStrokeColor"])).toBe(true);
+    expect(after.isOverridden(["currentItemOpacity"])).toBe(false);
+    expect(after.isOverridden(["currentItemFontSize"])).toBe(false);
+    act(() => after.useDefault(["currentItemStrokeColor"]));
+    expect(drawing(t)).toEqual({});
+    expect(t.state.currentItemStrokeColor).toBe("#f08c00"); // the effective default
+    expect(
+      t.hook.result.current.styleOverrides.isOverridden([
+        "currentItemStrokeColor",
+      ]),
+    ).toBe(false);
+    // what we resynced is not a pick
+    t.emit();
+    expect(drawing(t)).toEqual({});
   });
 
-  it("is cleared by save and reset, so the default wins", async () => {
+  it("scopes the marker to the selected types", () => {
+    const t = setup();
+    t.setElements([arrow(), { id: "r", type: "rectangle", boundElements: [] }]);
+    t.set({ selectedElementIds: { a: true } });
+    act(() => t.set({ currentItemStrokeColor: RED }));
+    expect(
+      t.hook.result.current.styleOverrides.isOverridden([
+        "currentItemStrokeColor",
+      ]),
+    ).toBe(true);
+    t.set({ selectedElementIds: { r: true } });
+    expect(
+      t.hook.result.current.styleOverrides.isOverridden([
+        "currentItemStrokeColor",
+      ]),
+    ).toBe(false);
+  });
+
+  it("resets everything with resetDrawingStyles and the command, and reapplies the default", async () => {
+    const t = setup();
+    t.switchTo("arrow");
+    act(() => t.set({ currentItemStrokeColor: RED }));
+    await act(async () => {
+      await getRegisteredHandler("toolDefaults.resetDrawingStyles")?.();
+    });
+    expect(drawing(t)).toEqual({});
+    expect(t.state.currentItemStrokeColor).toBe("#f08c00");
+    expect(t.setToast.mock.calls.at(-1)?.[0].message).toBe(
+      "Reset this drawing's styles to defaults",
+    );
+  });
+
+  it("registers the reset command", () => {
+    expect(getCommand("toolDefaults.resetDrawingStyles")?.title).toBe(
+      "Tool defaults: Reset this drawing's styles to defaults",
+    );
+  });
+
+  it("starts from the overrides the drawing was opened with", () => {
+    const t = setup();
+    t.hook.result.current.loadDrawingStyles({
+      rectangle: { stroke_color: RED },
+    });
+    t.switchTo("rectangle");
+    expect(t.state.currentItemStrokeColor).toBe(RED);
+  });
+
+  it("tells the editor to save when overrides change, and bumps the version", () => {
+    const onOverridesChange = vi.fn();
+    const state = { v: null as unknown };
+    void state;
+    let appState: Record<string, unknown> = {
+      ...BASE,
+      activeTool: { type: "arrow" },
+    };
+    const api = {
+      updateScene: ({ appState: a }: { appState: object }) => {
+        appState = { ...appState, ...a };
+      },
+      getAppState: () => appState,
+      getSceneElements: () => [],
+    };
+    const hook = renderHook(() =>
+      useToolDefaults({ current: api as never }, true, { onOverridesChange }),
+    );
+    act(() => hook.result.current.onAppState(appState as never));
+    expect(hook.result.current.getOverridesVersion()).toBe(0);
+    appState = { ...appState, currentItemStrokeColor: RED };
+    act(() => hook.result.current.onAppState(appState as never));
+    expect(onOverridesChange).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.getOverridesVersion()).toBe(1);
+  });
+
+  it("saving or resetting a tool's default drops this drawing's picks for it", async () => {
     const t = setup();
     t.switchTo("arrow");
     t.set({ currentItemStrokeColor: RED });
-    t.switchTo("selection");
-    expect(getToolMemory("arrow")).toBeDefined();
     await act(async () => {
       await getRegisteredHandler("toolDefaults.save.arrow")?.();
     });
-    expect(getToolMemory("arrow")).toBeUndefined();
+    expect(drawing(t)).toEqual({});
+    expect(store.saved[0]).toMatchObject(["arrow", { stroke_color: RED }]);
+  });
+
+  it("follows [editor] defaults edited while open, without touching the active tool's style", () => {
+    const t = setup();
     t.switchTo("arrow");
-    t.set({ currentItemStrokeColor: RED });
-    t.switchTo("selection");
-    await act(async () => {
-      await getRegisteredHandler("toolDefaults.reset.arrow")?.();
+    act(() => {
+      updatePreferences({ defaultFontSize: 33 }, undefined);
     });
-    expect(getToolMemory("arrow")).toBeUndefined();
-  });
-
-  it("does not touch pens: a preset set on the switch wins and is not remembered", () => {
-    const t = setup();
-    t.switchTo("arrow");
-    t.switchTo("freedraw", { currentItemStrokeColor: "#ff0000" });
-    expect(t.state.currentItemStrokeColor).toBe("#ff0000");
-    expect(getToolMemory("freedraw" as never)).toBeUndefined();
-    t.switchTo("selection");
-    expect(t.state.currentItemStrokeColor).toBe("#ff0000");
-  });
-
-  it("makes no update for a switch that changes nothing", () => {
-    const t = setup();
-    t.switchTo("rectangle");
-    t.switchTo("ellipse");
-    t.switchTo("rectangle");
-    expect(t.updateScene).not.toHaveBeenCalled();
+    expect(t.state.currentItemFontSize).toBe(33);
+    expect(t.state.currentItemStrokeColor).toBe("#f08c00");
   });
 });
 
@@ -417,13 +553,16 @@ describe("newTextStyle (text created without the Text tool)", () => {
     expect(textStyle(t)).toBeNull();
   });
 
-  it("prefers the style the Text tool was last used with", () => {
+  it("layers this drawing's Text picks over the default (or over nothing)", () => {
     store.defaults = { text: { stroke_color: "#f08c00" } };
     const t = setup();
     t.switchTo("text");
     t.set({ currentItemStrokeColor: "#1971c2" });
     t.switchTo("selection");
     expect(textStyle(t)).toMatchObject({ strokeColor: "#1971c2" });
+    store.defaults = {};
+    t.hook.result.current.loadDrawingStyles({ text: { font_family: 3 } });
+    expect(textStyle(t)).toEqual({ fontFamily: 3 });
   });
 });
 
