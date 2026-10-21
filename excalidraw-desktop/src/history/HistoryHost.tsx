@@ -169,6 +169,24 @@ const HistoryHostImpl = ({
     }
   }, [path]);
 
+  const focusCanvas = useCallback(() => {
+    ownerDocument
+      ?.querySelector<HTMLElement>(".vault-editor .excalidraw-container")
+      ?.focus({ preventScroll: true });
+  }, [ownerDocument]);
+
+  // The shared dialog hands focus back to its opener; when that is gone (a
+  // closed palette) nothing holds focus, so land on the canvas instead.
+  const closeDialog = useCallback(() => {
+    setDialogOpen(false);
+    setTimeout(() => {
+      const doc = ownerDocument ?? globalThis.document;
+      if (!doc.activeElement || doc.activeElement === doc.body) {
+        focusCanvas();
+      }
+    }, 0);
+  }, [focusCanvas, ownerDocument]);
+
   const saveCheckpoint = useCallback(
     async (name: string, note: string) => {
       if (!handle || !path) {
@@ -176,10 +194,10 @@ const HistoryHostImpl = ({
       }
       await flush();
       await repository.checkpoint(handle, path, name, note);
-      setDialogOpen(false);
+      closeDialog();
       showToast(`Checkpoint saved: ${name}`);
     },
-    [flush, handle, path, repository, showToast],
+    [closeDialog, flush, handle, path, repository, showToast],
   );
 
   const showing = panelOpen && !!handle && !!path;
@@ -190,10 +208,8 @@ const HistoryHostImpl = ({
 
   const closePanel = useCallback(() => {
     setPanelOpen(false);
-    ownerDocument
-      ?.querySelector<HTMLElement>(".vault-editor .excalidraw-container")
-      ?.focus({ preventScroll: true });
-  }, [ownerDocument]);
+    focusCanvas();
+  }, [focusCanvas]);
 
   return (
     <>
@@ -223,8 +239,8 @@ const HistoryHostImpl = ({
       {dialogOpen && (
         <CheckpointDialog
           onSave={saveCheckpoint}
-          onCancel={() => setDialogOpen(false)}
-          ownerDocument={ownerDocument}
+          onCancel={closeDialog}
+          drawingName={path ? drawingName(path) : undefined}
         />
       )}
       {confirmDeleteAll && path && (

@@ -8,7 +8,10 @@ import { useCallback, useMemo, useRef } from "react";
 import { useRunOnDrawing } from "../commands/useRunOnDrawing";
 
 import { HISTORY_COMMAND_IDS } from "./historyCommands";
-import { isHistoryPanelOpen } from "./historyPanelState";
+import {
+  isHistoryPanelOpen,
+  requestHistoryPanelFocus,
+} from "./historyPanelState";
 
 type Run = (id: string) => boolean;
 
@@ -38,7 +41,11 @@ export function useHistoryEntry(
   const showHistory = useCallback(
     (path: string) =>
       runOnDrawing(path, () => {
-        if (!isHistoryPanelOpen()) {
+        if (isHistoryPanelOpen()) {
+          // Already showing: a newly mounted panel focuses itself, this one
+          // has to be asked so Escape and the arrows work at once.
+          requestHistoryPanelFocus();
+        } else {
           live.current(HISTORY_COMMAND_IDS.toggle);
         }
       }),

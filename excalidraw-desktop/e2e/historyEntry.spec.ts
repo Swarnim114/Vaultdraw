@@ -1,7 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { openVault, trackErrors } from "./helpers";
-import { panel, rectEl, RED, rows, sceneJson, setup } from "./historyHelpers";
+import {
+  panel,
+  rectEl,
+  RED,
+  rows,
+  runPaletteCommand,
+  sceneJson,
+  setup,
+} from "./historyHelpers";
 
 // Visible History entry points (header button, canvas main menu, a drawing's
 // row menu), all dispatching history.toggle like Mod+Shift+H and the palette.
@@ -47,5 +55,41 @@ test("header button: hidden without a drawing, shows the key, toggles the panel"
   await item.click();
   await expect(panel(page)).toBeVisible();
   await expect(button(page)).toHaveAttribute("aria-pressed", "true");
+  expect(errors).toEqual([]);
+});
+
+test("row menu History puts focus in the panel; the checkpoint dialog is the shared dialog", async ({
+  page,
+}) => {
+  const errors = trackErrors(page);
+  await setup(page, [rectEl("c", 40, 40, RED)], [V1]);
+
+  // Row menu -> History: focus lands inside the panel, Escape closes it.
+  const row = page.locator(".vault-tree-item", { hasText: "Graphs" }).first();
+  await row.hover();
+  await row.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "History" }).click();
+  await expect(panel(page)).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => !!document.activeElement?.closest("aside[aria-label='History']"),
+      ),
+    )
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toHaveCount(0);
+
+  // Checkpoint dialog via the palette: shared frame, focus in the input.
+  await runPaletteCommand(page, "History: Create checkpoint");
+  const dialog = page.getByRole("dialog", { name: "Create checkpoint" });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("checkpoint-dialog")).toHaveClass(/vd-dialog/);
+  await expect(dialog.getByLabel("Name")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement !== document.body))
+    .toBe(true);
   expect(errors).toEqual([]);
 });

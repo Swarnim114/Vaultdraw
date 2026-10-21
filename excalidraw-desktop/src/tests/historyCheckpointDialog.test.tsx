@@ -5,13 +5,7 @@ import { CheckpointDialog } from "../history/CheckpointDialog";
 
 const setup = (onSave = vi.fn().mockResolvedValue(undefined)) => {
   const onCancel = vi.fn();
-  render(
-    <CheckpointDialog
-      onSave={onSave}
-      onCancel={onCancel}
-      ownerDocument={document}
-    />,
-  );
+  render(<CheckpointDialog onSave={onSave} onCancel={onCancel} />);
   return { onSave, onCancel };
 };
 
@@ -107,9 +101,30 @@ describe("CheckpointDialog", () => {
     setup();
     type("Name", "n");
     saveButton().focus();
-    key("Tab");
+    fireEvent.keyDown(saveButton(), { key: "Tab" });
     expect(screen.getByLabelText("Close")).toHaveFocus();
-    key("Tab", { shiftKey: true });
+    fireEvent.keyDown(screen.getByLabelText("Close"), {
+      key: "Tab",
+      shiftKey: true,
+    });
     expect(saveButton()).toHaveFocus();
+  });
+
+  it("uses the shared dialog, names the drawing, and returns focus to the opener", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(
+      <CheckpointDialog
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        drawingName="Graphs"
+      />,
+    );
+    expect(screen.getByTestId("checkpoint-dialog")).toHaveClass("vd-dialog");
+    expect(screen.getByRole("dialog")).toHaveTextContent('"Graphs"');
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 });

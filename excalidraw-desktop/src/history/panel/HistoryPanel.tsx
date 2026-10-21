@@ -9,8 +9,10 @@ import { IconClose } from "../../components/Icons";
 import { GitNotice } from "../GitNotice";
 import {
   deleteCheckpointConfirm,
+  drawingName,
   GIT_EXCLUDED_MESSAGE,
 } from "../historyConfirms";
+import { onHistoryPanelFocusRequest } from "../historyPanelState";
 import { useHistoryStatus } from "../useHistoryStatus";
 
 import { RestoreDialog } from "../RestoreDialog";
@@ -222,7 +224,9 @@ const HistoryPanel = ({
   }, []);
 
   useEffect(() => {
-    listRef.current?.focus({ preventScroll: true });
+    const focusList = () => listRef.current?.focus({ preventScroll: true });
+    focusList();
+    return onHistoryPanelFocusRequest(focusList);
   }, []);
 
   const versions = useMemo(() => listing?.versions ?? [], [listing]);
@@ -592,7 +596,7 @@ const HistoryPanel = ({
           onReplace={() => void doReplace()}
           onCopy={() => void doCopy()}
           onCancel={() => setDialog(null)}
-          ownerDocument={ownerDocument}
+          drawingName={drawingName(path)}
         />
       )}
     </aside>

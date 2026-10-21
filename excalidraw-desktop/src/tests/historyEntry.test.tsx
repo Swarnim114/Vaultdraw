@@ -16,7 +16,10 @@ import { VaultHeader } from "../components/VaultHeader";
 import { VaultNavigator } from "../components/VaultNavigator";
 import { setHotkeyOverride } from "../commands/useCommands";
 import { HISTORY_COMMAND_IDS } from "../history/historyCommands";
-import { publishHistoryPanelOpen } from "../history/historyPanelState";
+import {
+  onHistoryPanelFocusRequest,
+  publishHistoryPanelOpen,
+} from "../history/historyPanelState";
 import { useHistoryEntry } from "../history/useHistoryEntry";
 
 import type { ComponentProps } from "react";
@@ -173,8 +176,13 @@ describe("useHistoryEntry", () => {
     expect(openDrawing).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledExactlyOnceWith(HISTORY_COMMAND_IDS.toggle);
     publishHistoryPanelOpen(true);
+    const focusRequested = vi.fn();
+    const off = onHistoryPanelFocusRequest(focusRequested);
     await act(() => hook.result.current.showHistory("a.excalidraw"));
+    off();
     expect(run).toHaveBeenCalledOnce();
+    // An open panel is asked to take focus instead.
+    expect(focusRequested).toHaveBeenCalledOnce();
   });
 
   it("showHistory on another drawing opens it first", async () => {

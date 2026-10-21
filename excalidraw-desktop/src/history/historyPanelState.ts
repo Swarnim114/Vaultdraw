@@ -16,6 +16,20 @@ export function publishHistoryPanelOpen(value: boolean): void {
   }
 }
 
+const focusListeners = new Set<() => void>();
+
+/** Asks an already open panel to take keyboard focus (row menu "History"). */
+export const requestHistoryPanelFocus = (): void =>
+  focusListeners.forEach((l) => l());
+
+/** The open panel registers here; returns the unsubscribe. */
+export const onHistoryPanelFocusRequest = (cb: () => void) => {
+  focusListeners.add(cb);
+  return () => {
+    focusListeners.delete(cb);
+  };
+};
+
 export const isHistoryPanelOpen = (): boolean => open;
 
 export const subscribeHistoryPanelOpen = (cb: () => void) => {

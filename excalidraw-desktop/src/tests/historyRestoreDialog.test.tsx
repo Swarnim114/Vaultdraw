@@ -14,8 +14,8 @@ const setup = (replaceRefusal: ReplaceRefusal = null) => {
   render(
     <RestoreDialog
       versionLabel="14:03"
+      drawingName="Graphs"
       replaceRefusal={replaceRefusal}
-      ownerDocument={document}
       {...handlers}
     />,
   );
@@ -42,6 +42,14 @@ describe("RestoreDialog", () => {
     expect(h.onReplace).toHaveBeenCalledTimes(1);
     expect(h.onCopy).toHaveBeenCalledTimes(1);
     expect(h.onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("is the shared dialog and names the drawing and the consequence", () => {
+    setup();
+    expect(screen.getByTestId("restore-dialog")).toHaveClass("vd-dialog");
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      /"Graphs".*Cmd\+Z undoes the restore/,
+    );
   });
 
   it("Escape cancels", () => {
