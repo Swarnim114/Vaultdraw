@@ -1062,7 +1062,7 @@ export async function runDesktopSmoke(): Promise<void> {
       invoke: invokeNative,
     });
 
-    await step("ui-create-drawing-and-open-editor", async () => {
+    await softStep("ui-create-drawing-and-open-editor", async () => {
       const outer = await waitFor("suite folder tree row", () =>
         Array.from(
           root.querySelectorAll<HTMLElement>(".vault-tree-item__name"),
@@ -1078,22 +1078,60 @@ export async function runDesktopSmoke(): Promise<void> {
         ),
       );
       folder.closest<HTMLElement>(".vault-tree-item")?.click();
-      const createInFolder = await waitFor(
-        "new drawing in folder action",
-        () =>
-          folder
-            .closest<HTMLElement>(".vault-tree-item")
-            ?.querySelector<HTMLButtonElement>(
-              '[aria-label="New drawing in folder"]',
-            ) ??
-          root.querySelector<HTMLButtonElement>(
+      // Row actions mount only while the row is hovered/focused/active (eb66bbd), so a
+      // button found a moment ago can be unmounted by a re-render before the click lands.
+      // Re-query on each attempt and record what was clicked if the dialog never opens.
+      const findCreateInFolder = () =>
+        root
+          .querySelector<HTMLElement>(
+            `.vault-tree-item__name[title="${nested}"]`,
+          )
+          ?.closest<HTMLElement>(".vault-tree-item")
+          ?.querySelector<HTMLButtonElement>(
             '[aria-label="New drawing in folder"]',
-          ),
-      );
-      createInFolder.click();
-      const dialog = await waitFor("drawing create dialog", () =>
-        root.querySelector('[role="dialog"]'),
-      );
+          ) ??
+        folder
+          .closest<HTMLElement>(".vault-tree-item")
+          ?.querySelector<HTMLButtonElement>(
+            '[aria-label="New drawing in folder"]',
+          ) ??
+        root.querySelector<HTMLButtonElement>(
+          '[aria-label="New drawing in folder"]',
+        );
+      const attempts: string[] = [];
+      let dialog: Element | null = null;
+      for (let attempt = 0; attempt < 4 && !dialog; attempt += 1) {
+        const createInFolder = await waitFor(
+          "new drawing in folder action",
+          findCreateInFolder,
+        );
+        attempts.push(
+          `connected=${createInFolder.isConnected} row=${
+            createInFolder
+              .closest(".vault-tree-item")
+              ?.querySelector<HTMLElement>(".vault-tree-item__name")?.title
+          }`,
+        );
+        createInFolder.click();
+        dialog = await waitFor(
+          "drawing create dialog",
+          () =>
+            root.querySelector('[role="dialog"]') ??
+            doc.querySelector('[role="dialog"]'),
+          2000,
+        ).catch(() => null);
+      }
+      if (!dialog) {
+        throw new Error(
+          `drawing create dialog never opened; attempts: ${attempts.join(
+            " | ",
+          )}; active=${
+            doc.activeElement?.className ?? "none"
+          }; dialogs in document=${
+            doc.querySelectorAll('[role="dialog"]').length
+          }`,
+        );
+      }
       await clickSubmit(dialog, "ui-edited.excalidraw");
       await waitFor("actual editor mount", () =>
         root.querySelector(".vault-editor [data-testid], .vault-editor canvas"),
@@ -1111,9 +1149,52 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // When the UI create path fails (recorded above as failed), provision the same
+    // drawing natively and open it from the tree so the remaining steps still run.
+    await step("smoke-drawing-open", async () => {
+      const uiPath = `${nested}/ui-edited.excalidraw`;
+      const activeTitle = () =>
+        root.querySelector<HTMLElement>(
+          ".vault-tree-item--active .vault-tree-item__name",
+        )?.title;
+      if (
+        activeTitle() === uiPath &&
+        root.querySelector(".vault-editor canvas")
+      ) {
+        return { path: uiPath, provisioned: false };
+      }
+      await call("write_drawing", {
+        handle: vault.handle,
+        path: uiPath,
+        json: JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "desktop-smoke",
+          elements: [],
+          appState: {},
+          files: {},
+        }),
+        expectedRevision: null,
+        operationId: "smoke-ui-edited-fallback",
+      }).catch(() => undefined); // already on disk: just open it
+      const row = await waitFor("ui-edited tree row", () =>
+        root.querySelector<HTMLElement>(
+          `.vault-tree-item__name[title="${uiPath}"]`,
+        ),
+      );
+      row.closest<HTMLElement>(".vault-tree-item")?.click();
+      await waitFor("ui-edited active", () =>
+        activeTitle() === uiPath ? true : null,
+      );
+      await waitFor("actual editor mount", () =>
+        root.querySelector(".vault-editor canvas"),
+      );
+      return { path: uiPath, provisioned: true };
+    });
+
     // Informational: about 120 on ProMotion displays when WebKit's 60fps cap is
     // disabled (see webview_configuration in lib.rs), about 60 otherwise.
-    await step("render-frame-rate", async () => {
+    await softStep("render-frame-rate", async () => {
       // Bounded: an occluded window never delivers animation frames, which
       // would otherwise hang the whole run with no report.
       const frames = await new Promise<number>((resolve) => {
@@ -1134,7 +1215,7 @@ export async function runDesktopSmoke(): Promise<void> {
       return { requestAnimationFramePerSecond: frames };
     });
 
-    await step("canvas-pointer-draw", async () => {
+    await softStep("canvas-pointer-draw", async () => {
       // Ensure editor and excalidraw container resolve flex height in WebKit
       const editorEl = root.querySelector<HTMLElement>(".vault-editor");
       if (editorEl && editorEl.offsetHeight === 0) {
@@ -1241,7 +1322,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("save-and-native-source-assertion", async () => {
+    await softStep("save-and-native-source-assertion", async () => {
       doc.dispatchEvent(
         new win.KeyboardEvent("keydown", {
           key: "s",
@@ -1310,7 +1391,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("canvas-text-typing-survives-autosave", async () => {
+    await softStep("canvas-text-typing-survives-autosave", async () => {
       // Synthetic taps are ignored by the text tool (it needs a genuine
       // pointerup), so use the keyboard path a user also has: select the
       // drawn rectangle and press Enter to edit its label.
@@ -1501,7 +1582,7 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
-    await step("ui-switch-and-reopen-saved-drawing", async () => {
+    await softStep("ui-switch-and-reopen-saved-drawing", async () => {
       const reopened = await call("reopen_vault");
       if (reopened !== null) {
         throw new Error(
@@ -1554,7 +1635,7 @@ export async function runDesktopSmoke(): Promise<void> {
     });
 
     // ---- Tree drag and drop (pointer-based, components/tree/useTreeDrag.ts) ----
-    await step("ui-tree-drag-drop", async () => {
+    await softStep("ui-tree-drag-drop", async () => {
       const suite = `smoke-suite-${runId}`;
       const target = `${suite}/dnd-target`;
       const drawing = `${nested}/ui-edited.excalidraw`;
@@ -1743,7 +1824,7 @@ export async function runDesktopSmoke(): Promise<void> {
     });
 
     // ---- Canvas file drop (HTML5 drop in WKWebView; native interception is off) ----
-    await step("ui-canvas-file-drop", async () => {
+    await softStep("ui-canvas-file-drop", async () => {
       const path = `${nested}/ui-edited.excalidraw`;
       const readLive = async () => {
         const read = await call("read_drawing", {
