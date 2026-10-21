@@ -25,7 +25,7 @@ execFileSync(
 // Respects CARGO_TARGET_DIR and the workspace target directory.
 const targetDir = JSON.parse(run("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", manifest])).target_directory;
 const exe = triple.includes("windows") ? ".exe" : "";
-const built = join(targetDir, ...(cross ? [triple] : []), "release", `vaultdraw${exe}`);
+const built = join(targetDir, ...(cross ? [triple] : []), "release", `vaultdraw-cli${exe}`);
 const outDir = join(tauriDir, "binaries");
 const out = join(outDir, `vaultdraw-${triple}${exe}`);
 mkdirSync(outDir, { recursive: true });

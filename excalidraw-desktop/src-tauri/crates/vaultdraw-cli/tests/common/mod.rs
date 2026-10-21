@@ -73,7 +73,7 @@ fn next() -> u64 {
 
 /// Runs the binary with a clean environment (no user dirs touched).
 pub fn vd(args: &[&str], socket: Option<&PathBuf>, state: Option<&PathBuf>) -> Output {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_vaultdraw"));
+    let mut c = Command::new(env!("CARGO_BIN_EXE_vaultdraw-cli"));
     c.args(args).env_clear().env("HOME", "/nonexistent-vd-home");
     match socket {
         Some(s) => c.arg("--socket").arg(s),

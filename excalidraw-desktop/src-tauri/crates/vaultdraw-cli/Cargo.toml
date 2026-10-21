@@ -6,7 +6,7 @@ description = "vaultdraw: command-line client for the Vaultdraw control API"
 publish = false
 
 [[bin]]
-name = "vaultdraw"
+name = "vaultdraw-cli"
 path = "src/main.rs"
 
 [dependencies]

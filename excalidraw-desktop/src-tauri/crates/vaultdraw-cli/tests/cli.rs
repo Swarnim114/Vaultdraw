@@ -54,7 +54,7 @@ fn status_human_text() {
 #[test]
 fn socket_from_env_variable() {
     let f = Fake::start(app);
-    let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_vaultdraw"));
+    let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_vaultdraw-cli"));
     let o = c.args(["status", "--json"]).env_clear().env("VAULTDRAW_SOCKET", &f.socket).output().unwrap();
     assert_eq!(code(&o), 0, "{}", err(&o));
 }
@@ -279,7 +279,7 @@ fn unparsable_reply_checks_the_api_level() {
 fn raw_sends_each_line_and_prints_replies() {
     use std::io::Write;
     let f = Fake::start(app);
-    let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_vaultdraw"));
+    let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_vaultdraw-cli"));
     let mut child = c
         .args(["raw", "--socket"])
         .arg(&f.socket)
