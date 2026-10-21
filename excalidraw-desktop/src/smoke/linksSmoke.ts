@@ -43,7 +43,10 @@ export async function runLinksSmoke(ctx: LinksSmokeContext): Promise<void> {
     const dir = `smoke-links-${runId}`;
     const target = `${dir}/target-${runId}.excalidraw`;
     const source = `${dir}/source-${runId}.excalidraw`;
-    const renamed = `${dir}/renamed-${runId}.excalidraw`;
+    // A basename no other smoke step uses: the search step already made a
+    // `renamed-<runId>` drawing, and an ambiguous name is (correctly)
+    // rewritten to a qualified `[[folder/name]]` link.
+    const renamed = `${dir}/link-moved-${runId}.excalidraw`;
     const links = new DesktopVaultLinks();
     const write = (path: string, value: string, op: string) =>
       invoke("write_drawing", {
@@ -102,8 +105,14 @@ export async function runLinksSmoke(ctx: LinksSmokeContext): Promise<void> {
     const read = (await invoke("read_drawing", { handle, path: source })) as {
       json: string;
     };
-    if (!read.json.includes(`[[renamed-${runId}]]`)) {
-      throw new Error("source drawing was not rewritten on disk");
+    const expected = `[[link-moved-${runId}]]`;
+    if (!read.json.includes(expected)) {
+      const found = read.json.match(/\[\[[^\]]*\]\]/g) ?? [];
+      throw new Error(
+        `source drawing was not rewritten on disk: expected ${expected}, found ${JSON.stringify(
+          found,
+        )}`,
+      );
     }
     return { dir, rewritten: source };
   });
