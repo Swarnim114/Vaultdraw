@@ -7,6 +7,7 @@ import {
   THUMB_FILES_JSON_BYTES,
   THUMB_MAX_ELEMENTS,
   THUMB_MAX_JSON_BYTES,
+  renderPng,
   renderScenePng,
   renderSceneToSvgDataUrl,
 } from "./render";
@@ -61,6 +62,19 @@ beforeEach(() => {
     };
     return box;
   }) as any);
+});
+
+describe("renderScenePng slicing", () => {
+  it("paints in slices (6 ms budget) unless the one-task reference is asked for", async () => {
+    exportsContent();
+    await renderScenePng(scene(3), 1);
+    const sliced = exportToCanvas.mock.calls[0][0].slicing;
+    expect(sliced.budgetMs).toBe(6);
+    expect(typeof sliced.yieldFn).toBe("function");
+
+    await renderPng(scene(3), 1, false);
+    expect(exportToCanvas.mock.calls[1][0].slicing).toBeUndefined();
+  });
 });
 
 describe("renderScenePng", () => {

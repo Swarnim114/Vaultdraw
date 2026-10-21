@@ -22,6 +22,7 @@ import type {
   NonDeleted,
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
+import type { SceneSlicing } from "@excalidraw/excalidraw/renderer/staticScene";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 
 export { MIME_TYPES };
@@ -47,8 +48,11 @@ export const exportToCanvas = ({
   getDimensions,
   exportPadding,
   exportingFrame,
+  slicing,
 }: ExportOpts & {
   exportPadding?: number;
+  /** Paint in slices that yield to the event loop (same pixels). */
+  slicing?: SceneSlicing;
 }) => {
   const restoredElements = getNonDeletedElements(
     restoreElements(elements, null, {
@@ -100,6 +104,8 @@ export const exportToCanvas = ({
         scale: ret.scale ?? 1,
       };
     },
+    undefined,
+    slicing,
   );
 };
 

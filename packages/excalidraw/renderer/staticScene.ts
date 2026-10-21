@@ -311,16 +311,24 @@ const patternView = (
   isDarkMode: renderConfig.theme === THEME.DARK,
 });
 
-const _renderStaticScene = ({
-  canvas,
-  rc,
-  elementsMap,
-  allElementsMap,
-  visibleElements,
-  scale,
-  appState: unsnappedAppState,
-  renderConfig,
-}: StaticSceneRenderConfig) => {
+/**
+ * One pass over the scene. With `sliced` it yields after every painted
+ * element, so a caller can hand control back between elements
+ * (renderStaticSceneInSlices); without it never yields.
+ */
+function* paintStaticScene(
+  {
+    canvas,
+    rc,
+    elementsMap,
+    allElementsMap,
+    visibleElements,
+    scale,
+    appState: unsnappedAppState,
+    renderConfig,
+  }: StaticSceneRenderConfig,
+  sliced: boolean,
+): Generator<void, void, void> {
   if (canvas === null) {
     return;
   }
@@ -462,63 +470,67 @@ const _renderStaticScene = ({
   };
 
   // Paint visible elements
-  visibleElements
-    .filter((el) => !isIframeLikeElement(el))
-    .forEach((element) => {
-      try {
-        if (
-          isTextElement(element) &&
-          element.containerId &&
-          elementsMap.has(element.containerId)
-        ) {
-          // will be rendered with the container
-          return;
-        }
+  for (const element of visibleElements) {
+    if (isIframeLikeElement(element)) {
+      continue;
+    }
+    try {
+      if (
+        isTextElement(element) &&
+        element.containerId &&
+        elementsMap.has(element.containerId)
+      ) {
+        // will be rendered with the container
+        continue;
+      }
 
-        context.save();
-        const boundTextElement = getBoundTextElement(element, elementsMap);
+      context.save();
+      const boundTextElement = getBoundTextElement(element, elementsMap);
 
-        const renderState = getRenderState(element);
-        clipElementToFrame(element, renderState);
+      const renderState = getRenderState(element);
+      clipElementToFrame(element, renderState);
+      renderElement(
+        element,
+        elementsMap,
+        allElementsMap,
+        rc,
+        context,
+        renderConfig,
+        appState,
+        renderState,
+      );
+
+      if (boundTextElement) {
         renderElement(
-          element,
+          boundTextElement,
           elementsMap,
           allElementsMap,
           rc,
           context,
           renderConfig,
           appState,
-          renderState,
-        );
-
-        if (boundTextElement) {
-          renderElement(
-            boundTextElement,
-            elementsMap,
-            allElementsMap,
-            rc,
-            context,
-            renderConfig,
-            appState,
-          );
-        }
-
-        context.restore();
-
-        if (!isExporting && renderConfig.renderLinks !== false) {
-          renderLinkIcon(element, context, appState, elementsMap, renderState);
-        }
-      } catch (error: any) {
-        console.error(
-          error,
-          element.id,
-          element.x,
-          element.y,
-          element.width,
-          element.height,
         );
       }
-    });
+
+      context.restore();
+
+      if (!isExporting && renderConfig.renderLinks !== false) {
+        renderLinkIcon(element, context, appState, elementsMap, renderState);
+      }
+    } catch (error: any) {
+      console.error(
+        error,
+        element.id,
+        element.x,
+        element.y,
+        element.width,
+        element.height,
+      );
+    }
+    if (sliced) {
+      yield;
+    }
+  }
 
   // render embeddables on top
   visibleElements
@@ -589,6 +601,39 @@ const _renderStaticScene = ({
       console.error(error);
     }
   });
+}
+
+const _renderStaticScene = (config: StaticSceneRenderConfig) => {
+  const steps = paintStaticScene(config, false);
+  while (!steps.next().done) {
+    // not sliced: never yields, so this is one next() call
+  }
+};
+
+export type SceneSlicing = {
+  /** Longest stretch of painting before control is handed back. */
+  budgetMs: number;
+  /** Hands control back to the event loop. */
+  yieldFn: () => Promise<void>;
+};
+
+/**
+ * Same pixels as renderStaticScene, painted in slices of about `budgetMs`:
+ * between two elements it awaits `yieldFn`, so one scene never holds the main
+ * thread longer than the budget plus its slowest element.
+ */
+export const renderStaticSceneInSlices = async (
+  config: StaticSceneRenderConfig,
+  { budgetMs, yieldFn }: SceneSlicing,
+) => {
+  let sliceStart = performance.now();
+  const steps = paintStaticScene(config, true);
+  while (!steps.next().done) {
+    if (performance.now() - sliceStart >= budgetMs) {
+      await yieldFn();
+      sliceStart = performance.now();
+    }
+  }
 };
 
 /** throttled to animation framerate */

@@ -56,10 +56,16 @@ import { serializeAsJSON } from "../data/json";
 import { Fonts } from "../fonts";
 
 import { appendBackgroundPatternSvg } from "../renderer/backgroundPatternSvg";
-import { renderStaticScene } from "../renderer/staticScene";
+import {
+  renderStaticScene,
+  renderStaticSceneInSlices,
+} from "../renderer/staticScene";
+
 import { renderSceneToSvg } from "../renderer/staticSvgScene";
 
-import type { RenderableElementsMap } from "./types";
+import type { SceneSlicing } from "../renderer/staticScene";
+
+import type { RenderableElementsMap, StaticSceneRenderConfig } from "./types";
 
 import type { AppState, BinaryFiles } from "../types";
 
@@ -205,6 +211,8 @@ export const exportToCanvas = async (
   loadFonts: () => Promise<void> = async () => {
     await Fonts.loadElementsFonts(elements);
   },
+  /** Paint in slices that hand control back to the event loop (same pixels). */
+  slicing?: SceneSlicing,
 ) => {
   // load font faces before continuing, by default leverages browsers' [FontFace API](https://developer.mozilla.org/en-US/docs/Web/API/FontFace)
   await loadFonts();
@@ -247,7 +255,11 @@ export const exportToCanvas = async (
     files,
   });
 
-  renderStaticScene({
+  const paint = slicing
+    ? (config: StaticSceneRenderConfig) =>
+        renderStaticSceneInSlices(config, slicing)
+    : (config: StaticSceneRenderConfig) => renderStaticScene(config);
+  await paint({
     canvas,
     rc: rough.canvas(canvas),
     elementsMap: toBrandedType<RenderableElementsMap>(

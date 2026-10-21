@@ -5,6 +5,7 @@
  * dynamically, when the first job runs.
  */
 import { fitThumb } from "./fit";
+import { sceneSlicing } from "./slicing";
 import { withStandardColors } from "./standardColors";
 
 /**
@@ -143,7 +144,15 @@ const canvasToPng = async (canvas: HTMLCanvasElement): Promise<Blob | null> => {
  * Scene JSON -> opaque PNG of the fixed 4:3 thumbnail box at `density`
  * (fitThumb), standard light colours.
  */
-export const renderScenePng: RenderPng = async (json, density = 1) => {
+export const renderScenePng: RenderPng = async (json, density = 1) =>
+  renderPng(json, density, true);
+
+/** `sliced` false is the one-task render (pixel reference in tests). */
+export const renderPng = async (
+  json: string,
+  density: number,
+  sliced: boolean,
+): Promise<PngResult> => {
   const scene = parseScene(json, {
     maxElements: THUMB_MAX_ELEMENTS,
     maxJsonChars: THUMB_MAX_JSON_BYTES,
@@ -165,6 +174,7 @@ export const renderScenePng: RenderPng = async (json, density = 1) => {
           fit = fitThumb(width, height, density);
           return { width: fit.width, height: fit.height, scale: fit.scale };
         },
+        slicing: sliced ? sceneSlicing() : undefined,
       });
       const box = document.createElement("canvas");
       box.width = fit.boxWidth;
