@@ -53,6 +53,37 @@ const clearTimer = (state: State) => {
   }
 };
 
+type PaintCounter = { paints: number };
+
+const counters = new WeakMap<object, PaintCounter>();
+
+/**
+ * Installs counting wrappers on a context once; they stay for its lifetime,
+ * so no property is added or removed per render (that would churn the
+ * object's shape on the pointer-move path).
+ */
+const instrument = (context: Record<string, unknown>): PaintCounter => {
+  const counter = counters.get(context);
+  if (counter) {
+    return counter;
+  }
+  const c: PaintCounter = { paints: 0 };
+  const proto = Object.getPrototypeOf(context) as Record<string, unknown>;
+  for (const name of PAINT_METHODS) {
+    const original = proto[name] as
+      | ((...args: unknown[]) => unknown)
+      | undefined;
+    if (typeof original === "function") {
+      context[name] = function (this: unknown, ...args: unknown[]) {
+        c.paints++;
+        return original.apply(this, args);
+      };
+    }
+  }
+  counters.set(context, c);
+  return c;
+};
+
 /** Runs `render` and returns the result and how many paint calls it made. */
 const countPaints = <T>(
   canvas: HTMLCanvasElement,
@@ -66,26 +97,10 @@ const countPaints = <T>(
     // can't observe: assume it drew
     return { result: render(), paints: 1 };
   }
-  const counter = { paints: 0 };
-  const proto = Object.getPrototypeOf(context) as Record<string, unknown>;
-  for (const name of PAINT_METHODS) {
-    const original = proto[name] as
-      | ((...args: unknown[]) => unknown)
-      | undefined;
-    if (typeof original === "function") {
-      context[name] = function (this: unknown, ...args: unknown[]) {
-        counter.paints++;
-        return original.apply(this, args);
-      };
-    }
-  }
-  try {
-    return { result: render(), paints: counter.paints };
-  } finally {
-    for (const name of PAINT_METHODS) {
-      delete context[name];
-    }
-  }
+  const counter = instrument(context);
+  counter.paints = 0;
+  const result = render();
+  return { result, paints: counter.paints };
 };
 
 const shrink = (canvas: HTMLCanvasElement, state: State) => {

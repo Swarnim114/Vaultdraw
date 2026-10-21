@@ -120,11 +120,13 @@ describe("idle backing store (unit)", () => {
     expect(canvas.width).toBe(0);
   });
 
-  it("restores the painting methods after a render", () => {
+  it("instruments the context once, not per render", () => {
     const canvas = makeCanvas();
     const ctx = canvas.getContext("2d")!;
     renderWithIdleBackingStore(canvas, () => draw(canvas));
-    expect(Object.prototype.hasOwnProperty.call(ctx, "fillRect")).toBe(false);
+    const wrapper = ctx.fillRect;
+    renderWithIdleBackingStore(canvas, () => draw(canvas));
+    expect(ctx.fillRect).toBe(wrapper);
   });
 });
 
