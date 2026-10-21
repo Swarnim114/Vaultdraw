@@ -19,7 +19,8 @@ export interface ThumbnailStore {
     png: Blob | null,
     renderVersion: number,
   ): Promise<string | null>;
-  urlFor(vaultId: string, rev: string): string;
+  /** Image url of a cached PNG (the name carries the render version). */
+  urlFor(vaultId: string, rev: string, renderVersion: number): string;
   clear(handle: string): Promise<void>;
 }
 

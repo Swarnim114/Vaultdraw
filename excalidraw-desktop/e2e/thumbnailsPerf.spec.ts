@@ -14,7 +14,7 @@ import type { Page } from "@playwright/test";
 import type { Step0Hooks } from "./thumbnailsStep0";
 
 // F2 thumbnails, step 0 (gate before the gallery/surfaces): main-thread cost of
-// renderScenePng (exportToCanvas + toBlob PNG, 384 px) for 100/500/1500 element
+// renderScenePng (exportToCanvas + toBlob PNG, the 320x240 CSS box at THUMB_DENSITY, default 2) for 100/500/1500 element
 // scenes (rough default roughness and roughness 0) plus a scene with an
 // embedded image, at 1x and (Chromium only) 4x CPU throttle. One
 // `THUMB_STEP0 {json}` line per case (record.mjs spec ingests `<NAME>_PERF`).
@@ -25,6 +25,8 @@ import type { Step0Hooks } from "./thumbnailsStep0";
 // the e2e vite config and served through page.route under /__step0/.
 const PERF = process.env.E2E_PERF === "1" || process.env.THUMB_PERF === "1";
 const RUNS = Number(process.env.THUMB_RUNS ?? 30);
+/** Pixel density of the PNG renders (2 = Retina, what most Macs use). */
+const DENSITY = Number(process.env.THUMB_DENSITY ?? 2);
 const WARMUP = 3;
 const SIZES = [100, 500, 1500];
 
@@ -272,7 +274,7 @@ test.describe("render step 0", () => {
       for (const c of CASES) {
         const json = c.json();
         const res = await page.evaluate(
-          async ({ json, runs, warmup }) => {
+          async ({ json, runs, warmup, density }) => {
             const { renderScenePng } = (
               window as unknown as { __step0: Step0Hooks }
             ).__step0;
@@ -282,7 +284,7 @@ test.describe("render step 0", () => {
             let reason = "";
             for (let i = 0; i < runs + warmup; i++) {
               const t0 = performance.now();
-              const r = await renderScenePng(json);
+              const r = await renderScenePng(json, density);
               const dt = performance.now() - t0;
               if (r.kind === "png") {
                 bytes = r.blob.size;
@@ -296,12 +298,13 @@ test.describe("render step 0", () => {
             }
             return { times, fails, bytes, reason };
           },
-          { json, runs: RUNS, warmup: WARMUP },
+          { json, runs: RUNS, warmup: WARMUP, density: DENSITY },
         );
         const row = {
           case: c.name,
           engine: browserName,
           cpuRate: rate,
+          density: DENSITY,
           runs: RUNS,
           jsonKB: Math.round(json.length / 1024),
           p50: r1(pct(res.times, 50)),

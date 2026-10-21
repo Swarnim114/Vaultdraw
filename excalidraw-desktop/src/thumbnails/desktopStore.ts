@@ -32,7 +32,8 @@ export const createDesktopThumbnailStore = (
     });
     return res?.url ?? null;
   },
-  urlFor: (vaultId, rev) => `vdthumb://localhost/${vaultId}/${rev}.png`,
+  urlFor: (vaultId, rev, renderVersion) =>
+    `vdthumb://localhost/${vaultId}/${rev}.v${renderVersion}.png`,
   async clear(handle) {
     const invoke = await resolveInvoke(opts.invoke);
     await invoke<void>("thumbs_clear", { handle });

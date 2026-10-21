@@ -37,7 +37,7 @@ export const createFakeThumbnailStore = (opts: {
   pendingLookups?: number;
 }): FakeThumbnailStore => {
   const vaultId = opts.vaultId ?? FAKE_VAULT_ID;
-  const urls = new Map<string, string>(); // rev -> image url
+  const urls = new Map<string, string>(); // `${rev}.v${version}` -> image url
   const fails = new Set<string>(); // `${rev}.v${version}`
   let pending = opts.pendingLookups ?? 0;
   const calls: FakeThumbnailStore["calls"] = {
@@ -66,7 +66,7 @@ export const createFakeThumbnailStore = (opts: {
           if (rev === null) {
             return { rev: null, state: "missing" };
           }
-          if (urls.has(rev)) {
+          if (urls.has(`${rev}.v${renderVersion}`)) {
             return { rev, state: "hit" };
           }
           return {
@@ -83,7 +83,8 @@ export const createFakeThumbnailStore = (opts: {
         fails.add(`${rev}.v${renderVersion}`);
         return null;
       }
-      const old = urls.get(rev);
+      const key = `${rev}.v${renderVersion}`;
+      const old = urls.get(key);
       if (
         old &&
         old.startsWith("blob:") &&
@@ -92,10 +93,11 @@ export const createFakeThumbnailStore = (opts: {
         URL.revokeObjectURL(old);
       }
       const url = toUrl(png, rev);
-      urls.set(rev, url);
+      urls.set(key, url);
       return url;
     },
-    urlFor: (_vaultId, rev) => urls.get(rev) ?? `blob:fake/${rev}`,
+    urlFor: (_vaultId, rev, renderVersion) =>
+      urls.get(`${rev}.v${renderVersion}`) ?? `blob:fake/${rev}`,
     async clear() {
       calls.clear++;
       urls.clear();

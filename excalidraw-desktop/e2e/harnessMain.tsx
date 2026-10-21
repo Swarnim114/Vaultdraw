@@ -123,6 +123,55 @@ if (params.get("seed") !== "empty") {
       );
     }
   }
+  if (params.get("scene") === "fit") {
+    // Opt-in (?scene=fit): thumbnail fit cases (one short word, very wide, very tall).
+    const scene = (elements: unknown[]) =>
+      JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        elements,
+        appState: {},
+        files: {},
+      });
+    const word = {
+      ...thumbRect("atools", 0),
+      type: "text",
+      x: 0,
+      y: 0,
+      width: 64,
+      height: 25,
+      text: "Atools",
+      originalText: "Atools",
+      fontSize: 20,
+      fontFamily: 5,
+      textAlign: "left",
+      verticalAlign: "top",
+      containerId: null,
+      autoResize: true,
+      lineHeight: 1.25,
+    };
+    repository.seedDrawing("Fit/Atools.excalidraw", scene([word]));
+    repository.seedDrawing(
+      "Fit/Wide.excalidraw",
+      scene(
+        Array.from({ length: 60 }, (_, k) => ({
+          ...thumbRect(`w${k}`, k),
+          x: k * 60,
+          y: 0,
+        })),
+      ),
+    );
+    repository.seedDrawing(
+      "Fit/Tall.excalidraw",
+      scene(
+        Array.from({ length: 60 }, (_, k) => ({
+          ...thumbRect(`t${k}`, k),
+          x: 0,
+          y: k * 60,
+        })),
+      ),
+    );
+  }
   if (params.get("scene") === "huge") {
     // Opt-in (?scene=huge): Huge/Huge.excalidraw with 700 elements (> thumbnail cap 600).
     repository.seedDrawing(

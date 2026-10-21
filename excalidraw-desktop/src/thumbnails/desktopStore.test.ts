@@ -44,8 +44,8 @@ describe("desktop thumbnail store", () => {
   it("builds vdthumb urls and clears by handle", async () => {
     const invoke = vi.fn(async () => undefined) as any;
     const s = createDesktopThumbnailStore({ invoke });
-    expect(s.urlFor("0123456789abcdef", "ab")).toBe(
-      "vdthumb://localhost/0123456789abcdef/ab.png",
+    expect(s.urlFor("0123456789abcdef", "ab", 22)).toBe(
+      "vdthumb://localhost/0123456789abcdef/ab.v22.png",
     );
     await s.clear("h");
     expect(invoke).toHaveBeenCalledWith("thumbs_clear", { handle: "h" });

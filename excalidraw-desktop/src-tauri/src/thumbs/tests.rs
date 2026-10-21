@@ -156,7 +156,7 @@ fn put_validation() {
     assert!(f.vt.put("a.excalidraw", &rev, Kind::Fail, RV, b"x").is_err());
     assert!(store::parse_kind("jpeg").is_err());
     // Nothing invalid was written.
-    assert!(!png_path(&f.vt.cache, &"0".repeat(64)).exists());
+    assert!(!png_path(&f.vt.cache, &"0".repeat(64), RV).exists());
 }
 
 #[test]
@@ -165,13 +165,13 @@ fn put_returns_url_and_manifest_only_when_current() {
     f.draw("a.excalidraw", "{\"v\":1}");
     let rev = f.rev("a.excalidraw");
     let url = f.put_png("a.excalidraw", &rev).unwrap().url.unwrap();
-    assert_eq!(url, format!("vdthumb://localhost/{}/{rev}.png", f.vt.vault_id));
+    assert_eq!(url, format!("vdthumb://localhost/{}/{rev}.v{RV}.png", f.vt.vault_id));
     assert!(f.vt.put("a.excalidraw", &rev, Kind::Fail, RV, &[]).unwrap().url.is_none());
     // A stale revision (file changed since render): the file is kept, the manifest is not updated.
     f.draw("b.excalidraw", "{\"b\":1}");
     let stale = "ab".repeat(32);
     f.put_png("b.excalidraw", &stale).unwrap();
-    assert!(png_path(&f.vt.cache, &stale).is_file());
+    assert!(png_path(&f.vt.cache, &stale, RV).is_file());
     assert_eq!(f.manifest_rev("b.excalidraw"), None);
     // Put for a path the manifest never saw, with the current rev, adopts it.
     f.draw("c.excalidraw", "{\"c\":1}");
@@ -221,7 +221,7 @@ fn atomic_writes_leave_no_temp_files() {
             }
         }
     }
-    assert_eq!(fs::read(png_path(&f.vt.cache, &rev)).unwrap(), PNG);
+    assert_eq!(fs::read(png_path(&f.vt.cache, &rev, RV)).unwrap(), PNG);
 }
 
 #[test]
@@ -267,11 +267,11 @@ fn seed(cache: &Path, rev_byte: u8, size: usize, name_ext: &str) -> String {
 fn gc_orphans_first_then_oldest_down_to_90_percent() {
     let dir = tempdir().unwrap();
     let cache = dir.path();
-    let kept_old = seed(cache, 1, 400, ".png");
+    let kept_old = seed(cache, 1, 400, &format!(".v{RV}.png"));
     std::thread::sleep(Duration::from_millis(15));
-    let orphan = seed(cache, 2, 400, ".png");
+    let orphan = seed(cache, 2, 400, &format!(".v{RV}.png"));
     std::thread::sleep(Duration::from_millis(15));
-    let kept_new = seed(cache, 3, 400, ".png");
+    let kept_new = seed(cache, 3, 400, &format!(".v{RV}.png"));
     let orphan_fail = seed(cache, 4, 0, ".v1.fail");
     let live_fail = seed(cache, 5, 0, ".v1.fail");
     fs::write(cache.join("01").join(".9-9.tmp"), b"junk").unwrap();
@@ -279,24 +279,24 @@ fn gc_orphans_first_then_oldest_down_to_90_percent() {
     // Cap 1000: 1200 total -> over; target 900 -> only the orphan has to go.
     let left = gc::run(cache, &refs, 1000, Duration::ZERO);
     assert_eq!(left, 800);
-    assert!(!png_path(cache, &orphan).exists());
-    assert!(png_path(cache, &kept_old).exists() && png_path(cache, &kept_new).exists());
+    assert!(!png_path(cache, &orphan, RV).exists());
+    assert!(png_path(cache, &kept_old, RV).exists() && png_path(cache, &kept_new, RV).exists());
     assert!(!fail_path(cache, &orphan_fail, 1).exists());
     assert!(fail_path(cache, &live_fail, 1).exists());
     assert!(!cache.join("01").join(".9-9.tmp").exists());
     // Still over a tighter cap: the oldest referenced file goes next.
     let left = gc::run(cache, &refs, 500, Duration::ZERO);
     assert_eq!(left, 400);
-    assert!(!png_path(cache, &kept_old).exists() && png_path(cache, &kept_new).exists());
+    assert!(!png_path(cache, &kept_old, RV).exists() && png_path(cache, &kept_new, RV).exists());
 }
 
 #[test]
 fn gc_keeps_young_files_and_noop_under_cap() {
     let dir = tempdir().unwrap();
-    let rev = seed(dir.path(), 9, 500, ".png");
+    let rev = seed(dir.path(), 9, 500, &format!(".v{RV}.png"));
     assert_eq!(gc::run(dir.path(), &HashSet::new(), 1000, Duration::ZERO), 500);
     assert_eq!(gc::run(dir.path(), &HashSet::new(), 100, Duration::from_secs(60)), 500);
-    assert!(png_path(dir.path(), &rev).exists());
+    assert!(png_path(dir.path(), &rev, RV).exists());
 }
 
 #[test]
@@ -339,9 +339,10 @@ fn scheme_validation() {
     let vid = "0123456789abcdef";
     let rev = "ab".repeat(32);
     let cache = cache_dir(state, vid);
-    store::write_atomic(&png_path(&cache, &rev), PNG).unwrap();
-    let ok = format!("/{vid}/{rev}.png");
+    store::write_atomic(&png_path(&cache, &rev, RV), PNG).unwrap();
+    let ok = format!("/{vid}/{rev}.v{RV}.png");
     assert_eq!(scheme::read(state, &ok).unwrap(), PNG);
+    assert_eq!(scheme::parse(&ok), Some((vid, rev.as_str(), RV)));
     let bad = [
         format!("/{vid}/../{rev}.png"),
         format!("/{vid}/%2e%2e/{rev}.png"),
@@ -359,13 +360,21 @@ fn scheme_validation() {
         "".to_string(),
         format!("{vid}/{rev}.png"),
         format!("/{vid}/{}/{rev}.png", &rev[..2]),
+        format!("/{vid}/{rev}.png"), // pre-v2 unversioned name
+        format!("/{vid}/{rev}.v.png"),
+        format!("/{vid}/{rev}.v2x.png"),
+        format!("/{vid}/{rev}.v-1.png"),
+        format!("/{vid}/{rev}.v+2.png"),
+        format!("/{vid}/{rev}.v1234567890.png"),
+        format!("/{vid}/{rev}.v2/../x.png"),
+        format!("/{vid}/{rev}.v2.v3.png"),
     ];
     for b in &bad {
         assert!(scheme::read(state, b).is_none(), "{b}");
         assert!(scheme::resolve(state, b).is_none(), "{b}");
     }
     // Valid names with no file: 404; a directory is never listed or served.
-    assert!(scheme::read(state, &format!("/{vid}/{}.png", "cd".repeat(32))).is_none());
+    assert!(scheme::read(state, &format!("/{vid}/{}.v{RV}.png", "cd".repeat(32))).is_none());
     assert_eq!(scheme::response(None).status(), 404);
     let r = scheme::response(Some(PNG.to_vec()));
     assert_eq!(r.status(), 200);
@@ -414,4 +423,27 @@ fn bench_lookup_100_warm() {
     }
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
     eprintln!("lookup 100 warm: p50 {:.2} ms, p95 {:.2} ms", times[15], times[28]);
+}
+
+#[test]
+fn new_render_version_replaces_old_renderings_of_the_revision() {
+    let f = fixture();
+    f.draw("a.excalidraw", "1");
+    let rev = f.rev("a.excalidraw");
+    // A pre-v2 thumbnail (`<rev>.png`) and an older version are on disk.
+    let legacy = f.vt.cache.join(&rev[..2]).join(format!("{rev}.png"));
+    store::write_atomic(&legacy, PNG).unwrap();
+    f.vt.put("a.excalidraw", &rev, Kind::Png, RV, PNG).unwrap();
+    let lookup = |v| f.vt.lookup(&["a.excalidraw".to_string()], v).unwrap().items.remove(0).state;
+    assert_eq!(lookup(RV), ThumbState::Hit);
+    assert_eq!(lookup(RV + 1), ThumbState::Miss, "another version renders again");
+    let url = f.vt.put("a.excalidraw", &rev, Kind::Png, RV + 1, PNG).unwrap().url.unwrap();
+    assert!(url.ends_with(&format!("{rev}.v{}.png", RV + 1)));
+    assert!(!legacy.exists() && !png_path(&f.vt.cache, &rev, RV).exists());
+    assert!(png_path(&f.vt.cache, &rev, RV + 1).is_file());
+    assert_eq!(lookup(RV + 1), ThumbState::Hit);
+    // Fail markers are not touched by a PNG write.
+    f.vt.put("b.excalidraw", &"ef".repeat(32), Kind::Fail, RV, &[]).unwrap();
+    f.vt.put("b.excalidraw", &"ef".repeat(32), Kind::Png, RV, PNG).unwrap();
+    assert!(fail_path(&f.vt.cache, &"ef".repeat(32), RV).exists());
 }

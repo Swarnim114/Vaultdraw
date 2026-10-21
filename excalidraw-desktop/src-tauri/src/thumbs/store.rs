@@ -1,4 +1,5 @@
-//! Content-addressed thumbnail files: `<cache>/<rev[0..2]>/<rev>.png` and `<rev>.v<N>.fail`.
+//! Content-addressed thumbnail files: `<cache>/<rev[0..2]>/<rev>.v<N>.png` and `<rev>.v<N>.fail`,
+//! where N is the renderer version (it changes when the output changes, e.g. pixel density).
 //! Pure functions on paths; validation of every externally supplied name lives here.
 use crate::{err, ioerr, Result};
 use std::{
@@ -8,7 +9,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-pub(super) const MAX_PNG_BYTES: usize = 512 * 1024;
+/// A 640x480 thumbnail of a drawing with photos can pass 512 KB; 1 MB bounds a pathological one.
+pub(super) const MAX_PNG_BYTES: usize = 1024 * 1024;
 pub(super) const REV_LEN: usize = 64;
 pub(super) const VAULT_ID_LEN: usize = 16;
 
@@ -39,8 +41,23 @@ pub(super) fn validate_rev(rev: &str) -> Result<()> {
     }
 }
 
-pub(super) fn png_path(cache: &Path, rev: &str) -> PathBuf {
-    cache.join(&rev[..2]).join(format!("{rev}.png"))
+pub(super) fn png_path(cache: &Path, rev: &str, render_version: u32) -> PathBuf {
+    cache.join(&rev[..2]).join(format!("{rev}.v{render_version}.png"))
+}
+
+/// Delete the other renderings of `rev` (older versions, other densities, pre-v2 `<rev>.png`)
+/// once `keep` is written: a re-render replaces the low-res thumbnail instead of adding to it.
+pub(super) fn remove_other_pngs(keep: &Path, rev: &str) {
+    let (Some(dir), Some(keep_name)) = (keep.parent(), keep.file_name()) else { return };
+    let Ok(files) = fs::read_dir(dir) else { return };
+    let prefix = format!("{rev}.");
+    for f in files.flatten() {
+        let name = f.file_name();
+        let n = name.to_string_lossy();
+        if name != keep_name && n.starts_with(&prefix) && n.ends_with(".png") {
+            let _ = fs::remove_file(f.path());
+        }
+    }
 }
 
 pub(super) fn fail_path(cache: &Path, rev: &str, render_version: u32) -> PathBuf {
@@ -52,7 +69,7 @@ pub(super) fn validate_body(kind: Kind, body: &[u8]) -> Result<()> {
     match kind {
         Kind::Png => {
             if body.len() > MAX_PNG_BYTES {
-                return Err(err("INVALID_FILE", "Thumbnail exceeds 512 KB"));
+                return Err(err("INVALID_FILE", "Thumbnail exceeds 1 MB"));
             }
             crate::clipboard::validate_png(body)
         }
@@ -85,9 +102,12 @@ pub(super) fn write_entry(cache: &Path, rev: &str, kind: Kind, render_version: u
     validate_rev(rev)?;
     validate_body(kind, body)?;
     let dest = match kind {
-        Kind::Png => png_path(cache, rev),
+        Kind::Png => png_path(cache, rev, render_version),
         Kind::Fail => fail_path(cache, rev, render_version),
     };
     write_atomic(&dest, body)?;
+    if kind == Kind::Png {
+        remove_other_pngs(&dest, rev);
+    }
     Ok(body.len() as u64)
 }

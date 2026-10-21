@@ -5,6 +5,7 @@
  * size asserted), malformed URLs rejected, then thumbs_clear and a 404.
  */
 import { createDesktopThumbnailStore } from "../thumbnails/desktopStore";
+import { pngRenderVersion } from "../thumbnails/render";
 
 import type { LookupResult } from "../thumbnails/store";
 
@@ -19,7 +20,7 @@ export type ThumbnailsSmokeContext = {
 
 const WIDTH = 7;
 const HEIGHT = 5;
-const RENDER_VERSION = 1;
+const RENDER_VERSION = pngRenderVersion(2);
 
 export async function runThumbnailsSmoke(ctx: ThumbnailsSmokeContext) {
   const { win, doc, handle, drawingPath, step } = ctx;
@@ -74,9 +75,13 @@ export async function runThumbnailsSmoke(ctx: ThumbnailsSmokeContext) {
     const tPut = now();
     const url = await store.put(handle, drawingPath, rev, png, RENDER_VERSION);
     const putMs = Math.round(now() - tPut);
-    if (url !== store.urlFor(vaultId, rev)) {
+    if (url !== store.urlFor(vaultId, rev, RENDER_VERSION)) {
       throw new Error(
-        `put url ${url} != builder ${store.urlFor(vaultId, rev)}`,
+        `put url ${url} != builder ${store.urlFor(
+          vaultId,
+          rev,
+          RENDER_VERSION,
+        )}`,
       );
     }
 
@@ -105,6 +110,9 @@ export async function runThumbnailsSmoke(ctx: ThumbnailsSmokeContext) {
       `vdthumb://localhost/${"z".repeat(16)}/${rev}.png`,
       `vdthumb://localhost/${vaultId}/${rev}.png/..`,
       `vdthumb://localhost/${vaultId}/${rev}.jpg`,
+      `vdthumb://localhost/${vaultId}/${rev}.png`, // pre-v2 name: re-rendered
+      `vdthumb://localhost/${vaultId}/${rev}.v.png`,
+      `vdthumb://localhost/${vaultId}/${rev}.v2x.png`,
     ];
     const accepted: string[] = [];
     for (const u of bad) {

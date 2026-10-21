@@ -4,20 +4,28 @@
  * blob for the disk cache). `@excalidraw/excalidraw` is only imported
  * dynamically, when the first job runs.
  */
+import { fitThumb } from "./fit";
 import { withStandardColors } from "./standardColors";
 
 /**
- * Bump to retry scenes whose render failed (only fail markers are versioned).
- * Existing PNGs are replaced only when the drawing changes or the cache is cleared.
+ * PNG renderer generation. Bumping it re-renders every cached thumbnail (the
+ * PNG and fail-marker names carry the version) and retries failed scenes.
+ * v2 (2026-10-21): device-pixel density, fixed 4:3 box, padded fit.
  */
-export const RENDER_VERSION = 1;
+export const RENDER_VERSION = 2;
+
+/**
+ * Version sent to the cache for PNGs rendered at `density`: a 1x render is
+ * never served to a Retina display (and vice versa).
+ */
+export const pngRenderVersion = (density: number) =>
+  RENDER_VERSION * 10 + density;
 
 // SVG data URLs (history rows, link cards, templates).
 export const THUMBNAIL_MAX_SIZE = 240;
 export const THUMBNAIL_MAX_ELEMENTS = 2000;
 
-// PNG disk cache.
-export const THUMB_PNG_EDGE = 384;
+// PNG disk cache: box geometry in ./fit.ts.
 /**
  * Step 0 (2026-10-19, e2e/thumbnailsPerf.spec.ts): renderScenePng p95 at 4x CPU
  * throttle is 13 ms at 100, 42 ms at 500 and 95-106 ms at 1500 elements, so
@@ -41,7 +49,7 @@ export type PngResult =
   | { kind: "fail"; reason: FailReason };
 
 export type RenderSvg = (json: string) => Promise<string | null>;
-export type RenderPng = (json: string) => Promise<PngResult>;
+export type RenderPng = (json: string, density?: number) => Promise<PngResult>;
 
 type Scene = { elements: any[]; appState: any; files: any };
 
@@ -115,6 +123,10 @@ export const renderSceneToSvgDataUrl: RenderSvg = async (json) => {
   });
 };
 
+const releaseCanvas = (canvas: HTMLCanvasElement) => {
+  canvas.width = 0; // release the backing store (WebKit canvas memory cap)
+};
+
 const canvasToPng = async (canvas: HTMLCanvasElement): Promise<Blob | null> => {
   try {
     const blob = await new Promise<Blob | null>((resolve) =>
@@ -123,12 +135,15 @@ const canvasToPng = async (canvas: HTMLCanvasElement): Promise<Blob | null> => {
     // WKWebView silently falls back to PNG for unsupported types; be explicit.
     return blob && blob.type === "image/png" ? blob : null;
   } finally {
-    canvas.width = 0; // release the backing store (WebKit canvas memory cap)
+    releaseCanvas(canvas);
   }
 };
 
-/** Scene JSON -> opaque PNG, long edge THUMB_PNG_EDGE, standard light colours. */
-export const renderScenePng: RenderPng = async (json) => {
+/**
+ * Scene JSON -> opaque PNG of the fixed 4:3 thumbnail box at `density`
+ * (fitThumb), standard light colours.
+ */
+export const renderScenePng: RenderPng = async (json, density = 1) => {
   const scene = parseScene(json, {
     maxElements: THUMB_MAX_ELEMENTS,
     maxJsonChars: THUMB_MAX_JSON_BYTES,
@@ -140,18 +155,31 @@ export const renderScenePng: RenderPng = async (json) => {
   try {
     const { exportToCanvas } = await import("@excalidraw/excalidraw");
     return await withStandardColors(async (): Promise<PngResult> => {
-      const canvas = await exportToCanvas({
+      let fit = fitThumb(1, 1, density);
+      const content = await exportToCanvas({
         elements: scene.elements,
-        appState: {
-          ...scene.appState,
-          exportScale: 1,
-          exportWithDarkMode: false,
-        },
+        appState: { ...scene.appState, exportWithDarkMode: false },
         files: scene.files,
-        maxWidthOrHeight: THUMB_PNG_EDGE,
-        exportPadding: 8,
+        exportPadding: 0, // padding is in device pixels (fitThumb)
+        getDimensions: (width: number, height: number) => {
+          fit = fitThumb(width, height, density);
+          return { width: fit.width, height: fit.height, scale: fit.scale };
+        },
       });
-      const blob = await canvasToPng(canvas);
+      const box = document.createElement("canvas");
+      box.width = fit.boxWidth;
+      box.height = fit.boxHeight;
+      const ctx = box.getContext("2d");
+      if (!ctx) {
+        releaseCanvas(content);
+        releaseCanvas(box);
+        return { kind: "fail", reason: "encode" };
+      }
+      ctx.fillStyle = scene.appState.viewBackgroundColor || "#ffffff";
+      ctx.fillRect(0, 0, box.width, box.height);
+      ctx.drawImage(content, fit.x, fit.y);
+      releaseCanvas(content);
+      const blob = await canvasToPng(box);
       return blob ? { kind: "png", blob } : { kind: "fail", reason: "encode" };
     });
   } catch {

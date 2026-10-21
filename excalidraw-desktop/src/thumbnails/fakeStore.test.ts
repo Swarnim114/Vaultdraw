@@ -24,7 +24,9 @@ describe("fake thumbnail store", () => {
     expect(url).toBeTruthy();
     r = await s.lookup("h", ["a"], 1);
     expect(r.items[0]).toEqual({ rev: "r1", state: "hit" });
-    expect(s.urlFor(r.vaultId, "r1")).toBe(url);
+    expect(s.urlFor(r.vaultId, "r1", 1)).toBe(url);
+    // Another render version (new renderer or density) is a miss.
+    expect((await s.lookup("h", ["a"], 2)).items[0].state).toBe("miss");
   });
 
   it("fail markers are per render version", async () => {

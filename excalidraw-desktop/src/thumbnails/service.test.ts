@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createFakeThumbnailStore } from "./fakeStore";
 import { createJobQueue } from "./queue";
-import { RENDER_VERSION } from "./render";
+import { pngRenderVersion } from "./render";
 import { THUMB_NONE, createThumbnailService } from "./service";
 
 import type { PngResult } from "./render";
@@ -180,7 +180,7 @@ describe("thumbnail service", () => {
       "a.excalidraw",
       "r-newer",
       expect.anything(),
-      RENDER_VERSION,
+      pngRenderVersion(1), // jsdom devicePixelRatio 1
     );
   });
 

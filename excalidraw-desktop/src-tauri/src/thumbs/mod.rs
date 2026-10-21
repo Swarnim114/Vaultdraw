@@ -1,6 +1,6 @@
 //! Persistent drawing-thumbnail cache (F2). Content-addressed by drawing revision, kept in the
 //! app state dir (never in the vault). Lazy: no disk I/O until the first lookup/put.
-//! Layout: `<state>/thumbs/<vault_id>/{manifest.json, <rev[0..2]>/<rev>.png | <rev>.v<N>.fail}`.
+//! Layout: `<state>/thumbs/<vault_id>/{manifest.json, <rev[0..2]>/<rev>.v<N>.png | <rev>.v<N>.fail}`.
 #![cfg_attr(test, allow(dead_code))]
 mod gc;
 mod manifest;
@@ -229,7 +229,7 @@ impl VaultThumbs {
             Err(()) => item(None, ThumbState::Pending),
             Ok(None) => item(None, ThumbState::Missing),
             Ok(Some((_, rev))) => {
-                let state = if png_path(&self.cache, &rev).is_file() {
+                let state = if png_path(&self.cache, &rev, render_version).is_file() {
                     ThumbState::Hit
                 } else if fail_path(&self.cache, &rev, render_version).is_file() {
                     ThumbState::Failed
@@ -247,7 +247,7 @@ impl VaultThumbs {
         let written = store::write_entry(&self.cache, rev, kind, render_version, body)?;
         self.adopt_if_current(path, rev);
         self.account(written);
-        let url = (kind == Kind::Png).then(|| format!("vdthumb://localhost/{}/{rev}.png", self.vault_id));
+        let url = (kind == Kind::Png).then(|| format!("vdthumb://localhost/{}/{rev}.v{render_version}.png", self.vault_id));
         Ok(PutResult { url })
     }
 
@@ -372,7 +372,7 @@ pub(crate) async fn thumbs_put(request: Request<'_>, svc: State<'_, Service>, th
         .parse()
         .map_err(|_| err("INVALID_ARGUMENT", "x-render-version must be an unsigned integer"))?;
     let body = match request.body() {
-        InvokeBody::Raw(b) if b.len() > store::MAX_PNG_BYTES => return Err(err("INVALID_FILE", "Thumbnail exceeds 512 KB")),
+        InvokeBody::Raw(b) if b.len() > store::MAX_PNG_BYTES => return Err(err("INVALID_FILE", "Thumbnail exceeds 1 MB")),
         InvokeBody::Raw(b) => b.clone(),
         InvokeBody::Json(_) => Vec::new(), // rejected by validate_body (not a PNG / not empty)
     };

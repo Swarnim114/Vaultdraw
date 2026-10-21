@@ -5,7 +5,8 @@
  * watched) = no timers, no listeners, no work.
  */
 import { createJobQueue } from "./queue";
-import { RENDER_VERSION, renderScenePng } from "./render";
+import { thumbDensity } from "./fit";
+import { pngRenderVersion, renderScenePng } from "./render";
 import { enterStandardColors } from "./standardColors";
 import { LOOKUP_BATCH_MAX } from "./store";
 
@@ -59,6 +60,8 @@ export interface ThumbnailServiceDeps {
     listener: (event: VaultChangeLike) => void,
   ): Promise<() => void> | (() => void);
   render?: RenderPng;
+  /** Device pixels per CSS pixel (default: this window's, sampled once). */
+  density?: number;
   queue?: JobQueue;
   /** Frame scheduler (tests inject a manual one). */
   schedule?: (fn: () => void) => void;
@@ -93,6 +96,12 @@ export const createThumbnailService = (
 ): ThumbnailService => {
   const { store, handle } = deps;
   const render = deps.render ?? renderScenePng;
+  const density =
+    deps.density ??
+    thumbDensity(
+      typeof window === "undefined" ? undefined : window.devicePixelRatio,
+    );
+  const renderVersion = pngRenderVersion(density);
   const queue = deps.queue ?? getSharedQueue();
   const schedule = deps.schedule ?? defaultSchedule;
   const maxEntries = deps.maxEntries ?? 20000;
@@ -206,7 +215,7 @@ export const createThumbnailService = (
         }
         try {
           const { json, revision } = await deps.readDrawing(path);
-          const result = await render(json);
+          const result = await render(json, density);
           // The entry may have been dropped and recreated while this job ran
           // (unwatch + re-watch joins the started job): publish to the current one.
           const target = entries.get(path);
@@ -220,16 +229,16 @@ export const createThumbnailService = (
               path,
               revision,
               result.blob,
-              RENDER_VERSION,
+              renderVersion,
             );
             publish(
               path,
               target,
-              readyState(url ?? store.urlFor(vaultId, revision)),
+              readyState(url ?? store.urlFor(vaultId, revision, renderVersion)),
             );
           } else {
             if (result.reason !== "error") {
-              await store.put(handle, path, revision, null, RENDER_VERSION);
+              await store.put(handle, path, revision, null, renderVersion);
             }
             publish(path, target, THUMB_NONE);
           }
@@ -269,7 +278,11 @@ export const createThumbnailService = (
     switch (item.state) {
       case "hit":
         e.rev = item.rev;
-        publish(path, e, readyState(store.urlFor(vaultId, item.rev!)));
+        publish(
+          path,
+          e,
+          readyState(store.urlFor(vaultId, item.rev!, renderVersion)),
+        );
         settle(path, e);
         break;
       case "miss":
@@ -312,7 +325,7 @@ export const createThumbnailService = (
       return;
     }
     try {
-      const res = await store.lookup(handle, paths, RENDER_VERSION);
+      const res = await store.lookup(handle, paths, renderVersion);
       if (!live()) {
         return;
       }

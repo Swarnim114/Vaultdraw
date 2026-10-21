@@ -1,23 +1,25 @@
-//! `vdthumb://localhost/<vaultId 16hex>/<rev 64hex>.png`. Hex-only validation makes traversal
-//! impossible by construction (no `/`, `.` or `%` can survive), and no directory is ever listed.
+//! `vdthumb://localhost/<vaultId 16hex>/<rev 64hex>.v<N>.png`. Hex/decimal-only validation makes
+//! traversal impossible by construction (no `/`, `.` or `%` can survive), and no directory is ever listed.
 use super::store::{is_lower_hex, png_path, REV_LEN, VAULT_ID_LEN};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
-/// `(vault_id, rev)` from a URL path like `/<vaultId>/<rev>.png`, or None.
-pub(super) fn parse(uri_path: &str) -> Option<(&str, &str)> {
+/// `(vault_id, rev, render_version)` from a URL path like `/<vaultId>/<rev>.v<N>.png`, or None.
+pub(super) fn parse(uri_path: &str) -> Option<(&str, &str, u32)> {
     let rest = uri_path.strip_prefix('/')?;
     let (vault_id, file) = rest.split_once('/')?;
-    let rev = file.strip_suffix(".png")?;
-    (is_lower_hex(vault_id, VAULT_ID_LEN) && is_lower_hex(rev, REV_LEN)).then_some((vault_id, rev))
+    let (rev, version) = file.strip_suffix(".png")?.split_once(".v")?;
+    let digits = !version.is_empty() && version.len() <= 9 && version.bytes().all(|b| b.is_ascii_digit());
+    let version: u32 = if digits { version.parse().ok()? } else { return None };
+    (is_lower_hex(vault_id, VAULT_ID_LEN) && is_lower_hex(rev, REV_LEN)).then_some((vault_id, rev, version))
 }
 
 /// Cache file for a URL path, or None when the path is not a valid thumbnail URL.
 pub(super) fn resolve(state_dir: &Path, uri_path: &str) -> Option<PathBuf> {
-    let (vault_id, rev) = parse(uri_path)?;
-    Some(png_path(&super::cache_dir(state_dir, vault_id), rev))
+    let (vault_id, rev, version) = parse(uri_path)?;
+    Some(png_path(&super::cache_dir(state_dir, vault_id), rev, version))
 }
 
 /// PNG bytes for a URL path; None means 404.
