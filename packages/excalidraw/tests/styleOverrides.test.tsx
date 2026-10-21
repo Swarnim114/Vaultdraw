@@ -3,9 +3,18 @@ import React from "react";
 import { Excalidraw } from "../index";
 
 import { UI } from "./helpers/ui";
-import { act, fireEvent, render, screen, unmountComponent } from "./test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  unmountComponent,
+  waitFor,
+} from "./test-utils";
 
 import type { AppState, StyleOverridesHook } from "../types";
+
+const { h } = window;
 
 unmountComponent();
 
@@ -72,5 +81,47 @@ describe("styleOverrides prop", () => {
       rerender(<Excalidraw handleKeyboardGlobally styleOverrides={hook([])} />);
     });
     expect(screen.queryByTestId("style-use-default-fontFamily")).toBeNull();
+  });
+
+  it("shows the marker inside the compact panel popovers", async () => {
+    // radix popovers measure their content
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const useDefault = vi.fn();
+    await render(
+      <Excalidraw
+        handleKeyboardGlobally
+        UIOptions={{ getFormFactor: () => "tablet" }}
+        styleOverrides={hook(
+          ["currentItemFontFamily", "currentItemStrokeColor"],
+          useDefault,
+        )}
+      />,
+    );
+    fireEvent.resize(window);
+    await waitFor(() =>
+      expect(h.app.editorInterface.formFactor).toBe("tablet"),
+    );
+    UI.clickTool("text");
+
+    // closed popovers show nothing
+    expect(screen.queryByTestId("style-use-default-fontFamily")).toBeNull();
+
+    fireEvent.click(await screen.findByTestId("font-family-show-fonts"));
+    fireEvent.click(await screen.findByTestId("style-use-default-fontFamily"));
+    expect(useDefault).toHaveBeenLastCalledWith(["currentItemFontFamily"]);
+
+    fireEvent.click(
+      document.querySelector(".color-picker__button.active-color")!,
+    );
+    fireEvent.click(await screen.findByTestId("style-use-default-strokeColor"));
+    expect(useDefault).toHaveBeenLastCalledWith(["currentItemStrokeColor"]);
+    vi.unstubAllGlobals();
   });
 });

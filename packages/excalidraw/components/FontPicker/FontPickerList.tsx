@@ -36,6 +36,7 @@ import {
   DropDownMenuItemBadge,
 } from "../dropdownMenu/DropdownMenuItem";
 import MenuItemContent from "../dropdownMenu/DropdownMenuItemContent";
+import { StyleDefaultMarker } from "../StyleDefaultMarker";
 import { getDropdownMenuItemClassName } from "../dropdownMenu/common";
 import {
   FontFamilyCodeIcon,
@@ -404,6 +405,13 @@ export const FontPickerList = React.memo(
         onKeyDown={onKeyDown}
         preventAutoFocusOnTouch={!!app.state.editingTextElement}
       >
+        {stylesPanelMode !== "full" && (
+          <StyleDefaultMarker
+            fields={["currentItemFontFamily"]}
+            name="fontFamily"
+            label={t("labels.fontFamily")}
+          />
+        )}
         {stylesPanelMode === "full" && (
           <QuickSearch
             ref={inputRef}

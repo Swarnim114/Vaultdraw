@@ -30,6 +30,8 @@ import {
   temporarilyDisableTextEditorBlur,
 } from "../../hooks/useTextEditorFocus";
 
+import { StyleDefaultMarker } from "../StyleDefaultMarker";
+
 import { ColorInput } from "./ColorInput";
 import { Picker } from "./Picker";
 import PickerHeading from "./PickerHeading";
@@ -192,6 +194,21 @@ const ColorPickerPopupContent = ({
         }
       }}
     >
+      {/* the full panel marks the heading; compact popovers have none */}
+      {isCompactMode && type === "elementStroke" && (
+        <StyleDefaultMarker
+          fields={["currentItemStrokeColor"]}
+          name="strokeColor"
+          label={label}
+        />
+      )}
+      {isCompactMode && type === "elementBackground" && (
+        <StyleDefaultMarker
+          fields={["currentItemBackgroundColor"]}
+          name="backgroundColor"
+          label={label}
+        />
+      )}
       {palette ? (
         <Picker
           ref={colorPickerContentRef}
