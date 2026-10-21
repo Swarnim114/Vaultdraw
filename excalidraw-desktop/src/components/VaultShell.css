@@ -350,7 +350,7 @@ html.dark {
   padding: 0 8px;
   height: 28px;
   border: none;
-  border-radius: var(--vault-radius);
+  border-radius: var(--vd-radius-control);
   background: transparent;
   color: var(--vault-text);
   font-family: inherit;
@@ -361,7 +361,7 @@ html.dark {
 }
 
 .vault-navigator__vault:hover {
-  background-color: var(--vault-surface-hover);
+  background-color: var(--vault-hover);
 }
 
 .vault-navigator__vault svg {
@@ -385,9 +385,9 @@ html.dark {
   align-items: center;
   gap: 6px;
   height: 28px;
-  background-color: var(--vault-surface-hover);
+  background-color: var(--vault-chip);
   border: 1px solid transparent;
-  border-radius: var(--vault-radius);
+  border-radius: var(--vd-radius-control);
   padding: 0 8px;
   color: var(--vault-text-faint);
   transition: border-color 0.15s ease, background-color 0.15s ease;
@@ -556,7 +556,7 @@ html.dark {
   font-size: 0.82rem;
   color: var(--vault-text-muted);
   cursor: pointer;
-  border-radius: var(--vault-radius);
+  border-radius: var(--vd-radius-control);
   margin: 0 6px;
   position: relative;
   /* Indent guides, one per ancestor level (Obsidian-style). */
@@ -572,13 +572,13 @@ html.dark {
 }
 
 .vault-tree-item:hover {
-  background-color: var(--vault-surface-hover);
+  background-color: var(--vault-hover);
   color: var(--vault-text);
 }
 
 .vault-tree-item--active,
 .vault-tree-item--active:hover {
-  background-color: var(--vault-surface-active);
+  background-color: var(--vault-sel);
   color: var(--vault-text);
   font-weight: 500;
 }
@@ -623,7 +623,7 @@ html.dark {
 }
 
 .vault-tree-item--active .vault-tree-item__icon {
-  color: var(--vault-primary);
+  color: var(--vault-accent-text);
 }
 
 .vault-tree-item__icon svg {
@@ -666,11 +666,11 @@ html.dark {
   border: none;
   color: var(--vault-text-muted);
   cursor: pointer;
-  border-radius: var(--vault-radius-sm);
+  border-radius: var(--vd-radius-chip);
 }
 
 .vault-tree-action-btn:hover {
-  background-color: var(--vault-surface-active);
+  background-color: var(--vault-chip-strong);
   color: var(--vault-text);
 }
 
