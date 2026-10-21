@@ -25,6 +25,7 @@ mod pdf_import;
 mod refresh_rate;
 mod templates;
 mod themes;
+mod vault_lock;
 mod vault_settings;
 mod history;
 mod thumbs;
@@ -48,6 +49,10 @@ struct VaultInfo {
     path: String,
     name: String,
     read_only: bool,
+    /// Why the vault opened read-only (None when writable).
+    read_only_reason: Option<vault_lock::ReadOnlyReason>,
+    /// The other Vaultdraw process holding the lock, when that is the reason.
+    lock_holder_pid: Option<u32>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,13 +111,14 @@ struct Vault {
     root: PathBuf,
     handle: String,
     read_only: bool,
-    _lock: Option<File>,
+    _lock: Option<Arc<vault_lock::VaultLock>>,
     _watcher: Option<RecommendedWatcher>,
     mutation: Mutex<()>,
 }
 #[derive(Default)]
 struct Service {
     vaults: Mutex<HashMap<String, Arc<Vault>>>,
+    locks: vault_lock::LockRegistry,
 }
 
 /// Borrowed when serializing (the snapshot is never copied), owned when `list_recovery` parses it.
@@ -455,14 +461,6 @@ fn remove_recovery(path: &Path) {
     let _ = fs::remove_file(path);
 }
 
-fn open_lock_file(lock_path: &Path) -> Option<File> {
-    match fs::symlink_metadata(lock_path) {
-        Ok(m) if m.file_type().is_symlink() || !m.is_file() => None,
-        Ok(_) => OpenOptions::new().read(true).write(true).open(lock_path).ok(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => OpenOptions::new().read(true).write(true).create_new(true).open(lock_path).ok(),
-        Err(_) => None,
-    }
-}
 #[derive(Debug, PartialEq, Eq)]
 enum WatchedPath {
     /// Vault metadata, the lock file or our own temp files.
@@ -510,16 +508,9 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         return Err(err("INVALID_PATH", "Vault must be a directory"));
     }
     let handle = random_id();
-    let mut read_only = fs::metadata(&root).map_err(ioerr)?.permissions().readonly();
-    let lock_path = root.join(format!("{META_DIR}.lock"));
-    let lock_file = open_lock_file(&lock_path);
-    let lock = match lock_file {
-        Some(f) if f.try_lock_exclusive().is_ok() && !read_only => Some(f),
-        _ => {
-            read_only = true;
-            None
-        }
-    };
+    let outcome = service.locks.acquire(&root, &format!("{META_DIR}.lock"));
+    let read_only = outcome.lock.is_none();
+    let lock = outcome.lock;
     let h = handle.clone();
     let r = root.clone();
     let app_handle = app.clone();
@@ -636,6 +627,8 @@ fn open_vault(root: PathBuf, app: &AppHandle, service: &Service) -> Result<Vault
         path: root.to_string_lossy().into_owned(),
         name,
         read_only,
+        read_only_reason: outcome.reason,
+        lock_holder_pid: outcome.holder_pid,
     })
 }
 
@@ -691,21 +684,41 @@ async fn reopen_vault(app: AppHandle, state: State<'_, Service>) -> Result<Optio
     }
     open_vault(path, &app, &state).map(Some)
 }
-#[tauri::command]
-async fn release_vault(handle: String, app: AppHandle, state: State<'_, Service>) -> Result<()> {
-    state
+/// Drops a handle and its services; the vault lock goes with the last handle on that root.
+fn release_handle(app: &AppHandle, service: &Service, handle: &str) -> Result<()> {
+    service
         .vaults
         .lock()
         .map_err(|_| err("INTERNAL", "Vault state unavailable"))?
-        .remove(&handle);
+        .remove(handle);
     if let Some(search) = app.try_state::<search::SearchService>() {
-        search.stop(&handle);
+        search.stop(handle);
     }
     if let Some(history) = app.try_state::<history::HistoryService>() {
-        history.stop(&handle);
+        history.stop(handle);
     }
-    thumbs::release(&app, &handle);
+    thumbs::release(app, handle);
     Ok(())
+}
+/// A (re)loaded page starts with no vault: the previous page's handles are dead,
+/// so release them (and their locks, watchers and indexes) instead of leaking them.
+fn release_all_handles(app: &AppHandle) {
+    let Some(service) = app.try_state::<Service>() else { return };
+    let handles: Vec<String> = service.vaults.lock().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+    for handle in handles {
+        let _ = release_handle(app, &service, &handle);
+    }
+}
+#[tauri::command]
+async fn release_vault(handle: String, app: AppHandle, state: State<'_, Service>) -> Result<()> {
+    release_handle(&app, &state, &handle)
+}
+/// Opens the vault behind `handle` again (a new handle) so a read-only vault can
+/// become writable once its lock is free; the caller swaps handles and releases the old one.
+#[tauri::command]
+async fn retry_vault(handle: String, app: AppHandle, state: State<'_, Service>) -> Result<VaultInfo> {
+    let root = vault_for(&state, &handle)?.root.clone();
+    open_vault(root, &app, &state)
 }
 #[tauri::command]
 async fn list_directory(
@@ -1204,7 +1217,7 @@ mod tests {
         fs::create_dir(&root).unwrap(); fs::write(&target, "outside").unwrap();
         symlink(&target, root.join(format!("{META_DIR}.lock"))).unwrap();
         let lock_path = root.join(format!("{META_DIR}.lock"));
-        assert!(open_lock_file(&lock_path).is_none());
+        assert!(vault_lock::open_lock_file(&lock_path).is_err());
         assert_eq!(fs::read_to_string(target).unwrap(), "outside");
     }
     #[test]
@@ -1432,6 +1445,13 @@ pub fn run() {
             .manage(links::LinksState::default())
             .manage(history::HistoryService::default())
             .manage(thumbs::ThumbsService::default())
+            // A webview reload (or crash recovery) starts a fresh frontend that will
+            // reopen the vault; free the old page's handles first (toimprove #39).
+            .on_page_load(|webview, payload| {
+                if payload.event() == tauri::webview::PageLoadEvent::Started {
+                    release_all_handles(webview.app_handle());
+                }
+            })
             .setup(|app| {
                 startup_trace("setup begin");
                 // The main window is declared in tauri.conf.json with `create: false`
@@ -1485,7 +1505,7 @@ pub fn run() {
         #[cfg(feature = "smoke-test")]
         let builder = if smoke::enabled() {
             builder.invoke_handler(tauri::generate_handler![
-                choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
+                choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
@@ -1506,7 +1526,7 @@ pub fn run() {
             ])
         } else {
             builder.invoke_handler(tauri::generate_handler![
-                choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
+                choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
                 write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
                 export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
                 config::load_settings, config::update_config, config::write_state, config::open_config_dir,
@@ -1524,7 +1544,7 @@ pub fn run() {
         };
         #[cfg(not(feature = "smoke-test"))]
         let builder = builder.invoke_handler(tauri::generate_handler![
-            choose_vault, reopen_vault, release_vault, list_directory, read_drawing, drawing_revision,
+            choose_vault, reopen_vault, release_vault, retry_vault, list_directory, read_drawing, drawing_revision,
             write_drawing, create_folder, move_entry, move_entry_with_links, trash_entry, reveal_entry, reveal_recovery_dir,
             export_file, drawing_copy::save_drawing_copy, clipboard::copy_to_clipboard, list_recovery, discard_recovery,
             config::load_settings, config::update_config, config::write_state, config::open_config_dir,
