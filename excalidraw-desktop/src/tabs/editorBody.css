@@ -10,5 +10,8 @@
   min-width: 0;
   min-height: 0;
   position: relative;
+  /* Own stacking context: nothing inside (Excalidraw UI, overlays) can paint
+     above the tab strip's menu and list. */
+  z-index: 0;
   overflow: hidden;
 }
