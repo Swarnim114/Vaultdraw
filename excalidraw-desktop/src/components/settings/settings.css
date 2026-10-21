@@ -381,6 +381,11 @@
 
 /* ---- Scope: Global | This vault ---------------------------------------- */
 
+.vault-scope-switch__reason {
+  font-size: var(--vd-fs-caption);
+  color: var(--vault-text-faint);
+}
+
 .vault-scope-switch {
   display: inline-flex;
   padding: 2px;

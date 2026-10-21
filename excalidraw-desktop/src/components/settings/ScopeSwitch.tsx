@@ -51,46 +51,49 @@ export const ScopeSwitch = () => {
   };
 
   return (
-    <div
-      ref={listRef}
-      className="vault-scope-switch"
-      role="radiogroup"
-      aria-label="Settings scope"
-      data-testid="settings-scope"
-      onKeyDown={handleKeyDown}
-    >
-      {OPTIONS.map((o) => {
-        const checked = o.scope === scope;
-        const disabled = o.scope === "vault" && vaultDisabled;
-        return (
-          <button
-            key={o.scope}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            aria-disabled={disabled || undefined}
-            tabIndex={checked ? 0 : -1}
-            data-scope={o.scope}
-            title={disabled ? disabledReason ?? undefined : SCOPE_SWITCH_HELP}
-            aria-describedby={disabled ? reasonId : undefined}
-            className={`vault-scope-switch__option ${
-              checked ? "vault-scope-switch__option--active" : ""
-            }`}
-            onClick={() => {
-              if (!disabled) {
-                setScope(o.scope);
-              }
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <>
+      <div
+        ref={listRef}
+        className="vault-scope-switch"
+        role="radiogroup"
+        aria-label="Settings scope"
+        data-testid="settings-scope"
+        onKeyDown={handleKeyDown}
+      >
+        {OPTIONS.map((o) => {
+          const checked = o.scope === scope;
+          const disabled = o.scope === "vault" && vaultDisabled;
+          return (
+            <button
+              key={o.scope}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              aria-disabled={disabled || undefined}
+              tabIndex={checked ? 0 : -1}
+              data-scope={o.scope}
+              title={disabled ? disabledReason ?? undefined : SCOPE_SWITCH_HELP}
+              aria-describedby={disabled ? reasonId : undefined}
+              className={`vault-scope-switch__option ${
+                checked ? "vault-scope-switch__option--active" : ""
+              }`}
+              onClick={() => {
+                if (!disabled) {
+                  setScope(o.scope);
+                }
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
       {disabledReason && (
-        <span id={reasonId} hidden>
+        // Visible, not only a tooltip: a greyed option must say why.
+        <span id={reasonId} className="vault-scope-switch__reason">
           {disabledReason}
         </span>
       )}
-    </div>
+    </>
   );
 };

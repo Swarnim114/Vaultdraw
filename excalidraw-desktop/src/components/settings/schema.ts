@@ -56,8 +56,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
     id: "tools",
     label: "Tools",
     group: "Options",
-    intro:
-      "Default style of each tool, your pens and the laser. Unset keys keep the editor's current style.",
+    intro: "Default style of each tool, your pens and the laser.",
     testId: "tool-defaults-page",
   },
   { id: "files", label: "Files", group: "Options" },
@@ -70,7 +69,7 @@ export const DEFAULT_SETTINGS_PAGE: SettingsPageId = "appearance";
 
 /** Sections of the Tools page, in tab order: styled tools, then pen and laser. */
 export const TOOLS_SECTIONS = [...TOOL_DEFAULT_TOOLS, "pen", "laser"] as const;
-export type ToolsSection = typeof TOOLS_SECTIONS[number];
+export type ToolsSection = (typeof TOOLS_SECTIONS)[number];
 
 export const TOOLS_SECTION_LABELS: Record<ToolsSection, string> = {
   ...TOOL_LABELS,

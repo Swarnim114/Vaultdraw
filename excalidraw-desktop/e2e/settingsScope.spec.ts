@@ -155,6 +155,12 @@ test("settings tools: legend, dot tooltip and the reason This vault is disabled"
     "aria-disabled",
     "true",
   );
+  // The reason is on screen, not only in a tooltip.
+  await expect(
+    dialog(page).getByText(
+      "This vault is read-only, so vault settings can't be saved",
+    ),
+  ).toBeVisible();
   // Customise Arrow through the UI: its tab gets a dot that says what it means.
   const tools = dialog(page).getByRole("tablist", { name: "Tools" });
   await tools.getByRole("tab", { name: "Arrow" }).click();
