@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { libraryPanelStore } from "../library/libraryPanelState";
+
 import { ActivityBar } from "./ActivityBar";
 
 afterEach(cleanup);
@@ -60,5 +62,18 @@ describe("ActivityBar", () => {
       "0",
     );
     expect(first).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("does not reopen a panel that its own pointerdown just closed", () => {
+    const run = setup();
+    const button = screen.getByTestId("activity-bar-library");
+    libraryPanelStore.publish(true);
+    fireEvent.pointerDown(button);
+    libraryPanelStore.publish(false); // the sidebar's outside-click close
+    fireEvent.click(button);
+    expect(run).not.toHaveBeenCalled();
+    fireEvent.pointerDown(button); // now closed: a click opens it again
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledWith("library.toggle");
   });
 });

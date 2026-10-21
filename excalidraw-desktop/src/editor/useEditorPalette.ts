@@ -75,7 +75,13 @@ export function useEditorPalette(options: Options): void {
       ...paper,
       "paper.settings": () => live.current.openPaperSettings(),
       "library.toggle": () => {
-        api()?.toggleSidebar(DEFAULT_SIDEBAR);
+        // The sidebar opens on its library tab, so a tab-less toggle would
+        // never match the open state and could not close it: force instead.
+        const current = api();
+        current?.toggleSidebar({
+          ...DEFAULT_SIDEBAR,
+          force: !current.getAppState().openSidebar,
+        });
       },
     });
     const unEditor = registerPaletteProvider(

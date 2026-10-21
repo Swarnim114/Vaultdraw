@@ -8,6 +8,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
 } from "react";
 
 import {
@@ -123,6 +124,16 @@ export const ActivityBar = memo(
       ? current
       : visible[0]?.entry.id;
 
+    // Entries pressed when the pointer went down. A panel that closes itself
+    // on an outside pointerdown (the Library sidebar) is already closed by the
+    // time the click lands; running its toggle then would reopen it.
+    const pressedAtDown = useRef<string | null>(null);
+    const onPointerDown = useCallback((e: PointerEvent) => {
+      const id = entryOf(e.target)?.dataset.entry;
+      const entry = ACTIVITY_ENTRIES.find((x) => x.id === id);
+      pressedAtDown.current = entry?.active?.get() ? entry.id : null;
+    }, []);
+
     const onClick = useCallback(
       (e: MouseEvent) => {
         const button = entryOf(e.target);
@@ -132,7 +143,10 @@ export const ActivityBar = memo(
         const entry = ACTIVITY_ENTRIES.find(
           (x) => x.id === button.dataset.entry,
         );
-        if (entry) {
+        const closedByPointerDown =
+          entry && pressedAtDown.current === entry.id && !entry.active?.get();
+        pressedAtDown.current = null;
+        if (entry && !closedByPointerDown) {
           run(entry.commandId);
         }
       },
@@ -193,6 +207,7 @@ export const ActivityBar = memo(
         role="toolbar"
         aria-orientation="vertical"
         aria-label="Activity bar"
+        onPointerDown={onPointerDown}
         onClick={onClick}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
