@@ -653,7 +653,9 @@ fn set_table(doc: &mut toml_edit::DocumentMut, table: &str, key: &str, new: toml
         None => {
             parent.insert(key, toml_edit::Item::Table(new));
             if let Some(gap) = gap.filter(|_| !comments.is_empty()) {
-                set_gap_text(doc, &gap, String::new());
+                // A blank line that separated the comments from the next header stays before it.
+                let blank_before_next = matches!(gap, Gap::Table(_)) && comments.ends_with("\n\n");
+                set_gap_text(doc, &gap, if blank_before_next { "\n".to_owned() } else { String::new() });
                 let blank = if comments.ends_with("\n\n") { "" } else { "\n" };
                 if let Some(t) = doc.get_mut(table).and_then(|t| t.get_mut(key)).and_then(toml_edit::Item::as_table_mut) {
                     t.decor_mut().set_prefix(format!("{comments}{blank}"));
@@ -1252,7 +1254,8 @@ mod tests {
         assert_eq!(parse_config(&out).unwrap()["tools"]["arrow"], arrow());
         // (keys come out alphabetically: serde_json maps are sorted)
         let tail = "# stroke_style = \"dotted\"\n\n[tools.arrow]\nstroke_color = \"#f08c00\"\nstroke_style = \"dotted\"\nstroke_width = 3\n";
-        assert!(out.ends_with(tail), "{out}");
+        // The table lands right after the documented [tools] block (later tables such as [tabs] follow it).
+        assert!(out.contains(&format!("{tail}\n[tabs]")), "{out}");
         assert!(out.contains("# Default style per drawing tool"), "{out}");
         // Replacing swaps the keys and keeps the header's comments.
         let src = "[tools]\n\n# my arrow\n[tools.arrow]\nstroke_width = 9\nfill_style = \"solid\"\n";
@@ -1482,7 +1485,7 @@ mod tests {
     #[test]
     fn set_then_remove_keeps_every_comment_of_the_default_config() {
         let settings = default_settings();
-        assert_eq!(settings.iter().filter(|s| s.4).count(), 38, "{settings:?}");
+        assert_eq!(settings.iter().filter(|s| s.4).count(), 47, "{settings:?}");
         for (table, key, default, line, commented) in settings {
             let k = format!("{table}.{key}");
             let set = apply_changes(DEFAULT_CONFIG, &[change(&k, other_value(&default))]).unwrap();
