@@ -157,6 +157,9 @@ import {
   getInitializedImageElements,
   normalizeSVG,
   updateImageCache as _updateImageCache,
+  pruneImageCache,
+  IMAGE_CACHE_PRUNE_GRACE_MS,
+  IMAGE_CACHE_PRUNE_MIN_ENTRIES,
   getBoundTextElement,
   getContainerCenter,
   getContainerElement,
@@ -4055,6 +4058,7 @@ class App extends React.Component<AppProps, AppState> {
     this.fonts = new Fonts(this.scene, this.ownerDocument);
     this.renderer = new Renderer(this.scene);
     this.files = {};
+    this.scheduleImageCachePrune.cancel();
     this.imageCache.clear();
     this.resizeObserver?.disconnect();
     this.unmounted = true;
@@ -4639,7 +4643,50 @@ class App extends React.Component<AppProps, AppState> {
       this.props.onChange?.(elements, this.state, this.files);
       this.onChangeEmitter.trigger(elements, this.state, this.files);
     }
+
+    if (this.imageCache.size >= IMAGE_CACHE_PRUNE_MIN_ENTRIES) {
+      this.scheduleImageCachePrune();
+    }
   }
+
+  private imageCacheUnreferencedSince = new Map<FileId, number>();
+
+  /** frees decoded images no visible element uses (e.g. after deleting or
+   *  undoing a big PDF import); runs on idle, never on the render path */
+  private scheduleImageCachePrune = debounce(() => {
+    const run = () => {
+      if (this.unmounted) {
+        return;
+      }
+      const keep = new Set<FileId>();
+      const { newElement, croppingElementId } = this.state;
+      if (isInitializedImageElement(newElement)) {
+        keep.add(newElement.fileId);
+      }
+      const cropping = croppingElementId
+        ? this.scene.getElement(croppingElementId)
+        : null;
+      if (isInitializedImageElement(cropping)) {
+        keep.add(cropping.fileId);
+      }
+      const { pending } = pruneImageCache({
+        cache: this.imageCache,
+        elements: this.scene.getElementsIncludingDeleted(),
+        unreferencedSince: this.imageCacheUnreferencedSince,
+        now: Date.now(),
+        keep,
+      });
+      if (pending) {
+        this.scheduleImageCachePrune();
+      }
+    };
+    const ric = (this.ownerWindow as any)?.requestIdleCallback;
+    if (typeof ric === "function") {
+      ric.call(this.ownerWindow, run, { timeout: 5000 });
+    } else {
+      setTimeout(run, 0);
+    }
+  }, IMAGE_CACHE_PRUNE_GRACE_MS + 200);
 
   private renderInteractiveSceneCallback = ({
     scrollBars,

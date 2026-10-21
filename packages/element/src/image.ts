@@ -151,3 +151,72 @@ export const normalizeSVG = (SVGString: string) => {
     return svg.outerHTML;
   }
 };
+
+/** Below this many cached images, pruning is skipped entirely. */
+export const IMAGE_CACHE_PRUNE_MIN_ENTRIES = 8;
+/** An entry must stay unreferenced for this long before it is dropped. */
+export const IMAGE_CACHE_PRUNE_GRACE_MS = 2000;
+
+/**
+ * Drops cache entries whose fileId is referenced by no non-deleted image
+ * element (and not in `keep`). Entries missing from the scene are only
+ * removed once they have been unreferenced for `graceMs`, which covers
+ * insert/paste/crop flows that read the cache for an element not yet in the
+ * scene. Dropped entries self-heal: the editor re-decodes any visible image
+ * element without an entry (e.g. after undo restores it).
+ * `unreferencedSince` is caller-owned state between calls.
+ * @returns how many entries were removed and how many are still on probation
+ */
+export const pruneImageCache = ({
+  cache,
+  elements,
+  unreferencedSince,
+  now,
+  keep,
+  graceMs = IMAGE_CACHE_PRUNE_GRACE_MS,
+  minEntries = IMAGE_CACHE_PRUNE_MIN_ENTRIES,
+}: {
+  cache: Map<FileId, unknown>;
+  elements: readonly ExcalidrawElement[];
+  unreferencedSince: Map<FileId, number>;
+  now: number;
+  keep?: ReadonlySet<FileId>;
+  graceMs?: number;
+  minEntries?: number;
+}) => {
+  if (cache.size < minEntries) {
+    unreferencedSince.clear();
+    return { removed: 0, pending: 0 };
+  }
+  const referenced = new Set<FileId>();
+  for (const element of elements) {
+    if (!element.isDeleted && isInitializedImageElement(element)) {
+      referenced.add(element.fileId);
+    }
+  }
+  let removed = 0;
+  let pending = 0;
+  for (const fileId of [...cache.keys()]) {
+    if (referenced.has(fileId) || keep?.has(fileId)) {
+      unreferencedSince.delete(fileId);
+      continue;
+    }
+    const since = unreferencedSince.get(fileId);
+    if (since === undefined) {
+      unreferencedSince.set(fileId, now);
+      pending++;
+    } else if (now - since >= graceMs) {
+      cache.delete(fileId);
+      unreferencedSince.delete(fileId);
+      removed++;
+    } else {
+      pending++;
+    }
+  }
+  for (const fileId of unreferencedSince.keys()) {
+    if (!cache.has(fileId)) {
+      unreferencedSince.delete(fileId);
+    }
+  }
+  return { removed, pending };
+};
