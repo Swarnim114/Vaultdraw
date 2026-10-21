@@ -42,7 +42,6 @@ import {
   IconMore,
   IconMove,
   IconNewDrawing,
-  IconPanelRightClose,
   IconPlus,
   IconRefresh,
   IconReveal,
@@ -676,16 +675,6 @@ export const VaultNavigator = ({
             win={ownerDocument?.defaultView ?? null}
           />
         )}
-        <span className="vault-navigator__toolbar-spacer" />
-        <button
-          type="button"
-          className="vault-btn vault-btn--ghost vault-btn--icon"
-          onClick={onToggleCollapse}
-          title="Hide navigator"
-          aria-label="Collapse Navigator"
-        >
-          <IconPanelRightClose />
-        </button>
       </div>
 
       {/* Search Input */}

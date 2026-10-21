@@ -55,7 +55,10 @@
 .excalidraw .dropdown-menu .dropdown-menu-item__shortcut {
   opacity: 1;
   color: var(--vault-text-faint);
-  font-family: var(--vd-mono);
+  /* UI font like the key chips: mono text costs a cold font-fallback
+     layout (D16, D17; e2e "no monospace text"). */
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
 }
 
@@ -111,7 +114,10 @@
 .excalidraw .context-menu-item__shortcut {
   opacity: 1;
   color: var(--vault-text-faint);
-  font-family: var(--vd-mono);
+  /* UI font like the key chips: mono text costs a cold font-fallback
+     layout (D16, D17; e2e "no monospace text"). */
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
 }
 
@@ -152,7 +158,10 @@
 
 .excalidraw .HintViewer kbd,
 .excalidraw.theme--dark .HintViewer kbd {
-  font-family: var(--vd-mono);
+  /* UI font like the key chips: mono text costs a cold font-fallback
+     layout (D16, D17; e2e "no monospace text"). */
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
   font-size: 10.5px;
   line-height: 1;
   padding: 3px 5px;

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { openVault, trackErrors } from "./helpers";
+import { openDrawing, openVault, trackErrors } from "./helpers";
 
 test("navigator can be resized and remembers its width", async ({ page }) => {
   const errors = trackErrors(page);
@@ -38,6 +38,15 @@ test("navigator collapse toggle hides and restores the tree", async ({
   page,
 }) => {
   await openVault(page);
+  // One toggle only (#47): the header button; the pane has no collapse button.
+  await expect(
+    page
+      .getByLabel("Vault File Navigator")
+      .getByRole("button", { name: /Collapse Navigator|Hide navigator/i }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^(Hide|Show) Navigator$/ }),
+  ).toHaveCount(1);
   await page.getByRole("button", { name: "Hide Navigator" }).click();
   await expect
     .poll(
@@ -108,4 +117,29 @@ test("vault open and the palette render no monospace text", async ({
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette.locator(".vault-kbd").first()).toBeVisible();
   expect(await monoTextIn(page, "body")).toEqual([]);
+});
+
+test("pan hint and canvas menus render no monospace text", async ({ page }) => {
+  await openVault(page);
+  await page
+    .locator(".vault-tree-item__name", { hasText: "DSA" })
+    .first()
+    .click();
+  await openDrawing(page, "Graphs");
+  await expect(
+    page.locator(".excalidraw .HintViewer kbd").first(),
+  ).toBeVisible();
+  expect(await monoTextIn(page, ".excalidraw .HintViewer")).toEqual([]);
+  await page.getByTestId("main-menu-trigger").click();
+  await expect(
+    page.locator(".excalidraw .dropdown-menu-item__shortcut").first(),
+  ).toBeVisible();
+  expect(await monoTextIn(page, ".excalidraw .dropdown-menu")).toEqual([]);
+  await page.keyboard.press("Escape");
+  const canvas = page.locator(".vault-editor canvas.interactive");
+  await canvas.click({ button: "right", position: { x: 600, y: 500 } });
+  await expect(
+    page.locator(".excalidraw .context-menu-item__shortcut").first(),
+  ).toBeVisible();
+  expect(await monoTextIn(page, ".excalidraw .context-menu")).toEqual([]);
 });

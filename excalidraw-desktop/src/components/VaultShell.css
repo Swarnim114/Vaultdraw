@@ -333,10 +333,6 @@ html.dark {
   padding: 6px 8px 4px;
 }
 
-.vault-navigator__toolbar-spacer {
-  flex: 1 1 auto;
-}
-
 .vault-navigator__footer {
   display: flex;
   align-items: center;
