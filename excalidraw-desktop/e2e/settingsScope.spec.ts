@@ -66,7 +66,7 @@ test("settings scope: inherit, override, reset, all by clicking", async ({
     "aria-valuenow",
     "5",
   );
-  await expect(interval).toContainText("This vault overrides this");
+  await expect(interval).toContainText("Overridden in this vault");
 
   // A global change to a non-overridden row shows up inherited in the vault.
   const keepAll = row(page, "history-keep-all");
@@ -131,4 +131,38 @@ test("palette opens Settings in either scope; vault scope is per-vault pages onl
   await expect(dialog(page)).toHaveCount(0);
   await runPaletteCommand(page, "Settings: Edit global settings");
   await expect(radio(page, "Global")).toBeChecked();
+});
+
+// Settings > Tools explains its dots and the greyed-out vault scope
+// (toimprove #42). Visible UI only; the vault is read-only.
+test("settings tools: legend, dot tooltip and the reason This vault is disabled", async ({
+  page,
+}) => {
+  await openVault(page, "?readonly=1");
+  await page
+    .getByLabel("Vault File Navigator")
+    .getByRole("button", { name: "Settings" })
+    .click();
+  await tab(page, "Tools").click();
+  await expect(page.getByTestId("tools-legend")).toHaveText(
+    "Customised defaults. Options you leave unset follow Excalidraw's last-used style.",
+  );
+  await expect(radio(page, "This vault")).toHaveAttribute(
+    "title",
+    "This vault is read-only, so vault settings can't be saved",
+  );
+  await expect(radio(page, "This vault")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  // Customise Arrow through the UI: its tab gets a dot that says what it means.
+  const tools = dialog(page).getByRole("tablist", { name: "Tools" });
+  await tools.getByRole("tab", { name: "Arrow" }).click();
+  await dialog(page)
+    .getByTestId("tool-default-arrow-stroke_style")
+    .selectOption("dotted");
+  await expect(tools.getByRole("tab", { name: "Arrow" })).toHaveAttribute(
+    "title",
+    "Arrow: this tool has customised defaults",
+  );
 });

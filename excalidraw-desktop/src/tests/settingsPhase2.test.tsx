@@ -179,7 +179,11 @@ describe("per-vault rows", () => {
       '[data-setting-id="sort-order"]',
     )!;
     expect(row).toHaveAttribute("data-vault-override", "true");
-    expect(screen.getByText("This vault overrides this")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Overridden in this vault: the vault value is used here",
+      ),
+    ).toBeInTheDocument();
     // The control shows the global value, not the vault's.
     expect(screen.getByLabelText("Navigator sort order")).toHaveValue(
       "name_asc",
@@ -213,7 +217,11 @@ describe("per-vault rows", () => {
     renderModal({ ...vault, readOnly: true });
     const radio = scopeRadio("This vault");
     expect(radio).toHaveAttribute("aria-disabled", "true");
-    expect(radio).toHaveAttribute("title", "This vault is read-only");
+    expect(radio).toHaveAttribute(
+      "title",
+      "This vault is read-only, so vault settings can't be saved",
+    );
+    expect(radio.getAttribute("aria-describedby")).toBeTruthy();
     fireEvent.click(radio);
     expect(scopeRadio("Global")).toHaveAttribute("aria-checked", "true");
   });

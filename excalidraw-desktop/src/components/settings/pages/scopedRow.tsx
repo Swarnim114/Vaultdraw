@@ -1,5 +1,6 @@
 import { SettingRow } from "../SettingRow";
 import { getSettingSchema } from "../schema";
+import { OVERRIDDEN_NOTE } from "../scopeHelp";
 import { useSettings } from "../SettingsContext";
 
 import type { ReactNode } from "react";
@@ -41,7 +42,7 @@ export const ScopeBadge = ({
   const overridden = vaultSettings.isOverridden(field);
   if (scope === "global") {
     return overridden ? (
-      <span className="vault-scope-note">This vault overrides this</span>
+      <span className="vault-scope-note">{OVERRIDDEN_NOTE}</span>
     ) : null;
   }
   return (

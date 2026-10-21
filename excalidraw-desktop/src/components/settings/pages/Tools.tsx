@@ -17,6 +17,13 @@ import {
   TOOLS_SECTIONS,
   type ToolsSection,
 } from "../schema";
+import {
+  customisedTabTitle,
+  CUSTOMISED_DOT_HELP,
+  SCOPE_SWITCH_HELP,
+  TOOLS_LEGEND_DOT,
+  TOOLS_LEGEND_UNSET,
+} from "../scopeHelp";
 import { useSettings } from "../SettingsContext";
 import "../toolsPage.css";
 
@@ -105,7 +112,7 @@ const ToolTabs = ({
             className={`vault-tools-tab ${
               active ? "vault-tools-tab--active" : ""
             }`}
-            title={customised[s] ? `${label} (customised)` : label}
+            title={customisedTabTitle(label, customised[s])}
             data-customised={customised[s] || undefined}
             onClick={() => onSelect(s)}
           >
@@ -153,8 +160,12 @@ export const ToolsPage = ({
         section={section}
         onSelect={onSectionChange}
       />
-      <p className="vault-tools-legend">
-        customised · unset values keep Excalidraw&apos;s current style
+      <p
+        className="vault-tools-legend"
+        data-testid="tools-legend"
+        title={`${CUSTOMISED_DOT_HELP}. ${SCOPE_SWITCH_HELP}`}
+      >
+        {TOOLS_LEGEND_DOT}. {TOOLS_LEGEND_UNSET}.
       </p>
       <div
         id={TOOLS_PANEL_ID}

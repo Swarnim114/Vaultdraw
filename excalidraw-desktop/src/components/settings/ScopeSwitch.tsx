@@ -1,6 +1,8 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useId, useRef, type KeyboardEvent } from "react";
 
 import { useSettings } from "./SettingsContext";
+
+import { SCOPE_SWITCH_HELP, vaultScopeDisabledReason } from "./scopeHelp";
 
 import type { SettingsScope } from "./settingsScope";
 
@@ -16,10 +18,12 @@ const OPTIONS: readonly { scope: SettingsScope; label: string }[] = [
 export const ScopeSwitch = () => {
   const { vault, scope, setScope } = useSettings();
   const listRef = useRef<HTMLDivElement>(null);
+  const reasonId = useId();
   if (!vault) {
     return null;
   }
-  const vaultDisabled = vault.readOnly;
+  const disabledReason = vaultScopeDisabledReason(vault);
+  const vaultDisabled = disabledReason !== null;
   const enabled = OPTIONS.filter((o) => o.scope === "global" || !vaultDisabled);
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -67,7 +71,8 @@ export const ScopeSwitch = () => {
             aria-disabled={disabled || undefined}
             tabIndex={checked ? 0 : -1}
             data-scope={o.scope}
-            title={disabled ? "This vault is read-only" : undefined}
+            title={disabled ? disabledReason ?? undefined : SCOPE_SWITCH_HELP}
+            aria-describedby={disabled ? reasonId : undefined}
             className={`vault-scope-switch__option ${
               checked ? "vault-scope-switch__option--active" : ""
             }`}
@@ -81,6 +86,11 @@ export const ScopeSwitch = () => {
           </button>
         );
       })}
+      {disabledReason && (
+        <span id={reasonId} hidden>
+          {disabledReason}
+        </span>
+      )}
     </div>
   );
 };

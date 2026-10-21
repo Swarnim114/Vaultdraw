@@ -126,6 +126,13 @@ describe("customised dots, Reset and the vault scope", () => {
     });
     expect(tab("Arrow")).toHaveAttribute("data-customised", "true");
     expect(tab("Line")).not.toHaveAttribute("data-customised");
+    expect(tab("Arrow")).toHaveAttribute(
+      "title",
+      "Arrow: this tool has customised defaults",
+    );
+    expect(screen.getByTestId("tools-legend")).toHaveTextContent(
+      "Customised defaults. Options you leave unset follow Excalidraw's last-used style.",
+    );
     expect(reset).toBeEnabled();
     fireEvent.click(reset);
     expect(tab("Arrow")).not.toHaveAttribute("data-customised");
