@@ -9,6 +9,7 @@ import { deepCopyElement } from "@excalidraw/element";
 import { CaptureUpdateAction } from "@excalidraw/element";
 
 import { libraryAddNamingAtom } from "../components/LibraryUnit";
+import { getLibraryItemFiles, withFiles } from "../data/library";
 import { editorJotaiStore } from "../editor-jotai";
 import { t } from "../i18n";
 
@@ -62,6 +63,7 @@ export const actionAddToLibrary = register({
             status: "unpublished",
             elements: selectedElements.map(deepCopyElement),
             created: Date.now(),
+            ...withFiles(getLibraryItemFiles(selectedElements, app.files)),
           },
           ...items,
         ]);

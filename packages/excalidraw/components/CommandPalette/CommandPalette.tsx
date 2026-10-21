@@ -176,6 +176,7 @@ function CommandPaletteInner({
             <LibraryItemIcon
               id={libraryItem.id}
               elements={libraryItem.elements}
+              files={libraryItem.files}
             />
           ),
           category: "Library",
@@ -184,6 +185,7 @@ function CommandPaletteInner({
           perform: () => {
             app.onInsertElements(
               distributeLibraryItemsOnSquareGrid([libraryItem]),
+              libraryItem.files ?? null,
             );
           },
         })) || []
@@ -554,15 +556,17 @@ function CommandPaletteInner({
 const LibraryItemIcon = ({
   id,
   elements,
+  files,
 }: {
   id: LibraryItem["id"] | null;
   elements: LibraryItem["elements"] | undefined;
+  files?: LibraryItem["files"];
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const { svgCache } = useLibraryCache();
   const { theme } = useUIAppState();
 
-  useLibraryItemSvg(id, elements, svgCache, ref, theme);
+  useLibraryItemSvg(id, elements, svgCache, ref, theme, true, files);
 
   return <div className="library-item-icon" ref={ref} />;
 };

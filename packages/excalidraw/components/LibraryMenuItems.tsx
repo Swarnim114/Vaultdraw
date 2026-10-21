@@ -17,7 +17,7 @@ import { duplicateElements } from "@excalidraw/element";
 
 import clsx from "clsx";
 
-import { resolveLibrarySectionId } from "../data/library";
+import { getLibraryItemFiles, resolveLibrarySectionId } from "../data/library";
 import { deburr } from "../deburr";
 import { useAtom, useSetAtom } from "../editor-jotai";
 
@@ -135,7 +135,18 @@ export default function LibraryMenuItems({
   const sections = libraryUIOptions?.sections;
   const online = libraryUIOptions?.online !== false;
   const namedItems = !!libraryUIOptions?.namedItems;
-  const { library } = useApp();
+  const app = useApp();
+  const { library } = app;
+  const pendingItems = useMemo(
+    () => [
+      {
+        id: null,
+        elements: pendingElements,
+        files: getLibraryItemFiles(pendingElements, app.files),
+      },
+    ],
+    [pendingElements, app],
+  );
   const [renamingId, setRenamingId] = useAtom(libraryItemRenamingAtom);
   const [namingSection, setNamingSection] = useAtom(libraryAddNamingAtom);
   const setLibraryMenuOpen = useSetAtom(isLibraryMenuOpenAtom);
@@ -461,7 +472,7 @@ export default function LibraryMenuItems({
               {pendingElements.length > 0 && section.canAdd !== false && (
                 <LibraryMenuSection
                   itemsRenderedPerBatch={itemsRenderedPerBatch}
-                  items={[{ id: null, elements: pendingElements }]}
+                  items={pendingItems}
                   onItemSelectToggle={onItemSelectToggle}
                   onItemDrag={onItemDrag}
                   isItemSelected={isItemSelected}
@@ -511,7 +522,7 @@ export default function LibraryMenuItems({
           {pendingElements.length > 0 && (
             <LibraryMenuSection
               itemsRenderedPerBatch={itemsRenderedPerBatch}
-              items={[{ id: null, elements: pendingElements }]}
+              items={pendingItems}
               onItemSelectToggle={onItemSelectToggle}
               onItemDrag={onItemDrag}
               isItemSelected={isItemSelected}

@@ -20,6 +20,7 @@ type LibraryOrPendingItem = readonly (
   | /* pending library item */ {
       id: null;
       elements: readonly NonDeleted<ExcalidrawElement>[];
+      files?: LibraryItem["files"];
     }
 )[];
 
@@ -97,6 +98,7 @@ export const LibraryMenuSection = memo(
           return i < index ? (
             <LibraryUnit
               elements={item?.elements}
+              files={item?.files}
               isPending={!item?.id && !!item?.elements}
               onClick={onClick}
               svgCache={svgCache}

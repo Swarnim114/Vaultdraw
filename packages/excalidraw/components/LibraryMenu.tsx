@@ -26,8 +26,11 @@ import type {
 import { trackEvent } from "../analytics";
 import { useUIAppState } from "../context/ui-appState";
 import {
+  collectLibraryItemsFiles,
   distributeLibraryItemsOnSquareGrid,
+  getLibraryItemFiles,
   libraryItemsAtom,
+  withFiles,
 } from "../data/library";
 import { atom, useAtom } from "../editor-jotai";
 import { t } from "../i18n";
@@ -88,6 +91,7 @@ const LibraryMenuContent = memo(
     onSelectItems: (id: LibraryItem["id"][]) => void;
   }) => {
     const [libraryItemsData] = useAtom(libraryItemsAtom);
+    const app = useApp();
 
     const sections = libraryUIOptions?.sections;
 
@@ -111,6 +115,7 @@ const LibraryMenuContent = memo(
           id: randomId(),
           created: Date.now(),
           ...(name && { name }),
+          ...withFiles(getLibraryItemFiles(elements, app.files)),
         };
         if (sections && sectionId) {
           // the host must know the section before the item shows up
@@ -123,7 +128,7 @@ const LibraryMenuContent = memo(
             setAppState({ errorMessage: t("alerts.errorAddingToLibrary") });
           });
       },
-      [onAddToLibrary, library, setAppState, sections],
+      [onAddToLibrary, library, setAppState, sections, app],
     );
 
     const libraryItems = useMemo(
@@ -332,7 +337,10 @@ export const LibraryMenu = memo(() => {
 
   const onInsertLibraryItems = useCallback(
     (libraryItems: LibraryItems) => {
-      onInsertElements(distributeLibraryItemsOnSquareGrid(libraryItems));
+      onInsertElements(
+        distributeLibraryItemsOnSquareGrid(libraryItems),
+        collectLibraryItemsFiles(libraryItems),
+      );
       app.focusContainer();
     },
     [onInsertElements, app],

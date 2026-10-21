@@ -19,7 +19,10 @@ import {
 
 import { hashElementsVersion, hashString } from "@excalidraw/element";
 
-import { getCommonBoundingBox } from "@excalidraw/element";
+import {
+  getCommonBoundingBox,
+  isInitializedImageElement,
+} from "@excalidraw/element";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
@@ -37,6 +40,7 @@ import { restoreLibraryItems } from "./restore";
 import type App from "../components/App";
 
 import type {
+  BinaryFiles,
   LibraryItems,
   LibraryItem,
   ExcalidrawImperativeAPI,
@@ -459,6 +463,40 @@ class Library {
 }
 
 export default Library;
+
+/** The files of `elements`' images found in `files` (undefined: none). */
+export const getLibraryItemFiles = (
+  elements: readonly ExcalidrawElement[],
+  files: BinaryFiles | null | undefined,
+): BinaryFiles | undefined => {
+  let out: BinaryFiles | undefined;
+  for (const element of elements) {
+    if (isInitializedImageElement(element)) {
+      const file = files?.[element.fileId];
+      if (file) {
+        (out ??= {})[element.fileId] = file;
+      }
+    }
+  }
+  return out;
+};
+
+/** Spread into an item literal: `files` only when there are some. */
+export const withFiles = (files: BinaryFiles | undefined) =>
+  files ? { files } : {};
+
+/** Merged files of several items, to register when inserting them. */
+export const collectLibraryItemsFiles = (
+  items: readonly LibraryItem[],
+): BinaryFiles | null => {
+  let out: BinaryFiles | null = null;
+  for (const item of items) {
+    if (item.files) {
+      out = { ...(out ?? {}), ...item.files };
+    }
+  }
+  return out;
+};
 
 export const distributeLibraryItemsOnSquareGrid = (
   libraryItems: LibraryItems,

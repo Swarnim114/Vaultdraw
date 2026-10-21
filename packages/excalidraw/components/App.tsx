@@ -320,7 +320,10 @@ import {
 } from "../clipboard";
 
 import { exportCanvas, loadFromBlob } from "../data";
-import Library, { distributeLibraryItemsOnSquareGrid } from "../data/library";
+import Library, {
+  collectLibraryItemsFiles,
+  distributeLibraryItemsOnSquareGrid,
+} from "../data/library";
 import { restoreAppState, restoreElements } from "../data/restore";
 import { getCenter, getDistance } from "../gesture";
 import {
@@ -861,7 +864,10 @@ class App extends React.Component<AppProps, AppState> {
       },
       insertLibraryItems: (items) => {
         if (items.length) {
-          this.onInsertElements(distributeLibraryItemsOnSquareGrid(items));
+          this.onInsertElements(
+            distributeLibraryItemsOnSquareGrid(items),
+            collectLibraryItemsFiles(items),
+          );
         }
       },
       insertImages: async (files, scenePoint) => {
@@ -2689,21 +2695,20 @@ class App extends React.Component<AppProps, AppState> {
                               </ElementCanvasButtons>
                             )}
 
-                          {this.isDefaultUIEnabled() &&
-                            this.state.contextMenu && (
-                              <ContextMenu
-                                items={this.state.contextMenu.items}
-                                top={this.state.contextMenu.top}
-                                left={this.state.contextMenu.left}
-                                actionManager={this.actionManager}
-                                onClose={(callback) => {
-                                  this.setState({ contextMenu: null }, () => {
-                                    this.focusContainer();
-                                    callback?.();
-                                  });
-                                }}
-                              />
-                            )}
+                          {this.isDefaultUIEnabled() && this.state.contextMenu && (
+                            <ContextMenu
+                              items={this.state.contextMenu.items}
+                              top={this.state.contextMenu.top}
+                              left={this.state.contextMenu.left}
+                              actionManager={this.actionManager}
+                              onClose={(callback) => {
+                                this.setState({ contextMenu: null }, () => {
+                                  this.focusContainer();
+                                  callback?.();
+                                });
+                              }}
+                            />
+                          )}
                           <StaticCanvas
                             canvas={this.canvas}
                             rc={this.rc}
@@ -2855,11 +2860,14 @@ class App extends React.Component<AppProps, AppState> {
     return this.scene.getNonDeletedElements();
   };
 
-  public onInsertElements = (elements: readonly ExcalidrawElement[]) => {
+  public onInsertElements = (
+    elements: readonly ExcalidrawElement[],
+    files: BinaryFiles | null = null,
+  ) => {
     this.addElementsFromPasteOrLibrary({
       elements,
       position: "center",
-      files: null,
+      files,
     });
   };
 
@@ -11648,7 +11656,7 @@ class App extends React.Component<AppProps, AppState> {
           this.addElementsFromPasteOrLibrary({
             elements: distributeLibraryItemsOnSquareGrid(libraryItems),
             position: event,
-            files: null,
+            files: collectLibraryItemsFiles(libraryItems),
           });
         }
       } catch (error: any) {

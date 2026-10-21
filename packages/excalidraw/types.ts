@@ -678,6 +678,8 @@ export type LibraryItem = {
   created: number;
   name?: string;
   error?: string;
+  /** data of the image elements' files (library items are self-contained) */
+  files?: BinaryFiles;
 };
 export type LibrarySection = {
   id: string;

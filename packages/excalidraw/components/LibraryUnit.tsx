@@ -185,6 +185,7 @@ export const LibraryUnit = memo(
     name,
     showName,
     elements,
+    files,
     isPending,
     onClick,
     selected,
@@ -202,6 +203,7 @@ export const LibraryUnit = memo(
     /** render larger, with the name below the item */
     showName?: boolean;
     elements?: LibraryItem["elements"];
+    files?: LibraryItem["files"];
     isPending?: boolean;
     onClick: (id: LibraryItem["id"] | null) => void;
     selected: boolean;
@@ -221,7 +223,15 @@ export const LibraryUnit = memo(
     const ref = useRef<HTMLDivElement | null>(null);
     const tileRef = useRef<HTMLDivElement | null>(null);
     const visible = useHasBeenVisible(tileRef);
-    const svg = useLibraryItemSvg(id, elements, svgCache, ref, theme, visible);
+    const svg = useLibraryItemSvg(
+      id,
+      elements,
+      svgCache,
+      ref,
+      theme,
+      visible,
+      files,
+    );
     const canvasColor = useCanvasColor(theme);
 
     const [isHovered, setIsHovered] = useState(false);

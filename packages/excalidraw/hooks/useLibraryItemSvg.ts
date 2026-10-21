@@ -27,6 +27,7 @@ export const libraryItemSvgsCache = atom<SvgCache>(new Map());
 const exportLibraryItemToSvg = async (
   elements: LibraryItem["elements"],
   theme: Theme,
+  files: LibraryItem["files"],
 ) => {
   return await exportToSvg({
     elements,
@@ -35,7 +36,7 @@ const exportLibraryItemToSvg = async (
       viewBackgroundColor: COLOR_PALETTE.white,
       exportWithDarkMode: theme === THEME.DARK,
     },
-    files: null,
+    files: files ?? null,
     renderEmbeddables: false,
     skipInliningFonts: true,
   });
@@ -135,6 +136,8 @@ export const useLibraryItemSvg = (
   theme: Theme,
   /** false: don't render (yet), e.g. while scrolled out of view */
   enabled = true,
+  /** data of the item's image elements */
+  files?: LibraryItem["files"],
 ): SVGSVGElement | undefined => {
   const [svg, setSvg] = useState<SVGSVGElement>();
   const displayColorKey = useDisplayColorKey();
@@ -145,7 +148,7 @@ export const useLibraryItemSvg = (
     }
     let cancelled = false;
     const render = async (version?: number) => {
-      const exportedSvg = await exportLibraryItemToSvg(elements, theme);
+      const exportedSvg = await exportLibraryItemToSvg(elements, theme, files);
       // TODO: should likely be removed for custom fonts
       exportedSvg.querySelector(".style-fonts")?.remove();
       if (id && version !== undefined) {
@@ -172,7 +175,7 @@ export const useLibraryItemSvg = (
     return () => {
       cancelled = true;
     };
-  }, [id, elements, svgCache, theme, displayColorKey, enabled]);
+  }, [id, elements, files, svgCache, theme, displayColorKey, enabled]);
 
   useEffect(() => {
     const node = ref.current;
