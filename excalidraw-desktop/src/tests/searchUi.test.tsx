@@ -188,12 +188,14 @@ describe("SearchResults", () => {
     expect(handlers.match).toHaveBeenCalledWith(
       "DSA/Shortest Paths.excalidraw",
       expect.objectContaining({ elementId: "algo-label" }),
+      undefined,
     );
 
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(handlers.drawing).toHaveBeenCalledWith(
       "DSA/Shortest Paths.excalidraw",
+      undefined,
     );
 
     fireEvent.keyDown(input, { key: "Escape" });
@@ -221,7 +223,10 @@ describe("SearchResults", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveAttribute("data-path", "DSA/Graphs.excalidraw");
     fireEvent.click(rows[0]);
-    expect(handlers.drawing).toHaveBeenCalledWith("DSA/Graphs.excalidraw");
+    expect(handlers.drawing).toHaveBeenCalledWith(
+      "DSA/Graphs.excalidraw",
+      undefined,
+    );
   });
 
   it("shows indexing progress and no-match state", async () => {

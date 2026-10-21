@@ -87,7 +87,10 @@ describe("GraphHost", () => {
     await waitFor(() => screen.getByTestId("graph-view"));
     act(() => lastProps!.onOpen("B/C.excalidraw"));
     expect(screen.queryByTestId("graph-view")).toBeNull();
-    expect(props.onOpenDrawing).toHaveBeenCalledWith("B/C.excalidraw");
+    expect(props.onOpenDrawing).toHaveBeenCalledWith(
+      "B/C.excalidraw",
+      undefined,
+    );
   });
 
   it("passes loaded per-vault settings, the theme key and shortcut lookup", async () => {
