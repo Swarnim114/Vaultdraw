@@ -9,10 +9,13 @@ const GUARDED_EVENTS = ["keydown", "paste", "cut", "copy"] as const;
 
 export const SWAPPING_ATTR = "data-swapping";
 
-export const blockEditorInput = (host: HTMLElement): (() => void) => {
+/**
+ * Keyboard and clipboard events aimed at the canvas (or at nothing, i.e. the
+ * body) are stopped before the editor's document-level listeners see them.
+ * No visual or focus change. Returns the release function.
+ */
+export const blockEditorKeys = (host: HTMLElement): (() => void) => {
   const win = host.ownerDocument.defaultView;
-  host.setAttribute(SWAPPING_ATTR, "true");
-  host.setAttribute("inert", "");
   const stop = (event: Event) => {
     const target = event.target as Node | null;
     const doc = host.ownerDocument;
@@ -34,6 +37,16 @@ export const blockEditorInput = (host: HTMLElement): (() => void) => {
     for (const type of GUARDED_EVENTS) {
       win?.removeEventListener(type, stop, true);
     }
+  };
+};
+
+/** The full guard of a scene swap: keys, pointer (CSS) and focus (`inert`). */
+export const blockEditorInput = (host: HTMLElement): (() => void) => {
+  host.setAttribute(SWAPPING_ATTR, "true");
+  host.setAttribute("inert", "");
+  const releaseKeys = blockEditorKeys(host);
+  return () => {
+    releaseKeys();
     host.removeAttribute(SWAPPING_ATTR);
     host.removeAttribute("inert");
   };

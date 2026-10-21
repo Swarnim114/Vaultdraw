@@ -356,6 +356,49 @@ describe("VaultEditor scene swap", () => {
     );
   });
 
+  it("per-drawing style overrides stay with their drawing: B shows defaults and saves none of A's, A's come back", async () => {
+    const { onChange, landed, switchTo } = await mount({
+      documentId: "A",
+      json: scene("a"),
+    });
+    const apiA = getEditorApi("A")!;
+    act(() => apiA.setActiveTool({ type: "rectangle" }));
+    act(() =>
+      apiA.updateScene({
+        appState: { currentItemStrokeColor: "#e03131" },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      }),
+    );
+    flushEditorSerialization("A");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const savedA = onChange.mock.calls[0][0];
+    expect(JSON.parse(savedA).vaultdraw.styles.rectangle).toMatchObject({
+      stroke_color: "#e03131",
+    });
+
+    await switchTo({ documentId: "B", json: scene("b") });
+    await landed("B");
+    const apiB = getEditorApi("B")!;
+    expect(apiB.getAppState().currentItemStrokeColor).not.toBe("#e03131");
+    act(() => apiB.setActiveTool({ type: "rectangle" }));
+    expect(apiB.getAppState().currentItemStrokeColor).not.toBe("#e03131");
+    act(() =>
+      apiB.updateScene({
+        elements: apiB.getSceneElements().slice(1),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      }),
+    );
+    flushEditorSerialization("B");
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(onChange.mock.calls[1][0]).vaultdraw).toBeUndefined();
+
+    await switchTo({ documentId: "A2", json: savedA });
+    await landed("A2");
+    const apiA2 = getEditorApi("A2")!;
+    act(() => apiA2.setActiveTool({ type: "rectangle" }));
+    expect(apiA2.getAppState().currentItemStrokeColor).toBe("#e03131");
+  });
+
   it("falls back to rebuilding the editor when the new source cannot be read", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { host, landed, switchTo } = await mount({
@@ -378,5 +421,47 @@ describe("VaultEditor scene swap", () => {
         .map((e) => e.id),
     ).toEqual(["c-r0"]);
     spy.mockRestore();
+  });
+});
+
+describe("VaultEditor while the app is loading", () => {
+  it("stops keys aimed at the canvas, never other inputs, and lets them through again afterwards", async () => {
+    const restoreImage = stubImage();
+    const onChange = vi.fn();
+    const props = (loading: boolean): ComponentProps<typeof VaultEditor> => ({
+      documentId: "A",
+      initialSource: { json: scene("a") },
+      name: "x.excalidraw",
+      onChange,
+      loading,
+    });
+    const view = render(<VaultEditor {...props(false)} />);
+    await waitFor(() => expect(getEditorApi("A")).toBeTruthy());
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const seen = vi.fn();
+    document.addEventListener("keydown", seen);
+    const press = (target: Element) =>
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "a",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+
+    view.rerender(<VaultEditor {...props(true)} />);
+    press(document.body);
+    press(view.container.querySelector(".excalidraw-container")!);
+    expect(seen).not.toHaveBeenCalled();
+    press(input);
+    expect(seen).toHaveBeenCalledTimes(1);
+
+    view.rerender(<VaultEditor {...props(false)} />);
+    press(document.body);
+    expect(seen).toHaveBeenCalledTimes(2);
+    document.removeEventListener("keydown", seen);
+    input.remove();
+    restoreImage();
   });
 });

@@ -595,18 +595,20 @@ describe("newContainerStyle (wrap selection in container)", () => {
 });
 
 describe("reset (another document is shown)", () => {
-  it("keeps what the old tool was last used with and does not undo the old patch on the new state", () => {
+  it("does not undo the old patch on the new state, and the old drawing's picks are replaced", () => {
     store.defaults = { rectangle: { stroke_color: "#e03131" } };
     const t = setup();
     t.switchTo("rectangle");
     expect(t.state.currentItemStrokeColor).toBe("#e03131"); // applied to the old scene
-    t.set({ currentItemStrokeColor: "#2f9e44" }); // user tweaks it
+    t.set({ currentItemStrokeColor: "#2f9e44" }); // a per-drawing pick
+    expect(t.hook.result.current.getDrawingStyles().rectangle).toBeDefined();
     t.updateScene.mockClear();
 
-    act(() => t.hook.result.current.reset());
-    expect(getToolMemory("rectangle")).toMatchObject({
-      stroke_color: "#2f9e44",
+    act(() => {
+      t.hook.result.current.reset();
+      t.hook.result.current.loadDrawingStyles({});
     });
+    expect(t.hook.result.current.getDrawingStyles()).toEqual({});
 
     // the next document opens on the selection tool with its own colours
     t.switchTo("selection", { currentItemStrokeColor: "#1971c2" });

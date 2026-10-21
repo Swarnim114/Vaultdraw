@@ -65,6 +65,7 @@ import { renderImageExport } from "./imageExport";
 import { serializeSceneForSave } from "./sceneSerializer";
 import { getSaveSignature } from "./saveSignature";
 import { isSwapping, loadScene } from "./sceneSwap";
+import { blockEditorKeys } from "./inputGuard";
 import { LoadingLine } from "./LoadingLine";
 import { useSceneSwap } from "./useSceneSwap";
 
@@ -594,6 +595,13 @@ const VaultEditorComponent = ({
       api.history.import(undo as Parameters<typeof api.history.import>[0]);
     }
   }, [apiReady]);
+
+  // While the app loads another document, nothing may be typed into the
+  // drawing about to be replaced (keys go to the document-level listeners).
+  useEffect(() => {
+    const el = host.current;
+    return loading && el ? blockEditorKeys(el) : undefined;
+  }, [loading]);
 
   // A fresh editor focuses its canvas (autoFocus); a swapped one does the same
   // once nothing blocks it (the app's own loading state makes the container inert).
