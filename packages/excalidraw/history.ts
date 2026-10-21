@@ -87,6 +87,16 @@ export class HistoryChangedEvent {
   ) {}
 }
 
+/**
+ * Opaque copy of the undo / redo stacks. Deltas are never mutated after they
+ * are recorded (push / pop move whole entries, inverse() builds new ones), so
+ * a shallow array copy is a safe snapshot.
+ */
+export type HistorySnapshot = {
+  readonly undo: readonly HistoryDelta[];
+  readonly redo: readonly HistoryDelta[];
+};
+
 export class History {
   public readonly onHistoryChangedEmitter = new Emitter<
     [HistoryChangedEvent]
@@ -108,6 +118,32 @@ export class History {
   public clear() {
     this.undoStack.length = 0;
     this.redoStack.length = 0;
+  }
+
+  public exportStacks(): HistorySnapshot {
+    return { undo: [...this.undoStack], redo: [...this.redoStack] };
+  }
+
+  /**
+   * Replace both stacks. Only valid for the document the snapshot came from.
+   * Fails safe: on any error the history is cleared.
+   */
+  public importStacks(snapshot: HistorySnapshot) {
+    try {
+      this.clear();
+      for (const delta of snapshot.undo) {
+        this.undoStack.push(delta);
+      }
+      for (const delta of snapshot.redo) {
+        this.redoStack.push(delta);
+      }
+    } catch (error) {
+      console.error("history import failed, clearing history", error);
+      this.clear();
+    }
+    this.onHistoryChangedEmitter.trigger(
+      new HistoryChangedEvent(this.isUndoStackEmpty, this.isRedoStackEmpty),
+    );
   }
 
   /**

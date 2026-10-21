@@ -61,6 +61,7 @@ import type { Action } from "./actions/types";
 import type { Spreadsheet } from "./charts";
 import type { ClipboardData } from "./clipboard";
 import type App from "./components/App";
+import type { HistorySnapshot } from "./history";
 import type { BackgroundPattern } from "./data/backgroundPattern";
 import type { PageSetup } from "./data/pageSetup";
 import type Library from "./data/library";
@@ -1517,6 +1518,13 @@ export interface ExcalidrawImperativeAPI {
   >["getSceneElementsMapIncludingDeleted"];
   history: {
     clear: InstanceType<typeof App>["resetHistory"];
+    /** Copy of the undo / redo stacks (opaque, survives an editor remount). */
+    export: () => HistorySnapshot;
+    /**
+     * Replace the stacks with an exported snapshot. Call only right after
+     * mount, with the same document the snapshot was exported from.
+     */
+    import: (snapshot: HistorySnapshot) => void;
   };
   getSceneElements: InstanceType<typeof App>["getSceneElements"];
   getAppState: () => InstanceType<typeof App>["state"];

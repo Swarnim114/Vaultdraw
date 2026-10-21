@@ -506,6 +506,7 @@ export {
   TTDStreamFetch,
   parseSSEStream,
 } from "./components/TTDDialog/utils/TTDStreamFetch";
+export type { HistorySnapshot } from "./history";
 export type { StreamChunk } from "./components/TTDDialog/utils/TTDStreamFetch";
 export type {
   TTDPersistenceAdapter,
