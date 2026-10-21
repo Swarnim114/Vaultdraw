@@ -103,6 +103,8 @@ describe("useEditorLinks", () => {
     onLinkOpen({ link: "[[Dijkstra]]" } as never, ev as never);
     expect(callbacks.openDrawing).toHaveBeenCalledWith(
       "Graphs/Dijkstra.excalidraw",
+      undefined,
+      "current",
     );
     onLinkOpen({ link: "[[Ghost]]" } as never, ev as never);
     await vi.waitFor(() =>
@@ -124,11 +126,17 @@ describe("useEditorLinks", () => {
       fakeApi([rect, text], { [rect.id]: true }).api,
     );
     expect(hook.result.current.openLinkUnderSelection()).toBe(true);
-    expect(callbacks.openDrawing).toHaveBeenLastCalledWith("Notes.excalidraw");
+    expect(callbacks.openDrawing).toHaveBeenLastCalledWith(
+      "Notes.excalidraw",
+      undefined,
+      "current",
+    );
     const t = mount(fakeApi([rect, text], { [text.id]: true }).api);
     expect(t.hook.result.current.openLinkUnderSelection()).toBe(true);
     expect(t.callbacks.openDrawing).toHaveBeenCalledWith(
       "Graphs/Dijkstra.excalidraw",
+      undefined,
+      "current",
     );
     const none = mount(fakeApi([rect, text], {}).api);
     expect(none.hook.result.current.openLinkUnderSelection()).toBe(false);
@@ -181,6 +189,7 @@ describe("useEditorLinks", () => {
     ]);
     expect(updateScene).toHaveBeenCalledTimes(1);
     expect(add.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "pointerdown", // middle click -> new tab (links)
       "pointerdown",
       "pointerleave",
       "pointermove",

@@ -11,7 +11,10 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { DEFAULT_LINKS_SETTINGS } from "../../links/types";
 
 import { targetOf } from "./onLinkOpen";
+
 import { textLinksWithGeometry } from "./textLinkHitTest";
+
+import type { LinkOpenOptions } from "./onLinkOpen";
 
 import type { MeasureFn, TextLike, ViewportState } from "./textLinkHitTest";
 
@@ -120,11 +123,13 @@ export type HintsState = { hints: Hint[]; typed: string };
 export interface LinkHintsDeps {
   getApi(): ExcalidrawImperativeAPI | null;
   getHintChars(): string;
-  openRaw(raw: string): boolean;
+  openRaw(raw: string, opts?: LinkOpenOptions): boolean;
 }
 
 export class LinkHints {
   private current: HintsState | null = null;
+  /** Any hint key typed with Shift (Vimium `F`) opens in a new tab. */
+  private shifted = false;
   private listeners = new Set<(s: HintsState | null) => void>();
 
   constructor(private readonly deps: LinkHintsDeps) {}
@@ -145,6 +150,7 @@ export class LinkHints {
   /** Shows the hints; false (and nothing attached) when no link is visible. */
   start(): boolean {
     this.cancel();
+    this.shifted = false;
     const api = this.deps.getApi();
     if (!api) {
       return false;
@@ -193,6 +199,7 @@ export class LinkHints {
       this.cancel();
       return;
     }
+    this.shifted ||= e.shiftKey;
     const typed = s.typed + e.key.toLowerCase();
     const matches = s.hints.filter((h) => h.label.startsWith(typed));
     if (matches.length === 0) {
@@ -202,7 +209,9 @@ export class LinkHints {
     const exact = matches.find((h) => h.label === typed);
     if (exact) {
       this.cancel();
-      this.deps.openRaw(exact.raw);
+      this.deps.openRaw(exact.raw, {
+        target: this.shifted ? "new" : "current",
+      });
       return;
     }
     this.current = { ...s, typed };

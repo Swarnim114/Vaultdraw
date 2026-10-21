@@ -66,3 +66,46 @@ export class NavHistory {
     this.at = -1;
   }
 }
+
+/**
+ * One NavHistory per tab (browsers, Obsidian). A missing tab id means "tabs
+ * off": every caller shares one history, which is the pre-tabs behaviour.
+ */
+export class NavHistories {
+  private readonly shared = new NavHistory();
+  private readonly byTab = new Map<string, NavHistory>();
+
+  /** The history of tab `id` (created lazily); the shared one for null/undefined. */
+  for(id: string | null | undefined): NavHistory {
+    if (!id) {
+      return this.shared;
+    }
+    let h = this.byTab.get(id);
+    if (!h) {
+      h = new NavHistory();
+      this.byTab.set(id, h);
+    }
+    return h;
+  }
+
+  /** A moved/renamed drawing keeps its place in every tab's history. */
+  rename(from: string, to: string): void {
+    this.shared.rename(from, to);
+    for (const h of this.byTab.values()) {
+      h.rename(from, to);
+    }
+  }
+
+  /** Drops the histories of tabs that are no longer open. */
+  prune(openIds: ReadonlySet<string>): void {
+    for (const id of this.byTab.keys()) {
+      if (!openIds.has(id)) {
+        this.byTab.delete(id);
+      }
+    }
+  }
+
+  get size(): number {
+    return this.byTab.size;
+  }
+}

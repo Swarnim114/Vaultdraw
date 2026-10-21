@@ -44,6 +44,7 @@ import type {
   VaultLinks,
 } from "../../links/types";
 import type { TagsSettings } from "../../tags/types";
+import type { OpenTarget } from "../../tabs/types";
 import type { LinkOpenCallbacks } from "./onLinkOpen";
 import type { ReadDrawing } from "./preview/previewThumbnails";
 import type { WikiAutocomplete } from "./wikiAutocomplete";
@@ -186,31 +187,36 @@ export function useEditorLinks(opts: UseEditorLinksOptions) {
 
   const startLinkHints = useCallback(() => hints.start(), [hints]);
 
-  const openLinkUnderSelection = useCallback((): boolean => {
-    const api = latest.current.api;
-    if (!api) {
-      return false;
-    }
-    const selected = api.getAppState().selectedElementIds;
-    const all = api.getSceneElements() as unknown as El[];
-    for (const el of all) {
-      if (!selected[el.id]) {
-        continue;
+  const openLinkUnderSelection = useCallback(
+    (target: OpenTarget = "current"): boolean => {
+      const api = latest.current.api;
+      if (!api) {
+        return false;
       }
-      if (el.link && openRaw(el.link)) {
-        return true;
-      }
-      const texts =
-        el.type === "text" ? [el] : all.filter((t) => t.containerId === el.id);
-      for (const t of texts) {
-        const first = linksOf(t)[0];
-        if (first && openRaw(`[[${first.target}]]`)) {
+      const selected = api.getAppState().selectedElementIds;
+      const all = api.getSceneElements() as unknown as El[];
+      for (const el of all) {
+        if (!selected[el.id]) {
+          continue;
+        }
+        if (el.link && openRaw(el.link, { target })) {
           return true;
         }
+        const texts =
+          el.type === "text"
+            ? [el]
+            : all.filter((t) => t.containerId === el.id);
+        for (const t of texts) {
+          const first = linksOf(t)[0];
+          if (first && openRaw(`[[${first.target}]]`, { target })) {
+            return true;
+          }
+        }
       }
-    }
-    return false;
-  }, [openRaw]);
+      return false;
+    },
+    [openRaw],
+  );
 
   /** "Link selection to drawing...": write the link on every selected element. */
   const linkSelectionTo = useCallback((targetPath: string): number => {

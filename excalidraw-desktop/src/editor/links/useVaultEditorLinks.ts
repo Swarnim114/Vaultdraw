@@ -113,6 +113,9 @@ export function useVaultEditorLinks(
       "links.openUnderSelection": () => {
         live.current.controller.openLinkUnderSelection();
       },
+      "links.openUnderSelectionNew": () => {
+        live.current.controller.openLinkUnderSelection("new");
+      },
       "links.hints": () => {
         live.current.controller.startLinkHints();
       },

@@ -7,10 +7,11 @@
 import { findLinks, parseLinkField } from "../../links/grammar";
 
 import type { LinkResolver } from "../../links/resolve";
+import type { OpenTarget } from "../../tabs/types";
 import type { Resolution } from "../../links/types";
 
 export type LinkOpenCallbacks = {
-  openDrawing(path: string, elementId?: string): void;
+  openDrawing(path: string, elementId?: string, target?: OpenTarget): void;
   /** The link resolves to nothing: offer "Create 'target'". */
   onUnresolved(target: string): void;
 };
@@ -39,9 +40,11 @@ export function targetOf(
   return field ? { target: field.target, relative: !!field.relative } : null;
 }
 
+export type LinkOpenOptions = { target?: OpenTarget };
+
 /** Opens a link value; false when it is not a vault link. */
 export function createLinkOpener(deps: LinkOpenDeps) {
-  return function openRaw(raw: string): boolean {
+  return function openRaw(raw: string, opts?: LinkOpenOptions): boolean {
     const spec = targetOf(raw);
     if (!spec) {
       return false;
@@ -50,7 +53,7 @@ export function createLinkOpener(deps: LinkOpenDeps) {
     const done = (res: Resolution) => {
       const cb = deps.getCallbacks();
       if (res.path) {
-        cb.openDrawing(res.path);
+        cb.openDrawing(res.path, undefined, opts?.target ?? "current");
       } else {
         cb.onUnresolved(spec.target);
       }
@@ -68,10 +71,33 @@ export function createLinkOpener(deps: LinkOpenDeps) {
 }
 
 type LinkElement = { link?: string | null };
-type LinkOpenEvent = { preventDefault(): void };
+type NativeLinkEvent = {
+  button?: number;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+};
+type LinkOpenEvent = {
+  preventDefault(): void;
+  /** Excalidraw's wrapped event: `detail.nativeEvent` is the pointer-up. */
+  detail?: { nativeEvent?: NativeLinkEvent };
+};
+
+/** Shape link icon / popup: Cmd/Ctrl+Shift or middle click -> new tab. */
+export function iconLinkTarget(
+  native: NativeLinkEvent | undefined,
+): OpenTarget {
+  if (!native) {
+    return "current";
+  }
+  const mod = !!(native.metaKey || native.ctrlKey);
+  return native.button === 1 || (mod && !!native.shiftKey) ? "new" : "current";
+}
 
 /** The handler for `<Excalidraw onLinkOpen>`. */
-export function createOnLinkOpen(openRaw: (raw: string) => boolean) {
+export function createOnLinkOpen(
+  openRaw: (raw: string, opts?: LinkOpenOptions) => boolean,
+) {
   return (element: LinkElement, event: LinkOpenEvent): void => {
     const link = element.link;
     if (!link) {
@@ -79,7 +105,7 @@ export function createOnLinkOpen(openRaw: (raw: string) => boolean) {
     }
     if (targetOf(link)) {
       event.preventDefault();
-      openRaw(link);
+      openRaw(link, { target: iconLinkTarget(event.detail?.nativeEvent) });
     } else if (link.startsWith("/")) {
       event.preventDefault();
     }

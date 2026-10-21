@@ -50,7 +50,11 @@ describe("onLinkOpen", () => {
       expect(ev.preventDefault).toHaveBeenCalled();
     }
     expect(cb.openDrawing).toHaveBeenCalledTimes(3);
-    expect(cb.openDrawing).toHaveBeenCalledWith("Graphs/Dijkstra.excalidraw");
+    expect(cb.openDrawing).toHaveBeenCalledWith(
+      "Graphs/Dijkstra.excalidraw",
+      undefined,
+      "current",
+    );
   });
 
   it("reports unresolved targets and never lets '/' links navigate", () => {
@@ -87,7 +91,11 @@ describe("onLinkOpen", () => {
     });
     expect(openRaw("[[Late]]")).toBe(true);
     await vi.waitFor(() =>
-      expect(cb.openDrawing).toHaveBeenCalledWith("Late.excalidraw"),
+      expect(cb.openDrawing).toHaveBeenCalledWith(
+        "Late.excalidraw",
+        undefined,
+        "current",
+      ),
     );
   });
 });
@@ -313,21 +321,17 @@ describe("ModifierLinks", () => {
       openRaw: () => true,
     });
     ml.start();
-    expect(add).not.toHaveBeenCalled();
+    // Idle: only the (middle-click) pointerdown listener.
+    expect(add.mock.calls.map((c) => c[0])).toEqual(["pointerdown"]);
+    add.mockClear();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
     expect(ml.isArmed).toBe(false);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Alt" }));
     expect(ml.isArmed).toBe(true);
-    expect(add.mock.calls.map((c) => c[0])).toEqual([
-      "pointermove",
-      "pointerdown",
-    ]);
+    expect(add.mock.calls.map((c) => c[0])).toEqual(["pointermove"]);
     document.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt" }));
     expect(ml.isArmed).toBe(false);
-    expect(remove.mock.calls.map((c) => c[0])).toEqual([
-      "pointermove",
-      "pointerdown",
-    ]);
+    expect(remove.mock.calls.map((c) => c[0])).toEqual(["pointermove"]);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Alt" }));
     window.dispatchEvent(new Event("blur"));
     expect(ml.isArmed).toBe(false);
@@ -366,7 +370,7 @@ describe("ModifierLinks", () => {
     // Aim at the middle of the link span "[[Dijkstra]]" in the measured text.
     const hit = down((w * 8) / 19);
     expect(hit.defaultPrevented).toBe(true);
-    expect(openRaw).toHaveBeenCalledWith("[[Dijkstra]]");
+    expect(openRaw).toHaveBeenCalledWith("[[Dijkstra]]", { target: "current" });
     ml.stop();
   });
 
@@ -397,7 +401,7 @@ describe("ModifierLinks", () => {
         bubbles: true,
       }),
     );
-    expect(openRaw).toHaveBeenCalledWith("[[Dijkstra]]");
+    expect(openRaw).toHaveBeenCalledWith("[[Dijkstra]]", { target: "current" });
     ml.stop();
   });
 });
@@ -487,6 +491,7 @@ describe("link hints", () => {
     press(labels[0][1]);
     expect(openRaw).toHaveBeenCalledWith(
       hints.state ? "" : "vaultdraw://open?file=C",
+      { target: "current" },
     );
     expect(hints.active).toBe(false);
 

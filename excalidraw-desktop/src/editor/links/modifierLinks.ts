@@ -12,6 +12,8 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { clientToScene, hitTestTextLink, shapeLinkAt } from "./textLinkHitTest";
 
 import type { OpenModifier } from "../../links/types";
+import type { OpenTarget } from "../../tabs/types";
+import type { LinkOpenOptions } from "./onLinkOpen";
 import type { LinkFragment, TextLike, TextLinkHit } from "./textLinkHitTest";
 
 const isMac = () =>
@@ -52,6 +54,23 @@ export function isModifierHeld(
     default:
       return mac ? e.metaKey : e.ctrlKey;
   }
+}
+
+/**
+ * Where a link gesture opens: middle click -> new tab; the open modifier plus
+ * Shift -> new tab (unless Shift is itself the open modifier); else current.
+ */
+export function linkOpenTarget(
+  e: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+  modifier: OpenModifier,
+  mac = isMac(),
+): OpenTarget {
+  if (e.button === 1) {
+    return "new";
+  }
+  return modifier !== "shift" && e.shiftKey && isModifierHeld(e, modifier, mac)
+    ? "new"
+    : "current";
 }
 
 /** One underline segment in viewport coordinates. */
@@ -100,7 +119,7 @@ export interface ModifierLinksDeps {
   getApi(): ExcalidrawImperativeAPI | null;
   getModifier(): OpenModifier;
   /** Opens a link value (`[[x]]`, url...); false when it is not a vault link. */
-  openRaw(raw: string): boolean;
+  openRaw(raw: string, opts?: LinkOpenOptions): boolean;
 }
 
 type Target = { raw: string; hit: TextLinkHit | null };
@@ -124,12 +143,15 @@ export class ModifierLinks {
   }
 
   start(): void {
+    // Middle click opens a link in a new tab; ignores every other button.
+    this.deps.container.addEventListener("pointerdown", this.onDown, true);
     document.addEventListener("keydown", this.onKeyDown);
     document.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.disarm);
   }
 
   stop(): void {
+    this.deps.container.removeEventListener("pointerdown", this.onDown, true);
     document.removeEventListener("keydown", this.onKeyDown);
     document.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.disarm);
@@ -157,7 +179,6 @@ export class ModifierLinks {
     this.armed = true;
     const c = this.deps.container;
     c.addEventListener("pointermove", this.onMove, { passive: true });
-    c.addEventListener("pointerdown", this.onDown, true);
   }
 
   private disarm = () => {
@@ -167,7 +188,6 @@ export class ModifierLinks {
     this.armed = false;
     const c = this.deps.container;
     c.removeEventListener("pointermove", this.onMove);
-    c.removeEventListener("pointerdown", this.onDown, true);
     if (this.frame) {
       cancelAnimationFrame(this.frame);
       this.frame = 0;
@@ -193,11 +213,16 @@ export class ModifierLinks {
   };
 
   private onDown = (e: PointerEvent) => {
-    if (e.button !== 0 || !isModifierHeld(e, this.deps.getModifier())) {
+    const modifier = this.deps.getModifier();
+    const middle = e.button === 1;
+    if (!middle && (e.button !== 0 || !isModifierHeld(e, modifier))) {
       return;
     }
     const target = this.targetAt(e);
-    if (target && this.deps.openRaw(target.raw)) {
+    if (
+      target &&
+      this.deps.openRaw(target.raw, { target: linkOpenTarget(e, modifier) })
+    ) {
       e.preventDefault();
       e.stopPropagation();
     }

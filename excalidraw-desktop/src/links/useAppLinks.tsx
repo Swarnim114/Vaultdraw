@@ -26,7 +26,7 @@ import { isTagJob } from "../tags/renameJobs";
 import { createSpot } from "./createTarget";
 import { getDockVisible, setDockVisible } from "./dockState";
 import { linkTargetFor, wikiLink } from "./format";
-import { NavHistory } from "./history";
+import { NavHistories } from "./history";
 import { decideMove, updatedMessage } from "./moveFlow";
 import { createResolver } from "./resolve";
 
@@ -39,6 +39,7 @@ import type {
   RemeasureSet,
   VaultLinks,
 } from "./types";
+import type { OpenTarget } from "../tabs/types";
 import type { VaultSearch } from "../search/types";
 import type { VaultRepository, VaultEntry, VaultInfo } from "../vault/types";
 
@@ -54,8 +55,17 @@ export type AppLinksDeps = {
   indexing: boolean;
   activePath: string | null;
   navigatorCollapsed: boolean;
-  /** Open `path` (unless already open) and focus `elementId` when given. */
-  open(path: string, elementId?: string): Promise<void>;
+  /**
+   * Open `path` (unless already open) and focus `elementId` when given.
+   * `target` "new" opens a new tab; omitted = "current".
+   */
+  open(path: string, elementId?: string, target?: OpenTarget): Promise<void>;
+  /** The active tab's id: back/forward history is per tab. Null/omitted: one shared history. */
+  activeTabId?: string | null;
+  /** Live read of the active tab id (the prop lags a render behind `open`). */
+  getActiveTabId?(): string | null;
+  /** Ids of the open tabs; histories of closed tabs are dropped on the next link open. */
+  openTabIds?(): ReadonlySet<string>;
   /** Parent folder for a new drawing per files.new_drawing_folder. */
   prepareParent(): Promise<string | null>;
   createDrawing(parent: string, name: string): Promise<void>;
@@ -107,7 +117,12 @@ export function useAppLinks(deps: AppLinksDeps) {
   const { links, vault, win } = deps;
   const handle = vault?.handle ?? null;
   const names = useStableNames(deps.entries, links !== null);
-  const history = useMemo(() => new NavHistory(), []);
+  const histories = useMemo(() => new NavHistories(), []);
+  /** The active tab's history, read live (never stale across an await). */
+  const activeHistory = useCallback(() => {
+    const d = live.current;
+    return histories.for(d.getActiveTabId ? d.getActiveTabId() : d.activeTabId);
+  }, [histories]);
   const bridge = useRef<EditorLinksBridge | null>(null);
   const dockRef = useRef<LinksDockHandle | null>(null);
 
@@ -136,28 +151,49 @@ export function useAppLinks(deps: AppLinksDeps) {
   const syncCurrent = useCallback(() => {
     const path = live.current.activePath;
     if (path) {
-      history.visit({ path });
+      activeHistory().visit({ path });
     }
-  }, [history]);
+  }, [activeHistory]);
 
   const openLink = useCallback(
-    async (path: string, elementId?: string) => {
+    async (
+      path: string,
+      elementId?: string,
+      target: OpenTarget = "current",
+    ) => {
       syncCurrent();
-      await live.current.open(path, elementId);
-      history.visit({ path, elementId });
+      const before = live.current.getActiveTabId?.() ?? null;
+      await live.current.open(path, elementId, target);
+      const d = live.current;
+      const openTabs = d.openTabIds?.();
+      if (openTabs) {
+        histories.prune(openTabs);
+      }
+      // The visit belongs to the tab showing the link now: the new tab for
+      // "new" (or a pinned current tab). A "new" open that did not move focus
+      // (tabs.focus_new = false) is not recorded; the origin tab keeps its entry.
+      if (
+        target === "new" &&
+        d.getActiveTabId &&
+        d.getActiveTabId() === before
+      ) {
+        return;
+      }
+      activeHistory().visit({ path, elementId });
     },
-    [history, syncCurrent],
+    [histories, activeHistory, syncCurrent],
   );
 
   const go = useCallback(
     async (direction: "back" | "forward") => {
       syncCurrent();
+      const history = activeHistory();
       const entry = direction === "back" ? history.back() : history.forward();
       if (entry) {
-        await live.current.open(entry.path, entry.elementId);
+        await live.current.open(entry.path, entry.elementId, "current");
       }
     },
-    [history, syncCurrent],
+    [activeHistory, syncCurrent],
   );
 
   // ---- create -----------------------------------------------------------
@@ -198,14 +234,14 @@ export function useAppLinks(deps: AppLinksDeps) {
           }
         }
         await d.createDrawing(spot.parent, spot.name);
-        history.visit({
+        activeHistory().visit({
           path: spot.parent ? `${spot.parent}/${spot.name}` : spot.name,
         });
       } catch (err) {
         d.notify(`Failed to create drawing: ${errorMessage(err)}`, "error");
       }
     },
-    [history],
+    [activeHistory],
   );
 
   const onUnresolved = useCallback(
@@ -261,7 +297,7 @@ export function useAppLinks(deps: AppLinksDeps) {
       } else {
         await run((f, t) => d.repository.move(h, f, t));
       }
-      history.rename(from, to);
+      histories.rename(from, to);
       const done = result as MoveResult | null;
       if (done && done.openDrawingEdits.length > 0) {
         const n = bridge.current?.applyEdits(done.openDrawingEdits) ?? 0;
@@ -271,7 +307,7 @@ export function useAppLinks(deps: AppLinksDeps) {
       }
       return true;
     },
-    [ask, history],
+    [ask, histories],
   );
 
   // links-rewrite-done: toast, dock refresh, new re-measure entries.
@@ -490,8 +526,8 @@ export function useAppLinks(deps: AppLinksDeps) {
 
   const editorCallbacks = useMemo(
     () => ({
-      openDrawing: (path: string, elementId?: string) =>
-        void openLink(path, elementId),
+      openDrawing: (path: string, elementId?: string, target?: OpenTarget) =>
+        void openLink(path, elementId, target),
       onUnresolved: (target: string) => void onUnresolved(target),
       onCreate: (target: string) => void createTarget(target),
     }),
@@ -500,7 +536,8 @@ export function useAppLinks(deps: AppLinksDeps) {
 
   return {
     names,
-    history,
+    /** The active tab's back/forward history. */
+    activeHistory,
     bridge,
     dockRef,
     dockVisible,
