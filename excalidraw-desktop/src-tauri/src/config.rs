@@ -221,34 +221,9 @@ pub(crate) fn resolve_dirs_with(
     windows: bool,
     smoke_root: Option<&Path>,
 ) -> Result<Dirs> {
-    let var = |name: &str| get(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let abs = |name: &str| var(name).filter(|p| p.is_absolute());
-    let resolve = |override_var: &str, smoke_leaf: &str, xdg: &str, xdg_rel: &str, win: &str| -> Result<PathBuf> {
-        if let Some(p) = var(override_var) {
-            if !p.is_absolute() {
-                return Err(err("CONFIG_DIR", format!("{override_var} must be an absolute path")));
-            }
-            return Ok(p);
-        }
-        if let Some(root) = smoke_root {
-            return Ok(root.join(smoke_leaf));
-        }
-        if windows {
-            return abs(win)
-                .map(|p| p.join("Vaultdraw"))
-                .ok_or_else(|| err("CONFIG_DIR", format!("%{win}% is not set")));
-        }
-        if let Some(p) = abs(xdg) {
-            return Ok(p.join("vaultdraw"));
-        }
-        abs("HOME")
-            .map(|home| home.join(xdg_rel).join("vaultdraw"))
-            .ok_or_else(|| err("CONFIG_DIR", "Cannot determine the home directory ($HOME is not set)"))
-    };
-    Ok(Dirs {
-        config: resolve("VAULTDRAW_CONFIG_DIR", "config", "XDG_CONFIG_HOME", ".config", "APPDATA")?,
-        state: resolve("VAULTDRAW_STATE_DIR", "state", "XDG_STATE_HOME", ".local/state", "LOCALAPPDATA")?,
-    })
+    vaultdraw_protocol::dirs::resolve_dirs_with(get, windows, smoke_root)
+        .map(|d| Dirs { config: d.config, state: d.state })
+        .map_err(|msg| err("CONFIG_DIR", msg))
 }
 
 pub(crate) fn resolve_dirs() -> Result<Dirs> {

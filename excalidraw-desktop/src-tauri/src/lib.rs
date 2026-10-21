@@ -18,6 +18,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 mod app_menu;
 mod clipboard;
 mod config;
+mod control;
 mod drawing_copy;
 mod links;
 mod search;
@@ -138,6 +139,15 @@ struct RecoveryRecord<'a> {
     operation_id: Cow<'a, str>,
     json: Cow<'a, str>,
     created_at: u64,
+}
+
+/// First open vault as `{name, path, readOnly}` for the control API's `app.status`.
+pub(crate) fn control_vault_summary(app: &AppHandle) -> Option<serde_json::Value> {
+    let service = app.try_state::<Service>()?;
+    let vaults = service.vaults.lock().ok()?;
+    let vault = vaults.values().min_by(|a, b| a.handle.cmp(&b.handle))?;
+    let name = vault.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    Some(serde_json::json!({"name": name, "path": vault.root.to_string_lossy(), "readOnly": vault.read_only}))
 }
 
 fn now_ms(t: SystemTime) -> u64 {
@@ -1445,6 +1455,7 @@ pub(crate) fn startup_trace(label: &str) {
 
 pub fn run() {
     startup_trace("run");
+    control::instance::claim_or_forward();
     #[cfg(not(test))]
     {
         let builder = tauri::Builder::default()
@@ -1458,6 +1469,7 @@ pub fn run() {
             .on_page_load(|webview, payload| {
                 if payload.event() == tauri::webview::PageLoadEvent::Started {
                     release_all_handles(webview.app_handle());
+                    control::on_page_load_started();
                 }
             })
             .setup(|app| {
@@ -1485,6 +1497,7 @@ pub fn run() {
                 startup_trace("window config ready");
                 let main_window = builder.build()?;
                 startup_trace("window built");
+                control::spawn(app.handle());
                 #[cfg(feature = "smoke-test")]
                 smoke::harden_test_webview(&main_window);
                 #[cfg(not(feature = "smoke-test"))]
@@ -1533,6 +1546,7 @@ pub fn run() {
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
                 thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear,
+                control::bridge::control_ready, control::bridge::control_reply, control::bridge::control_commands_snapshot, control::bridge::control_install_cli,
                 smoke::smoke_environment, smoke::smoke_log, smoke::smoke_finish, smoke::perf_process_ids,
                 refresh_rate::probes::perf_display_info, refresh_rate::probes::perf_native_input,
                 refresh_rate::probes::perf_window_maximize, refresh_rate::probes::perf_process_cpu,
@@ -1553,7 +1567,8 @@ pub fn run() {
                 pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_unlock, pdf_import::pdf_close,
                 templates::list_global_templates, templates::read_global_template,
                 templates::write_global_template, templates::open_global_templates_dir,
-                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear
+                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear,
+                control::bridge::control_ready, control::bridge::control_reply, control::bridge::control_commands_snapshot, control::bridge::control_install_cli
             ])
         };
         #[cfg(not(feature = "smoke-test"))]
@@ -1571,7 +1586,8 @@ pub fn run() {
                 pdf_import::pdf_pick, pdf_import::pdf_open_bytes, pdf_import::pdf_render_page, pdf_import::pdf_unlock, pdf_import::pdf_close,
             templates::list_global_templates, templates::read_global_template,
             templates::write_global_template, templates::open_global_templates_dir,
-                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear
+                thumbs::thumbs_lookup, thumbs::thumbs_put, thumbs::thumbs_clear,
+                control::bridge::control_ready, control::bridge::control_reply, control::bridge::control_commands_snapshot, control::bridge::control_install_cli
         ]);
         startup_trace("builder configured");
         let app = builder
