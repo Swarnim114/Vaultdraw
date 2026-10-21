@@ -1772,6 +1772,17 @@ export async function runDesktopSmoke(): Promise<void> {
       };
     });
 
+    // ---- Thumbnail disk cache + vdthumb:// scheme (real Rust store, real scheme handler) ----
+    // Before the library UI steps: it needs only the vault, and a later UI failure must
+    // not hide whether thumbnails load (CSP, scheme handler).
+    await runThumbnailsSmoke({
+      win,
+      doc,
+      handle: activeVault.handle,
+      drawingPath: filePath,
+      step,
+    });
+
     // ---- Persisted library (F10): phase decided by the personal file, see librarySmoke.ts ----
     // Library item previews are SVG exports too: same known inline-style CSP reports.
     svgExportInFlight = true;
@@ -1786,15 +1797,6 @@ export async function runDesktopSmoke(): Promise<void> {
       invoke: invokeNative,
     }).finally(() => {
       svgExportInFlight = false;
-    });
-
-    // ---- Thumbnail disk cache + vdthumb:// scheme (real Rust store, real scheme handler) ----
-    await runThumbnailsSmoke({
-      win,
-      doc,
-      handle: activeVault.handle,
-      drawingPath: filePath,
-      step,
     });
 
     // ---- Config folder (personal/planning/config.md) ----
